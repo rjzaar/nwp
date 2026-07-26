@@ -100,6 +100,7 @@ def _maybe_break_scoping(app_main):
         list(app_main.config.DEMO_SITES), force=force)
     app_main._gather_issues = lambda sc: (
         (app_main._gather_issues_raw().get("data") or []), app_main._gather_issues_raw())
+    app_main._gather_security = lambda sc, force=False: app_main._gather_security_raw(force=force)
     # ...and the second net too, since a real regression could remove either.
     scope_mod.scrub = lambda obj, scope: (obj, 0)
     scope_mod.redact = lambda ctx, scope: ctx
@@ -403,3 +404,30 @@ def test_owner_still_sees_the_whole_fleet(owner):
     assert r.status_code == 200
     for s in FOREIGN + MINE:
         assert s in r.text, f"owner lost sight of {s}"
+
+
+# ---------------------------------------------------------------------------
+# security advisories (merged from feat/console-security-advisories)
+# ---------------------------------------------------------------------------
+def test_security_advisories_are_scoped_on_the_fleet_pane(dana, owner, mod):
+    """An advisory names a package, a version and a CVE for one site. A
+    fleet-wide advisory list would tell a member exactly how many holes exist
+    in sites they cannot see — the most sensitive per-site fact there is."""
+    r = dana.get("/panes/fleet")
+    assert r.status_code == 200
+    assert "PKSA-MINE-1" in r.text, "my own advisory vanished"
+    assert "PKSA-SECRET-9" not in r.text, "LEAK: a foreign advisory id reached a member"
+    assert "SECRET-ADVISORY-TITLE" not in r.text
+    assert "drupal/secretpkg" not in r.text
+
+    sec = mod._gather_security(_scope_of(mod, "dana"))[0]
+    assert [s["site"] for s in sec["sites"]] == ["ssc"]
+    # The headline is RECOMPUTED: inheriting the published totals would print
+    # the fleet-wide advisory count above a one-row table, telling a member how
+    # big a problem is in sites they cannot see.
+    assert sec["totals"]["advisories"] == 1, "advisory headline leaked fleet-wide totals"
+    assert sec["totals"]["sites"] == 1
+
+    # The owner still sees both.
+    o = owner.get("/panes/fleet")
+    assert "PKSA-MINE-1" in o.text and "PKSA-SECRET-9" in o.text

@@ -1,0 +1,29 @@
+{#
+  One advisory. Expects `a` in scope (see _security.html).
+
+  Everything printed here is third-party text that arrived in a published
+  snapshot. Jinja autoescape covers the markup; `a.link` has already been
+  scheme-allowlisted by advisories.safe_link() (it is '' unless it is a plain
+  http(s) URL), which is why an href is safe to emit at all. rel="noopener
+  noreferrer" so the advisory site can neither reach back through window.opener
+  nor learn which console linked to it.
+#}
+<div class="adv {{ a.sev_class }}{% if a.ignored %} adv-ignored{% endif %}">
+  <div class="adv-head">
+    <span class="chip sev-{{ a.sev_label }}">{{ a.sev_label }}</span>
+    <strong class="mono">{{ a.package }}</strong>
+  </div>
+  <div class="adv-title">{{ a.title or a.id }}</div>
+  <dl class="adv-fields">
+    {% if a.installed %}<dt>installed</dt><dd class="mono">{{ a.installed }}</dd>{% endif %}
+    {% if a.affected %}<dt>affected</dt><dd class="mono">{{ a.affected }}</dd>{% endif %}
+    <dt>advisory</dt><dd class="mono">{{ a.id }}</dd>
+    {% if a.cve %}<dt>CVE</dt><dd class="mono">{{ a.cve }}</dd>{% endif %}
+    {% if a.reported_at %}<dt>reported</dt><dd>{{ a.reported_at }}</dd>{% endif %}
+  </dl>
+  {% if a.link %}
+  <a class="adv-link" href="{{ a.link }}" target="_blank" rel="noopener noreferrer">Read the advisory ↗</a>
+  {% else %}
+  <span class="muted small">no usable advisory link in the feed</span>
+  {% endif %}
+</div>

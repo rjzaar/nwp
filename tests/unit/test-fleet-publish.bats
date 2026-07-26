@@ -103,9 +103,17 @@ print('ok')"
 
 @test "--no-todo publishes the rag feed only" {
   root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
-  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --out "$WORK/s.json"
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --no-security --out "$WORK/s.json"
   run python3 -c "
 import json;d=json.load(open('$WORK/s.json'));assert list(d['feeds'])==['rag'];print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "--no-todo alone still publishes rag + security" {
+  root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --out "$WORK/s.json"
+  run python3 -c "
+import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['rag','security'];print('ok')"
   [ "$status" -eq 0 ]
 }
 
@@ -320,4 +328,213 @@ EOS
   PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule --yolo
   [ "$status" -ne 0 ]
   [[ "$output" == *"unknown option"* ]]
+}
+
+################################################################################
+# The security feed (advisories in the Fleet pane).
+#
+# The console host cannot run `composer audit` — it has no sites. So advisories
+# travel in the SAME published snapshot as everything else, built from the
+# records `pl audit` already caches. These tests pin that contract: the feed is
+# present by default, escapable, additive (no schema bump), and an old snapshot
+# without it must still be readable by the new console.
+################################################################################
+
+# A fixture audit-record dir: one composer site with a real advisory table, one
+# Moodle site (not composer-managed), one corrupt record.
+make_audit_dir() {
+  local d="$WORK/audit"; mkdir -p "$d"
+  cat > "$d/avc.json" <<'JSON'
+{"site":"avc","checked":"2026-07-25T17:50:01Z","security_count":1,"ignored_count":0,
+ "cache_stale":false,
+ "composer_audit_text":"Found 1 security vulnerability advisories affecting 1 packages:\n| Package           | drupal/core |\n| Severity          | medium |\n| Advisory ID       | SA-CORE-2026-012 |\n| CVE               | CVE-2026-55805 |\n| Title             | Drupal core - XSS |\n| URL               | https://www.drupal.org/sa-core-2026-012 |\n| Affected versions | <10.6.13 |\n| Reported at       | 2026-07-15T19:52:26+00:00 |\n+---+\n"}
+JSON
+  cat > "$d/ss.json" <<'JSON'
+{"site":"ss","checked":"2026-07-25T17:50:01Z","platform":"moodle","security_count":0,
+ "moodle_installed":"4.5.2","moodle_latest":"4.5.2","note":"Current on the latest point release."}
+JSON
+  printf '{ not json' > "$d/broken.json"
+  printf '%s' "$d"
+}
+
+# Like make_fake_root, but its ./pl also dispatches `fleet security` to the REAL
+# fleet.sh (that is the code under test) against the fixture record dir.
+make_fake_root_with_security() { # $1 rag_rc, $2 todo_rc, $3 rag_body, $4 todo_body, $5 audit_dir
+  local root; root=$(make_fake_root "$1" "$2" "$3" "$4")
+  cat > "$root/pl" <<EOF
+#!/bin/bash
+case "\$1 \$2" in
+  "rag --json")      printf '%s' '${3}'; exit ${1} ;;
+  "todo check")      printf '%s' '${4}'; exit ${2} ;;
+  "fleet security")  shift 2; exec env NWP_AUDIT_STATE_DIR='${5}' NWP_CONFIG_FILE=/nonexistent \\
+                       PROJECT_ROOT='${REPO_ROOT}' "${FLEET_SH}" security "\$@" ;;
+  "audit --all")     echo "AUDIT RAN" >> '${WORK}/audit-ran'; exit 0 ;;
+esac
+case "\$1" in --version) echo "NWP CLI (pl) version 9.9.9"; exit 0 ;; esac
+echo "unexpected: \$*" >&2; exit 64
+EOF
+  chmod +x "$root/pl"
+  printf '%s' "$root"
+}
+
+@test "pl fleet security --json lists every advisory field the pane renders" {
+  audit=$(make_audit_dir)
+  run env NWP_AUDIT_STATE_DIR="$audit" NWP_CONFIG_FILE=/nonexistent \
+      PROJECT_ROOT="$WORK/root2" "$FLEET_SH" security --json
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" > "$WORK/sec.json"
+  run python3 -c "
+import json;d=json.load(open('$WORK/sec.json'))
+by={b['site']:b for b in d['sites']}
+a=by['avc']['advisories'][0]
+assert by['avc']['state']=='ok', by['avc']
+assert a['id']=='SA-CORE-2026-012', a
+assert a['cve']=='CVE-2026-55805'
+assert a['package']=='drupal/core'
+assert a['affected']=='<10.6.13'
+assert a['severity']=='medium'
+assert a['reported_at'].startswith('2026-07-15')
+assert a['link']=='https://www.drupal.org/sa-core-2026-012'
+assert by['ss']['state']=='n/a', 'Moodle is not composer-managed — n/a, not clean'
+assert by['broken']['state']=='unreadable', by['broken']
+assert d['totals']['advisories']==1
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "pl fleet security (table form) is human-readable and exits 0" {
+  audit=$(make_audit_dir)
+  run env NWP_AUDIT_STATE_DIR="$audit" NWP_CONFIG_FILE=/nonexistent \
+      PROJECT_ROOT="$WORK/root2" "$FLEET_SH" security
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"avc"* ]]
+  [[ "$output" == *"n/a"* ]]
+  [[ "$output" == *"unreadable"* ]]
+}
+
+@test "pl dispatches fleet security" {
+  run "$REPO_ROOT/pl" fleet security --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pl fleet"* ]]
+}
+
+@test "the snapshot carries the security feed and a security summary by default" {
+  audit=$(make_audit_dir)
+  root=$(make_fake_root_with_security 0 0 "$RAG_OK" "$TODO_OK" "$audit")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --out "$WORK/s.json"
+  [ "$status" -eq 0 ]
+  run python3 -c "
+import json;d=json.load(open('$WORK/s.json'))
+assert 'security' in d['feeds'], list(d['feeds'])
+f=d['feeds']['security']
+assert f['ok'] is True, f
+assert f['cmd']=='pl fleet security --json', f['cmd']
+by={b['site']:b for b in f['data']['sites']}
+assert by['avc']['advisories'][0]['id']=='SA-CORE-2026-012'
+s=d['summary']
+assert s['security_advisories']==1, s
+assert s['security_sites_affected']==1
+assert s['security_worst']=='medium'
+assert s['security_by_site']['avc']==1
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "--no-security publishes without the security feed (and says so)" {
+  audit=$(make_audit_dir)
+  root=$(make_fake_root_with_security 0 0 "$RAG_OK" "$TODO_OK" "$audit")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/s.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"security     : not in this snapshot"* ]]
+  run python3 -c "
+import json;d=json.load(open('$WORK/s.json'))
+assert sorted(d['feeds'])==['rag','todo'], list(d['feeds'])
+assert not [k for k in d['summary'] if k.startswith('security_')], d['summary']
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "--no-security is accepted by publish too, and rejects a typo" {
+  root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" publish --to somewhere --no-security --dry-run
+  [ "$status" -eq 0 ]
+  run env PROJECT_ROOT="$root" "$FLEET_SH" publish --nosecurity
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown option"* ]]
+}
+
+@test "the default publish does NOT re-run the (slow) audit" {
+  # A */30 cron must never depend on 16 ddev containers being up. The cache is
+  # refreshed by the daily audit timer; --refresh-security is the opt-in.
+  audit=$(make_audit_dir)
+  root=$(make_fake_root_with_security 0 0 "$RAG_OK" "$TODO_OK" "$audit")
+  rm -f "$WORK/audit-ran"
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --out "$WORK/s.json"
+  [ ! -f "$WORK/audit-ran" ]
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --refresh-security --out "$WORK/s.json"
+  [ -f "$WORK/audit-ran" ]
+}
+
+@test "a broken security feed does not stop rag and todo publishing" {
+  root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")   # its ./pl has no fleet verb
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --out "$WORK/s.json"
+  [ "$status" -eq 0 ]
+  run python3 -c "
+import json;d=json.load(open('$WORK/s.json'))
+assert d['feeds']['rag']['ok'] is True
+assert d['feeds']['security']['ok'] is False, d['feeds']['security']
+assert d['feeds']['security']['error']
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "the security feed is ADDITIVE — the schema version does not move" {
+  # Bumping to v2 would make every not-yet-upgraded console reject the WHOLE
+  # snapshot (fleet_state.SUPPORTED_VERSIONS), blanking Fleet AND Todo to ship
+  # one new section. See the comment above FLEET_SCHEMA_VERSION.
+  audit=$(make_audit_dir)
+  root=$(make_fake_root_with_security 0 0 "$RAG_OK" "$TODO_OK" "$audit")
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --out "$WORK/s.json"
+  run python3 -c "
+import json;d=json.load(open('$WORK/s.json'));assert d['schema_version']==1;print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "publisher and console agree end-to-end on the security feed" {
+  audit=$(make_audit_dir)
+  root=$(make_fake_root_with_security 0 0 "$RAG_OK" "$TODO_OK" "$audit")
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --out "$WORK/s.json"
+  run python3 -c "
+import sys; sys.path.insert(0, '$REPO_ROOT/scripts/console')
+from app import fleet_state, parsers, advisories
+snap = fleet_state.load('$WORK/s.json')
+res = fleet_state.as_result(snap, 'security')
+assert res is not None, 'the console rejected the published security feed'
+view = parsers.parse_security(res['out'])
+assert view['ok'] and view['totals']['advisories'] == 1, view
+avc = advisories.by_site(view)['avc']
+assert avc['anchor'] == 'sec-avc'
+assert avc['advisories'][0]['link'].startswith('https://')
+assert advisories.headline(view) == '1 advisory on 1 site, 1 site(s) unknown', advisories.headline(view)
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "a snapshot published WITHOUT the security feed degrades honestly" {
+  # This is the old-publisher / --no-security case: the console must say 'no
+  # security data', never show a reassuring zero.
+  audit=$(make_audit_dir)
+  root=$(make_fake_root_with_security 0 0 "$RAG_OK" "$TODO_OK" "$audit")
+  env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/s.json"
+  run python3 -c "
+import sys; sys.path.insert(0, '$REPO_ROOT/scripts/console')
+from app import fleet_state, advisories
+snap = fleet_state.load('$WORK/s.json')
+assert snap is not None, 'the rest of the snapshot must still be readable'
+assert fleet_state.as_result(snap, 'security') is None
+view = advisories.read_feed(None)
+assert view['ok'] is False
+assert advisories.headline(view) == 'no security data in this snapshot'
+print('ok')"
+  [ "$status" -eq 0 ]
 }

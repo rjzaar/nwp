@@ -390,7 +390,7 @@ RB
     if [ "$code_only" != "true" ]; then
         cat <<RB
 # --- DB dump: creds read from config.php on THIS host; password stays local ---
-creds="\$(${sudo_prefix} -u www-data php -r 'define("ABORT_AFTER_CONFIG",1); require \$argv[1]; echo \$CFG->dbname."|".\$CFG->dbuser."|".\$CFG->dbhost."|".\$CFG->dbpass;' "\$CFGP")"
+creds="\$(${sudo_prefix} -u www-data php -r 'define("CLI_SCRIPT",1); define("ABORT_AFTER_CONFIG",1); require \$argv[1]; echo \$CFG->dbname."|".\$CFG->dbuser."|".\$CFG->dbhost."|".\$CFG->dbpass;' "\$CFGP")"
 DBN="\${creds%%|*}"; r="\${creds#*|}"; DBU="\${r%%|*}"; r="\${r#*|}"; DBH="\${r%%|*}"; DBP="\${r##*|}"
 [ -n "\$DBN" ] || { echo "could not read dbname from config.php" >&2; exit 1; }
 MYSQL_PWD="\$DBP" mysqldump --single-transaction --quick --routines --triggers -h "\$DBH" -u "\$DBU" "\$DBN" | gzip > "\$OUT/${db_file}"
@@ -520,7 +520,7 @@ moodle_remote_rollback_execute() {
         local restore_db
         restore_db="$(cat <<RB
 set -euo pipefail
-creds="\$(${sudo_prefix} -u www-data php -r 'define("ABORT_AFTER_CONFIG",1); require \$argv[1]; echo \$CFG->dbname."|".\$CFG->dbuser."|".\$CFG->dbhost."|".\$CFG->dbpass;' '${root%/}/config.php')"
+creds="\$(${sudo_prefix} -u www-data php -r 'define("CLI_SCRIPT",1); define("ABORT_AFTER_CONFIG",1); require \$argv[1]; echo \$CFG->dbname."|".\$CFG->dbuser."|".\$CFG->dbhost."|".\$CFG->dbpass;' '${root%/}/config.php')"
 DBN="\${creds%%|*}"; r="\${creds#*|}"; DBU="\${r%%|*}"; r="\${r#*|}"; DBH="\${r%%|*}"; DBP="\${r##*|}"
 gunzip -c '${dbs}' | MYSQL_PWD="\$DBP" mysql -h "\$DBH" -u "\$DBU" "\$DBN"
 RB

@@ -511,9 +511,13 @@ _site_ok() {
 cmd_project() {
     local sub="${1:-}"; shift || true
     local remote="cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage"
+    # Gate AFTER the per-branch argument validation below, for the ops#144
+    # reason: a bad project id or site name must be rejected on any machine,
+    # configured or not, otherwise the guards are dead code on every CI runner.
+    _pssh() { _require_configured || return 1; _ssh "$@"; }
     case "$sub" in
         list|"")
-            _ssh "$remote project-list"
+            _pssh "$remote project-list"
             ;;
         add|set)
             local pid="${1:-}"; shift || true
@@ -540,13 +544,13 @@ cmd_project() {
                     *) print_error "unknown flag: $1"; return 1 ;;
                 esac
             done
-            _ssh "$cmd"
+            _pssh "$cmd"
             ;;
         rm)
             [ -n "${1:-}" ] || { print_error "usage: pl console project rm <pid>"; return 1; }
             _pid_ok "$1" || return 1
             print_warning "Deleting a project revokes every membership in it."
-            _ssh "$remote project-rm '$1'"
+            _pssh "$remote project-rm '$1'"
             ;;
         assign)
             local u="${1:-}" pid="${2:-}"; shift 2 2>/dev/null || true
@@ -555,13 +559,13 @@ cmd_project() {
             [ -n "$u" ] && [ -n "$pid" ] || { print_error "usage: pl console project assign <user> <pid> [--role viewer|operator|maintainer]"; return 1; }
             _name_ok "$u" || return 1; _pid_ok "$pid" || return 1
             [[ "$role" =~ ^(viewer|operator|maintainer)$ ]] || { print_error "role must be viewer|operator|maintainer"; return 1; }
-            _ssh "$remote project-assign '$u' '$pid' --role '$role'"
+            _pssh "$remote project-assign '$u' '$pid' --role '$role'"
             ;;
         unassign)
             local u="${1:-}" pid="${2:-}"
             [ -n "$u" ] && [ -n "$pid" ] || { print_error "usage: pl console project unassign <user> <pid>"; return 1; }
             _name_ok "$u" || return 1; _pid_ok "$pid" || return 1
-            _ssh "$remote project-unassign '$u' '$pid'"
+            _pssh "$remote project-unassign '$u' '$pid'"
             ;;
         export)
             # The console host AUTHORS the project->sites map; the workstation
@@ -570,7 +574,7 @@ cmd_project() {
             local out="${1:-$REPO_ROOT/private/project-map.json}"
             mkdir -p "$(dirname "$out")"
             local tmp; tmp="$(mktemp)"; chmod 600 "$tmp"
-            if _ssh "$remote project-export" > "$tmp"; then
+            if _pssh "$remote project-export" > "$tmp"; then
                 mv "$tmp" "$out"; chmod 600 "$out"
                 print_success "project map -> $out (0600, gitignored)"
             else
@@ -581,6 +585,10 @@ cmd_project() {
     esac
 }
 
+# Argument validation runs BEFORE _require_configured (see main()): bad input is
+# rejected on its own merits, on any machine, configured or not. Ordering it the
+# other way round made the guards below dead code everywhere nwp.yml is absent —
+# e.g. every CI runner — so they were never actually exercised.
 cmd_user() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -605,6 +613,7 @@ cmd_user() {
                 [[ "$prole" =~ ^(viewer|operator|maintainer)$ ]] || { print_error "--project-role must be viewer|operator|maintainer"; return 1; }
                 extra=" --project '$project' --project-role '$prole'"
             fi
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-add '$name' --role '$role'$extra"
             print_hint "Their device must be on the mesh first — see: pl console enroll"
             if [ -z "$project" ]; then
@@ -623,20 +632,24 @@ cmd_user() {
         reset)
             [ -n "${1:-}" ] || { print_error "usage: pl console user reset <name>"; return 1; }
             _name_ok "$1" || return 1
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-reset '$1'"
             ;;
         role)
             [ -n "${2:-}" ] || { print_error "usage: pl console user role <name> <role>"; return 1; }
             _name_ok "$1" || return 1
             [[ "$2" =~ ^(viewer|operator|owner)$ ]] || { print_error "role must be viewer|operator|owner"; return 1; }
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-role '$1' '$2'"
             ;;
         rm)
             [ -n "${1:-}" ] || { print_error "usage: pl console user rm <name>"; return 1; }
             _name_ok "$1" || return 1
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-rm '$1'"
             ;;
         list|"")
+            _require_configured || return 1
             _ssh 'cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-list'
             ;;
         *) print_error "unknown: pl console user $sub"; return 1 ;;
@@ -681,8 +694,8 @@ main() {
         -h|--help|"") show_help ;;
         deploy)  _require_configured && cmd_deploy "${args[@]:-}" ;;
         status)  _require_configured && cmd_status ;;
-        user)    _require_configured && cmd_user "${args[@]:-}" ;;
-        project) _require_configured && cmd_project "${args[@]:-}" ;;
+        user)    cmd_user "${args[@]:-}" ;;      # gates itself AFTER validating input
+        project) cmd_project "${args[@]:-}" ;;   # ditto
         enroll)  cmd_enroll ;;
         dns)     _require_configured && cmd_dns ;;
         cert)    _require_configured && cmd_cert ;;

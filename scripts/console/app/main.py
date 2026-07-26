@@ -37,7 +37,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import config, fleet_state, notify, parsers, quokka, scope as scope_mod, voice, webauthn_flow
+from . import (advisories, config, fleet_state, notify, parsers, quokka,
+               scope as scope_mod, voice, webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -567,6 +568,34 @@ def _gather_todo(sc: Scope, force: bool = False) -> tuple[dict, dict, dict]:
     return dict(todo, items=items, summary=summary), res, prov
 
 
+def _gather_security_raw(force: bool = False, project_id: str | None = None) -> tuple[dict, dict, dict]:
+    """Security advisories, from the SAME published snapshot as everything else.
+
+    This host cannot run `composer audit` — it has no sites. A snapshot with no
+    `security` feed (published before this feature existed, or with
+    --no-security) degrades to the honest "no security data in this snapshot"
+    rather than to a reassuring zero.
+    """
+    return _gather_fleet_feed("security", ["fleet", "security", "--json"],
+                              parsers.parse_security, "sites", empty_is_missing=True,
+                              force=force, project_id=project_id)
+
+
+def _gather_security(sc: Scope, force: bool = False) -> tuple[dict, dict, dict]:
+    """Advisories are per-site, so they scope exactly like RAG does — and the
+    totals are recomputed, because a fleet-wide advisory count would tell a
+    member precisely how many holes exist in sites they cannot see."""
+    sec, res, prov = _gather_security_raw(force=force, project_id=sc.project_id)
+    if sc.all_sites or not sec.get("ok"):
+        return sec, res, prov
+    sites = sc.filter_rows(sec.get("sites", []))
+    # RECOMPUTE the headline from the filtered blocks. Inheriting the published
+    # `totals` would put the fleet-wide advisory count above a list of this
+    # project's sites — the reader would see "9 advisories" over one row and
+    # learn the size of a problem in sites they cannot see.
+    return dict(sec, sites=sites, totals=advisories.totals(sites)), res, prov
+
+
 def _gather_demo_raw(sites: list[str], force: bool = False) -> list[dict]:
     out = []
     for site in sites:
@@ -684,7 +713,24 @@ def tab_counts(request: Request, sc: Scope = Depends(scoped("viewer"))):
 @app.get("/panes/fleet", response_class=HTMLResponse)
 def pane_fleet(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
     rag, res, prov = _gather_rag(sc, force=bool(force))
-    return _pane(request, "pane_fleet.html", {"rag": rag, "res": res, "prov": prov}, sc,
+    # The security feed is gathered separately and best-effort: it is the NEW
+    # thing on this pane, and a pane that has always worked must not start
+    # failing because of it. Every advisory view below is derived from the
+    # SCOPE-FILTERED feed, so the headline count, the affected-site list and
+    # the per-site breakdown all describe this project only.
+    sec = {"ok": False, "error": "security data unavailable on this host", "sites": [],
+           "totals": advisories.totals([])}
+    try:
+        sec = _gather_security(sc, force=bool(force))[0]
+    except Exception:  # noqa: BLE001
+        pass
+    audit_from, audit_to = advisories.audit_window(sec)
+    return _pane(request, "pane_fleet.html",
+                 {"rag": rag, "res": res, "prov": prov, "sec": sec,
+                  "sec_headline": advisories.headline(sec),
+                  "sec_sites": advisories.affected_sites(sec),
+                  "sec_by_site": advisories.by_site(sec),
+                  "sec_audit_from": audit_from, "sec_audit_to": audit_to}, sc,
                  tab="fleet", tab_count=parsers.fmt_rag_tab(rag), tab_alert=bool(prov.get("stale")))
 
 
@@ -1057,6 +1103,10 @@ def _notify_gather() -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        g["security"] = _gather_security(fleet)[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         g["ci"], g["ci_ok"] = _gather_ci_raw(list(config.CI_PROJECTS))
     except Exception:  # noqa: BLE001
         pass
@@ -1122,6 +1172,7 @@ def _notify_view(request: Request, user: dict, message: str = "") -> HTMLRespons
             ("demo_tester", "New demo-tester issue in GitLab"),
             ("demo_reset", "Demo reset failed or was skipped"),
             ("token_expiry", "Token dead or nearing expiry"),
+            ("security", "New security advisory on a site (composer audit)"),
             ("ci", "CI pipeline failed on an open MR"),
             ("brief", f"Daily morning brief{' at ' + config.NOTIFY_BRIEF_AT if config.NOTIFY_BRIEF_AT else ' (no time set)'}"),
         )

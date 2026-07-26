@@ -73,6 +73,51 @@ form.inline { display: inline-flex; margin: 0 4px 0 0; }
 .prov-stale { color: var(--err); border: 1px solid var(--err); background: var(--card2);
   border-radius: 8px; padding: 10px; font-size: 13.5px; }
 
+/* ---- security advisories (Fleet pane) ----------------------------------- */
+/* Severity colours are deliberately conservative: only critical/high get the
+   red treatment, and an UNKNOWN severity is muted-with-a-border, never green —
+   "we don't know" must not look like "it's fine". */
+.secblock { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.sec-head { display: flex; align-items: center; gap: 8px; }
+.sec-head h3 { margin: 0; }
+.sec-headline { margin: 6px 0; font-size: 14px; }
+.sev-row { margin: 4px 0 10px; }
+.chip.sev-critical, .chip.sev-high { border-color: var(--err); color: var(--err); }
+.chip.sev-medium { border-color: var(--warn); color: var(--warn); }
+.chip.sev-low { border-color: var(--muted); color: var(--muted); }
+.chip.sev-unknown, .chip.sev-unrated { border-color: var(--muted); color: var(--muted);
+  font-style: italic; }
+.chip.warnchip { border-color: var(--warn); color: var(--warn); }
+
+.secsite { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 6px 0;
+  background: var(--card); }
+.secsite > summary { color: var(--fg); font-size: 14.5px; padding: 4px 0; min-height: 32px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.secsite[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.secnote { color: var(--warn); font-size: 12.5px; margin: 4px 0; }
+
+.adv { border-left: 3px solid var(--muted); background: var(--card2); border-radius: 0 8px 8px 0;
+  padding: 8px 10px; margin: 8px 0; }
+.adv.sev-critical, .adv.sev-high { border-left-color: var(--err); }
+.adv.sev-medium { border-left-color: var(--warn); }
+.adv.sev-low { border-left-color: var(--ok); }
+.adv.sev-unknown { border-left-color: var(--muted); }
+.adv-ignored { opacity: .7; }
+.adv-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.adv-head strong { font-size: 13.5px; word-break: break-all; }
+.adv-title { margin: 6px 0; font-size: 13.5px; line-height: 1.4; }
+.adv-fields { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px;
+  margin: 6px 0; font-size: 12.5px; }
+.adv-fields dt { color: var(--muted); }
+.adv-fields dd { margin: 0; word-break: break-word; }
+.adv-link { font-size: 13px; display: inline-block; min-height: 32px; line-height: 32px; }
+details.ignored { margin-top: 10px; }
+
+a.seclink { display: inline-block; margin-left: 6px; padding: 1px 8px; font-size: 12px;
+  border: 1px solid var(--err); border-radius: 999px; color: var(--err); white-space: nowrap;
+  min-height: 24px; line-height: 22px; }
+a.seclink:hover { background: var(--err); color: #0b1220; text-decoration: none; }
+
 .prio-high td { border-left: 3px solid var(--err); }
 .prio-medium td { border-left: 3px solid var(--warn); }
 .pipe-success { border-color: var(--ok); color: var(--ok); }

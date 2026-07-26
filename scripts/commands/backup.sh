@@ -1223,12 +1223,27 @@ sweep_main() {
         exit 0
     fi
 
-    local total=0 fresh=0 backed_up=0 skipped=0 noproj=0 failed=0
+    # `neverbacked` is deliberately separate from `skipped`/`noproj`: a site
+    # that has NEVER been backed up is not a benign skip, it is an unprotected
+    # site. Before this counter existed the sweep printed
+    #   "EXIT=0 / 13 fresh, 0 backed up, 2 skipped, 2 no-project"
+    # while cccrdf, saintschool and fin had zero backups in their entire
+    # history — every one of those three landed in `skipped`/`noproj`, neither
+    # of which could ever influence the exit code.
+    local total=0 fresh=0 backed_up=0 skipped=0 noproj=0 failed=0 neverbacked=0
     local site
+    local -a never_sites=()
 
     for site in "${sweep_sites[@]}"; do
         [ -z "$site" ] && continue
         total=$((total + 1))
+
+        # Has this site EVER been backed up? Answered before any DDEV/skip
+        # branch, so no later `continue` can hide it.
+        if ! sweep_latest_backup_epoch "$site" >/dev/null 2>&1; then
+            neverbacked=$((neverbacked + 1))
+            never_sites+=("$site")
+        fi
 
         # Locate the dev DDEV project (v2 nested dev/, v1 flat).
         local proj_dir=""
@@ -1317,6 +1332,9 @@ sweep_main() {
 
     print_header "Sweep Summary"
     local summary="swept $total sites: $fresh fresh, $backed_up backed up, $skipped skipped-not-running, $noproj no-project"
+    if [ "$neverbacked" -gt 0 ]; then
+        summary="$summary, $neverbacked NEVER BACKED UP"
+    fi
     if [ "$failed" -gt 0 ]; then
         summary="$summary, $failed FAILED"
     fi
@@ -1325,7 +1343,14 @@ sweep_main() {
     fi
     echo "$summary"
 
-    if [ "$failed" -gt 0 ]; then
+    if [ "$neverbacked" -gt 0 ]; then
+        echo ""
+        print_error "These sites have never been backed up: ${never_sites[*]}"
+        print_info "A site with no backup at all is unprotected — this exits non-zero on purpose."
+        print_info "Suppress a deliberate case with: pl todo ignore BAK-<site>"
+    fi
+
+    if [ "$failed" -gt 0 ] || [ "$neverbacked" -gt 0 ]; then
         exit 1
     fi
     exit 0

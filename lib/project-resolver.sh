@@ -281,6 +281,40 @@ list_site_envs() {
     fi
 }
 
+# List every git repository reachable under the NWP tree.
+#
+# WHY this exists (item 4 / GWK): `check_uncommitted_work` tested
+# `[ -d "sites/<name>/.git" ]` and `continue`d when absent. In the v2 layout NO
+# site has `sites/<name>/.git` — the repos live one or two levels deeper
+# (`sites/<n>/dev/.git`, `sites/<n>/stg/.git`,
+# `sites/<n>/dev/html/profiles/custom/<x>/.git`, `sites/<n>/.plugin-src/*/.git`)
+# and `servers/<n>/.git` was never looked at at all. The loop therefore
+# `continue`d on every iteration while the fleet held 1000+ dirty entries, and
+# printed "Uncommitted work: clean" — a positive assertion no input could
+# falsify. This function is the primitive that replaces that test.
+#
+# Emits one absolute repo work-tree path per line, sorted, deduplicated.
+# Skips vendor/, node_modules/, .ddev/ and the generated/scratch site dirs so a
+# composer tree cannot flood the result.
+#
+# Usage: discover_repos [extra_root ...]
+discover_repos() {
+    local root="${NWP_DIR:-${PROJECT_ROOT:-$HOME/nwp}}"
+    local -a roots=("$root/sites" "$root/servers" "$@")
+    local d
+    for d in "${roots[@]}"; do
+        [[ -d "$d" ]] || continue
+        find "$d" \
+            \( -path '*/vendor/*' -o -path '*/node_modules/*' \
+               -o -path '*/.ddev/*' -o -path '*/sites/tmp/*' \
+               -o -path '*/sites/latest/*' -o -path '*/sites/vendor/*' \) -prune -o \
+            -name .git -prune -print 2>/dev/null
+    done | while IFS= read -r gitpath; do
+        [[ -n "$gitpath" ]] || continue
+        dirname "$gitpath"
+    done | sort -u
+}
+
 # List all sites discovered on disk (anything under sites/ with a
 # .nwp.yml file). Filters out generated/scratch dirs.
 discover_sites() {

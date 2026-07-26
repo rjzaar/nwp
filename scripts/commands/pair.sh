@@ -64,18 +64,33 @@ EOF
 }
 
 cmd_list() {
-    local config; config="$(pair_config_file)"
-    if [ ! -f "$config" ]; then print_warning "No nwp.yml at $config"; return 0; fi
+    # Reads exactly what pair_guard reads (pair_scan): the committed contracts
+    # first, then the two `paired_with:` operator-config shapes. It used to read
+    # only nwp.yml's `sites.*.paired_with` — so it agreed with the guard about
+    # the real ssc↔nwc pair only by both being blind to it. Exits non-zero when
+    # a declaration is unreadable, because a pair list that silently omits a
+    # pair is the failure mode this whole fix exists to end.
     print_header "Configured pairs"
-    local found=0
-    if command -v yq >/dev/null 2>&1; then
-        while IFS=$'\t' read -r cons prov; do
-            [ -z "$cons" ] && continue
-            printf '  %-12s (consumer)  ↔  %-12s (provider)\n' "$cons" "$prov"
+    local rows; rows="$(pair_scan)"
+    local found=0 blind=0 kind cons prov file
+    while IFS=$'\t' read -r kind cons prov file; do
+        [ -n "${kind:-}" ] || continue
+        if [ "$kind" = "ok" ]; then
+            printf '  %-12s (consumer)  ↔  %-12s (provider)   [%s]\n' "$cons" "$prov" "$(basename "$file")"
             found=1
-        done < <(yq e -r '.sites | to_entries | .[] | select(.value.paired_with != null) | [.key, .value.paired_with] | @tsv' "$config" 2>/dev/null)
+        fi
+    done <<< "$rows"
+    [ "$found" -eq 0 ] && print_info "No pair is declared (no pairs/*.pair-contract.yml, no 'paired_with:')."
+
+    local problems; problems="$(pair_scan_problems)"
+    if [ -n "$problems" ]; then
+        blind=1
+        echo ""
+        print_error "CANNOT VERIFY — unreadable pair declaration(s). This list is NOT complete:"
+        while IFS= read -r p; do [ -n "$p" ] && print_error "  - $p"; done <<< "$problems"
+        print_info "pair_guard REFUSES promotions while any of these is unreadable."
     fi
-    [ "$found" -eq 0 ] && print_info "No sites declare 'paired_with:' in $config."
+    [ "$blind" -eq 0 ]
 }
 
 cmd_show() {

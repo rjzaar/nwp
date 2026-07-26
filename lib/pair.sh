@@ -24,14 +24,32 @@
 #      either half is refused.
 #
 # OFF-UNLESS-CONFIGURED (same additive pattern as lib/deploy-gate.sh):
-#   A site that is not part of any pair (no `paired_with:` and nothing points at
-#   it) is untouched — pair_guard returns 0 immediately. Pairing is opt-in;
-#   declaring `paired_with:` in nwp.yml is the act of configuring it.
+#   A site that is not part of any pair (no `paired_with:` anywhere, and nothing
+#   pointing at it) is untouched — pair_guard returns 0 immediately. Pairing is
+#   opt-in; declaring `paired_with:` is the act of configuring it.
 #
 # FAIL-CLOSED: once a site IS declared paired, a MISSING or UNPARSEABLE pair
 # contract means the invariants cannot be verified, so the guard REFUSES the
 # deploy (set NWP_PAIR_GATE_SOFT=true to soften to a warning while an operator
 # is mid-way through authoring a contract — mirrors deploy-gate's inverse).
+#
+# FAIL-CLOSED ON *MEMBERSHIP* TOO — the defect this was written to end:
+#   "off-unless-configured" and "fail-closed" collide the moment the guard cannot
+#   READ the configuration. Until 2026-07-27 the collision was resolved the wrong
+#   way: membership was resolved from ONE file in ONE shape, and anything the
+#   reader could not parse fell through the `not paired ⇒ return 0` door. The
+#   real ssc↔nwc pair was declared in the OTHER file in a DIFFERENT shape
+#   (`paired_with: {nwc_canonical: <url>}`), so `pl pair check ssc live` — a
+#   full-DB push to the tier whose UID-locks the D6 rule exists to protect —
+#   answered ALLOW. The guard was not weak; it was blind, and blindness read as
+#   consent.
+#
+#   So: "I could not read this site's pairing" is now its own answer, distinct
+#   from "this site is not paired", and it REFUSES. Same vocabulary as
+#   `pl impact --honesty` / boundary_honesty_check: CANNOT VERIFY is NOT a clean
+#   result. The only escape is the existing, audited NWP_PAIR_GATE_SOFT=true —
+#   deliberately NOT --override-pair, which is a per-invariant override and must
+#   not double as a licence to deploy past an unreadable config.
 #
 # ⚠ AUTH/OAUTH IS F26-GATED AND NOT IMPLEMENTED HERE. This lib consumes the
 # contract's per-environment issuer URLs as *configuration only*. The actual
@@ -82,58 +100,325 @@ pair_contract_file() {
 }
 
 # --- role / membership resolution --------------------------------------------
+#
+# WHERE A PAIR IS DECLARED, AND IN WHAT SHAPE
+#
+#   SOURCE OF TRUTH  pairs/<consumer>.pair-contract.yml  →  provider: / consumer:
+#   ALSO HONOURED    sites/<consumer>/.nwp.yml           →  paired_with: <site>
+#   ALSO HONOURED    nwp.yml sites.<consumer>            →  paired_with: <site>
+#
+# THE CONTRACT IS THE SOURCE OF TRUTH because it is the only one of the three
+# that git can see. `sites/*` and `nwp.yml` are BOTH gitignored operator config
+# (.gitignore:14, and nwp.yml by hard rule in CLAUDE.md), so a guard whose
+# membership came only from them could not be reviewed in a diff, could not be
+# exercised by CI, and could not be observed to be wrong. That is not incidental
+# to this defect — it IS the defect: `pairs/ssc.pair-contract.yml` has said
+# `provider: nwc / consumer: ssc` in a committed, signed-schema file the whole
+# time, while the guard asked a file nobody could see and got silence.
+#
+# This is also what ADR-0031 D2 already asserts — "the CONTRACT, not the pair,
+# is the versioned artifact". Reading membership from it is that decision
+# carried through to the choke-point instead of stopping at the doc.
+#
+# `paired_with:` keys remain honoured (they are the documented opt-in, and ssd
+# uses one today), and they must AGREE with the contract. Disagreement is
+# ambiguity, and ambiguity fails closed.
+#
+# THE SHAPE is a BARE SCALAR site key. That is the only shape the rest of the
+# system speaks: example.nwp.yml documents `paired_with: nwc`, pairs/README.md
+# documents it, `provider:`/`consumer:` are site keys, and a pair id IS the
+# consumer's site key. A map of label→URL cannot name a provider SITE at all, so
+# it can never resolve a pair — it can only look like configuration.
+#
+# Every reader below is TRI-STATE:
+#   rc 0  resolved      (echoes the value)
+#   rc 1  not declared  (echoes nothing) — the genuine off-unless-configured case
+#   rc 2  CANNOT VERIFY (echoes a human reason) — declared but unreadable
+# Never collapse 2 into 1. That collapse is the whole bug.
 
-# Echo the provider named by <site>'s `paired_with:` key (i.e. <site> is a
-# consumer), or nothing.
+# Per-site (v2) config file for <site>. May not exist.
+pair_site_config_file() {
+    local site="$1"
+    echo "${PROJECT_ROOT:-$HOME/nwp}/sites/${site}/.nwp.yml"
+}
+
+# 0 if <value> is a bare site key (what `paired_with:` must name).
+_pair_valid_site_key() {
+    case "${1:-}" in
+        ''|null) return 1 ;;
+    esac
+    [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
+}
+
+# awk fallback for _pair_read_decl when yq is unavailable. Same tri-state.
+# <site> empty ⇒ top-level `paired_with:` in a per-site file; otherwise the
+# `sites.<site>.paired_with` key of a global nwp.yml.
+_pair_read_decl_awk() {
+    local file="$1" site="${2:-}" raw
+    if [ -z "$site" ]; then
+        raw="$(awk '
+            /^paired_with:/ { line = $0; sub(/^paired_with:[ \t]*/, "", line); print line; found = 1; exit }
+            END { exit !found }' "$file" 2>/dev/null)" || return 1
+    else
+        raw="$(awk -v site="$site" '
+            /^sites:/ { in_sites = 1; next }
+            in_sites && /^[^ \t]/ { in_sites = 0 }
+            in_sites && $0 ~ "^  " site ":[ \t]*(#.*)?$" { in_site = 1; next }
+            in_site && /^  [^ \t]/ { in_site = 0 }
+            in_site && /^    paired_with:/ { line = $0; sub(/^    paired_with:[ \t]*/, "", line); print line; found = 1; exit }
+            END { exit !found }' "$file" 2>/dev/null)" || return 1
+    fi
+    raw="${raw%%#*}"                                    # strip trailing comment
+    raw="${raw#"${raw%%[![:space:]]*}"}"                # ltrim
+    raw="${raw%"${raw##*[![:space:]]}"}"                # rtrim
+    raw="${raw%\"}"; raw="${raw#\"}"; raw="${raw%\'}"; raw="${raw#\'}"
+    if [ -z "$raw" ]; then
+        printf "'paired_with:' is present but carries no scalar on its own line (block/map form?) — expected 'paired_with: <provider-site-key>'\n"
+        return 2
+    fi
+    if ! _pair_valid_site_key "$raw"; then
+        printf "'paired_with: %s' is not a bare provider site key (a URL or expression cannot name a site)\n" "$raw"
+        return 2
+    fi
+    printf '%s\n' "$raw"
+    return 0
+}
+
+# _pair_read_decl <file> [site] — read ONE `paired_with:` declaration. Tri-state.
+_pair_read_decl() {
+    local file="$1" site="${2:-}"
+    [ -f "$file" ] || return 1
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    if [ -z "$yq_bin" ]; then
+        _pair_read_decl_awk "$file" "$site"
+        return $?
+    fi
+    local path
+    if [ -n "$site" ]; then path='.sites[strenv(PSITE)].paired_with'; else path='.paired_with'; fi
+    local tag
+    # A yq failure here means the FILE does not parse — that is blindness, not
+    # absence. (Deliberately no "\t"/@tsv anywhere: yq versions disagree on
+    # escape expansion inside string ops — see the server-state redaction bug.)
+    if ! tag="$(PSITE="$site" "$yq_bin" e "$path | tag" "$file" 2>/dev/null)"; then
+        printf "file does not parse as YAML, so its 'paired_with:' cannot be read\n"
+        return 2
+    fi
+    case "$tag" in
+        '!!null'|'') return 1 ;;
+        '!!str')     ;;
+        *)
+            printf "'paired_with:' is a %s, not a provider site name — expected a bare scalar such as 'paired_with: nwc'\n" "${tag#!!}"
+            return 2
+            ;;
+    esac
+    local val
+    val="$(PSITE="$site" "$yq_bin" e -r "$path" "$file" 2>/dev/null)" || val=""
+    if ! _pair_valid_site_key "$val"; then
+        printf "'paired_with: %s' is not a bare provider site key (a URL or expression cannot name a site)\n" "$val"
+        return 2
+    fi
+    printf '%s\n' "$val"
+    return 0
+}
+
+# Read `provider:`/`consumer:` from a pair contract. yq-first, awk fallback, so a
+# host without yq does not read as "every pair contract is unreadable" (which,
+# fail-closed, would refuse every deploy in the fleet). rc 1 = absent/unreadable.
+_pair_contract_side() {
+    local file="$1" key="$2"
+    [ -f "$file" ] || return 1
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    if [ -n "$yq_bin" ]; then
+        local v
+        v="$("$yq_bin" e -r ".${key} // \"\"" "$file" 2>/dev/null)" || return 1
+        [ -n "$v" ] && [ "$v" != "null" ] || return 1
+        printf '%s\n' "$v"
+        return 0
+    fi
+    awk -v k="$key" '
+        $0 ~ "^" k ":[ \t]" {
+            line = $0
+            sub("^" k ":[ \t]*", "", line)
+            sub(/[ \t]*#.*$/, "", line)
+            gsub(/^[ \t]+|[ \t]+$/, "", line)
+            if (line != "") { print line; found = 1; exit }
+        }
+        END { exit !found }' "$file" 2>/dev/null
+}
+
+# pair_scan [config] — ONE pass over every pair declaration reachable from this
+# checkout: the committed contracts first, then the two operator-config shapes.
+# Emits TAB-separated rows, sorted:
+#   ok<TAB><consumer><TAB><provider><TAB><file>
+#   blind<TAB><site><TAB><file><TAB><reason>          ("?" site = source-wide)
+# Always returns 0; the CALLER decides what a blind row means.
+pair_scan() {
+    local config="${1:-$(pair_config_file)}"
+    local root="${PROJECT_ROOT:-$HOME/nwp}"
+    local tab=$'\t' nl=$'\n'
+    declare -A _p_prov=() _p_file=()
+    local f site val rc out="" stem cons prov
+
+    # 0. SOURCE OF TRUTH — the committed pair contracts.
+    for f in "$(pair_contract_dir)"/*.pair-contract.yml; do
+        [ -f "$f" ] || continue
+        stem="$(basename "$f")"; stem="${stem%.pair-contract.yml}"
+        cons="$(_pair_contract_side "$f" consumer || true)"
+        prov="$(_pair_contract_side "$f" provider || true)"
+        if [ -z "$cons" ] || [ -z "$prov" ]; then
+            # A file that is named like a contract but cannot yield both sides is
+            # a declaration we cannot read — not an absence of one.
+            out+="blind${tab}?${tab}${f}${tab}pair contract does not yield both 'provider:' and 'consumer:' site keys${nl}"
+            continue
+        fi
+        if ! _pair_valid_site_key "$cons" || ! _pair_valid_site_key "$prov"; then
+            out+="blind${tab}?${tab}${f}${tab}'provider: ${prov}' / 'consumer: ${cons}' are not bare site keys${nl}"
+            continue
+        fi
+        if [ "$cons" != "$stem" ]; then
+            # pair_contract_file() resolves by pair id == consumer name, so a
+            # mismatched filename means the guard would look for this pair's
+            # contract somewhere it is not.
+            out+="blind${tab}${cons}${tab}${f}${tab}contract declares 'consumer: ${cons}' but is filed as '${stem}.pair-contract.yml' — pair_guard resolves contracts by consumer name and would not find it${nl}"
+            continue
+        fi
+        _p_prov["$cons"]="$prov"; _p_file["$cons"]="$f"
+    done
+
+    # 1. Per-site v2 operator config.
+    for f in "$root"/sites/*/.nwp.yml; do
+        [ -f "$f" ] || continue
+        site="$(basename "$(dirname "$f")")"
+        val="$(_pair_read_decl "$f" "")"; rc=$?
+        if [ "$rc" -eq 2 ]; then
+            out+="blind${tab}${site}${tab}${f}${tab}${val}${nl}"
+            unset "_p_prov[$site]"
+        elif [ "$rc" -eq 0 ]; then
+            if [ -n "${_p_prov[$site]:-}" ] && [ "${_p_prov[$site]}" != "$val" ]; then
+                out+="blind${tab}${site}${tab}${f}${tab}conflicting pairing: ${_p_file[$site]} says '${_p_prov[$site]}' but this file says '${val}'${nl}"
+                unset "_p_prov[$site]"
+            elif [ -z "${_p_prov[$site]:-}" ]; then
+                _p_prov["$site"]="$val"; _p_file["$site"]="$f"
+            fi
+        fi
+    done
+
+    # 2. Global nwp.yml sites: block.
+    if [ -f "$config" ]; then
+        while IFS= read -r site; do
+            [ -n "$site" ] || continue
+            val="$(_pair_read_decl "$config" "$site")"; rc=$?
+            if [ "$rc" -eq 2 ]; then
+                out+="blind${tab}${site}${tab}${config}${tab}${val}${nl}"
+                unset "_p_prov[$site]"
+            elif [ "$rc" -eq 0 ]; then
+                if [ -n "${_p_prov[$site]:-}" ] && [ "${_p_prov[$site]}" != "$val" ]; then
+                    out+="blind${tab}${site}${tab}${config}${tab}conflicting pairing: ${_p_file[$site]} says '${_p_prov[$site]}' but this file says '${val}'${nl}"
+                    unset "_p_prov[$site]"
+                elif [ -z "${_p_prov[$site]:-}" ]; then
+                    _p_prov["$site"]="$val"; _p_file["$site"]="$config"
+                fi
+            fi
+        done < <(_pair_site_keys "$config")
+    fi
+
+    for site in "${!_p_prov[@]}"; do
+        out+="ok${tab}${site}${tab}${_p_prov[$site]}${tab}${_p_file[$site]}${nl}"
+    done
+    [ -n "$out" ] && printf '%s' "$out" | LC_ALL=C sort
+    return 0
+}
+
+# Echo the site keys under a global nwp.yml `sites:` block. yq-first.
+_pair_site_keys() {
+    local config="$1"
+    [ -f "$config" ] || return 0
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    if [ -n "$yq_bin" ]; then
+        "$yq_bin" e -r '.sites // {} | keys | .[]' "$config" 2>/dev/null | grep -v '^null$' || true
+        return 0
+    fi
+    awk '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[^ \t]/ { in_sites = 0 }
+        in_sites && /^  [A-Za-z0-9][A-Za-z0-9_.-]*:[ \t]*(#.*)?$/ { k = $1; sub(":", "", k); print k }
+    ' "$config" 2>/dev/null || true
+}
+
+# Echo the provider <site> is paired to (i.e. <site> is a consumer). Tri-state:
+# 0 = provider echoed · 1 = not declared · 2 = CANNOT VERIFY (reason echoed).
 pair_provider_of() {
     local site="$1"
     local config="${2:-$(pair_config_file)}"
-    [ -n "$site" ] && [ -f "$config" ] || return 0
-    yaml_get_site_field "$site" "paired_with" "$config" 2>/dev/null || true
+    [ -n "$site" ] || return 1
+    local rows; rows="$(pair_scan "$config")"
+    local blind prov
+    blind="$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "blind" && $2 == s { printf "%s: %s\n", $3, $4 }')"
+    [ -n "$blind" ] && { printf '%s\n' "$blind"; return 2; }
+    prov="$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "ok" && $2 == s { print $3; exit }')"
+    [ -n "$prov" ] || return 1
+    printf '%s\n' "$prov"
+    return 0
 }
 
-# Echo the consumer site(s) whose `paired_with:` equals <site> (i.e. <site> is
-# a provider). One per line. yq-first; grep/awk fallback.
+# Echo the consumer site(s) paired to <site> (i.e. <site> is a provider), one per
+# line. Blind declarations are NOT reported here — ask pair_scan_problems, which
+# is what pair_membership_of does.
 pair_consumers_of() {
     local site="$1"
     local config="${2:-$(pair_config_file)}"
-    [ -n "$site" ] && [ -f "$config" ] || return 0
-    local yq_bin; yq_bin="$(command -v yq || true)"
-    if [ -n "$yq_bin" ]; then
-        PROV="$site" "$yq_bin" e -r \
-            '.sites | to_entries | .[] | select(.value.paired_with == strenv(PROV)) | .key' \
-            "$config" 2>/dev/null | grep -v '^null$' || true
-        return 0
-    fi
-    # Fallback: walk the sites: block, remembering the current site key, and
-    # print it when a `paired_with: <site>` line is seen inside its block.
-    awk -v prov="$site" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && /^  [a-zA-Z0-9_-]+:/ { cur = $1; sub(":", "", cur) }
-        in_sites && $0 ~ "^    paired_with: *" prov "[[:space:]]*$" { print cur }
-    ' "$config" || true
+    [ -n "$site" ] || return 0
+    pair_scan "$config" | awk -F'\t' -v p="$site" '$1 == "ok" && $3 == p { print $2 }' || true
+    return 0
 }
 
-# Resolve <site>'s role in a pair. Echoes "<role> <pair_id>" where role is
-# "consumer" or "provider"; echoes nothing when <site> is not paired.
-# If a site is both (not expected), consumer wins (its own paired_with is
-# authoritative for its promotions).
-pair_role_of() {
+# Echo one "site (file): reason" line per UNREADABLE pair declaration in the
+# tree. Empty output = every declaration reachable from here was legible.
+pair_scan_problems() {
+    local config="${1:-$(pair_config_file)}"
+    pair_scan "$config" | awk -F'\t' '$1 == "blind" { printf "%s (%s): %s\n", $2, $3, $4 }' || true
+    return 0
+}
+
+# pair_membership_of <site> [config] — THE guard-facing resolver. Tri-state:
+#   rc 0  echoes "<role> <pair_id>"   role = consumer|provider, pair_id = consumer
+#   rc 1  echoes nothing              genuinely unpaired ⇒ pair_guard no-ops
+#   rc 2  echoes the reason(s)        CANNOT VERIFY ⇒ pair_guard REFUSES
+# If a site is somehow both, consumer wins (its own declaration is authoritative
+# for its own promotions). One scan, so the three questions cannot disagree.
+pair_membership_of() {
     local site="$1"
     local config="${2:-$(pair_config_file)}"
-    local prov
-    prov="$(pair_provider_of "$site" "$config")"
-    if [ -n "$prov" ] && [ "$prov" != "null" ]; then
-        echo "consumer $site"      # pair id == consumer name
-        return 0
+    [ -n "$site" ] || return 1
+    local rows; rows="$(pair_scan "$config")"
+
+    local blind prov cons problems
+    blind="$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "blind" && $2 == s { printf "%s: %s\n", $3, $4 }')"
+    if [ -n "$blind" ]; then printf '%s\n' "$blind"; return 2; fi
+
+    prov="$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "ok" && $2 == s { print $3; exit }')"
+    if [ -n "$prov" ]; then echo "consumer $site"; return 0; fi
+
+    cons="$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "ok" && $3 == s { print $2; exit }')"
+    if [ -n "$cons" ]; then echo "provider $cons"; return 0; fi
+
+    # Nothing legible points at <site> — but if ANY declaration in the tree is
+    # illegible, "nothing points at it" is a guess, not a finding. Say so.
+    problems="$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "blind" { printf "%s (%s): %s\n", $2, $3, $4 }')"
+    if [ -n "$problems" ]; then
+        printf "cannot determine whether any site is paired to '%s' — unreadable declaration(s):\n%s\n" "$site" "$problems"
+        return 2
     fi
-    local cons
-    cons="$(pair_consumers_of "$site" "$config" | head -n1)"
-    if [ -n "$cons" ]; then
-        echo "provider $cons"      # pair id == consumer name
-        return 0
-    fi
+    return 1
+}
+
+# BACK-COMPAT wrapper: echoes "<role> <pair_id>" or nothing, always rc 0.
+# ⚠ It reports blindness as "unpaired". NEVER use it in a guard decision — use
+# pair_membership_of. Kept for display/labelling callers (pl link, pl status).
+pair_role_of() {
+    local out rc
+    out="$(pair_membership_of "$@")"; rc=$?
+    [ "$rc" -eq 0 ] && printf '%s\n' "$out"
     return 0
 }
 
@@ -376,6 +661,33 @@ _pair_note() { if command -v print_warning >/dev/null 2>&1; then print_warning "
 _pair_err()  { if command -v print_error   >/dev/null 2>&1; then print_error   "$*"; else printf '%s\n' "$*" >&2; fi; }
 _pair_info() { if command -v print_info    >/dev/null 2>&1; then print_info    "$*"; else printf '%s\n' "$*"; fi; }
 
+# _pair_blind_refuse <site> <cmd> <target> <reasons>
+# Shared handling for "the pairing declaration exists but I cannot read it".
+# Returns 0 ⇒ the caller may PROCEED (NWP_PAIR_GATE_SOFT=true, audited);
+# returns 1 ⇒ the caller must REFUSE. Same shape of words as
+# boundary_honesty_check's CANNOT VERIFY verdict — one vocabulary, not two.
+_pair_blind_refuse() {
+    local site="$1" cmd="$2" target="$3" reasons="$4"
+    if [ "${NWP_PAIR_GATE_SOFT:-false}" = "true" ]; then
+        _pair_note "pair_guard: CANNOT VERIFY '$site' pair membership — NWP_PAIR_GATE_SOFT=true, proceeding:"
+        while IFS= read -r _r; do [ -n "$_r" ] && _pair_note "  - $_r"; done <<< "$reasons"
+        pair_ledger_append "_unresolved" "action=blind-soft-skip cmd=$cmd site=$site target=$target"
+        return 0
+    fi
+    _pair_err "REFUSED: CANNOT VERIFY whether '$site' is part of a pair — a pairing declaration"
+    _pair_err "this decision depends on is present but unreadable:"
+    while IFS= read -r _r; do [ -n "$_r" ] && _pair_err "  - $_r"; done <<< "$reasons"
+    _pair_info "This is NOT a clean result: the guard found no pair because it could not look, and a"
+    _pair_info "full-DB promotion past an unread pairing is exactly what severs the ssc UID-locks"
+    _pair_info "(ADR-0031 D6). Unreadable therefore REFUSES, it does not fall through to 'unpaired'."
+    _pair_info "Fix: declare it in the canonical shape — 'paired_with: <provider-site-key>' as a bare"
+    _pair_info "     scalar in sites/<consumer>/.nwp.yml (see pairs/README.md); or remove the key if"
+    _pair_info "     the site is genuinely unpaired."
+    _pair_info "Escape (audited): NWP_PAIR_GATE_SOFT=true. --override-pair does NOT cover this."
+    pair_ledger_append "_unresolved" "action=blind-refuse cmd=$cmd site=$site target=$target"
+    return 1
+}
+
 ################################################################################
 # pair_guard <site> <target-tier> <cmd> <code-only> <override-pair>
 #
@@ -400,9 +712,15 @@ pair_guard() {
     # current callers → that check stays inert (opt-in at the caller layer too).
     local code_root="${6:-}"
 
-    # 1. Membership — not paired ⇒ no-op (off-unless-configured).
-    local role pair_id rest
-    rest="$(pair_role_of "$site")"
+    # 1. Membership — tri-state. Not paired ⇒ no-op (off-unless-configured);
+    #    UNREADABLE ⇒ refuse (blindness is not consent).
+    local role pair_id rest mrc
+    rest="$(pair_membership_of "$site")"; mrc=$?
+    if [ "$mrc" -eq 2 ]; then
+        if ! _pair_blind_refuse "$site" "$cmd" "$target" "$rest"; then return 1; fi
+        return 0
+    fi
+    [ "$mrc" -eq 0 ] || return 0
     role="$(echo "$rest" | awk '{print $1}')"
     pair_id="$(echo "$rest" | awk '{print $2}')"
     if [ -z "$role" ] || [ -z "$pair_id" ]; then
@@ -710,9 +1028,14 @@ pair_guard_restore() {
     local override="${5:-false}"
     local confirm="${6:-${NWP_PAIR_OVERRIDE_CONFIRM:-}}"
 
-    # 1. Membership — not paired ⇒ no-op (off-unless-configured).
-    local role pair_id rest
-    rest="$(pair_role_of "$site")"
+    # 1. Membership — tri-state; unreadable ⇒ refuse (see _pair_blind_refuse).
+    local role pair_id rest mrc
+    rest="$(pair_membership_of "$site")"; mrc=$?
+    if [ "$mrc" -eq 2 ]; then
+        if ! _pair_blind_refuse "$site" "$cmd" "$target" "$rest"; then return 1; fi
+        return 0
+    fi
+    [ "$mrc" -eq 0 ] || return 0
     role="$(echo "$rest" | awk '{print $1}')"
     pair_id="$(echo "$rest" | awk '{print $2}')"
     [ -n "$role" ] && [ -n "$pair_id" ] || return 0

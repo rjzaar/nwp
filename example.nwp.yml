@@ -146,9 +146,13 @@ sites:
     avc_integration:
       avc_site: example-drupal # link by site key, not domain
       default_role: student
-    # Paired-site link (ADR-0031). `paired_with` names the PROVIDER site (the
-    # Drupal/OIDC issuer + copyright source). Declaring it turns on `pair_guard`
-    # (lib/pair.sh) for this CONSUMER's promotions. See the paired block below.
+    # Paired-site link (ADR-0031). `paired_with` names the PROVIDER SITE KEY as a
+    # BARE SCALAR — never a map, never a URL. The provider's endpoint URL belongs
+    # in the pair contract's endpoints.<tier>.issuer (and, for Moodle consumers,
+    # oauth2.provider_url); a map here cannot name a site, so pair_guard treats it
+    # as CANNOT VERIFY and REFUSES the promotion rather than reading it as
+    # "unpaired" (which is how the ssc↔nwc UID-lock guard sat inert until
+    # 2026-07-27). See pairs/README.md §"Where a pair is declared".
     paired_with: example-drupal
     project:
       type: moodle # routes the Moodle promotion substrate
@@ -194,10 +198,20 @@ sites:
         #     nwc (Drupal/Open Social, PROVIDER) ↔ ssc (Moodle, real students, CONSUMER)
         #     nwd (Drupal demo,        PROVIDER) ↔ ssd (Moodle demo,           CONSUMER)
         #
-        # The CONSUMER carries `paired_with: <provider>`. That single key makes the
-        # otherwise-dead pairing live: `pair_guard` refuses a promotion that breaks
-        # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
-        # Off-unless-configured: a site with no `paired_with` is untouched.
+        # SINCE 2026-07-27 the committed pair contract is the SOURCE OF TRUTH for
+        # membership: pairs/<consumer>.pair-contract.yml's `provider:`/`consumer:`
+        # keys activate pair_guard on their own. The `paired_with:` keys below are
+        # still read and must AGREE with it — they are no longer the only input,
+        # because nwp.yml is gitignored and a guard nobody can see is a guard
+        # nobody can check. (`pl pair check ssc live` answered ALLOW for months on
+        # exactly that.)
+        #
+        # The CONSUMER carries `paired_with: <provider-site-key>` — a bare scalar.
+        # pair_guard refuses a promotion that breaks provider-first ordering, the
+        # D6 UID-lock/--code-only rule, or a red pair.
+        # Off-unless-configured: a site with no pair anywhere is untouched. But a
+        # declaration that exists and cannot be READ (map/URL/bad YAML/two sources
+        # disagreeing) is CANNOT VERIFY, and CANNOT VERIFY refuses.
         #
         # The versioned CONTRACT (contract_version, per-surface minimum versions,
         # per-tier issuer URLs, smoke URLs) lives in a separate file per pair at

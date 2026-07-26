@@ -245,6 +245,11 @@ _known_sites() {
 # snapshot, every time. Per-feed override: FLEET_FEED_BUDGET_<name>.
 : "${FLEET_FEED_BUDGET:=90}"
 
+# Budgets for the ship leg. The whole job must fit inside the */30 cron window
+# with room to spare: 3 feeds x 90s + 20 + 60 + 20 = 370s worst case.
+: "${SSH_STEP_BUDGET:=20}"   # $HOME resolution, size verification
+: "${SSH_SHIP_BUDGET:=60}"   # the snapshot transfer itself
+
 _feed_budget() { # $1 = feed name
     local var="FLEET_FEED_BUDGET_${1^^}"
     printf '%s' "${!var:-$FLEET_FEED_BUDGET}"
@@ -343,7 +348,17 @@ for name in names:
         feed["data"] = data
     if not ok:
         tail = err.strip().splitlines()[-1] if err.strip() else ""
-        feed["error"] = perr or tail or f"rc={rc}"
+        # A feed that ran out of time and a feed that emitted garbage are
+        # different problems with different fixes, and "feed produced no JSON"
+        # described both. timeout(1) reports 124, or 137 when the --kill-after
+        # SIGKILL was needed; say so plainly and set `blind` so a consumer can
+        # distinguish "this feed is broken" from "this feed was not reached in
+        # time" without parsing English.
+        timed_out = rc in (124, 137)
+        feed["blind"] = timed_out
+        feed["error"] = (tail if timed_out and tail else
+                         (f"feed exceeded its deadline (rc={rc})" if timed_out else
+                          (perr or tail or f"rc={rc}")))
         feed["raw"] = out[-2000:]
     feeds[name] = feed
 
@@ -485,7 +500,9 @@ if "security_advisories" in s:
 else:
     print("  security     : not in this snapshot")
 for name, f in sorted(d.get("feeds", {}).items()):
-    mark = "ok" if f.get("ok") else "FAILED"
+    # BLIND (ran out of time) reads differently from FAILED (broke). The
+    # operator's next move is different for each: wait/raise the budget vs fix.
+    mark = "ok" if f.get("ok") else ("BLIND" if f.get("blind") else "FAILED")
     print(f"  feed {name:<9}: {mark} ({f.get('secs','?')}s, rc={f.get('rc','?')})"
           + ("" if f.get("ok") else f" — {f.get('error','')}"))
 PY
@@ -533,8 +550,13 @@ cmd_publish() {
     # a literal ./~ directory is exactly the kind of quiet failure to avoid).
     if [ -z "$dest" ]; then
         local rhome
-        rhome=$(ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" 'printf %s "$HOME"' 2>/dev/null) \
-            || { print_error "cannot ssh to $host"; return 1; }
+        # ConnectTimeout bounds the TCP+auth handshake ONLY. A session that
+        # stalls after connect — the exact failure a congested link produces —
+        # is unbounded, so the ship leg could hang past the */30 window even
+        # once the feeds were bounded. timeout(1) bounds the whole ssh.
+        rhome=$(timeout "$SSH_STEP_BUDGET" \
+                ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" 'printf %s "$HOME"' 2>/dev/null) \
+            || { print_error "cannot ssh to $host (within ${SSH_STEP_BUDGET}s)"; return 1; }
         [ -n "$rhome" ] || { print_error "could not resolve \$HOME on $host"; return 1; }
         dest="$rhome/$DEFAULT_REMOTE_REL"
     fi
@@ -542,10 +564,11 @@ cmd_publish() {
 
     [ "$quiet" = true ] || print_info "Shipping to ${host}:${dest} (0600, atomic)"
     # umask first so the tmp file is never briefly world-readable.
-    if ! ssh -o ConnectTimeout=20 -o BatchMode=yes "$host" \
+    if ! timeout "$SSH_SHIP_BUDGET" \
+            ssh -o ConnectTimeout=20 -o BatchMode=yes "$host" \
             "umask 077; mkdir -p \"\$(dirname '$dest')\" && cat > '$dest.tmp.\$\$' && chmod 600 '$dest.tmp.\$\$' && mv -f '$dest.tmp.\$\$' '$dest'" \
             < "$LOCAL_STATE"; then
-        print_error "failed to ship the snapshot to ${host}:${dest}"
+        print_error "failed to ship the snapshot to ${host}:${dest} (within ${SSH_SHIP_BUDGET}s)"
         return 1
     fi
 
@@ -553,7 +576,8 @@ cmd_publish() {
     # the consumer's problem — size + mtime is the cheap honest check.
     local local_size remote_size
     local_size=$(wc -c < "$LOCAL_STATE" | tr -d ' ')
-    remote_size=$(ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" "wc -c < '$dest'" 2>/dev/null | tr -d ' ' || true)
+    remote_size=$(timeout "$SSH_STEP_BUDGET" \
+                  ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" "wc -c < '$dest'" 2>/dev/null | tr -d ' ' || true)
     if [ "$local_size" != "$remote_size" ]; then
         print_error "verification failed: shipped $local_size bytes, host reports '${remote_size:-none}'"
         return 1

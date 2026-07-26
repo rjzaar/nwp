@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ################################################################################
-# tests/helpers/fake-curl — a deterministic, root-free network-latency simulator.
+# tests/unit/helpers/slow-curl.sh — a deterministic, root-free network-latency simulator.
 #
 # WHY THIS AND NOT `tc netem`: netem needs root and a real interface, so it
 # cannot run in CI and cannot be asserted on. Pointing at a blackholed IP is
@@ -20,9 +20,16 @@
 # adding one makes it go green *and* surface a timeout the caller must classify.
 #
 # Env:
-#   NWP_FAKE_CURL_LATENCY   simulated seconds of blocking      (default 0)
-#   NWP_FAKE_CURL_BODY      body to emit on success            (default '[]')
-#   NWP_FAKE_CURL_LOG       append one line per call to this file
+#   NWP_FAKE_CURL_LATENCY    simulated seconds of blocking      (default 0)
+#   NWP_FAKE_CURL_BODY       body to emit on success            (default '[]')
+#   NWP_FAKE_CURL_LOG        append "<url>\tmax_time=<N|NONE>" per call
+#   NWP_FAKE_CURL_RC         force this exit status after the latency (e.g. 22
+#                            for an HTTP error, 7 for connect refused) — lets a
+#                            test distinguish "no answer" from "an answer we
+#                            did not like" without a real server
+#   NWP_FAKE_CURL_ARGV_LOG   append the VERBATIM argv of every call. Used to
+#                            assert a token never reaches curl's command line,
+#                            where `ps` would expose it (CLAUDE.md).
 #
 # With NWP_FAKE_CURL_LATENCY=0 this is a transparent fast link — the negative
 # control: every caller must behave exactly as it does against a healthy host.
@@ -31,6 +38,10 @@
 latency="${NWP_FAKE_CURL_LATENCY:-0}"
 body="${NWP_FAKE_CURL_BODY:-[]}"
 log="${NWP_FAKE_CURL_LOG:-}"
+
+# Record argv BEFORE parsing, verbatim, so a credential-in-argv assertion sees
+# exactly what the kernel would have shown `ps`.
+[ -n "${NWP_FAKE_CURL_ARGV_LOG:-}" ] && printf '%s\n' "$*" >> "$NWP_FAKE_CURL_ARGV_LOG"
 
 max_time=""      # seconds the caller is willing to wait in total
 out_file=""      # -o / output =
@@ -96,6 +107,13 @@ timed_out=$(awk -v l="$latency" -v m="${max_time:-}" 'BEGIN{
 }')
 
 awk -v s="$blocked" 'BEGIN{ if (s+0 > 0) system("sleep " s) }'
+
+# A forced status wins over the latency model: it is how a test says "the server
+# answered, and the answer was 401" as opposed to "nobody answered".
+if [ -n "${NWP_FAKE_CURL_RC:-}" ] && [ "${NWP_FAKE_CURL_RC}" != "0" ]; then
+    emit "" "$([ "$NWP_FAKE_CURL_RC" = 22 ] && echo 401 || echo 000)"
+    exit "$NWP_FAKE_CURL_RC"
+fi
 
 if [ "$timed_out" = "1" ]; then
     # Real curl writes nothing useful and exits 28 on --max-time expiry. With -w

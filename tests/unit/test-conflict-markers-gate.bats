@@ -90,6 +90,74 @@ run_gate() { ( cd "$FIX" && ./scripts/ci/lint-conflict-markers.sh ); }
     [ "$status" -eq 0 ]      # not at line start
 }
 
+# --------------------------------------------------------------------------
+# DOCUMENTING the markers must not be the same as HAVING them. The arc decision
+# log records the 3c4c631 finding, and the natural write-up is a fenced example
+# of exactly what the gate hunts for. The first version of this gate reddened on
+# that — it blocked main on its own bug report.
+# --------------------------------------------------------------------------
+
+@test "NEGATIVE CONTROL: a doc that SHOWS a conflict in a fenced block is ALLOWED" {
+    { echo "## Conflict markers reached main"; echo ""; echo '```'
+      echo "${OPEN} HEAD"; echo "ours"; echo "$MID"; echo "theirs"
+      echo "${CLOSE} c6ba428 (some commit)"; echo '```'; echo ""
+      echo "Fixed by the gate."; } > writeup.md
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 0 ]
+}
+
+@test "a fenced exemption is ANNOUNCED, never silent" {
+    { echo '```'; echo "${OPEN} HEAD"; echo "$MID"; echo "${CLOSE} abc (m)"; echo '```'; } > ex.md
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"note: ex.md"* ]]
+    [[ "$output" == *"exempted inside fenced code block"* ]]
+}
+
+@test "tilde fences count too" {
+    { echo '~~~'; echo "${OPEN} HEAD"; echo "$MID"; echo "${CLOSE} abc (m)"; echo '~~~'; } > tilde.md
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 0 ]
+}
+
+# The exemption must not become a way to hide a real conflict.
+@test "a marker OUTSIDE the fence still fails, even in a file that has fences" {
+    { echo '```'; echo "code sample"; echo '```'; echo ""
+      echo "${OPEN} HEAD"; echo "$MID"; echo "${CLOSE} abc (m)"; } > mixed.md
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"mixed.md"* ]]
+}
+
+@test "FAIL-CLOSED: an UNBALANCED fence exempts nothing" {
+    # Open a fence and never close it — an obvious way to try to hide a merge.
+    { echo '```'; echo "${OPEN} HEAD"; echo "$MID"; echo "${CLOSE} abc (m)"; } > unbalanced.md
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"unbalanced.md"* ]]
+}
+
+# The fence exemption is markdown-only: a .sh or .yml file has no such notion.
+@test "fences do NOT exempt anything in a non-markdown file" {
+    { echo '```'; echo "${OPEN} HEAD"; echo "$MID"; echo "${CLOSE} abc (m)"; echo '```'; } > thing.sh
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 1 ]
+}
+
+@test "NEGATIVE CONTROL: markdown horizontal rules are NOT conflicts" {
+    { echo "para one"; echo ""; echo "---"; echo ""; echo "***"; echo ""
+      echo "___"; echo ""; echo "para two"; } > hr.md
+    git add -A && git commit -q -m c
+    run run_gate
+    [ "$status" -eq 0 ]
+}
+
 @test "NEGATIVE CONTROL: an UNTRACKED file with markers does not fail the build" {
     { echo "${OPEN} HEAD"; echo "$MID"; echo "${CLOSE} abc (m)"; } > scratch.md
     run run_gate

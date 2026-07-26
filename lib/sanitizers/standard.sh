@@ -81,6 +81,19 @@ log_error() { echo "[standard-sanitizer] ERROR: $*" >&2; }
 pii_sweep() { # $1 = gz dump
     local f="$1"
     command -v zcat >/dev/null 2>&1 || { log_error "zcat missing"; return 2; }
+    # FAIL-CLOSED on an unreadable/corrupt/truncated gzip (2026-07-27). Every
+    # read below is `2>/dev/null … || true`, so a corrupt or truncated artifact
+    # produced an empty `hits` FOR THE WRONG REASON and this swept "clean" — a
+    # clean bill of health on a dump nothing had read. The main flow pipes
+    # mysqldump THROUGH gzip, so a truncated artifact is exactly what a mid-dump
+    # failure or a full disk leaves behind. `[ -s "$OUTPUT" ]` downstream proves
+    # the file is non-empty, NOT that it decompresses.
+    # Identical to the sibling lib/sanitizers/moodle.sh pii_sweep(); standard.sh
+    # is the generic DEFAULT sanitizer for any site with no bespoke one, so this
+    # was the widest-reach copy of the bug.
+    command -v gzip >/dev/null 2>&1 || { log_error "gzip missing — cannot verify the artifact is readable, refusing (fail-closed)"; return 2; }
+    gzip -t -- "$f" 2>/dev/null || { log_error "PII sweep: '$f' is not a valid gzip (corrupt/truncated) — refusing (fail-closed)"; return 2; }
+    [ "$(zcat -- "$f" 2>/dev/null | head -c1 | wc -c)" -gt 0 ] || { log_error "PII sweep: '$f' decompresses to empty — refusing (fail-closed)"; return 2; }
     # ops#127: when --preserve-admin retains uid 1's real email, that ONE value is
     # a legitimately-kept address, not residual member PII — allowlist it (exact,
     # ERE-escaped) so the sweep stays fail-closed on everything else. The captured

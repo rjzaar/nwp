@@ -1057,8 +1057,25 @@ cmd_core_patch() {
     _resolve_moodle_site "$site" || return 1
 
     local decl; decl="$(_moodle_core_patches_decl "$BASE" "$CONFIG_FILE")"
-    local -a ids=(); mapfile -t ids < <(moodle_core_patch_ids "$decl")
+    # TRI-STATE read (2026-07-27). The old form was
+    #   mapfile -t ids < <(moodle_core_patch_ids "$decl")
+    # which discards the reader's exit status inside the process substitution, so
+    # "the declaration is unreadable" arrived here as an empty array and printed
+    # "no core patches declared" — emptying a gate whose refusal has no override
+    # by design. rc 2 is now its own answer and it REFUSES.
+    local _cp_out="" _cp_rc=0
+    _cp_out="$(moodle_core_patch_ids "$decl")" || _cp_rc=$?
     print_header "Declared Moodle core patches: ${BASE}"
+    if [ "$_cp_rc" -eq 2 ]; then
+        print_error "CANNOT VERIFY the core-patch declaration for '${BASE}':"
+        print_error "  ${_cp_out}"
+        print_error "This is NOT a clean result: no patches were checked because none could be READ."
+        print_info  "  Declaration: ${decl#$PROJECT_ROOT/}"
+        print_info  "  Fix the file, or remove it if this site genuinely has no core patches."
+        return 1
+    fi
+    local -a ids=()
+    [ -n "$_cp_out" ] && mapfile -t ids <<< "$_cp_out"
     if [ "${#ids[@]}" -eq 0 ]; then
         print_info "no core patches declared for ${BASE} (${decl#$PROJECT_ROOT/})"
         return 0

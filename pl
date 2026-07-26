@@ -260,6 +260,11 @@ ${BOLD}GDPR ART.17 ERASURE + IDENTITY REPAIR (ops#81 / ops#83):${NC}
     erasure execute <pair> --request-id=   Fails closed until the ops#81 channel is deployed
     pair reconcile <consumer> [--apply]    Detect/repair severed UID-locks (ops#83 §3)
 
+${BOLD}SNAPSHOT BUNDLES (a backup that cannot restore is not a backup):${NC}
+    snapshot bundle <repo> [--out=F]  Bundle a repo and PROVE it stands alone first
+    snapshot verify <bundle>...       Verify in a pristine scratch repo (no borrowing)
+    snapshot audit                    Every committed *.bundle must be restorable
+
 ${BOLD}BRANCH TWINS (P67/ops#48):${NC}
     branch <site> <git-ref>         Create a disposable twin on a branch
     branch list [site]              Twins nested under parents, code Δ + content age
@@ -902,6 +907,12 @@ main() {
         # P1/P2 channel is deployed and the operator has approved the semantics.
         erasure)
             run_script "erasure.sh" "$@"
+            ;;
+
+        # Git bundles that can actually rebuild what they claim to hold
+        # (fix programme item 8 — two committed "safety" bundles were bricks)
+        snapshot)
+            run_script "snapshot.sh" "$@"
             ;;
 
         # Moodle command family (PL-STG2LIVE §4 / P1-2): guarded plugin

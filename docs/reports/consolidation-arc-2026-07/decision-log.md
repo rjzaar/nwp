@@ -1743,3 +1743,58 @@ is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in 
 **Consequence for this item:** sub-fixes 3 and 4 were dropped from this branch instead of being
 re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
 **Reversible-how:** N/A (work removed, not added).
+
+## [2026-07-26] itemC-pl-freshness-banner — pl now knows, and says, when it is behind
+**Situation confirmed, not assumed:** `git grep -l 'rev-list --count.*@{u}|checkout is behind|stale
+checkout' origin/main` matched exactly one file and it is a 2026-07-11 *report*, not code. `pl`
+resolves symlinks to set `SCRIPT_DIR` and dispatches; there was no freshness logic anywhere, and
+`VERSION` is a hardcoded string, so `pl version` answered `0.30.0` identically on a checkout at
+`origin/main` and one forty commits behind. `/usr/local/bin/pl` is a symlink into ONE shared
+checkout, which is the sole code path for every `pl secrets audit`, `pl rag`, `pl deploy-gate` and
+every impact/fate manifest on this machine.
+
+**Decision:** new `lib/pl-freshness.sh`, sourced from `pl` immediately after `SCRIPT_DIR`
+resolution, printing at most one line to **stderr**, never altering stdout or exit status.
+
+**The two ways to get this wrong, and what stops each:**
+1. *Needing the network on every call.* The banner reads only refs already on disk
+   (`git rev-list --count HEAD..@{u}`), never fetches, and therefore reports "commits behind **as
+   of** the last fetch" — the wording is load-bearing, because a banner that implied a live check
+   would be trusted for a claim it never made. `pl version --check` is the one verb allowed to
+   fetch, and only on request. Asserted by test (g): a checkout whose upstream has moved but which
+   has not fetched must stay SILENT and must record zero `fetch`/`ls-remote` calls.
+2. *Firing on a deliberately-pinned checkout.* Detached HEAD, no upstream, and HEAD-exactly-on-a-tag
+   are all silent, always. This is the case a naive `rev-list --count HEAD..@{u}` gets wrong, and an
+   operator nagged for a choice they made on purpose learns to ignore the banner — which costs more
+   than never shipping it.
+Third risk from the brief (cache file inside the repo tripping the leakage/containment gates)
+avoided by putting the verdict under `${XDG_CACHE_HOME:-$HOME/.cache}/nwp/`, keyed by checkout path.
+`.gitignore` was deliberately NOT touched: it is a listed high-risk path, and the repo's
+ignore-everything-then-whitelist shape already covers a stray root file.
+
+**Fail open.** Whole check runs in a subshell with `set +e` so it cannot trip `pl`'s `set -euo
+pipefail`; call site is `pl_freshness_banner "$SCRIPT_DIR" || true`. A broken freshness check must
+never be the reason an emergency `pl rollback` does not run.
+
+**RED recorded before the fix** (`bats tests/unit/test-pl-freshness.bats` against unmodified `pl`):
+7 of 16 failed — (a) `[ -n "$ERR" ]' failed`, (e), (h), (i), (j), (k), (l) `bash -n
+lib/pl-freshness.sh` exit 127. The nine that passed were the SILENCE cases, which a do-nothing
+implementation satisfies trivially; that is precisely why (a)/(e)/(h)/(i)/(j)/(k) exist.
+**GREEN after:** 16/16, and the full unit suite via `scripts/ci/run-bats.sh` reports 1365
+testcases / 0 failures / 0 skipped (skip budget unit=0 honoured; nothing here skips).
+
+**Negative controls — both degenerate implementations were built and run, not merely imagined:**
+* *Always silent* (`_pl_freshness_emit` returns immediately): caught by (a), (e), (h), (i), (j).
+* *Naive — correct count, pinned guards deleted, upstream defaulted to `origin/main`*: caught by
+  (c1), (c2), (c3). Disjoint from the first set, so neither degenerate form has a green path.
+A first attempt at the second mutation also mangled the count and accidentally passed the pinned
+cases for the wrong reason; it was discarded and redone precisely rather than reported as evidence.
+
+**Deliberately NOT done:** nothing was wired into `pl todo`/`pl rag` to fetch on the banner's
+behalf — those are OFF LIMITS this session, and an automatic periodic fetch is a separate decision
+with its own risk surface. Consequence, stated honestly in `docs/reference/pl-freshness.md`: on a
+checkout nobody ever fetches, the banner stays silent forever.
+
+**Reversible-how:** delete `lib/pl-freshness.sh` — `pl` guards the source with `[[ -f ... ]]` and
+degrades to exactly today's behaviour. Or set `NWP_NO_FRESHNESS_CHECK=1`. No live site, server or
+database was touched, so no rollback-registry row was required.

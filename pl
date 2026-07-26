@@ -22,6 +22,19 @@ SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 VERSION="0.30.0"
 NWP_VERSION="$VERSION"
 
+# Freshness (item C) — VERSION above is a hardcoded string, so it is identical
+# on a checkout sitting on origin/main and on one forty commits behind it.
+# This machine runs every `pl secrets audit`, `pl rag` and `pl deploy-gate` out
+# of ONE shared checkout, so "which code produced this verdict?" is a real
+# question with no answer until now. lib/pl-freshness.sh answers it in at most
+# one line on stderr, reading only refs already on disk (never the network),
+# never on a deliberately-pinned checkout, and failing open in every error case
+# so it can never be the reason an emergency `pl rollback` does not run.
+if [[ -f "${SCRIPT_DIR}/lib/pl-freshness.sh" ]]; then
+    source "${SCRIPT_DIR}/lib/pl-freshness.sh"
+    pl_freshness_banner "$SCRIPT_DIR" || true
+fi
+
 # Source verification auto-logging if available
 [[ -f "${SCRIPT_DIR}/lib/verify-autolog.sh" ]] && source "${SCRIPT_DIR}/lib/verify-autolog.sh"
 
@@ -151,7 +164,7 @@ _pl_builtin_synopsis() {
         uninstall)     printf 'Uninstall NWP completely (alias for uninstall_nwp)' ;;
         list)          printf 'List all tracked sites' ;;
         status)        printf 'Show site status table (RAG grade + phase)' ;;
-        version)       printf 'Show NWP version' ;;
+        version)       printf 'Show NWP version (--check fetches and reports checkout freshness)' ;;
         help)          printf 'Show this help' ;;
         commands)      printf 'List every dispatchable command (--json for machine use)' ;;
         gitlab-create) printf 'Create a GitLab project' ;;
@@ -401,7 +414,9 @@ ${BOLD}SETUP & UTILITIES:${NC}
     deploy-gate status|test         Inspect / self-test the hardware deploy gate (ADR-0028)
     doctor                          Diagnose common issues and verify configuration
     mini llm health [--json|--quick] Check the local LLM stack on mini (F21 Phase 3a)
-    version                         Show NWP version
+    version [--check]               Show NWP version; --check fetches and reports how far
+                                    this checkout is behind its remote (the only pl path
+                                    that touches the network for freshness)
 
 ${BOLD}MAINTENANCE:${NC}
     migrate-secrets                 Migrate secrets to new format
@@ -1087,6 +1102,15 @@ main() {
             ;;
         version)
             echo "NWP CLI (pl) version $VERSION"
+            # --check is the ONLY thing in pl allowed to touch the network for
+            # freshness, and only because it was asked to. See lib/pl-freshness.sh.
+            if [[ "${1:-}" == "--check" ]]; then
+                if declare -F pl_freshness_check >/dev/null 2>&1; then
+                    pl_freshness_check "$SCRIPT_DIR"
+                else
+                    echo "freshness: lib/pl-freshness.sh is missing from this checkout" >&2
+                fi
+            fi
             ;;
 
         # Secrets lifecycle (registry-driven; no token stored on host)

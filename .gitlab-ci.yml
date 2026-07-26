@@ -250,6 +250,13 @@ lint:registry-ids:
   stage: lint
   script:
     - ./scripts/ci/lint-rollback-registry-ids.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: false
+
 # Snapshot gate — a committed *.bundle must be able to rebuild what it claims
 # to hold. Two "safety" bundles under docs/reports/ were thin bundles that
 # restored nothing outside the laptop that made them, and nothing ever checked.

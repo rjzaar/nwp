@@ -3768,3 +3768,22 @@ nothing was left un-silenced. That is an independent confirmation of !197's scru
 mechanism than !197's own tests — and it is a confirmation this script could not have made
 honestly before the fail-closed fix above, because a failed scan would have reported all 79 as
 STALE. The script stays a manual tool; it is not wired into CI.
+
+## [2026-07-27] merge-queue-keep-both-is-not-safe-for-structured-files
+**Decision:** recorded because it nearly shipped a permanently-hung CI job.
+Resolving the `.gitlab-ci.yml` conflict in !206 with the arc's standard
+**KEEP-BOTH-SIDES** rule concatenated this branch's `lint:registry-ids` block with main's
+`lint:snapshot-bundles` block. The conflict region ended *before* the shared trailing
+`rules:` / `tags:` / `allow_failure:` lines, so those attached to `lint:snapshot-bundles`
+only and `lint:registry-ids` was left with **no `tags:`**.
+**Why the existing zero-loss check did not catch it:** the `comm`-against-both-parents proof
+is **line-based**. Every line was still present — just bound to the wrong YAML key. Line
+presence is not structure preservation.
+**How it surfaced:** the job sat `pending` for 1205s while every other `lint:` job finished in
+~3s. `tag_list: []` against the `met-shell` runner, which only accepts `nwp`-tagged jobs. Merged,
+it would have been a blocking job that no runner could ever claim — on every MR.
+**New rule for structured files (YAML/JSON/TOML) in this arc:** after resolving, parse BOTH
+parents and the result and diff them **as data**, not as lines — assert no top-level key is
+missing and report every key whose value changed, expecting only the deliberate ones. Doing that
+here showed exactly one legitimate change (`test:unit.variables`) and zero missing jobs.
+**Reversible-how:** `git revert -m 1 <merge>`.

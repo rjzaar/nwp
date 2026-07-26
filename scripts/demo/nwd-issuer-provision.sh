@@ -4,17 +4,25 @@ set -euo pipefail
 # scripts/demo/nwd-issuer-provision.sh — provision the DEMO provider (nwd) as an
 # OpenID Connect issuer for its demo consumer (ssd). ops#133 Phase 2.
 #
-#   AUTH SURFACE — DEV TIER ONLY, DEMO PAIR ONLY.
+#   AUTH SURFACE — DEMO PAIR ONLY, dev + live tiers only.
 #
 # This is the demo-tier sibling of scripts/f26/provision-nwc-issuer.sh (which
 # provisions the REAL nwc issuer for ssc). It is deliberately a separate file
-# rather than a flag on that one, because it carries guards the generic script
+# rather than a flag on that one, because it carries a guard the generic script
 # cannot: it refuses to run unless the target site is the PROVIDER of a pair
-# contract that declares `demo.enabled: true`, and it refuses any tier but dev.
-# An auth-surface script that can only ever point at a throwaway demo pair is a
-# much smaller thing to review.
+# contract that declares `demo.enabled: true`. An auth-surface script that can
+# only ever point at a throwaway demo pair is a much smaller thing to review.
 #
-#   scripts/demo/nwd-issuer-provision.sh [--site=nwd] [--tier=dev]
+# ops#146 implemented the live half, so the tier gate now admits dev and live and
+# refuses stg/prod. What bounds this script is therefore the CONTRACT gate, not
+# the tier: `pairs/ssc.pair-contract.yml` carries no `demo:` block, so the real
+# student-bearing pair is unreachable from here no matter what --tier says.
+# Nothing on the live path relaxes a security control — the live JWKS probe
+# verifies TLS (dev keeps -k for ddev's self-signed cert), the client secret is
+# per-tier, and there is no live equivalent of the consumer script's ddev
+# reachability shims because a live provider needs none.
+#
+#   scripts/demo/nwd-issuer-provision.sh [--site=nwd] [--tier=dev|live]
 #
 # What it does (all idempotent, all reversible):
 #   1. generates an RS256 signing keypair inside the container if absent

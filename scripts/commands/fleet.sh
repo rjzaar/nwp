@@ -727,6 +727,7 @@ cmd_snapshot() {
             --no-todo) include_todo=false; shift ;;
             --no-security) include_security=false; shift ;;
             --refresh-security) refresh_security=true; shift ;;
+            --allow-empty) export FLEET_ALLOW_EMPTY=1; shift ;;
             -h|--help) show_help; return 0 ;;
             *) print_error "unknown option: $1"; return 1 ;;
         esac

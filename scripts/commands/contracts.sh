@@ -52,6 +52,31 @@ set -euo pipefail
 #                           not present reports CANNOT-VERIFY (non-zero), never
 #                           a silent green.
 #
+#   erasure [<pair>|--all] [--strict]
+#                           ERASURE-CHANNEL gate (ops#81). An Art.17 obligation
+#                           lands the day a real member asks, so the question
+#                           "is there a defined, pinned, closed erasure channel
+#                           for this pair?" must be answerable by a verb rather
+#                           than by reading three files and a README.
+#                           STRUCTURAL failures (always fatal):
+#                             * no surfaces.erasure block      → CHANNEL-UNDEFINED
+#                             * no schema: pointer             → SCHEMA-UNPINNED
+#                             * schema file absent/unparseable → SCHEMA-MISSING
+#                             * schema not additionalProperties:false, or with
+#                               an empty required[]            → SCHEMA-NOT-CLOSED
+#                             * erasure.receiver_path / sender_path unset
+#                                                              → CHANNEL-UNDEFINED
+#                           ESTATE + OPERATOR findings (reported; fatal only
+#                           under --strict, because they are true-and-known
+#                           operator states, not gate bugs — the ops#138
+#                           precedent):
+#                             * declared path not present under the crossref
+#                               roots                          → NOT-DEPLOYED
+#                             * semantics_approved is not true → SEMANTICS-UNAPPROVED
+#                             * backup_ceiling unset           → NO-BACKUP-CEILING
+#                           An unparseable or absent contract is CANNOT-VERIFY,
+#                           never a silent green.
+#
 #   key-rotation [<pair>|--all]
 #                           OIDC SIGNING-KEY ROTATION INVARIANT (ops#82). The
 #                           nwc→ssc rotation runbook is safe only because the
@@ -69,7 +94,7 @@ set -euo pipefail
 #                           The unsafe middle state (a verifying consumer on a
 #                           single-key hard swap) is therefore unreachable.
 #
-# Usage: pl contracts <compat|sums|sign|verify|bundle|sync-plan|crossref|key-rotation> [opts]
+# Usage: pl contracts <compat|sums|sign|verify|bundle|sync-plan|crossref|key-rotation|erasure> [opts]
 ################################################################################
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -968,11 +993,208 @@ _keyrot_one() {
     return "$bad"
 }
 
+# =============================================================================
+# erasure — the ops#81 erasure-channel gate
+# =============================================================================
+# Why a CONTRACT gate when `pl erasure` already exists: `pl erasure` is the
+# operational runner (plan/execute/verify a single request). It answers "can I
+# erase this person". This verb answers the prior question — "does this pair
+# have a defined, pinned, CLOSED erasure channel at all" — which is the one a
+# release gate and a DPIA reviewer need, and which nothing asked before.
+#
+# The schema-closure check is the load-bearing one. An erasure command with
+# additionalProperties:true is a data-minimisation hole in a DESTRUCTIVE
+# cross-site message: fields nobody reviewed ride along to a delete endpoint.
+cmd_erasure() {
+    local want=() all=false strict=false arg
+    for arg in "$@"; do
+        case "$arg" in
+            --all)    all=true ;;
+            --strict) strict=true ;;
+            -*)       _err "contracts erasure: unknown option '$arg'"; return 2 ;;
+            *)        want+=("$arg") ;;
+        esac
+    done
+
+    if ! command -v yq >/dev/null 2>&1; then
+        _err "contracts erasure: CANNOT-VERIFY — yq not installed (the contract cannot be parsed)."
+        return 1
+    fi
+
+    if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
+        want=()
+        local f
+        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
+            [ -e "$f" ] || continue
+            want+=("$(basename "$f" .pair-contract.yml)")
+        done
+        if [ "${#want[@]}" -eq 0 ]; then
+            _err "contracts erasure: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            return 1
+        fi
+    fi
+
+    local rc=0 pair
+    for pair in "${want[@]}"; do
+        _erasure_one "$pair" "$strict" || rc=1
+    done
+    return "$rc"
+}
+
+# Is a JSON Schema CLOSED? additionalProperties:false + a non-empty required[].
+# Uses jq when present; falls back to a conservative grep that can only ever
+# under-report closure (i.e. fail closed), never over-report it.
+_erasure_schema_closed() { # <schema-file>  -> 0 closed, 1 open, 2 unparseable
+    local s="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -e . "$s" >/dev/null 2>&1 || return 2
+        local ap req
+        ap="$(jq -r '.additionalProperties' "$s" 2>/dev/null)"
+        req="$(jq -r '(.required // []) | length' "$s" 2>/dev/null)"
+        [ "$ap" = "false" ] || return 1
+        [ -n "$req" ] && [ "$req" -gt 0 ] 2>/dev/null || return 1
+        return 0
+    fi
+    grep -q '"additionalProperties"[[:space:]]*:[[:space:]]*false' "$s" || return 1
+    grep -q '"required"[[:space:]]*:[[:space:]]*\[[[:space:]]*"' "$s" || return 1
+    return 0
+}
+
+# First existing match for a repo-relative path under a list of roots.
+_erasure_find_under() { # <relpath> <root>...
+    local rel="$1"; shift
+    local r
+    for r in "$@"; do
+        [ -n "$r" ] || continue
+        if [ -e "$r/$rel" ]; then printf '%s\n' "$r/$rel"; return 0; fi
+    done
+    return 1
+}
+
+_erasure_one() {
+    local pair="$1" strict="$2"
+    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+
+    if [ ! -f "$contract" ]; then
+        _err "[$pair] CANNOT-VERIFY: no contract at $contract"
+        return 1
+    fi
+
+    local fatal=0 soft=0
+
+    # --- 1. the wire surface must exist and pin a schema ---------------------
+    local has_surface schema_rel
+    # NB: `.surfaces.erasure | type` yields the literal '!!null' for a MISSING
+    # key, which is non-empty and so read as present — the gate went green on a
+    # pair with no erasure surface at all. `has()` is the only form that
+    # answers the question actually being asked, and it is false-y even when
+    # `.surfaces` itself is absent. Caught by the red test, not by review.
+    has_surface="$(_crossref_yq "$contract" '.surfaces | has("erasure")' | head -1)"
+    if [ "$has_surface" != "true" ]; then
+        _err "[$pair] erasure CHANNEL-UNDEFINED — no 'surfaces.erasure' block."
+        _say "  This pair has no declared erasure channel. An Art.17 request against it"
+        _say "  has no defined mechanism, so nothing can prove it was honoured."
+        return 1
+    fi
+
+    schema_rel="$(_crossref_yq "$contract" '.surfaces.erasure.schema' | head -1)"
+    if [ -z "$schema_rel" ]; then
+        _err "[$pair] erasure SCHEMA-UNPINNED — surfaces.erasure declares no 'schema:'."
+        _say "  An unpinned destructive message shape can drift on either side silently."
+        fatal=1
+    else
+        local schema_abs="$PROJECT_ROOT/$schema_rel"
+        if [ ! -f "$schema_abs" ]; then
+            _err "[$pair] erasure SCHEMA-MISSING — $schema_rel is pinned but absent."
+            fatal=1
+        else
+            _erasure_schema_closed "$schema_abs"; local sc=$?
+            case "$sc" in
+                0) _say "[$pair] erasure schema CLOSED        $schema_rel" ;;
+                1) _err "[$pair] erasure SCHEMA-NOT-CLOSED — $schema_rel permits unreviewed fields."
+                   _say "  A destructive cross-site command must be additionalProperties:false with"
+                   _say "  a non-empty required[]; otherwise it is not a contract, it is a suggestion."
+                   fatal=1 ;;
+                2) _err "[$pair] erasure SCHEMA-MISSING — $schema_rel is not parseable JSON."
+                   fatal=1 ;;
+            esac
+        fi
+    fi
+
+    # --- 2. the operational half must name both channel ends ----------------
+    local recv send
+    recv="$(_crossref_yq "$contract" '.erasure.receiver_path' | head -1)"
+    send="$(_crossref_yq "$contract" '.erasure.sender_path'   | head -1)"
+    if [ -z "$recv" ] || [ -z "$send" ]; then
+        _err "[$pair] erasure CHANNEL-UNDEFINED — erasure.receiver_path / sender_path not both set."
+        _say "  receiver_path='${recv:-<unset>}'  sender_path='${send:-<unset>}'"
+        fatal=1
+    fi
+
+    [ "$fatal" -eq 0 ] || return 1
+
+    # --- 3. estate: is the declared channel actually deployed? --------------
+    local prov_roots=() cons_roots=() r
+    while IFS= read -r r; do [ -n "$r" ] && prov_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.provider_roots[]' | _crossref_existing_roots)
+    while IFS= read -r r; do [ -n "$r" ] && cons_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.consumer_roots[]' | _crossref_existing_roots)
+
+    local hit
+    if [ "${#cons_roots[@]}" -eq 0 ]; then
+        _warn "[$pair] erasure NOT-DEPLOYED receiver — no consumer root present to look in."
+        soft=1
+    elif hit="$(_erasure_find_under "$recv" "${cons_roots[@]}")"; then
+        _say "[$pair] erasure receiver DEPLOYED   $hit"
+    else
+        _warn "[$pair] erasure NOT-DEPLOYED receiver — '$recv' not present under any consumer root."
+        soft=1
+    fi
+
+    if [ "${#prov_roots[@]}" -eq 0 ]; then
+        _warn "[$pair] erasure NOT-DEPLOYED sender — no provider root present to look in."
+        soft=1
+    elif hit="$(_erasure_find_under "$send" "${prov_roots[@]}")"; then
+        _say "[$pair] erasure sender   DEPLOYED   $hit"
+    else
+        _warn "[$pair] erasure NOT-DEPLOYED sender — '$send' not present under any provider root."
+        soft=1
+    fi
+
+    # --- 4. operator assertions the gate must never make on their behalf ----
+    local sem ceiling
+    sem="$(_crossref_yq "$contract" '.erasure.semantics_approved' | head -1)"
+    ceiling="$(_crossref_yq "$contract" '.erasure.backup_ceiling' | head -1)"
+
+    if [ "$sem" = "true" ]; then
+        _say "[$pair] erasure semantics APPROVED"
+    else
+        _warn "[$pair] erasure SEMANTICS-UNAPPROVED — Art.17 semantics not signed off (OPERATOR)."
+        soft=1
+    fi
+
+    if [ -n "$ceiling" ]; then
+        _say "[$pair] erasure backup ceiling  $ceiling"
+    else
+        _warn "[$pair] erasure NO-BACKUP-CEILING — raw-backup retention window unasserted (OPERATOR)."
+        _say "  Erasing live rows while a raw backup holds the person is the usual way a"
+        _say "  retention schedule fails. Unset is the TRUE state; do not assert it blind."
+        soft=1
+    fi
+
+    if [ "$soft" -ne 0 ] && [ "$strict" = true ]; then
+        _err "[$pair] erasure: --strict — channel declared but not provably operable."
+        return 1
+    fi
+    return 0
+}
+
 main() {
     local verb="${1:-help}"; shift || true
     case "$verb" in
         compat)    cmd_compat "$@" ;;
         guards)    cmd_guards "$@" ;;
+        erasure)   cmd_erasure "$@" ;;
         sums)      cmd_sums "$@" ;;
         sign)      cmd_sign "$@" ;;
         verify)    cmd_verify "$@" ;;
@@ -981,10 +1203,10 @@ main() {
         crossref)  cmd_crossref "$@" ;;
         key-rotation|key_rotation) cmd_key_rotation "$@" ;;
         -h|--help|help)
-            sed -n '3,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '3,97p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             ;;
         *)
-            _err "pl contracts: unknown verb '$verb' (compat|sums|sign|verify|bundle|sync-plan|crossref|key-rotation)"
+            _err "pl contracts: unknown verb '$verb' (compat|sums|sign|verify|bundle|sync-plan|crossref|key-rotation|erasure)"
             return 2
             ;;
     esac

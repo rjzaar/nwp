@@ -57,6 +57,15 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
 
+# impact_rm_scratch: the tree's single audited primitive for removing a throwaway
+# directory this process created (lib/impact.sh). The scan sandbox below is a
+# `mktemp -d` this function made three lines earlier — not scope a human cares
+# about — but a bare `rm -rf` is indistinguishable from the real thing to any
+# scanner, so it goes through the audited primitive instead. A future edit that
+# passes the wrong variable then gets a refusal rather than a catastrophe.
+# shellcheck source=/dev/null
+source "$REPO_ROOT/lib/impact.sh"
+
 # The existing checker. Sourcing it (rather than reimplementing it) is the whole
 # point: one identity ruleset, one place it can be wrong.
 PUBREL_HELPER="$REPO_ROOT/tests/helpers/pubrel-docs-check.sh"
@@ -255,7 +264,9 @@ PY
                 printf '%s\n' "$found" | grep -vE '^$' >> "$dirty_list" || true
             fi
         fi
-        rm -rf "$scan_dir" "$report"
+        impact_rm_scratch "$scan_dir" >/dev/null \
+            || print_warning "library: could not remove scratch dir $scan_dir"
+        rm -f "$report"
     fi
 
     python3 - "$list" "$dirty_list" "$scan_state" "$out" <<'PY'

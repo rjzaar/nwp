@@ -17,6 +17,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/common.sh"
+source "$REPO_ROOT/lib/demo-pair.sh"
 
 SITE="ssd"; TIER="dev"; PASS=""
 while [[ $# -gt 0 ]]; do
@@ -29,22 +30,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-case "$TIER" in dev|stg) ;; *) print_error "REFUSED: tier '$TIER' — seeding is dev|stg only."; exit 1 ;; esac
+# ops#146: live added. Seeding writes only DEMO course content into a site that
+# `ssd-demo-posture.sh` has already put into demo mode; it carries no dev-only
+# relaxation. prod stays refused — a prod Moodle holds real learners' records.
+case "$TIER" in dev|stg|live) ;; *) print_error "REFUSED: tier '$TIER' — seeding is dev|stg|live only."; exit 1 ;; esac
 
-MOODLE_ROOT="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
-[[ -f "$MOODLE_ROOT/version.php" ]] || { print_error "REFUSED: $MOODLE_ROOT is not a Moodle root"; exit 1; }
-[[ -d "$MOODLE_ROOT/mod/depthcontent" ]] || {
-    print_error "REFUSED: mod_depthcontent not installed — run scripts/demo/ssd-rebuild.sh first."
-    exit 1
-}
+if [[ "$TIER" != "live" ]]; then
+    MOODLE_ROOT="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
+    [[ -f "$MOODLE_ROOT/version.php" ]] || { print_error "REFUSED: $MOODLE_ROOT is not a Moodle root"; exit 1; }
+    [[ -d "$MOODLE_ROOT/mod/depthcontent" ]] || {
+        print_error "REFUSED: mod_depthcontent not installed — run scripts/demo/ssd-rebuild.sh first."
+        exit 1
+    }
+fi
 
-CLI_PHP="${CLI_PHP:-php8.3}"
-STAGED="ssd_seed_courses_tmp.php"
-cp "$SCRIPT_DIR/ssd-seed-courses.php" "$MOODLE_ROOT/$STAGED"
-trap 'rm -f "$MOODLE_ROOT/$STAGED"' EXIT
+CONTRACT="$(demo_pair_contract_for "$SITE")" || { print_error "REFUSED: no demo-enabled pair contract names '$SITE'."; exit 1; }
+CLI_PHP="${CLI_PHP:-$(demo_pair_get "$CONTRACT" '.oidc.cli_php_version' '8.3')}"
 
 set +e
-( cd "$MOODLE_ROOT" && ddev exec "$CLI_PHP -d max_input_vars=5000 $STAGED $PASS" )
+demo_moodle_php_run "$SITE" "$TIER" "$SCRIPT_DIR/ssd-seed-courses.php" "$CLI_PHP" -- $PASS
 rc=$?
 set -e
 

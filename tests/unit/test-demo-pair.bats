@@ -341,10 +341,189 @@ _fake_golden() {
   [[ "$output" == *"REFUSED"* ]]
 }
 
-@test "the issuer provisioner refuses any tier but dev" {
-  run bash "${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh" --tier=live
+# --- ops#146: the tier gate narrowed. What must still hold. -------------------
+#
+# The issuer provisioner used to refuse EVERY tier but dev, and a single test
+# ("refuses any tier but dev") stood for the whole safety story. ops#146
+# implemented the live half, so that test's literal claim is now false — but the
+# thing it was really protecting is not, and these tests pin it down properly.
+#
+# The old blanket refusal was doing three jobs at once:
+#   (1) prod/stg must never be reachable from this workstation   — STILL TRUE;
+#   (2) the REAL, student-bearing nwc<->ssc pair must never be an
+#       argument to a demo script                                — STILL TRUE,
+#       and now enforced by the contract gate rather than by tier accident;
+#   (3) "there is no live implementation yet"                    — no longer true.
+#
+# Note also that the old test invoked `--tier=live` with the DEFAULT --site
+# (nwd), which is demo-enabled. Under the bats fixture PROJECT_ROOT that is
+# inert, but run from a real checkout on a host with ssh to the box it performs
+# an actual live provisioning run. Nothing below invokes the live TRANSPORT: every
+# live-tier case here is refused before a socket is opened.
+
+@test "the issuer provisioner refuses prod and stg outright" {
+  for t in prod stg; do
+    run bash "${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh" --site=prov "--tier=$t"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does dev and live only"* ]]
+  done
+}
+
+@test "NEGATIVE CONTROL: the tier gate admits dev and live (it does not refuse everything)" {
+  # Without this, a provisioner that refused EVERY tier would satisfy the test
+  # above. dev and live must get PAST guard 1 and fail later, for another
+  # reason — here, the fixture contract has no live issuer and no redirect.
+  for t in dev live; do
+    run bash "${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh" --site=prov "--tier=$t"
+    [[ "$output" != *"does dev and live only"* ]]
+  done
+}
+
+@test "the live tier is bounded by the demo-enabled contract, not by the tier gate" {
+  # THE replacement invariant. 'realprov' stands in for nwc: a pair contract
+  # that never opted into the demo tier. Widening guard 1 to admit live must not
+  # make the real, student-bearing pair reachable from a demo script.
+  run bash "${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh" --site=realprov --tier=live
   [ "$status" -ne 0 ]
-  [[ "$output" == *"dev-only"* ]]
+  [[ "$output" == *"demo-enabled pair contract"* ]]
+}
+
+@test "the contract gate is evaluated BEFORE any transport is established" {
+  # A future edit that connects first and checks afterwards would leak an ssh
+  # login to a non-demo host even though the run is ultimately refused.
+  s="${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh"
+  guard=$(grep -n 'demo_pair_contract_for' "$s" | head -1 | cut -d: -f1)
+  ssh_line=$(grep -nE '^\s*(rexec\(\)|.*ssh \$RSSH_OPTS)' "$s" | head -1 | cut -d: -f1)
+  [ -n "$guard" ] && [ -n "$ssh_line" ]
+  [ "$guard" -lt "$ssh_line" ]
+}
+
+@test "the issuer provisioner never touches Moodle's cURL SSRF blocklist on any tier" {
+  ! grep -q 'curlsecurityblockedhosts' "${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh"
+}
+
+@test "the issuer JWKS probe verifies TLS on live and only skips it on dev" {
+  s="${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh"
+  # no unconditional insecure probe may survive
+  ! grep -qE "curl [^|]*-sk" "$s"
+  # and -k must be gated on dev
+  grep -q 'TIER" == "dev" \]\] && CURL_TLS=(-k)' "$s"
+}
+
+@test "the live keypair probe is privileged FOR THE WHOLE COMPOUND (or it re-mints the signing key every run)" {
+  # The live key dir is 0700 www-data; an unprivileged 'test -r' there always
+  # answers "absent", so the caller regenerates — silently invalidating every
+  # id_token already signed.
+  #
+  # Asserting that the word "sudo" appears is NOT enough, and that weaker
+  # assertion is exactly what let the first version of this fix ship broken.
+  # `rexec "sudo $1"` with a compound probe sends
+  #     sudo test -r …/private.key && test -r …/public.key
+  # and the REMOTE SHELL binds `&&` outside sudo: only the first test is
+  # privileged. The second still runs as the ssh user, still cannot read inside
+  # 0700, so the probe still says "absent" and the key still rotates every run.
+  # Confirmed on the live host: the prefix form returned 1, `sudo sh -c` returns 0.
+  #
+  # So execute the real definition and assert BOTH halves reach sudo.
+  s="${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh"
+  grep -q 'rprobe "test -r \$KEY_DIR/private.key' "$s"
+
+  # the live branch's rprobe, verbatim — not a paraphrase of it
+  awk '/^if \[\[ "\$TIER" == "live" \]\]; then/,/^else$/' "$s" \
+      | grep -E '^[[:space:]]*rprobe\(\)' > "${TEST_TMP}/rprobe.sh"
+  [ -s "${TEST_TMP}/rprobe.sh" ]
+
+  mkdir -p "${TEST_TMP}/fakebin"
+  cat > "${TEST_TMP}/fakebin/sudo" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$SUDO_LOG"
+exit 0
+EOF
+  chmod +x "${TEST_TMP}/fakebin/sudo"
+
+  # rexec stands in for ssh: it hands the string to a shell, as the remote does.
+  : > "${TEST_TMP}/sudo.log"
+  SUDO_LOG="${TEST_TMP}/sudo.log" PATH="${TEST_TMP}/fakebin:${PATH}" \
+    bash -c '
+      rexec() { bash -c "$1"; }
+      # shellcheck disable=SC1090
+      source "$1"
+      rprobe "test -r /K/private.key && test -r /K/public.key"
+    ' _ "${TEST_TMP}/rprobe.sh" || true
+
+  run cat "${TEST_TMP}/sudo.log"
+  [[ "$output" == *"private.key"* ]]
+  [[ "$output" == *"public.key"* ]]   # RED if `&&` escaped sudo
+}
+
+# --- ops#146: the SSRF relaxation is reachable ONLY on dev --------------------
+#
+# This is the invariant the old "dev-only" test was standing in for. It lives on
+# the CONSUMER script (ssd-oidc-wire.sh), whose apply_dev_prereqs() blanks
+# $CFG->curlsecurityblockedhosts — disabling Moodle's SSRF protection for EVERY
+# server-side fetch the site makes, not just the OIDC ones. That must never
+# follow to a real host. Asserted twice, structurally and at runtime, mirroring
+# the two independent checks the code itself carries.
+
+# Run apply_dev_prereqs() in isolation against a scratch Moodle root at a chosen
+# tier. Echoes the function's output; leaves the scratch config.php for
+# inspection so we can see whether the relaxation was actually written.
+_run_apply_dev_prereqs() {
+  local tier="$1" root="$2"
+  mkdir -p "$root/.ddev"
+  cat > "$root/config.php" <<'PHP'
+<?php
+$CFG = new stdClass();
+require_once(__DIR__ . '/lib/setup.php');
+PHP
+  awk '/^apply_dev_prereqs\(\)/,/^}/' \
+      "${REPO_ROOT}/scripts/demo/ssd-oidc-wire.sh" > "${TEST_TMP}/apply_dev_prereqs.sh"
+  TIER="$tier" MOODLE_ROOT="$root" FN="${TEST_TMP}/apply_dev_prereqs.sh" bash -c '
+    print_error() { echo "ERROR: $*"; }
+    print_info()  { echo "INFO: $*"; }
+    print_status(){ echo "OK: $*"; }
+    ddev()        { echo "STUB ddev $*"; }   # a test never restarts anything
+    SITE="cons"; PROVIDER="prov"; ISSUER="https://prov-dev.ddev.site"
+    source "$FN"
+    apply_dev_prereqs
+  '
+}
+
+@test "apply_dev_prereqs REFUSES off dev and writes no SSRF relaxation" {
+  root="${TEST_TMP}/moodle-live"
+  run _run_apply_dev_prereqs live "$root"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"INTERNAL REFUSAL"* ]]
+  # the load-bearing half: nothing was relaxed
+  ! grep -q 'curlsecurityblockedhosts' "$root/config.php"
+  [ ! -f "$root/.ddev/docker-compose.prov-sso.yaml" ]
+}
+
+@test "NEGATIVE CONTROL: apply_dev_prereqs DOES relax on dev (the guard is tier-specific, not a blanket refusal)" {
+  # Without this, deleting the function body — or making it refuse every tier —
+  # would satisfy the test above. On dev the relaxation must actually land, and
+  # the refusal must NOT fire.
+  root="${TEST_TMP}/moodle-dev"
+  run _run_apply_dev_prereqs dev "$root"
+  [[ "$output" != *"INTERNAL REFUSAL"* ]]
+  grep -q 'curlsecurityblockedhosts' "$root/config.php"
+}
+
+@test "apply_dev_prereqs has exactly one call site and it is inside a dev branch" {
+  # The runtime self-assert can be deleted by a future edit; the call site is the
+  # second, independent check. Exactly one caller, guarded by an explicit dev test.
+  s="${REPO_ROOT}/scripts/demo/ssd-oidc-wire.sh"
+  n=$(grep -cE '^[[:space:]]*apply_dev_prereqs( |$|\|)' "$s")
+  [ "$n" -eq 1 ]
+  grep -B2 -E '^[[:space:]]*apply_dev_prereqs( |$|\|)' "$s" | grep -q 'TIER" == "dev"'
+}
+
+@test "the consumer wiring refuses prod and stg outright" {
+  for t in prod stg; do
+    run bash "${REPO_ROOT}/scripts/demo/ssd-oidc-wire.sh" --site=cons "--tier=$t"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does dev and live only"* ]]
+  done
 }
 
 @test "the issuer provisioner refuses a site with no demo-enabled contract" {

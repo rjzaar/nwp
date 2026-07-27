@@ -4073,3 +4073,239 @@ which is the shape of bug a gate must not have: it was green everywhere anyone l
 Only this one call site is fixed here, because it is the one that is red and this MR's job is to
 unblock. `!213` fixes the whole family (four `yq | grep -q` sites; after it, none remain) and
 carries the tests for it; the two fixes are written identically so they converge on rebase.
+## ops#146 — the live nwd→ssd demo journey (2026-07-27)
+
+MR !162 gave the demo pair `pl demo --with-pair` and an 8/8 e2e **on dev**. On live the
+journey stopped dead after code redemption: `nwd/.well-known/jwks.json` was HTTP 500
+(`openssl_pkey_get_details(): … false given` — `/var/www/nwd/keys` did not exist), ssd
+carried only `local/feedback` + `local/nwc_copyright_sync`, its login page offered no
+identity provider, and nothing on nwd linked to ssd.
+
+### Decision (a) — the dev-only guard on `ssd-oidc-wire.sh` was doing two jobs
+
+The blanket "dev only" refusal conflated a **security** constraint with a **statement of
+fact**. The security half is real: `apply_dev_prereqs()` sets
+`$CFG->curlsecurityblockedhosts=''`, which disables Moodle's SSRF blocklist for *every*
+server-side fetch the site makes — not just OIDC ones. It exists because inside ddev the
+provider hostname is aliased onto the ddev-router's RFC1918 address, which the default
+blocklist correctly rejects. The factual half — "there is no live consumer" — stopped
+being true.
+
+**We did not relax the guard so the dev path could run on live.** We built a live path and
+left the relaxation behind, enforced structurally rather than by tier accident:
+`apply_dev_prereqs()` now asserts `dev` *itself* and is called only on `dev`, so a future
+edit that moves the call still cannot leak it.
+
+The relaxation was never needed on live, and that is measured, not assumed:
+
+```
+box$ getent hosts nwd.nwpcode.org        -> 97.107.137.88      (PUBLIC, not RFC1918)
+box$ curl https://nwd.nwpcode.org/user/login -> 200, remote_ip=97.107.137.88
+live ssd config.php: grep -c curlsecurityblockedhosts -> 0   (default blocklist ARMED)
+```
+
+and the code→token exchange — the exact server-side call the dev shim exists to unblock —
+completed on live with the blocklist untouched (see the round-trip below). The live
+provider is reached over ordinary public DNS + TLS and needs no shim at all. Two further
+live-only tightenings came with it: the JWKS health probe drops `curl -k` off dev (an
+unverified probe would call a MITM'd issuer "healthy"), and the OAuth client secret is now
+per-tier (`…-oidc-client-secret.live`), because a dev and a live client sharing a secret
+means a dev-tier compromise mints live tokens.
+
+### Decision (b) — provider-first, and the guard that wasn't guarding
+
+Ordering is not a preference here. The provider is the identity origin, and a consumer
+running *ahead* of its provider fails **silently**, not loudly: ssd at `contract_version` 3
+consumes `art9_consent` and `guilds`; against a provider that does not emit them
+`auth_nwc\consent::may_keep_formation` fails closed and every formation write is discarded
+while still returning success. So: nwd issuer first → JWKS proven 200 → record the provider
+→ then ssd.
+
+The premise that "the D5 guard will refuse an ssd deploy until nwd is recorded at cv 3"
+turned out to be **false, and in the worse direction**. `pair_guard` resolves membership via
+`yaml_get_site_field <site> paired_with` against the **global `nwp.yml`** — and no site in
+the fleet declares it. `pl pair check ssd live` returned **ALLOW** before anything was
+recorded: the guard was not satisfied, it was inert. ADR-0031's D5 ordering and D6
+identity-coupling refusals were firing for nobody.
+
+We recorded the provider (true: the issuer is provisioned and serving), then **armed** the
+guard for the demo pair (`sites.ssd.paired_with: nwd`), then proved it binds in both
+directions rather than asserting it:
+
+| state | `pl pair check ssd live` |
+|---|---|
+| armed, provider recorded @ cv3 | **ALLOW** |
+| armed, provider record hidden  | **REFUSE** — "provider must promote first (ADR-0031 D5)" |
+| armed, record restored         | **ALLOW** |
+
+**Left for the operator, deliberately:** the same inertness covers the *real* `ssc↔nwc`
+pair, whose contract carries `uid_lock: true` and coupled tiers — meaning the D6
+`--code-only` refusal that is supposed to stop a full-DB push from severing live SSO
+identities is **also not firing**. Arming that one changes behaviour on the member-facing
+pair and is out of ops#146's scope; it should not wait long.
+
+### What the live journey actually does now (every leg a real request)
+
+```
+redeem   POST /demo/join  code=…            -> 200, "Welcome, Kateri-1554 … testing as a Member"
+                                               nwd uid=21 uuid=f7fb7bcd-52e9-457d-8e78-9692ced58b8d
+sso      ssd /login -> "nwd (F26)" -> 303 nwd/oauth/authorize?client_id=ssd_moodle…
+         -> examen gate (interstitial) -> returns to /oauth/authorize -> Allow
+         -> 302 ssd/admin/oauth2callback.php?code=… -> 303 -> 303 -> 200
+UID lock ssd mdl_user id=4 idnumber=f7fb7bcd-52e9-457d-8e78-9692ced58b8d   == the nwd uuid
+Art.9    user_preferences auth_nwc_art9_consent = 1
+gate     decide(true,nonadmin)=PERSIST  decide(false,·)=EPHEMERAL  decide(null,·)=EPHEMERAL
+```
+
+The `/examen-gate` hop is **not** a defect. `nwc_examen`'s OAuth bypass is scoped to
+Bearer-token (machine) requests, and `ExamenGateOauthBypassTest::testNormalMemberIsGated`
+asserts that a cookie-authenticated member **is** gated — by design. The gate stores the
+destination and returns the tester to `/oauth/authorize` after they discern. Exempting
+`simple_oauth.authorize` would let a member reach ssc without the examen: a product
+decision about the real pair, not ours. Recorded, not taken.
+
+### The reset trap, closed
+
+`demo_consumer_checks` only ever runs the three consumer scripts with `--check`; nothing in
+the reset path re-applies wiring. The restore is DB+files, so **the golden must already
+contain the wired state**. The staged image on the box was CP30, captured before any of
+this — one cron tick (01:00–03:30 Melbourne, every 30 min) would have silently un-wired the
+issuer. The cron was paused for the duration, the golden re-captured, staged and
+sha-verified on the box, and the cron restored `diff`-identical to its pre-session form.
+
+Proven rather than assumed — a real forced reset, then re-probed:
+
+```
+pl demo reset nwd --tier=live --force   -> "back at the golden image" (82s)
+after: JWKS 200 · consumer ssd_moodle PRESENT (pkce=y confidential=y) · scopes email,openid,profile
+       consent perm HAS · nwd→ssd link present
+```
+
+### Still open, and why
+
+`pl demo golden/reset --with-pair --tier=live` remains refused. The refusal is now the
+*only* honest answer: `demo.sh`'s entire live path is Drupal/drush end-to-end
+(`drush sql:dump`, `tar -C <docroot>/sites/default files`, `watchdog:show`,
+`nwc:seed-demo`, `users_field_data`), with no Moodle branch anywhere, and
+`demo_live_ctx` memoises into single-slot globals so resolving nwd then ssd silently
+returns nwd's context for ssd. Lifting the refusal without that work would produce a
+paired reset that quietly resets one half.
+
+That gap is not cosmetic, and tonight demonstrated it: nwd is reset nightly and ssd is not,
+so the next tick deletes nwd uid=21 while ssd keeps `idnumber=f7fb7bcd-…` pointing at it —
+a severed UID-lock, exactly the both-or-forward hazard ADR-0031 D9 names. On this pair it
+is survivable (`uid_lock: false`, throwaway users, a fresh code makes a fresh pair) but the
+demo tier is where that machinery is supposed to be proven.
+
+## [2026-07-27] ops#146 review — a widened tier guard was right, and it hid a key-rotation bug
+**Trigger:** `test:unit` on !210 failed one case, `the issuer provisioner refuses any tier but
+dev`. Not pre-existing: main's own HEAD pipeline fails only `allow_failure` jobs. Two readings
+were possible — **(a)** the guard's scope legitimately narrowed and the test asserts a
+superseded invariant, or **(b)** the code went further than intended. Resolved from the code
+first; making the test pass was explicitly not allowed to be the method.
+
+**Verdict: (a).** The evidence, in the order it settled the question:
+1. The SSRF relaxation the brief was protecting is not in this script at all. It is
+   `$CFG->curlsecurityblockedhosts = ''` in `apply_dev_prereqs()` in the *consumer* script,
+   `ssd-oidc-wire.sh`. The *issuer* is Drupal and has no such control:
+   `grep -c curlsecurityblockedhosts scripts/demo/nwd-issuer-provision.sh` = 0, on every tier.
+2. `apply_dev_prereqs()` has exactly one call site, inside `if [[ "$TIER" == "dev" ]]`, and
+   self-asserts `dev` on entry. Verified at runtime, not just by reading: the function was
+   extracted and executed against a scratch Moodle root at `TIER=live` — it refuses and
+   `config.php` comes back unrelaxed.
+3. On the live host the relaxation is absent, as claimed:
+   `sudo grep -c curlsecurityblockedhosts /var/www/ssd/config.php` = 0 (control: `ssc` = 0).
+4. What the old refusal was really buying — that the real, student-bearing `nwc`↔`ssc` pair is
+   never an argument to a demo script — is now enforced by the *contract* gate, which is
+   stronger than the tier ever was: `demo_pair_contract_for` requires `demo.enabled: true`, and
+   `pairs/ssc.pair-contract.yml` carries no `demo:` block. Confirmed live:
+   `demo_pair_contract_for nwc` → rc=1, `ssc` → rc=1, `nwd` → the ssd contract.
+5. The live path is *stricter*, not looser: TLS is verified on live (`-k` is dev-only, for
+   ddev's self-signed cert) and the client secret is per-tier, so a dev compromise cannot mint
+   live tokens.
+
+**So the test was rewritten, not deleted or slackened** — into the invariants that survive
+(prod/stg refused on both scripts; the contract gate bounds live; the gate precedes any
+transport; the issuer never touches the blocklist; the SSRF shim is dev-only, asserted at
+runtime). Each was proven able to fail by mutation, and a **negative control** was added
+because five of the six mutations would also be satisfied by a script that refused everything:
+making `apply_dev_prereqs` refuse every tier leaves the primary test green and turns the
+control red. That is the failure mode the control exists for.
+
+**The more valuable finding, which nobody was looking for.** Probing the refusals surfaced a
+real defect in the new live path. The keypair-presence probe ran as the ssh user:
+
+    rexec "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key"
+
+while the same script creates that directory `sudo install -d -o www-data -g www-data -m 0700`.
+`gitlab` cannot read inside 0700 www-data, so the probe always answered "absent", so the script
+always regenerated — **minting a fresh RS256 signing keypair on every live run** and silently
+invalidating every `id_token` and refresh token already signed. The docblock claims the script
+is idempotent; on live it was not. On an auth surface idempotence is a security property, not a
+nicety. Fixed with a privileged `rprobe()` (sudo on live, plain on dev) plus a regression test.
+Confirmed read-only afterwards: `ssh gitlab@<box> 'ls -la /var/www/nwd/keys'` → Permission denied.
+
+**Blast radius: the demo pair only.** The real `nwc` issuer is provisioned by
+`scripts/f26/provision-nwc-issuer.sh`, untouched here, and the contract gate keeps `nwc`/`ssc`
+out of this script regardless of tier. The demo journey was re-verified intact afterwards: nwd
+JWKS 200, `/demo/join` 200, ssd `/login/index.php` 200 with the `nwd (F26)` button, `/course/` 200.
+
+**Process note, recorded against myself:** the *old* test invoked `--tier=live` with the default
+`--site` (`nwd`), which is demo-enabled. Under the bats fixture `PROJECT_ROOT` that is inert, but
+run from a real checkout on a host holding an ssh key to the box it performs an actual live
+provisioning run — which is how the key rotation was observed. No test in the rewrite opens the
+live transport. A refusal test must be refused *before* the socket, not by it.
+
+**Reversible-how:** `git revert -m 1 <merge>`. Repo-only; the only host contact was read-only
+probing plus the two accidental idempotent re-provisions described above, both verified benign.
+
+## [2026-07-27] ops#146 landing review — the key-rotation fix was right in shape and wrong in shell
+**Trigger:** independent re-read of !210 before merge, specifically of the auth-touching commit
+`9fce46e` ("the live issuer key probe must be privileged"). The tier-guard verdict above
+re-verified clean (see below). The key-rotation fix did not.
+
+**The diagnosis in that entry is correct and the fix as shipped did not deliver it.** The probe
+is a *compound*:
+
+    rprobe "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key"
+
+and `rprobe() { rexec "sudo $1"; }` prefixes `sudo ` to the whole string before handing it to
+`ssh`, i.e. the **remote shell** parses it — and `&&` binds outside `sudo`. Only the *first*
+`test` was privileged. The second still ran as `gitlab`, still could not read inside
+0700 `www-data`, so the probe still answered "absent" and the key would still have been re-minted
+on every live run. The fix moved the failure one `&&` to the right; it did not remove it.
+
+Demonstrated locally with a `sudo` shim (it receives only `test -r …/private.key`), then settled
+on the live host, read-only, after a `pl server health nwpcode` preflight:
+
+    drwx------ 2 www-data www-data  /var/www/nwd/keys
+    sudo test -r …/private.key && test -r …/public.key   → rc=1   ← the shipped fix
+    sudo sh -c 'test -r …/private.key && test -r …/public.key' → rc=0   ← correct
+    test -r …/private.key && test -r …/public.key        → rc=1   ← pre-fix
+
+**Fixed properly:** `rprobe() { rexec "sudo sh -c $(printf '%q' "$1")"; }`, so the entire probe —
+not its first word — runs privileged. Verified against the live host: rc=0, keys correctly seen
+as present, so the generate branch is no longer taken. Key mtimes unchanged (`Jul 26 18:10`); no
+write was performed.
+
+**Why it got through, and what changed in the test.** The regression test asserted the fix by
+`grep`-ing for the literal string `rprobe() { rexec "sudo $1"; }`. A test that greps for the word
+`sudo` cannot see a precedence bug — it was pinning the *patch text*, not the *property*, so it
+was green against code that still rotated the key. Replaced with a runtime test: it extracts the
+real `rprobe` definition, runs it with a recording `sudo` shim, and asserts **both** key paths
+reach `sudo`. Red-proofed against the exact shipped bug — restoring the prefix form turns it red
+on the `public.key` assertion, and the corrected form is green. Suite: 57/57.
+
+**Generalisable:** a remote-exec helper that string-prefixes a privilege escalation is wrong
+whenever its argument can contain a shell operator. `sudo sh -c "$(printf '%q' …)"` is the form.
+The other two compounds in this script are safe — one needs no privilege (`cd … && drush`), the
+other already says `sudo` on both halves.
+
+**The tier-guard verdict re-verified independently, all four legs:**
+`grep -c curlsecurityblockedhosts scripts/demo/nwd-issuer-provision.sh` = 0; `apply_dev_prereqs`
+has exactly one call site (`ssd-oidc-wire.sh:436`) inside `if [[ "$TIER" == "dev" ]]` and
+self-asserts `dev` on entry; `demo_pair_contract_for nwc` → rc=1, `ssc` → rc=1, `nwd`/`ssd` →
+`pairs/ssd.pair-contract.yml`; and `pairs/ssc.pair-contract.yml` carries no `demo:` block while
+`ssd`'s carries `demo.enabled: true`. Verdict (a) stands.
+
+**Reversible-how:** `git revert -m 1 <merge>`. Repo-only; host contact was read-only probing only.

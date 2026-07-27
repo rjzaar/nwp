@@ -52,11 +52,35 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-[[ "$TIER" == "dev" ]] || {
-    print_error "REFUSED: --tier=$TIER. Consumer OIDC wiring here is dev-only."
-    print_info  "The live consumer half goes through 'pl moodle-promote' (deploy-gated)."
-    exit 1
-}
+# ---- Tier gate: dev or live, never stg/prod. --------------------------------
+#
+# ops#146. Read this before widening it again.
+#
+# This script used to refuse every tier but dev, and the refusal was doing TWO
+# jobs at once:
+#   (1) "the ddev reachability shims below must never reach a real host"  — a
+#       SECURITY constraint, and the reason the blanket refusal was right; and
+#   (2) "there is no live consumer yet"                                   — a
+#       statement of fact that stopped being true.
+#
+# Only (2) has changed. (1) is now enforced structurally instead of by tier
+# accident: apply_dev_prereqs() asserts dev itself and is CALLED ONLY on dev.
+# In particular `$CFG->curlsecurityblockedhosts=''` DOES NOT FOLLOW TO LIVE.
+# It never needed to: that shim exists because inside ddev the provider hostname
+# resolves to the ddev-router's RFC1918 address, which Moodle's default cURL
+# blocklist (rightly) rejects. On live the provider resolves to a PUBLIC address
+# that the default blocklist does not block — verified from the box itself:
+#     getent hosts nwd.<example-prod-domain>          -> <public box ip>
+#     curl https://nwd.<example-prod-domain>/user/login -> 200, remote_ip = same
+# (i.e. the hairpin works and no RFC1918 address is involved)
+# So the live consumer keeps Moodle's SSRF protection fully armed.
+case "$TIER" in
+    dev|live) ;;
+    *)
+        print_error "REFUSED: --tier=$TIER. Consumer OIDC wiring does dev and live only."
+        print_info  "A prod consumer is wired from the offline deploy host under the hardware gate — never from here."
+        exit 1 ;;
+esac
 
 CONTRACT="$(demo_pair_contract_for "$SITE")" || {
     print_error "REFUSED: no demo-enabled pair contract names '$SITE'."
@@ -76,23 +100,72 @@ CLIENT_ID="$(demo_pair_get "$CONTRACT" '.oidc.provider_prereqs.consumer_client_i
 CLI_PHP="${CLI_PHP:-$(demo_pair_get "$CONTRACT" '.oidc.cli_php_version' '8.3')}"
 [[ "$CLI_PHP" == php* ]] || CLI_PHP="php${CLI_PHP}"
 
+# Per-tier client secret — must match nwd-issuer-provision.sh's SECRET_OUT.
 SECRET_FILE="${PROJECT_ROOT}/private/demo/${SITE}-oidc-client-secret"
-MOODLE_ROOT="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
-[[ -f "$MOODLE_ROOT/version.php" ]] || { print_error "REFUSED: $MOODLE_ROOT is not a Moodle root"; exit 1; }
+[[ "$TIER" == "dev" ]] || SECRET_FILE="${SECRET_FILE}.${TIER}"
 
-# The consumer plugin must actually be installed, or every login would be
-# denied by an issuer that nothing enforces.
-[[ -f "$MOODLE_ROOT/auth/nwc/version.php" ]] || {
-    print_error "REFUSED: auth_nwc is not installed at $MOODLE_ROOT/auth/nwc."
-    print_hint  "Run scripts/demo/ssd-rebuild.sh first."
-    exit 1
-}
+################################################################################
+# Transport. The wiring LOGIC (the staged PHP) is byte-identical on both tiers.
+# What differs is only how it is delivered and where the secret is staged.
+################################################################################
+if [[ "$TIER" == "live" ]]; then
+    [[ "$(get_site_config_value "$SITE" '.live.enabled' 'false')" != "false" ]] || {
+        print_error "REFUSED: live.enabled is false for '$SITE'."; exit 1; }
+    MOODLE_ROOT="$(get_site_config_value "$SITE" '.live.remote_path' "/var/www/${SITE}")"
+    SERVER_NAME="$(get_site_config_value "$SITE" '.live.server' '')"
+    REMOTE_IP=""
+    [[ -n "$SERVER_NAME" ]] && REMOTE_IP="$(get_server_ip "$SERVER_NAME" 2>/dev/null || true)"
+    [[ -n "$REMOTE_IP" ]] || REMOTE_IP="$(get_site_config_value "$SITE" '.live.server_ip' '')"
+    [[ -n "$REMOTE_IP" ]] || { print_error "REFUSED: no live server for '$SITE'."; exit 1; }
+    SSH_USER="$(get_ssh_user "$SITE" 2>/dev/null || echo gitlab)"
+    SSH_TARGET="${SSH_USER}@${REMOTE_IP}"
+    RSSH_OPTS="$(nwp_ssh_opts "$SITE" 2>/dev/null || true)"
+    # shellcheck disable=SC2086
+    rexec() { ssh $RSSH_OPTS -o BatchMode=yes -o ConnectTimeout=20 "$SSH_TARGET" "$1"; }
+    rexec 'echo ok' >/dev/null 2>&1 || { print_error "Cannot reach $SSH_TARGET"; exit 1; }
+
+    rexec "sudo test -f $(printf '%q' "$MOODLE_ROOT/version.php")" \
+        || { print_error "REFUSED: $MOODLE_ROOT on $REMOTE_IP is not a Moodle root"; exit 1; }
+    rexec "sudo test -f $(printf '%q' "$MOODLE_ROOT/auth/nwc/version.php")" || {
+        print_error "REFUSED: auth_nwc is not installed at $MOODLE_ROOT/auth/nwc on live."
+        print_hint  "Deploy it first: pl moodle plugin deploy $SITE auth/nwc --tier=live --apply"
+        exit 1
+    }
+    # The live dataroot is authoritative in the live config.php, not in any local
+    # yaml — read it there rather than assuming the dev convention.
+    DATAROOT_REMOTE="$(rexec "sudo sed -n \"s/.*\\\$CFG->dataroot[[:space:]]*=[[:space:]]*'\\([^']*\\)'.*/\\1/p\" $(printf '%q' "$MOODLE_ROOT/config.php")" | head -1 | tr -d '\r')"
+    [[ -n "$DATAROOT_REMOTE" ]] || { print_error "REFUSED: could not read \$CFG->dataroot from the live config.php"; exit 1; }
+else
+    MOODLE_ROOT="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
+    [[ -f "$MOODLE_ROOT/version.php" ]] || { print_error "REFUSED: $MOODLE_ROOT is not a Moodle root"; exit 1; }
+
+    # The consumer plugin must actually be installed, or every login would be
+    # denied by an issuer that nothing enforces.
+    [[ -f "$MOODLE_ROOT/auth/nwc/version.php" ]] || {
+        print_error "REFUSED: auth_nwc is not installed at $MOODLE_ROOT/auth/nwc."
+        print_hint  "Run scripts/demo/ssd-rebuild.sh first."
+        exit 1
+    }
+fi
 
 ################################################################################
 # Dev-only reachability prerequisites (ops#93 findings, reproduced for ssd).
 ################################################################################
 
 apply_dev_prereqs() {
+    # STRUCTURAL GUARD (ops#146). Everything in this function weakens something
+    # that is load-bearing off dev — most of all `curlsecurityblockedhosts=''`,
+    # which disables Moodle's SSRF protection for every server-side fetch the
+    # site makes, not just the OIDC ones. It exists solely to work around ddev's
+    # container networking. It must never run against a real host, so it refuses
+    # here as well as at its call site: two independent checks, because a future
+    # edit that moves the call is exactly how this leaks.
+    [[ "$TIER" == "dev" ]] || {
+        print_error "INTERNAL REFUSAL: apply_dev_prereqs called on tier '$TIER'."
+        print_error "These are ddev-only shims; applying them off dev would disable Moodle's"
+        print_error "cURL SSRF blocklist on a real host. Refusing."
+        return 1
+    }
     local changed="false"
 
     # (a) container→container HTTPS: alias the provider hostname onto
@@ -171,8 +244,20 @@ EOF
 ################################################################################
 
 STAGED="ssd_oidc_wire_tmp.php"
+# Where the apply script is written before it runs. On dev that is the Moodle
+# root (inside the docroot, as it has always been — a ddev-local tree). On live
+# it is written to a local temp file and then piped into MOODLEDATA, which is
+# OUTSIDE the docroot and therefore not web-servable: a PHP file that wires
+# authentication must never be fetchable, even for the seconds it exists.
+STAGED_LOCAL=""
 write_apply_script() {
-    cat > "$MOODLE_ROOT/$STAGED" <<'PHPEOF'
+    if [[ "$TIER" == "live" ]]; then
+        STAGED_LOCAL="$(mktemp -t ssd-oidc-wire.XXXXXX.php)"
+        chmod 600 "$STAGED_LOCAL"
+    else
+        STAGED_LOCAL="$MOODLE_ROOT/$STAGED"
+    fi
+    cat > "$STAGED_LOCAL" <<'PHPEOF'
 <?php
 // GENERATED by scripts/demo/ssd-oidc-wire.sh (ops#133 Phase 2). IDEMPOTENT.
 // Codifies the consumer half of the demo pairing, mirroring the live-proven
@@ -344,10 +429,17 @@ MAPS="$(demo_pair_get "$CONTRACT" '.oidc.user_field_mappings | to_entries | map(
 }
 
 if [[ "$CHECK" != "true" ]]; then
-    apply_dev_prereqs || exit 1
+    # DEV ONLY — see the tier gate at the top. The ddev reachability shims are
+    # never applied to a live host; a live provider is reached over public DNS
+    # and TLS, so Moodle's cURL blocklist stays exactly as shipped.
+    if [[ "$TIER" == "dev" ]]; then
+        apply_dev_prereqs || exit 1
+    else
+        print_info "Live tier: ddev reachability shims NOT applied (Moodle's cURL SSRF blocklist stays armed)."
+    fi
     [[ -s "$SECRET_FILE" ]] || {
         print_error "REFUSED: no client secret at $SECRET_FILE"
-        print_hint  "Run scripts/demo/nwd-issuer-provision.sh first."
+        print_hint  "Run scripts/demo/nwd-issuer-provision.sh --tier=$TIER first."
         exit 1
     }
 fi
@@ -356,31 +448,64 @@ write_apply_script
 
 # Stage the secret into moodledata (outside the docroot, 0600). PHP unlinks it
 # on read; this trap covers the failure paths.
-DATAROOT_REL="sites/${SITE}_moodledata"
-if command -v yq >/dev/null 2>&1 && [[ -f "${PROJECT_ROOT}/sites/${SITE}/.nwp.yml" ]]; then
-    v="$(yq e '.moodle.dataroot_host // ""' "${PROJECT_ROOT}/sites/${SITE}/.nwp.yml" 2>/dev/null)"
-    [[ -n "$v" && "$v" != "null" ]] && DATAROOT_REL="$v"
-fi
-DATAROOT_HOST="${PROJECT_ROOT}/${DATAROOT_REL}"
-SECRET_STAGE_HOST="${DATAROOT_HOST}/.oidc-client-secret.stage"
-SECRET_STAGE_CONTAINER="/var/www/moodledata/.oidc-client-secret.stage"
-cleanup() { rm -f "$MOODLE_ROOT/$STAGED" "$SECRET_STAGE_HOST"; }
-trap cleanup EXIT
-
-if [[ "$CHECK" != "true" ]]; then
-    [[ -d "$DATAROOT_HOST" ]] || {
-        print_error "REFUSED: moodledata host dir not found at $DATAROOT_HOST — cannot stage the secret outside the docroot."
-        exit 1
+if [[ "$TIER" == "live" ]]; then
+    SECRET_STAGE_TARGET="${DATAROOT_REMOTE%/}/.oidc-client-secret.stage"
+    STAGED_TARGET="${DATAROOT_REMOTE%/}/${STAGED}"
+    cleanup() {
+        rm -f "$STAGED_LOCAL"
+        rexec "sudo rm -f $(printf '%q' "$STAGED_TARGET") $(printf '%q' "$SECRET_STAGE_TARGET")" >/dev/null 2>&1 || true
     }
-    ( umask 077; cp "$SECRET_FILE" "$SECRET_STAGE_HOST" )
+    trap cleanup EXIT
+
+    # Ship the apply script itself (never web-servable: moodledata, 0600, www-data).
+    # shellcheck disable=SC2086
+    ssh $RSSH_OPTS -o BatchMode=yes -o ConnectTimeout=20 "$SSH_TARGET" \
+        "umask 077 && sudo -u www-data tee $(printf '%q' "$STAGED_TARGET") >/dev/null && sudo chmod 600 $(printf '%q' "$STAGED_TARGET")" \
+        < "$STAGED_LOCAL" || { print_error "could not stage the apply script on live"; exit 1; }
+
+    if [[ "$CHECK" != "true" ]]; then
+        # shellcheck disable=SC2086
+        ssh $RSSH_OPTS -o BatchMode=yes -o ConnectTimeout=20 "$SSH_TARGET" \
+            "umask 077 && sudo -u www-data tee $(printf '%q' "$SECRET_STAGE_TARGET") >/dev/null && sudo chmod 600 $(printf '%q' "$SECRET_STAGE_TARGET")" \
+            < "$SECRET_FILE" || { print_error "could not stage the client secret on live"; exit 1; }
+    fi
+else
+    DATAROOT_REL="sites/${SITE}_moodledata"
+    if command -v yq >/dev/null 2>&1 && [[ -f "${PROJECT_ROOT}/sites/${SITE}/.nwp.yml" ]]; then
+        v="$(yq e '.moodle.dataroot_host // ""' "${PROJECT_ROOT}/sites/${SITE}/.nwp.yml" 2>/dev/null)"
+        [[ -n "$v" && "$v" != "null" ]] && DATAROOT_REL="$v"
+    fi
+    DATAROOT_HOST="${PROJECT_ROOT}/${DATAROOT_REL}"
+    SECRET_STAGE_HOST="${DATAROOT_HOST}/.oidc-client-secret.stage"
+    SECRET_STAGE_TARGET="/var/www/moodledata/.oidc-client-secret.stage"
+    STAGED_TARGET="$STAGED"
+    cleanup() { rm -f "$MOODLE_ROOT/$STAGED" "$SECRET_STAGE_HOST"; }
+    trap cleanup EXIT
+
+    if [[ "$CHECK" != "true" ]]; then
+        [[ -d "$DATAROOT_HOST" ]] || {
+            print_error "REFUSED: moodledata host dir not found at $DATAROOT_HOST — cannot stage the secret outside the docroot."
+            exit 1
+        }
+        ( umask 077; cp "$SECRET_FILE" "$SECRET_STAGE_HOST" )
+    fi
 fi
 
 args=""
 [[ "$CHECK" == "true" ]] && args="--check"
 
+RUN_CMD="$(printf 'env OIDC_ISSUER_NAME=%q OIDC_ISSUER_URL=%q OIDC_CLIENT_ID=%q OIDC_CLIENT_SECRET_FILE=%q OIDC_FIELD_MAPS=%q %s -d max_input_vars=5000 %s %s' \
+        "$ISSUER_NAME" "$ISSUER" "$CLIENT_ID" "$SECRET_STAGE_TARGET" "$MAPS" "$CLI_PHP" "$STAGED_TARGET" "$args")"
+
 set +e
-( cd "$MOODLE_ROOT" && ddev exec "$(printf 'env OIDC_ISSUER_NAME=%q OIDC_ISSUER_URL=%q OIDC_CLIENT_ID=%q OIDC_CLIENT_SECRET_FILE=%q OIDC_FIELD_MAPS=%q %s -d max_input_vars=5000 %s %s' \
-        "$ISSUER_NAME" "$ISSUER" "$CLIENT_ID" "$SECRET_STAGE_CONTAINER" "$MAPS" "$CLI_PHP" "$STAGED" "$args")" )
+if [[ "$TIER" == "live" ]]; then
+    # cwd = the Moodle root so the staged script's getcwd() probe finds
+    # config.php + lib/, exactly as it does under ddev. -d max_input_vars=5000
+    # is mandatory on this box (php.ini ships 1000, below Moodle's floor).
+    rexec "cd $(printf '%q' "$MOODLE_ROOT") && sudo -u www-data $RUN_CMD"
+else
+    ( cd "$MOODLE_ROOT" && ddev exec "$RUN_CMD" )
+fi
 rc=$?
 set -e
 

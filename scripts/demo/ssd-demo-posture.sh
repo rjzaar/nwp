@@ -37,11 +37,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ops#146: live is now implemented (the demo tier HAS a live consumer). The
+# posture is banner text + noindex + a report-a-problem link — it carries no
+# dev-only relaxation, so there is nothing here that must not follow to live.
 case "$TIER" in dev|stg|live) ;; *) print_error "REFUSED: tier '$TIER'"; exit 1 ;; esac
-[[ "$TIER" == "live" ]] && { print_error "REFUSED: --tier=live — apply the live posture through the guarded deploy path."; exit 1; }
 
-MOODLE_ROOT="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
-[[ -f "$MOODLE_ROOT/version.php" ]] || { print_error "REFUSED: $MOODLE_ROOT is not a Moodle root"; exit 1; }
+if [[ "$TIER" != "live" ]]; then
+    MOODLE_ROOT="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
+    [[ -f "$MOODLE_ROOT/version.php" ]] || { print_error "REFUSED: $MOODLE_ROOT is not a Moodle root"; exit 1; }
+fi
 
 CONTRACT="$(demo_pair_contract_for "$SITE")" || {
     print_error "REFUSED: no pair contract naming '$SITE' under $PROJECT_ROOT/pairs/"
@@ -54,10 +58,7 @@ PROVIDER_URL="$(demo_pair_issuer "$CONTRACT" "$TIER")" || {
 FEEDBACK_PATH="$(demo_pair_get "$CONTRACT" '.demo.feedback_path' '/demo/feedback')"
 FEEDBACK_URL="${PROVIDER_URL%/}${FEEDBACK_PATH}"
 
-CLI_PHP="${CLI_PHP:-php8.3}"
-STAGED="ssd_demo_posture_tmp.php"
-cp "$SCRIPT_DIR/ssd-demo-posture.php" "$MOODLE_ROOT/$STAGED"
-trap 'rm -f "$MOODLE_ROOT/$STAGED"' EXIT
+CLI_PHP="${CLI_PHP:-$(demo_pair_get "$CONTRACT" '.oidc.cli_php_version' '8.3')}"
 
 args=""
 [[ "$CHECK" == "true" ]] && args="--check"
@@ -67,8 +68,8 @@ args=""
 # secret ever goes on a container command line (see ssd-oidc-wire.sh for the
 # secret-bearing case, which uses a 0600 file outside the docroot instead).
 set +e
-( cd "$MOODLE_ROOT" && ddev exec "$(printf 'env DEMO_PROVIDER_URL=%q DEMO_FEEDBACK_URL=%q %s %s %s' \
-        "$PROVIDER_URL" "$FEEDBACK_URL" "$CLI_PHP" "$STAGED" "$args")" )
+demo_moodle_php_run "$SITE" "$TIER" "$SCRIPT_DIR/ssd-demo-posture.php" "$CLI_PHP" \
+    "DEMO_PROVIDER_URL=$PROVIDER_URL" "DEMO_FEEDBACK_URL=$FEEDBACK_URL" -- $args
 rc=$?
 set -e
 

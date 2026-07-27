@@ -125,16 +125,128 @@ demo_pair_role() {
 
 # demo_pair_issuer <contract> <tier> — the provider base URL for the tier.
 # Fail-closed: no issuer ⇒ return 1 (callers must refuse, never guess).
+#
+# `pairs/*.pair-contract.yml` is COMMITTED and the repo is publicly dedicated, so
+# every live endpoint in it is deliberately redacted to the placeholder domain
+# `<example-prod-domain>` (same convention in the ssc contract). A placeholder is
+# not an issuer: resolving it would send a tester's browser to a domain we do not
+# control. So when the contract carries the placeholder we resolve the real host
+# from the PROVIDER's gitignored site config (`sites/<provider>/.nwp.yml →
+# live.domain`) — the one place the fleet's real domains legitimately live — and
+# fail closed if that is absent too.
 demo_pair_issuer() {
-    local contract="$1" tier="$2" v
+    local contract="$1" tier="$2" v prov dom yml
     v="$(demo_pair_get "$contract" ".endpoints.${tier}.issuer")"
     [[ -n "$v" ]] || return 1
+    if [[ "$v" == *"<example-prod-domain>"* ]]; then
+        prov="$(demo_pair_provider "$contract")"
+        yml="${PROJECT_ROOT:-$HOME/nwp}/sites/${prov}/.nwp.yml"
+        [[ -f "$yml" ]] && command -v yq >/dev/null 2>&1 || return 1
+        dom="$(yq e '.live.domain // ""' "$yml" 2>/dev/null)"
+        [[ -n "$dom" && "$dom" != "null" ]] || return 1
+        v="https://${dom}"
+    fi
     printf '%s\n' "${v%/}"
+}
+
+# demo_pair_consumer_redirect <contract> <tier> — the consumer's OAuth callback
+# for the tier. The contract records ONE redirect (the dev one) because the live
+# host is redacted for the same reason the live issuer is; for any other tier we
+# keep the contract's PATH (the part that is a protocol fact) and re-base it on
+# the consumer's own wwwroot for that tier. Fail-closed: no wwwroot ⇒ return 1,
+# because guessing a redirect URI is how you hand an auth code to the wrong host.
+demo_pair_consumer_redirect() {
+    local contract="$1" tier="$2" base path cons yml www
+    base="$(demo_pair_get "$contract" '.oidc.provider_prereqs.consumer_redirect')"
+    [[ -n "$base" ]] || return 1
+    if [[ "$tier" == "dev" ]]; then printf '%s\n' "$base"; return 0; fi
+    # strip scheme://host, keep the path
+    local rest="${base#*://}"
+    [[ "$rest" == */* ]] || return 1     # no path at all ⇒ refuse, never guess
+    path="/${rest#*/}"
+    cons="$(demo_pair_consumer "$contract")"
+    yml="${PROJECT_ROOT:-$HOME/nwp}/sites/${cons}/.nwp.yml"
+    [[ -f "$yml" ]] && command -v yq >/dev/null 2>&1 || return 1
+    www="$(yq e ".moodle.tiers.${tier}.wwwroot // \"\"" "$yml" 2>/dev/null)"
+    [[ -n "$www" && "$www" != "null" ]] || return 1
+    printf '%s\n' "${www%/}${path}"
 }
 
 # Feature switches (default OFF — a contract must say yes).
 demo_pair_golden_enabled() { [[ "$(demo_pair_get "$1" '.demo.paired_golden' 'false')" == "true" ]]; }
 demo_pair_reset_enabled()  { [[ "$(demo_pair_get "$1" '.demo.paired_reset'  'false')" == "true" ]]; }
+
+################################################################################
+# Staged-PHP transport (ops#146)
+#
+# The three consumer-side demo scripts (oidc-wire, demo-posture, seed-courses)
+# all do the same thing: stage a PHP file next to a Moodle install and run it
+# with the CLI php. Only the transport differs by tier, so it lives here once
+# instead of three times.
+#
+#   dev : copy into the Moodle root, run via `ddev exec`  (unchanged behaviour)
+#   live: pipe into MOODLEDATA — which is OUTSIDE the docroot and therefore not
+#         web-servable — 0600, owned by www-data, run with cwd = the Moodle root
+#         so the script's own getcwd() config.php probe still works, and always
+#         with -d max_input_vars=5000 (the box ships 1000, below Moodle's floor;
+#         omitting it fails the env check AFTER maintenance mode is on).
+#
+# Deliberately carries NO secret path: a value that must not appear on a command
+# line is staged as its own 0600 file by the caller (see ssd-oidc-wire.sh).
+#
+# demo_moodle_php_run <site> <tier> <local_php> <cli_php> <env_kv...> -- <args...>
+################################################################################
+demo_moodle_php_run() {
+    local site="$1" tier="$2" local_php="$3" cli_php="$4"; shift 4
+    local envs=() args=() seen_sep="false" a
+    for a in "$@"; do
+        if [[ "$a" == "--" && "$seen_sep" == "false" ]]; then seen_sep="true"; continue; fi
+        if [[ "$seen_sep" == "true" ]]; then args+=("$a"); else envs+=("$a"); fi
+    done
+    [[ "$cli_php" == php* ]] || cli_php="php${cli_php}"
+
+    local envstr="" q
+    for a in "${envs[@]}"; do envstr+=" $(printf '%q' "$a")"; done
+    local argstr=""
+    for a in "${args[@]:-}"; do [[ -n "$a" ]] && argstr+=" $(printf '%q' "$a")"; done
+
+    if [[ "$tier" == "live" ]]; then
+        local root ip user opts staged
+        root="$(get_site_config_value "$site" '.live.remote_path' "/var/www/${site}")"
+        local sname; sname="$(get_site_config_value "$site" '.live.server' '')"
+        ip=""; [[ -n "$sname" ]] && ip="$(get_server_ip "$sname" 2>/dev/null || true)"
+        [[ -n "$ip" ]] || ip="$(get_site_config_value "$site" '.live.server_ip' '')"
+        [[ -n "$ip" ]] || { _dp_err "no live server for '$site'"; return 1; }
+        user="$(get_ssh_user "$site" 2>/dev/null || echo gitlab)"
+        opts="$(nwp_ssh_opts "$site" 2>/dev/null || true)"
+        local tgt="${user}@${ip}"
+        local dataroot
+        # shellcheck disable=SC2086
+        dataroot="$(ssh $opts -o BatchMode=yes -o ConnectTimeout=20 "$tgt" \
+            "sudo sed -n \"s/.*\\\$CFG->dataroot[[:space:]]*=[[:space:]]*'\\([^']*\\)'.*/\\1/p\" $(printf '%q' "$root/config.php")" | head -1 | tr -d '\r')"
+        [[ -n "$dataroot" ]] || { _dp_err "could not read \$CFG->dataroot from $site live config.php"; return 1; }
+        staged="${dataroot%/}/.nwp-demo-staged-$$.php"
+        # shellcheck disable=SC2086
+        ssh $opts -o BatchMode=yes -o ConnectTimeout=20 "$tgt" \
+            "umask 077 && sudo -u www-data tee $(printf '%q' "$staged") >/dev/null && sudo chmod 600 $(printf '%q' "$staged")" \
+            < "$local_php" || { _dp_err "could not stage $(basename "$local_php") on $site live"; return 1; }
+        local rc=0
+        # shellcheck disable=SC2086
+        ssh $opts -o BatchMode=yes -o ConnectTimeout=60 "$tgt" \
+            "cd $(printf '%q' "$root") && sudo -u www-data env${envstr} ${cli_php} -d max_input_vars=5000 $(printf '%q' "$staged")${argstr}" || rc=$?
+        # shellcheck disable=SC2086
+        ssh $opts -o BatchMode=yes -o ConnectTimeout=20 "$tgt" "sudo rm -f $(printf '%q' "$staged")" >/dev/null 2>&1 || true
+        return $rc
+    fi
+
+    local mroot; mroot="$(resolve_project "$site" "$tier")" || return 1
+    local staged="$mroot/.nwp-demo-staged-$$.php"
+    cp "$local_php" "$staged" || return 1
+    local rc=0
+    ( cd "$mroot" && ddev exec "env${envstr} ${cli_php} -d max_input_vars=5000 $(basename "$staged")${argstr}" ) || rc=$?
+    rm -f "$staged"
+    return $rc
+}
 
 ################################################################################
 # Site kind — the two halves are different stacks and need different verbs.

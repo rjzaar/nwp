@@ -412,7 +412,24 @@ RB
     if [ "$db_only" != "true" ]; then
         cat <<RB
 # --- plugin code tar (scoped to the deployed plugin dirs; NEVER moodledata) ---
-${sudo_prefix} tar czf "\$OUT/${code_file}" -C "${root%/}" ${plugins}
+# FIRST-INSTALL (ops#146): a plugin being deployed for the first time does not
+# exist on the remote yet, and GNU tar exits 2 on a missing member. Under
+# 'set -e' that aborted the whole snapshot, which the deploy verb correctly
+# read as "no rollback point" and refused — making it structurally impossible to
+# install any NEW plugin on a live Moodle. Filter to the dirs that actually
+# exist: there is nothing to roll back for a plugin that is not there yet, and
+# rolling that plugin back is 'rm -rf' of a directory this deploy created.
+# If NONE of them exist we still write a valid (empty) tar rather than skipping,
+# so the rollback record always points at a real artifact.
+PRESENT=""
+for p in ${plugins}; do
+  if [ -d "${root%/}/\$p" ]; then PRESENT="\$PRESENT \$p"; else echo "  (new plugin, nothing to snapshot: \$p)"; fi
+done
+if [ -n "\$PRESENT" ]; then
+  ${sudo_prefix} tar czf "\$OUT/${code_file}" -C "${root%/}" \$PRESENT
+else
+  ${sudo_prefix} tar czf "\$OUT/${code_file}" -C "${root%/}" --files-from=/dev/null
+fi
 ${sudo_prefix} chown "\$(id -un):\$(id -gn)" "\$OUT/${code_file}" 2>/dev/null || true
 echo "Code snapshot: \$OUT/${code_file}"
 RB
@@ -487,7 +504,15 @@ moodle_remote_rollback_execute() {
 
     local sudo_prefix=""; [ "$user" = "gitlab" ] && sudo_prefix="sudo"
     local ssh_target="${user}@${host}"
-    local php_bin="php"
+    # ops#146: this was hardcoded to bare `php`. On the forge box bare `php` is
+    # 8.4, which Moodle 4.4 REJECTS — so maintenance --enable would fail and
+    # abort the rollback. A rollback path that only works when you don't need it
+    # is not a rollback path. Resolve the same way the deploy path does, and
+    # assert, so a bad resolution fails loudly here rather than mid-recovery.
+    local php_bin php_opts
+    php_bin="$(moodle_cli_php_bin "${root%/}/config.php")"
+    php_opts="$(moodle_cli_php_opts "${root%/}/config.php")"
+    moodle_cli_assert "$php_bin" "$php_opts" || return 1
 
     print_header "Moodle rollback: ${site}@${env} (snapshot ${ts})" 2>/dev/null || echo "== Moodle rollback: ${site}@${env} (snapshot ${ts}) =="
     _md_info "  DB dump:      ${dbs:-（none）}"
@@ -542,7 +567,7 @@ RB
     fi
 
     _md_info "Purging caches…"
-    ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "$(_md_trim "${sudo_prefix} -u www-data ${php_bin} ${root%/}/admin/cli/purge_caches.php")" \
+    ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "$(_md_trim "${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${root%/}/admin/cli/purge_caches.php")" \
         || _md_warn "purge_caches failed (non-fatal)."
 
     moodle_maintenance "$ssh_target" "$ssh_opts" "$sudo_prefix" "$php_bin" "$root" disable true \

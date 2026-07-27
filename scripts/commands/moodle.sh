@@ -66,7 +66,7 @@ ${BOLD}THE TWO PIECES OF BOX KNOWLEDGE (item 9) — now resolved, never typed:${
     'pl moodle' therefore resolves php8.2/8.3 + '-d max_input_vars=5000' and
     ASSERTS both are present before running. Running upgrade.php without them
     fails the env check AFTER maintenance mode is on and leaves the site DOWN
-    (the `ss` Moodle instance, ~6 min, 2026-07-26).
+    (the \`ss\` Moodle instance, ~6 min, 2026-07-26).
     Recovery is always one verb: pl moodle maintenance <site> --tier=live off --execute
 
 ${BOLD}PLUGIN SOURCE (ops#137):${NC}

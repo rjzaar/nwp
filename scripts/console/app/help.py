@@ -110,8 +110,9 @@ SECTIONS: tuple = (
                "number, it never breaks the tab."),
             _l("The ⟳ button re-fetches the pane you are on with the cache bypassed. "
                "Without it, pane data is served from a short-lived cache.",
-               "A link or a push notification ending in `?tab=<pane>` opens straight on "
-               "that pane — that is how tapping an alert lands you where it happened.",
+               "A link or a push notification ending in “?tab=” plus a pane name opens "
+               "straight on that pane — that is how tapping an alert lands you where it "
+               "happened.",
                "Otherwise the console reopens on the last pane you used, remembered "
                "per-device in the browser."),
         ),
@@ -216,7 +217,7 @@ SECTIONS: tuple = (
                "which host produced it and how long ago. Read it. It is the difference "
                "between a number and a claim."),
             _d(
-                ("“fleet state from <host>, N min ago”", "Normal. A published "
+                ("“fleet state from … , N min ago”", "Normal. A published "
                  "snapshot, fresh, filtered to your project if you are in one."),
                 ("“⚠ STALE …” (red)", "The snapshot exists but is older than the "
                  "maximum age, and nothing has published since. It is NOT current. The fleet "
@@ -422,6 +423,22 @@ def get_section(section_id) -> dict | None:
     return _BY_ID.get(section_id)
 
 
+def _walkable(section: dict) -> dict:
+    """One section, with its block sequence as a LIST rather than a tuple.
+
+    This is not cosmetic. `scope.scrub()` recurses into dicts and lists and
+    stops at a tuple — a tuple is returned untouched, contents unexamined. The
+    content above is authored as tuples (they are constants), so a help context
+    handed over verbatim would be one the scrubber cannot see inside, and the
+    "scrub found nothing to drop" test would pass because nothing was LOOKED
+    at. Handing over lists means the zero is a measurement.
+
+    tests/test_help.py plants a foreign `site` key and asserts the scrubber
+    catches it, so this conversion cannot be quietly removed.
+    """
+    return dict(section, blocks=list(section["blocks"]))
+
+
 def page_context(section_id=None) -> dict | None:
     """The render context for /help (whole page) or /help/<id> (one section).
 
@@ -430,16 +447,17 @@ def page_context(section_id=None) -> dict | None:
     The shape is flat and static on purpose: no `prov` key (nothing was
     gathered, so there is no provenance and nothing can be stale), no `res`,
     no row carrying a `site`. `scope.scrub()` and `scope.redact()` are both
-    no-ops over it, and that is asserted rather than assumed.
+    no-ops over it — asserted, and with a positive control proving the
+    scrubber can see the context it is finding nothing in.
     """
     if section_id is None:
-        sections = list(SECTIONS)
+        sections = [_walkable(s) for s in SECTIONS]
         current = ""
     else:
         one = get_section(section_id)
         if one is None:
             return None
-        sections = [one]
+        sections = [_walkable(one)]
         current = one["id"]
     return {
         "help": {

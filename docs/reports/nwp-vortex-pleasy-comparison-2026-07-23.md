@@ -83,7 +83,7 @@ The strongest signal: scripts written explicitly to *retire* ad-hoc idioms, nami
 | Git-box nginx vhosts (ba, rosaryforge, dir, ss) | 0 hits for these in `servers/ scripts/ lib/` | Box rebuild loses all vhosts | Version under `servers/nwpcode/nginx/`, apply via `pl server-apply` |
 | certbot renew deploy-hook for GitLab-bundled nginx | flagged *missing* in memory; no hook file in repo | **Silent cert-expiry outage** on every git-box vhost | 3-line hook, installed by setup script |
 | `UPDATE {course} SET format='tabbed'` + other hand SQL | 17 `UPDATE mdl_` transcript hits; 0 in repo | Fleet Moodle settings unreproducible | `pl moodle` config verb |
-| mons-log poll/close curl one-liners | `memory/mons-log-channel.md` says itself "consider `pl mons`" | Ops queue unreadable without memory file | `pl mons poll` / `pl mons close` |
+| mons-log poll/close curl one-liners | `memory/mons-log-channel.md` says itself "consider a *pl mons* verb" | Ops queue unreadable without memory file | a *pl mons* verb with poll/close subcommands (proposed — does not exist yet) |
 | `nwp-daily-audit` script | lives only at `met:~/bin/` | met loss = audits vanish silently (state-change-only posting means silence looks normal) | Move into `scripts/`, deploy via `pl schedule` |
 | Remote crontab installation (box 01:30, stick 03:15, audit 02:30) | 419 `crontab` transcript hits; only agent-loop has a versioned entry | Scripts survive a rebuild; their *scheduling* doesn't | `pl server-apply` owns remote crontabs |
 | Non-NWP sites on the box (ba, rosaryforge, mayo) | memory only; outside `nwp.yml` | No backup/deploy/TLS story | Register in nwp.yml or declare out-of-fleet |

@@ -966,6 +966,29 @@ def test_index_shouts_when_the_published_library_is_stale(tmp_path):
     assert "STALE" in html
 
 
+def test_a_stale_library_shouts_on_the_DOC_page_too_not_just_the_index(tmp_path):
+    """Staleness has to reach the page where the reader is actually reading.
+
+    An index that shouts and a document that does not is worse than neither:
+    the reader arrives at the document from a link, spends their time in the
+    body, and nothing on that screen says the text is a month old. doc_context()
+    returns `prov` for exactly this reason — rendering it only on the index
+    leaves the warning plumbed and unused.
+    """
+    d = _publish(tmp_path)
+    stale_now = datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc)
+    ctx = lib.doc_context(d, _scope(), "overview.readme", max_age=60, now=stale_now)
+    assert ctx["prov"]["stale"] is True
+    assert "STALE" in _render_page(ctx)
+
+    # NEGATIVE CONTROL: a fresh library must NOT shout, or the assertion above
+    # would be satisfied by a page that cried wolf unconditionally.
+    fresh = lib.doc_context(d, _scope(), "overview.readme", max_age=14 * 24 * 3600,
+                            now=datetime(2026, 7, 27, 9, 5, tzinfo=timezone.utc))
+    assert fresh["prov"]["stale"] is False
+    assert "STALE" not in _render_page(fresh)
+
+
 def test_index_calls_out_a_bundle_built_from_a_dirty_tree(tmp_path):
     """A bundle built from uncommitted work corresponds to no commit anyone can
     fetch, so 'which version of the docs is public' stops being answerable."""

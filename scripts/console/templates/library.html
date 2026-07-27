@@ -27,6 +27,11 @@
 <p class="libback">
   <a href="/library{% if variant == 'public' %}?view=public{% endif %}">← Library{% if variant == 'public' %} (public release){% endif %}</a>
 </p>
+{# Staleness belongs on the page the reader is actually READING, not only on the
+   index they passed through. Arriving from a link and spending five minutes in
+   a month-old body with nothing on screen to say so is the failure this warning
+   exists to prevent. Same include, same idiom, both branches. #}
+{% include "_provenance.html" %}
 {% include "_library_doc.html" %}
 
 {% else %}

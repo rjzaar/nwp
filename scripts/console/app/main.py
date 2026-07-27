@@ -37,8 +37,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import (advisories, config, fleet_state, notify, parsers, quokka,
-               scope as scope_mod, voice, webauthn_flow)
+from . import (advisories, config, fleet_state, help, library, notify, parsers,
+               quokka, scope as scope_mod, visuals, voice, webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -49,7 +49,7 @@ from .store import AuditLog, ProjectStore, StoreError, UserStore
 # Tab order = the whole UI: one full-screen pane at a time.
 PANES = [
     ("fleet", "Fleet"), ("issues", "Issues"), ("todo", "Todo"), ("demo", "Demo"),
-    ("backups", "Backups"), ("ci", "CI"), ("quokka", "Quokka"),
+    ("backups", "Backups"), ("ci", "CI"), ("quokka", "Quokka"), ("visuals", "Visuals"),
 ]
 
 # The ONLY routes allowed to carry no scope dependency: unauthenticated
@@ -788,6 +788,79 @@ def pane_ci(request: Request, sc: Scope = Depends(scoped("viewer"))):
     n = parsers.ci_running_count(blocks)
     return _pane(request, "pane_ci.html", {"blocks": blocks, "api_ok": api_ok}, sc,
                  tab="ci", tab_count=(f"({n}▶)" if n else ""))
+
+
+@app.get("/panes/visuals", response_class=HTMLResponse)
+def pane_visuals(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
+    rag, _res, prov = _gather_rag(sc, force=bool(force))
+    todo = _gather_todo(sc, force=bool(force))[0]
+    # Both of these are best-effort for the same reason pane_fleet treats the
+    # security feed that way: this pane's job is the at-a-glance read, and one
+    # unavailable feed must degrade to one honest "no data" card rather than
+    # taking the whole tab down.
+    sec = {"ok": False, "error": "security data unavailable on this host"}
+    try:
+        sec = _gather_security(sc, force=bool(force))[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        blocks, api_ok = _gather_ci(sc)
+    except Exception:  # noqa: BLE001
+        blocks, api_ok = [], False
+    ctx = visuals.page_context(rag, todo, sec, blocks, api_ok, prov)
+    return _pane(request, "pane_visuals.html", ctx, sc,
+                 tab="visuals", tab_count="", tab_alert=bool(prov.get("stale")))
+
+
+# ---------------------------------------------------------------------------
+# Library (read-only) — the published docs corpus, reached from the header.
+# NOT a pane: the tab bar is full at 8, so these render full pages instead.
+# ---------------------------------------------------------------------------
+@app.get("/library", response_class=HTMLResponse)
+def library_page(request: Request, view: str = "full", q: str = "",
+                 sc: Scope = Depends(scoped("viewer"))):
+    ctx = library.page_context(config.DATA_DIR, sc, variant=view, q=q[:200],
+                               max_age=config.LIBRARY_MAX_AGE)
+    return _pane(request, "library.html", ctx, sc)
+
+
+@app.get("/library/list", response_class=HTMLResponse)
+def library_list(request: Request, view: str = "full", q: str = "",
+                 sc: Scope = Depends(scoped("viewer"))):
+    ctx = library.page_context(config.DATA_DIR, sc, variant=view, q=q[:200],
+                               max_age=config.LIBRARY_MAX_AGE)
+    return _pane(request, "_library_list.html", ctx, sc)
+
+
+@app.get("/library/doc/{doc_id}", response_class=HTMLResponse)
+def library_doc(request: Request, doc_id: str, view: str = "full",
+                sc: Scope = Depends(scoped("viewer"))):
+    ctx = library.doc_context(config.DATA_DIR, sc, doc_id, variant=view,
+                              max_age=config.LIBRARY_MAX_AGE)
+    # 404 deliberately does NOT distinguish "no such doc" from "not yours" —
+    # a 404 that told them apart would be an existence oracle for private docs.
+    if ctx is None:
+        raise HTTPException(status_code=404)
+    return _pane(request, "library.html", ctx, sc)
+
+
+# ---------------------------------------------------------------------------
+# Help (read-only, static) — reached from the header `?`. Deliberately NOT
+# named pane_*: these are not tab panes, and that namespace would imply a tab.
+# ---------------------------------------------------------------------------
+@app.get("/help", response_class=HTMLResponse)
+def help_page(request: Request, sc: Scope = Depends(scoped("viewer"))):
+    return _pane(request, "help.html", help.page_context(), sc)
+
+
+@app.get("/help/{section_id}", response_class=HTMLResponse)
+def help_section(request: Request, section_id: str, sc: Scope = Depends(scoped("viewer"))):
+    ctx = help.page_context(section_id)
+    # An unknown topic 404s rather than rendering an empty body: an empty
+    # render is indistinguishable from a topic someone forgot to write.
+    if ctx is None:
+        raise HTTPException(status_code=404)
+    return _pane(request, "help.html", ctx, sc)
 
 
 # ---------------------------------------------------------------------------

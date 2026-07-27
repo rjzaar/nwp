@@ -386,14 +386,15 @@ SECTIONS: tuple = (
     {
         "id": "library",
         "title": "Library",
-        "summary": "The published docs corpus — a separate section, not yet wired here.",
+        "summary": "The published docs corpus — reached from the Library link in the header.",
         "blocks": (
             _t("The Library is the published documentation corpus, browsable inside the "
                "console at /library, with the same project boundary applied to which "
                "documents you may read."),
-            _n("It is delivered as its own stage. If the header has no Library link on this "
-               "install, it is not wired here yet — that is the only thing the link's absence "
-               "means."),
+            _n("It is in the header, next to this page's ? link — not in the tab bar, which "
+               "is full at eight panes. If the Library says nothing has been published on "
+               "this host, that is a publishing step nobody has run yet, not an empty "
+               "corpus: the two are shown differently on purpose."),
         ),
     },
     {

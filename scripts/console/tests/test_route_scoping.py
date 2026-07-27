@@ -149,6 +149,54 @@ def test_no_route_reads_demo_or_ci_config_directly(fn, method):
     )
 
 
+def _route_paths(fn):
+    """Every literal path string in this function's @app.<verb>("...") decorators."""
+    out = []
+    for dec in fn.decorator_list:
+        if not isinstance(dec, ast.Call):
+            continue
+        f = dec.func
+        if not (isinstance(f, ast.Attribute) and f.attr in ROUTE_DECORATORS
+                and isinstance(f.value, ast.Name) and f.value.id == "app"):
+            continue
+        if dec.args and isinstance(dec.args[0], ast.Constant) and isinstance(dec.args[0].value, str):
+            out.append(dec.args[0].value)
+    return out
+
+
+PANE_PATH_ROUTES = [(fn, m) for fn, m in ROUTES
+                    if any(p.startswith("/panes/") for p in _route_paths(fn))]
+
+
+def test_pane_path_routes_were_actually_found():
+    """The naming test below is parametrized over a computed list, so an empty
+    list would make it vacuous — the exact failure shape this module exists to
+    prevent. Pin that the walker still sees the real panes."""
+    assert len(PANE_PATH_ROUTES) >= 7, (
+        f"only found {len(PANE_PATH_ROUTES)} /panes/ routes — the path walker is broken"
+    )
+
+
+@pytest.mark.parametrize("fn,method", PANE_PATH_ROUTES,
+                         ids=[f.name for f, _ in PANE_PATH_ROUTES])
+def test_every_panes_path_has_a_pane_named_handler(fn, method):
+    """Close the doc-only naming rule.
+
+    `test_every_pane_route_renders_through_pane` selects its subjects by
+    FUNCTION NAME (`pane_*`), so a handler serving `/panes/x` that is named
+    anything else silently drops out of the scrub+redact check: the pane keeps
+    working and stops being covered, which is worse than either. Each stage's
+    wiring contract states the rule in prose (see
+    docs/reports/console-v2/visuals-wiring.md §1, "The handler MUST be named
+    `pane_visuals`"); this asserts it mechanically, from the URL side, so the
+    next pane cannot be wired out of coverage by choosing a name.
+    """
+    assert fn.name.startswith("pane_"), (
+        f"route {fn.name!r} serves {_route_paths(fn)!r} but is not named 'pane_*', so "
+        f"test_every_pane_route_renders_through_pane does not cover it — rename it"
+    )
+
+
 PANE_ROUTES = [(fn, m) for fn, m in ROUTES if fn.name.startswith("pane_")]
 
 

@@ -151,11 +151,67 @@ def assert_no_foreign(text, where):
 # read panes
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("path", ["/panes/fleet", "/panes/todo", "/panes/backups",
-                                  "/panes/demo", "/tabs/counts", "/"])
+                                  "/panes/demo", "/panes/visuals", "/tabs/counts", "/"])
 def test_read_surfaces_carry_no_foreign_site(dana, path):
     r = dana.get(path)
     assert r.status_code == 200, r.text[:300]
     assert_no_foreign(r.text, path)
+
+
+def test_the_visuals_pane_actually_charts_dana_own_sites(dana):
+    """The positive control for the line above.
+
+    `/panes/visuals` passing the no-foreign-site check would be worthless if
+    the pane rendered nothing at all — an empty pane leaks nothing and proves
+    nothing. This asserts the pane really did draw dana's fleet, so the
+    leakage assertion is measuring a populated page.
+    """
+    r = dana.get("/panes/visuals")
+    assert r.status_code == 200, r.text[:300]
+    assert "<svg" in r.text, "visuals pane drew no chart at all — leakage check would be vacuous"
+    assert any(s in r.text for s in MINE), "visuals pane shows none of dana's own sites"
+
+
+# ---------------------------------------------------------------------------
+# help — a REACHABILITY property, not a leakage one.
+#
+# Help names no site, by construction (the content carries no markup and no
+# site token), so "no foreign site appeared" would pass on a blank page. What
+# is worth pinning here is that the real app serves it to a scoped member with
+# SCOPE_STRICT on — i.e. that _pane()'s scrub did not drop a row and 500 — and
+# that an unknown topic 404s instead of rendering an empty body.
+# Requested by docs/reports/console-v2/help-wiring.md ("Known gap").
+# ---------------------------------------------------------------------------
+def _help_section_ids():
+    from app import help as help_mod
+
+    return [s["id"] for s in help_mod.SECTIONS]
+
+
+def test_help_is_reachable_by_a_scoped_member(dana):
+    r = dana.get("/help")
+    assert r.status_code == 200, r.text[:300]
+    assert_no_foreign(r.text, "/help")
+
+
+@pytest.mark.parametrize("sid", _help_section_ids())
+def test_every_help_section_is_reachable_by_a_scoped_member(dana, sid):
+    r = dana.get(f"/help/{sid}")
+    assert r.status_code == 200, r.text[:300]
+
+
+@pytest.mark.parametrize("sid", ["nope", "does-not-exist", "roles2"])
+def test_an_unknown_help_topic_404s_for_a_scoped_member(dana, sid):
+    r = dana.get(f"/help/{sid}")
+    assert r.status_code == 404, (
+        f"/help/{sid} returned {r.status_code}, not 404 — an unknown topic rendering "
+        f"as a 200 is indistinguishable from a topic nobody wrote"
+    )
+
+
+def test_the_help_section_ids_were_actually_found():
+    """The parametrize above is computed; an empty list would make it vacuous."""
+    assert len(_help_section_ids()) >= 10, "help section walker found almost nothing"
 
 
 def _scope_of(mod, name):

@@ -75,6 +75,11 @@ PANE_CACHE_TTL = int(_env("NWP_CONSOLE_CACHE_TTL", "60"))
 # Enrolment tokens (one-time) expire after this many hours.
 ENROL_TOKEN_HOURS = int(_env("NWP_CONSOLE_ENROL_HOURS", "48"))
 
+# How old a published docs library may be before the page shouts. Deliberately
+# NOT the fleet max-age: docs change on a commit, days apart, where a RAG grade
+# goes stale in minutes. Same idiom (_provenance.html), different number.
+LIBRARY_MAX_AGE = int(_env("NWP_CONSOLE_LIBRARY_MAX_AGE", str(14 * 24 * 3600)))
+
 # Quokka — the local-LLM chat tab. Talks ONLY to the loopback ollama on the
 # console host itself (AI tier); read-only context injection, zero action path.
 QUOKKA_URL = _env("NWP_CONSOLE_QUOKKA_URL", "http://127.0.0.1:11434")

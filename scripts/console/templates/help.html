@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Help — NWP Console{% endblock %}
+{% block content %}
+{#
+  The whole of /help and /help/<id>. Content lives in app/help.py; this file is
+  layout only.
+
+  Styles are in a <style> block here rather than in static/style.css because
+  several workstreams are editing that file at once and this avoids a conflict
+  for the integrator. Every selector is `.help*`-prefixed and the block is
+  self-contained, so folding it into style.css later is a copy-paste.
+#}
+<style>
+  .helphead { margin: .2rem 0 .8rem; }
+  .helptoc { margin: 0 0 1.4rem; padding: .6rem .8rem; border-left: 3px solid #2b3a4d; }
+  .helptoc ol { margin: .3rem 0 0; padding-left: 1.2rem; }
+  .helptoc li { margin: .18rem 0; }
+  .helpsec { margin: 0 0 1.8rem; }
+  .helpsec-h { margin: 0 0 .15rem; font-size: 1.05rem; }
+  .helpsec-h a { text-decoration: none; }
+  .helpsec-sum { margin: 0 0 .6rem; font-size: .88rem; }
+  .helptext { margin: .5rem 0; line-height: 1.5; }
+  .helplist { margin: .5rem 0; padding-left: 1.15rem; line-height: 1.5; }
+  .helplist li { margin: .25rem 0; }
+  .helpdefs th { text-align: left; vertical-align: top; white-space: normal;
+                 padding-right: .7rem; font-weight: 600; }
+  .helpdefs td { vertical-align: top; line-height: 1.45; }
+  .helpnote { margin: .6rem 0; padding: .5rem .7rem; border-left: 3px solid #b8860b;
+              background: rgba(184, 134, 11, .08); line-height: 1.5; }
+  .helpback { display: inline-block; margin-bottom: .8rem; }
+</style>
+
+<h1 class="helphead">Help</h1>
+
+{% if help.single %}
+<a class="helpback" href="/help">← all help topics</a>
+{% else %}
+<p class="muted">How this console works, what each pane is telling you, and what it
+  deliberately cannot do. Tap a heading to link to just that topic.</p>
+<nav class="helptoc" aria-label="Help topics">
+  <strong>Topics</strong>
+  <ol>
+    {% for t in help.index %}
+    <li><a href="#help-{{ t.id }}">{{ t.title }}</a> — <span class="muted">{{ t.summary }}</span></li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}
+
+{% for s in help.sections %}
+  {% include "_help_section.html" %}
+{% endfor %}
+
+<p class="muted footnote">This help describes the console only. For the commands behind it,
+  see <code>pl &lt;verb&gt; --help</code> on the workstation.</p>
+{% endblock %}

@@ -63,10 +63,47 @@ _dg_sk_keys() {
 # _dg_require_enforced — is fail-closed-when-unconfigured demanded? True if the
 # env var says so OR a marker file exists (files survive sudo env_reset / cron
 # env stripping — the env-only version was silently bypassable, ops#79).
+# _dg_marker_verdict <path> — three-way, because "[ -e ]" cannot tell "absent"
+# from "I am not allowed to look". If the parent directory is not SEARCHABLE
+# (0700 root:root is the shipped posture for /etc/nwp) then `[ -e ]` is false
+# whether or not the marker exists, and a guard built on it silently reports
+# "not required" — the exact fail-open this file's own comment was written to
+# prevent when the env-only form proved bypassable (ops#79).
+#
+# Deliberately tests SEARCH (-x), not read (-r): a 0711 drop-box directory can
+# be traversed but not listed, and answering "cannot-verify" there would be a
+# false alarm. An alarm that always rings gets ignored, which is the same
+# failure one level up.
+#
+# Echoes present|absent|cannot-verify; returns 0|1|2 to match.
+_dg_marker_verdict() {
+    local marker="$1" parent
+    parent="$(dirname -- "$marker")"
+
+    [ -e "$marker" ] && { echo present; return 0; }
+
+    # Not visible. Absent, or unlookable?
+    [ -d "$parent" ] || { echo absent; return 1; }   # no parent at all: genuinely absent
+    [ -x "$parent" ] && { echo absent; return 1; }   # searchable and not there: genuinely absent
+    echo cannot-verify; return 2
+}
+
+# _dg_require_enforced — is fail-closed-when-unconfigured demanded?
+#   0 = yes   1 = no   2 = CANNOT VERIFY (a marker location exists but is
+#                          unreadable; callers must treat this as "yes", never
+#                          as "no" — see deploy_gate_require).
 _dg_require_enforced() {
     [ "${NWP_DEPLOY_GATE_REQUIRE:-false}" = "true" ] && return 0
-    [ -e /etc/nwp/deploy-gate-require ] && return 0
-    [ -e "${PROJECT_ROOT:-$HOME/nwp}/keys/deploy-gate.require" ] && return 0
+
+    local blind=false v
+    for marker in /etc/nwp/deploy-gate-require \
+                  "${PROJECT_ROOT:-$HOME/nwp}/keys/deploy-gate.require"; do
+        v="$(_dg_marker_verdict "$marker")"
+        [ "$v" = "present" ] && return 0
+        [ "$v" = "cannot-verify" ] && blind=true
+    done
+
+    $blind && return 2
     return 1
 }
 

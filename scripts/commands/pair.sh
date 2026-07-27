@@ -46,8 +46,19 @@ ${BOLD}SUBCOMMANDS:${NC}
                                       provider|consumer. Monotonic: set bumps the
                                       newest identity cut for the both-or-forward
                                       restore gate.
-    restore-check <site> <tier> <target-anchor> [--override-pair]
-                                      Dry-run pair_guard_restore's decision (ops#83)
+    checkpoint <pair-id> <tier> <CP-id> --provider-anchor=N --consumer-anchor=M
+    checkpoint <pair-id> <tier> --list
+                                      Record (or list) a PAIRED CHECKPOINT — one
+                                      logical cut both halves can be restored to.
+                                      This is the "both" branch of both-or-forward;
+                                      --paired-restore-ack names one, and the guard
+                                      resolves the name against this record rather
+                                      than trusting the assertion.
+    restore-check <site> <tier> [<target-anchor>] [--code-only]
+                                      [--paired-restore-ack=CP-id] [--override-pair]
+                                      Dry-run pair_guard_restore's decision (ops#83).
+                                      target-anchor is OPTIONAL — omit it to rehearse
+                                      the "cut unknown" refusal.
     reconcile <consumer> [--tier=T] [--apply] [--repair-cmd=CMD] [--json]
                                       Detect (and deterministically repair) severed
                                       UID-locks after a provider restore/rebuild —
@@ -173,13 +184,72 @@ cmd_anchor() {
     print_status "OK" "Set anchor ${consumer} ${side}@${tier} = ${value}"
 }
 
+# ops#83: record a PAIRED CHECKPOINT — a joint cut both halves can be restored
+# to. This is the "both" branch of both-or-forward; --paired-restore-ack names
+# one of these, and the guard resolves the name against the record.
+cmd_checkpoint() {
+    local pair_id="" tier="" cp_id="" pa="" ca="" a
+    for a in "$@"; do
+        case "$a" in
+            --provider-anchor=*) pa="${a#*=}" ;;
+            --consumer-anchor=*) ca="${a#*=}" ;;
+            --list)              cp_id="--list" ;;
+            -*) print_error "pair checkpoint: unknown option '$a'"; return 2 ;;
+            *)  if   [ -z "$pair_id" ]; then pair_id="$a"
+                elif [ -z "$tier" ];    then tier="$a"
+                elif [ -z "$cp_id" ];   then cp_id="$a"
+                else print_error "pair checkpoint: unexpected argument '$a'"; return 2; fi ;;
+        esac
+    done
+    [ -n "$pair_id" ] && [ -n "$tier" ] || {
+        print_error "usage: pl pair checkpoint <pair-id> <tier> <CP-id> --provider-anchor=N --consumer-anchor=M"
+        print_info  "       pl pair checkpoint <pair-id> <tier> --list"
+        return 2; }
+
+    if [ "$cp_id" = "--list" ] || [ -z "$cp_id" ]; then
+        local f; f="$(pair_checkpoint_file "$pair_id" "$tier")"
+        print_header "Paired checkpoints: ${pair_id} @ ${tier}"
+        if [ ! -s "$f" ]; then
+            print_info "None recorded ($f)."
+            print_info "Without one, a coupled-tier restore has only the FORWARD branch or a typed override."
+            return 0
+        fi
+        printf '  %-24s %-10s %-10s %s\n' "CP-ID" "PROVIDER" "CONSUMER" "RECORDED"
+        awk -F'\t' '{printf "  %-24s %-10s %-10s %s\n", $1, ($2==""?"-":$2), ($3==""?"-":$3), $4}' "$f"
+        return 0
+    fi
+
+    [ -n "$pa" ] && [ -n "$ca" ] || {
+        print_error "pair checkpoint: BOTH --provider-anchor and --consumer-anchor are required."
+        print_info  "A checkpoint that names only one half is not a joint cut, and the guard will refuse an ack against it."
+        return 2; }
+    pair_checkpoint_record "$pair_id" "$tier" "$cp_id" "$pa" "$ca" || return 1
+    print_status "OK" "Recorded checkpoint ${cp_id} for ${pair_id}@${tier} (provider=${pa} consumer=${ca})"
+    print_info "Restore EACH half with:  --paired-restore-ack ${cp_id}"
+    print_info "The pair goes RAG red after the first half lands, and stays red until you re-verify the join."
+}
+
 # ops#83: dry-run the both-or-forward restore decision (no restore is performed).
 cmd_restore_check() {
-    local site="${1:?site required}" tier="${2:?tier required}" target_anchor="${3:?target-anchor required}"; shift 3 || true
-    local override=false
-    for a in "$@"; do [ "$a" = "--override-pair" ] && override=true; done
-    print_header "pair_guard_restore dry-run: site=$site tier=$tier target_anchor=$target_anchor override=$override"
-    if pair_guard_restore "$site" "$tier" "restore-check" "$target_anchor" "$override"; then
+    # target-anchor is OPTIONAL. It used to be `${3:?}`, which meant the single
+    # most important case — "I do not know what cut this backup is" — died with a
+    # raw bash error instead of exercising the guard's own refusal. A dry-run verb
+    # that cannot rehearse the fail-closed path is not a dry run.
+    local site="${1:?site required}" tier="${2:?tier required}"; shift 2 || true
+    local target_anchor="" override=false code_only=false ack="" a
+    for a in "$@"; do
+        case "$a" in
+            --override-pair)         override=true ;;
+            --code-only)             code_only=true ;;
+            --paired-restore-ack=*)  ack="${a#*=}" ;;
+            --anchor=*)              target_anchor="${a#*=}" ;;
+            -*) print_error "pair restore-check: unknown option '$a'"; return 2 ;;
+            *)  [ -z "$target_anchor" ] && target_anchor="$a" \
+                    || { print_error "pair restore-check: unexpected argument '$a'"; return 2; } ;;
+        esac
+    done
+    print_header "pair_guard_restore dry-run: site=$site tier=$tier target_anchor=${target_anchor:-<unknown>} code_only=$code_only ack=${ack:-<none>} override=$override"
+    if pair_guard_restore "$site" "$tier" "restore-check" "$target_anchor" "$override" "" "$code_only" "$ack"; then
         print_status "OK" "pair_guard_restore would ALLOW this restore."
     else
         print_status "FAIL" "pair_guard_restore would REFUSE this restore (see above)."
@@ -360,6 +430,7 @@ main() {
         record) cmd_record "$@" ;;
         rag)    cmd_rag "$@" ;;
         anchor) cmd_anchor "$@" ;;
+        checkpoint)    cmd_checkpoint "$@" ;;
         restore-check) cmd_restore_check "$@" ;;
         reconcile)     cmd_reconcile "$@" ;;
         *) print_error "Unknown subcommand: $sub"; show_help; exit 1 ;;

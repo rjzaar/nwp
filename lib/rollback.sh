@@ -426,6 +426,23 @@ rollback_execute() {
             restore_opts="-b"
         fi
 
+        # ops#83: pass the TIER through. Without it restore.sh falls back to its
+        # `TIER=dev` default (scripts/commands/restore.sh), so pair_guard_restore
+        # evaluates an UNCOUPLED tier and no-ops — the gate is called, asks the
+        # wrong question, and answers "fine". A guard defeated by an unset
+        # argument is not a guard. The entry's identity_anchor goes with it, for
+        # the same reason: fail-closed needs the real inputs, not defaults.
+        local _rb_tier="$environment"
+        [ "$_rb_tier" = "stage" ] && _rb_tier="stg"
+        local _rb_anchor
+        _rb_anchor=$(grep -m1 '"identity_anchor"' "${ROLLBACK_DIR}/${sitename}_${environment}.json" 2>/dev/null \
+            | sed 's/.*: *"\{0,1\}\([0-9]*\)"\{0,1\}.*/\1/' || true)
+        [ -z "$_rb_anchor" ] && _rb_anchor="${NWP_RESTORE_ANCHOR:-}"
+        restore_opts="$restore_opts --tier $_rb_tier"
+        [ -n "$_rb_anchor" ] && restore_opts="$restore_opts --anchor $_rb_anchor"
+        [ "${PL_OVERRIDE_PAIR:-false}" = "true" ] && restore_opts="$restore_opts --override-pair"
+        [ -n "${PL_PAIRED_RESTORE_ACK:-}" ] && restore_opts="$restore_opts --paired-restore-ack ${PL_PAIRED_RESTORE_ACK}"
+
         print_info "Restoring from backup..."
         if "${SCRIPT_DIR}/restore.sh" $restore_opts "$sitename" "$backup_path"; then
             print_status "OK" "Rollback completed successfully"

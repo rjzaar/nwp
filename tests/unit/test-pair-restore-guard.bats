@@ -134,10 +134,18 @@ teardown() {
   [[ "$output" == *"UNKNOWN"* ]]
 }
 
-@test "no counterpart anchor yet → nothing to orphan → PASS" {
+# ⚠ THIS TEST USED TO ASSERT `status -eq 0`, and it was pinning the defect.
+# "The counterpart has no recorded anchor" was read as "there is no lock to
+# orphan". But no production code path has ever WRITTEN an anchor, so that was
+# the state of every real pair — the both-or-forward comparison below it never
+# ran outside this file's own fixtures. Absence of evidence is not evidence of
+# an empty identity set; at a coupled tier it is CANNOT VERIFY, and CANNOT
+# VERIFY refuses. See tests/unit/test-pair-restore-checkpoint.bats.
+@test "no counterpart anchor → CANNOT VERIFY → REFUSE (was: PASS)" {
   _prechecks_ok
   run pair_guard_restore prov live restore 5 false
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
 }
 
 # --- override must be loud + typed + ledgered --------------------------------

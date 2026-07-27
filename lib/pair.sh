@@ -947,6 +947,106 @@ pair_join_snapshot_file() {
 }
 
 ################################################################################
+# PAIRED CHECKPOINTS — the "both" half of both-or-forward (ops#83)
+#
+# The invariant has always had two legal branches: restore BOTH halves to one
+# logical cut, or move the provider only FORWARD. Only "forward" was ever
+# expressible in code. "Both" had no representation, so an operator doing the
+# CORRECT thing — restoring nwc and ssc to the same instant — had to reach for
+# the same blanket `--override-pair` as an operator doing the dangerous thing.
+# One signal for two opposite intentions is not an audit trail.
+#
+# A paired checkpoint is a RECORDED joint cut: an id plus the identity anchor
+# each half sits at within it. `--paired-restore-ack CP-<id>` then names it, and
+# the guard CHECKS the name against the record instead of accepting a promise.
+#
+#   private/pairs/<pair>.<tier>.checkpoints.tsv
+#   cp_id <TAB> provider_anchor <TAB> consumer_anchor <TAB> iso_ts <TAB> actor
+#
+# Append-only. Re-recording an id with identical anchors is idempotent;
+# re-recording it with DIFFERENT anchors is ambiguity, and ambiguity refuses —
+# a checkpoint that means two things cannot authorise anything.
+################################################################################
+
+pair_checkpoint_file() {
+    local pair_id="$1" tier="$2"
+    echo "$(pair_state_dir)/${pair_id}.${tier}.checkpoints.tsv"
+}
+
+# 0 if <value> is a well-formed checkpoint id.
+_pair_valid_cp_id() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+}
+
+# 0 if <value> is a non-negative integer OR empty (empty = "this side's anchor
+# is not part of the record", which the ack path then refuses on its own terms).
+_pair_valid_anchor() {
+    case "${1:-}" in
+        '') return 0 ;;
+        *[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# pair_checkpoint_record <pair_id> <tier> <cp_id> <provider_anchor> <consumer_anchor>
+pair_checkpoint_record() {
+    local pair_id="${1:-}" tier="${2:-}" cp_id="${3:-}" pa="${4:-}" ca="${5:-}"
+    [ -n "$pair_id" ] && [ -n "$tier" ] || { _pair_err "pair_checkpoint_record: pair id and tier required"; return 2; }
+    if ! _pair_valid_cp_id "$cp_id"; then
+        _pair_err "pair_checkpoint_record: malformed checkpoint id '${cp_id}' (expected e.g. CP-2026-07-28-live)"
+        return 2
+    fi
+    if ! _pair_valid_anchor "$pa" || ! _pair_valid_anchor "$ca"; then
+        _pair_err "pair_checkpoint_record: anchors must be non-negative integers (got provider='${pa}' consumer='${ca}')"
+        return 2
+    fi
+
+    # Idempotent re-record; a DIFFERENT value under the same id is left to
+    # pair_checkpoint_get to report as ambiguous rather than silently resolved
+    # here — the guard must be able to SEE the contradiction.
+    local dir; dir="$(pair_state_dir)"; mkdir -p "$dir" 2>/dev/null || true
+    local f; f="$(pair_checkpoint_file "$pair_id" "$tier")"
+    if [ -f "$f" ] && awk -F'\t' -v c="$cp_id" -v p="$pa" -v q="$ca" \
+            '$1==c && $2==p && $3==q {found=1} END{exit !found}' "$f" 2>/dev/null; then
+        return 0
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$cp_id" "$pa" "$ca" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pair_actor)" >> "$f" 2>/dev/null || {
+        _pair_err "pair_checkpoint_record: could not write $f"; return 2; }
+    pair_ledger_append "$pair_id" "action=checkpoint-record tier=$tier cp=$cp_id provider=${pa:-none} consumer=${ca:-none}"
+    return 0
+}
+
+# pair_checkpoint_get <pair_id> <tier> <cp_id>
+#   rc 0  resolved  — echoes "<provider_anchor>\t<consumer_anchor>"
+#   rc 1  absent    — echoes nothing
+#   rc 2  AMBIGUOUS or unreadable — echoes a human reason
+# Tri-state on purpose. rc 2 is never collapsed into rc 1: "this checkpoint says
+# two different things" and "there is no such checkpoint" are different facts,
+# and treating the first as the second is precisely how this family of bug is
+# born (see the membership fix, 2026-07-27).
+pair_checkpoint_get() {
+    local pair_id="${1:-}" tier="${2:-}" cp_id="${3:-}"
+    local f; f="$(pair_checkpoint_file "$pair_id" "$tier")"
+    [ -f "$f" ] || return 1
+    if [ ! -r "$f" ]; then
+        printf 'checkpoint file exists but is unreadable: %s\n' "$f"
+        return 2
+    fi
+    local rows n
+    rows="$(awk -F'\t' -v c="$cp_id" '$1==c {print $2"\t"$3}' "$f" 2>/dev/null | sort -u)"
+    [ -n "$rows" ] || return 1
+    n="$(printf '%s\n' "$rows" | grep -c .)"
+    if [ "$n" -ne 1 ]; then
+        printf 'checkpoint %s is ambiguous at %s — %s conflicting anchor pairs recorded in %s\n' \
+            "$cp_id" "$tier" "$n" "$f"
+        return 2
+    fi
+    printf '%s\n' "$rows"
+    return 0
+}
+
+################################################################################
 # pair_reconcile_classify <ledger-file> <snapshot-file>
 #
 # ops#83 §3, mechanised. Reads the provider identity ledger's NEWEST snapshot
@@ -1027,6 +1127,8 @@ pair_guard_restore() {
     local target_anchor="${4:-}"
     local override="${5:-false}"
     local confirm="${6:-${NWP_PAIR_OVERRIDE_CONFIRM:-}}"
+    local code_only="${7:-false}"
+    local paired_ack="${8:-}"
 
     # 1. Membership — tri-state; unreadable ⇒ refuse (see _pair_blind_refuse).
     local role pair_id rest mrc
@@ -1063,6 +1165,17 @@ pair_guard_restore() {
         return 0
     fi
 
+    # 3b. CODE-ONLY. A restore that loads no database cannot renumber an identity
+    #     set, so it cannot orphan a UID-lock — the same reasoning ADR-0031 D5
+    #     uses for code rollback, and the reason D6's escape is `--code-only`.
+    #     It must be POSITIVELY asserted by the caller: the default is false, so
+    #     a caller that says nothing is treated as DB-touching and gated.
+    if [ "$code_only" = "true" ]; then
+        _pair_info "pair_guard_restore: '$site' restore at $target is CODE-ONLY — no DB is loaded, so no identity set moves."
+        pair_ledger_append "$pair_id" "action=restore-code-only cmd=$cmd site=$site role=$role target=$target"
+        return 0
+    fi
+
     # 4. Contract must carry the ops#83 restore block, else we cannot assert the
     #    invariant — fail closed (a pre-ops#83 contract at a coupled tier).
     local inv precheck
@@ -1095,15 +1208,103 @@ pair_guard_restore() {
         return 1
     fi
 
-    # 6. Both-or-forward: the restored member's target anchor must be >= the
-    #    counterpart's current anchor.
     local counter_side counter_anchor
     if [ "$role" = "provider" ]; then counter_side="consumer"; else counter_side="provider"; fi
+
+    # 5b. BOTH — the paired-restore ack. This is the invariant's other legal
+    #     branch, and it is checked against a RECORDED joint checkpoint rather
+    #     than accepted as an assertion. An ack that cannot be resolved REFUSES;
+    #     it never degrades into "no ack was given", which would make naming a
+    #     nonexistent checkpoint safer than naming none.
+    if [ -n "$paired_ack" ]; then
+        local cp_row cp_rc
+        cp_row="$(pair_checkpoint_get "$pair_id" "$target" "$paired_ack")"; cp_rc=$?
+        if [ "$cp_rc" -eq 1 ]; then
+            _pair_err "REFUSED restore: --paired-restore-ack names checkpoint '${paired_ack}', which is NOT RECORDED for pair '${pair_id}' at ${target}."
+            _pair_info "An ack is a reference to a recorded joint cut, not an assertion. Record it on BOTH halves first:"
+            _pair_info "  pl pair checkpoint ${pair_id} ${target} ${paired_ack} --provider-anchor=<N> --consumer-anchor=<M>"
+            pair_ledger_append "$pair_id" "action=restore-ack-DENIED reason=unknown-checkpoint cmd=$cmd site=$site target=$target cp=$paired_ack"
+            return 1
+        fi
+        if [ "$cp_rc" -ne 0 ]; then
+            _pair_err "REFUSED restore: checkpoint '${paired_ack}' is ambiguous or unreadable — ${cp_row}"
+            _pair_info "This is NOT a clean result: the guard could not resolve the cut you named, so it cannot say the two halves agree."
+            pair_ledger_append "$pair_id" "action=restore-ack-DENIED reason=ambiguous cmd=$cmd site=$site target=$target cp=$paired_ack"
+            return 1
+        fi
+
+        local cp_prov cp_cons cp_mine cp_theirs
+        cp_prov="$(printf '%s' "$cp_row" | awk -F'\t' '{print $1}')"
+        cp_cons="$(printf '%s' "$cp_row" | awk -F'\t' '{print $2}')"
+        if [ "$role" = "provider" ]; then cp_mine="$cp_prov"; cp_theirs="$cp_cons";
+        else                              cp_mine="$cp_cons"; cp_theirs="$cp_prov"; fi
+
+        if [ -z "$cp_theirs" ]; then
+            _pair_err "REFUSED restore: checkpoint '${paired_ack}' records no ${counter_side} anchor, so it is not a PAIRED cut."
+            _pair_info "The whole point of the ack is that it names where the OTHER half lands. Re-record it with both anchors."
+            pair_ledger_append "$pair_id" "action=restore-ack-DENIED reason=no-counterpart-anchor cmd=$cmd site=$site target=$target cp=$paired_ack"
+            return 1
+        fi
+        if [ -z "$cp_mine" ]; then
+            _pair_err "REFUSED restore: checkpoint '${paired_ack}' records no ${role} anchor — it cannot describe THIS restore."
+            pair_ledger_append "$pair_id" "action=restore-ack-DENIED reason=no-own-anchor cmd=$cmd site=$site target=$target cp=$paired_ack"
+            return 1
+        fi
+        if [ -n "$target_anchor" ] && [ "$target_anchor" != "$cp_mine" ]; then
+            _pair_err "REFUSED restore: the backup's identity anchor (${target_anchor}) does not match checkpoint '${paired_ack}', which puts ${role} at ${cp_mine}."
+            _pair_info "You are restoring a different cut from the one you acknowledged. Pick the backup that IS ${paired_ack}, or record the checkpoint that matches."
+            pair_ledger_append "$pair_id" "action=restore-ack-DENIED reason=anchor-mismatch cmd=$cmd site=$site target=$target cp=$paired_ack want=$cp_mine got=$target_anchor"
+            return 1
+        fi
+
+        echo "" >&2
+        _pair_note "════════════════════════════════════════════════════════════════"
+        _pair_note "PAIRED RESTORE: '$site' ($role of '$pair_id') → checkpoint ${paired_ack} @ ${target}"
+        _pair_note "  ${role} anchor ${cp_mine}   ${counter_side} anchor ${cp_theirs}"
+        _pair_note "This is the BOTH branch of both-or-forward. The pair is INCONSISTENT"
+        _pair_note "until '${counter_side}' is also restored to ${paired_ack} — do that next,"
+        _pair_note "then re-verify the join: pl pair-smoke ${pair_id} --tier=${target} --join"
+        _pair_note "════════════════════════════════════════════════════════════════"
+        echo "" >&2
+        pair_ledger_append "$pair_id" \
+            "action=restore-paired-ack cmd=$cmd site=$site role=$role target=$target cp=$paired_ack mine=$cp_mine theirs=$cp_theirs"
+        # A half-restored pair must not look promotable. RED until the join probe
+        # says the identity rail survived (pair_guard reads this on promotion).
+        pair_rag_set "$pair_id" "$target" "red" 2>/dev/null || true
+        return 0
+    fi
+
+    # 6. FORWARD — the restored member's target anchor must be >= the
+    #    counterpart's current anchor.
     counter_anchor="$(pair_anchor_get "$pair_id" "$counter_side" "$target")"
 
     if [ -z "$counter_anchor" ]; then
-        # Counterpart has never recorded an anchor ⇒ nothing to strand yet.
-        _pair_info "pair_guard_restore: counterpart '$counter_side' has no recorded identity anchor at $target — no lock to orphan."
+        # ⚠ THIS BRANCH USED TO PASS. It read "no anchor recorded" as "no lock to
+        # orphan" — but nothing in the tree has ever WRITTEN an anchor
+        # (pair_anchor_set has no production caller; only the manual `pl pair
+        # anchor` verb and tests), so on every real pair the counterpart anchor
+        # is empty and the both-or-forward comparison never ran. The gate was
+        # inert exactly where it mattered, and its inertness was invisible
+        # because the two fail-closed pre-checks above refused first — until an
+        # operator followed the DR runbook, captured the ledger and the
+        # join-snapshot, and thereby disarmed the last thing standing between a
+        # single-half restore and every severed UID-lock.
+        #
+        # An unrecorded anchor is not evidence of an empty identity set. It is
+        # the absence of evidence, and at a coupled tier that is CANNOT VERIFY.
+        if [ "$override" != "true" ]; then
+            _pair_err "REFUSED restore: '$site' ($role of pair '$pair_id') at coupled tier $target — the '$counter_side' half has NO recorded identity anchor."
+            _pair_err "CANNOT VERIFY: this is NOT a clean result. The guard cannot say the restore moves the identity set forward, because it does not know where the counterpart stands."
+            _pair_info "Do ONE of these:"
+            _pair_info "  • restore BOTH halves to one cut:  record it, then pass --paired-restore-ack <CP-id>"
+            _pair_info "      pl pair checkpoint ${pair_id} ${target} CP-<id> --provider-anchor=<N> --consumer-anchor=<M>"
+            _pair_info "  • establish where the counterpart is:  pl pair anchor ${pair_id} ${counter_side} ${target} <N>"
+            _pair_info "  • restore code only (no DB) — that cannot move an identity set at all."
+            _pair_info "Override (loud, typed, ledgered): --override-pair."
+            pair_ledger_append "$pair_id" "action=restore-DENIED reason=counterpart-anchor-unknown cmd=$cmd site=$site role=$role target=$target"
+            return 1
+        fi
+        _pair_note "pair_guard_restore: counterpart '$counter_side' has no recorded identity anchor at $target — proceeding only because --override-pair was given."
     else
         if [ -z "$target_anchor" ]; then
             if [ "$override" != "true" ]; then

@@ -59,9 +59,14 @@ set -euo pipefail
 #
 # ── INTERFACE ─────────────────────────────────────────────────────────────────
 #   moodle_scrub_dataroot --dataroot DIR --output DIR
+#   moodle_scrub_dataroot <src_dataroot> <dst_dataroot>      # positional form
 #     --dataroot DIR   Live Moodle moodledata (source, READ-ONLY).  REQUIRED.
 #     --output   DIR   Destination for the scrubbed dev/preview moodledata.
 #                      Must NOT be, contain, or sit inside --dataroot.  REQUIRED.
+#     --verify         READ-ONLY: assert an ALREADY-PRODUCED --output is scrubbed
+#                      (filedir/ empty, no sessions/temp/trash/cache content,
+#                      marker present) and REPORT byte counts. Writes nothing;
+#                      needs no --dataroot. Mirrors moodle.sh's --verify.
 #     -h | --help      Usage.
 #
 # PRECONDITIONS asserted (fail-closed if any is false):
@@ -103,19 +108,193 @@ usage() { sed -n '3,/^###/{/^###/d;p}' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//
 # Canonicalise a path without requiring it to exist (output may be new).
 _canon() { realpath -m -- "$1"; }
 
+# Total bytes of regular files under a dir (0 when absent/empty). Read-only.
+_bytes_under() {
+    [ -d "$1" ] || { echo 0; return 0; }
+    find "$1" -type f -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {print s+0}'
+}
+
+# Count of regular files under a dir (0 when absent). Read-only.
+_files_under() {
+    [ -d "$1" ] || { echo 0; return 0; }
+    find "$1" -type f 2>/dev/null | wc -l | tr -d ' '
+}
+
+# The tree's audited scratch-removal primitive, when it is reachable. Sourced
+# best-effort: this library is also copied to the Moodle prod host standalone.
+_IMPACT_SH="$(dirname -- "${BASH_SOURCE[0]}")/../impact.sh"
+# shellcheck source=/dev/null
+[ -f "$_IMPACT_SH" ] && . "$_IMPACT_SH" 2>/dev/null || true
+
+################################################################################
+# _rm_prior_scrub <dir> — audited removal of a PRIOR SCRUB OUTPUT.
+#
+# WHY NOT `rm -rf` DIRECTLY. This is the only destructive line in a
+# SECURITY-CRITICAL sanitizer that legitimately runs on the Moodle prod host,
+# where the wrong variable would delete live student uploads. A bare `rm -rf`
+# here is indistinguishable — to a reviewer and to the impact-contract scanner —
+# from that catastrophe.
+#
+# WHY NOT lib/impact.sh's impact_rm_scratch ALONE. That primitive proves
+# ownership by LOCATION (the target must sit under a temp root). A scrub
+# --output legitimately lives outside /tmp (a staging area, a backup volume), so
+# location alone cannot decide this. We therefore prove ownership by EVIDENCE:
+#   • the directory must carry OUR scrub marker, with OUR signature line, and
+#   • its filedir/ must be EMPTY.
+# The second is the load-bearing one: a directory holding real user uploads can
+# never be removed by this path even if a marker were planted in it. When the
+# target IS under a temp root we still hand off to impact_rm_scratch, so the
+# common case goes through the tree's audited primitive.
+#
+# Returns 0 when the directory is gone, 1 (with a message on stderr) otherwise.
+################################################################################
+_rm_prior_scrub() {
+    local dir="${1:-}"
+    [ -n "$dir" ] || { log_error "refusing to remove: empty path"; return 1; }
+    case "$dir" in
+        /*) ;;
+        *) log_error "refusing to remove non-absolute path: $dir"; return 1 ;;
+    esac
+    [ -L "$dir" ] && { log_error "refusing to remove a symlink: $dir"; return 1; }
+    [ -d "$dir" ] || return 0   # already gone is success
+
+    local real
+    real="$(cd "$dir" 2>/dev/null && pwd -P)" || {
+        log_error "refusing unresolvable path: $dir"; return 1; }
+    # At least two levels deep: a slip resolving to "/" or "/var" must refuse.
+    case "$real" in
+        */*/*) ;;
+        *) log_error "refusing shallow path '$real' — too close to the root (fail-closed)"; return 1 ;;
+    esac
+    # Evidence of ownership: our marker, with our signature line.
+    if [ ! -f "$real/$SCRUB_MARKER" ]; then
+        log_error "refusing '$real' — no $SCRUB_MARKER (not a prior scrub of ours; fail-closed)"; return 1
+    fi
+    if ! grep -q '^scrubbed-by: lib/sanitizers/moodle-dataroot.sh' "$real/$SCRUB_MARKER" 2>/dev/null; then
+        log_error "refusing '$real' — $SCRUB_MARKER is not ours (fail-closed)"; return 1
+    fi
+    # The load-bearing guard: never delete a tree that holds user content.
+    if [ -d "$real/filedir" ] && [ -n "$(find "$real/filedir" -mindepth 1 -print -quit 2>/dev/null)" ]; then
+        log_error "refusing '$real' — filedir/ is NOT empty (real user content?); fail-closed"; return 1
+    fi
+
+    # Prefer the tree's audited primitive when the target sits under a temp root;
+    # it refuses anything else, so a non-temp target falls through to the
+    # evidence-guarded removal above.
+    if declare -F impact_rm_scratch >/dev/null 2>&1; then
+        if impact_rm_scratch "$real" 2>/dev/null && [ ! -d "$real" ]; then
+            return 0
+        fi
+    fi
+    rm -rf "$real"
+    [ ! -d "$real" ]
+}
+
+################################################################################
+# moodle_verify_dataroot <dir> — READ-ONLY assertion over a PRODUCED output.
+#
+# The counterpart to lib/sanitizers/moodle.sh's `--verify` (which PII-sweeps an
+# existing dump and writes nothing). This sweeps an existing scrubbed dataroot
+# and writes nothing. It exists so a downstream step — or a reviewer, or CI —
+# can re-assert the omission property on an artifact it did not itself produce,
+# without trusting the producing run's own say-so.
+#
+# ASSERTS (all must hold):
+#   - filedir/ exists and holds ZERO files and ZERO bytes.
+#   - none of FORBIDDEN_COPY_DIRS holds any file (sessions/temp/trash/cache/...).
+#   - the scrub marker is present (this really is an omit-and-placeholder copy).
+# REPORTS byte counts for every checked dir, pass or fail, so the operator sees
+# the magnitude of a leak rather than just its existence.
+#
+# Exit: 0 verified clean · 1 verification FAILED · 2 nothing to verify.
+################################################################################
+moodle_verify_dataroot() {
+    local out="${1:-}"
+    [ -n "$out" ] || { log_error "--verify requires --output DIR (the produced dataroot)"; return 2; }
+    [ -d "$out" ] || { log_error "no scrubbed dataroot to verify: $out"; return 2; }
+
+    log "verifying scrubbed dataroot (read-only): $out"
+    local rc=0 n bytes d total=0
+
+    # ── filedir must exist and be EMPTY — the whole point of the scrub ─────────
+    if [ ! -d "$out/filedir" ]; then
+        log_error "verify FAIL: filedir/ is missing — not a scrubbed dataroot (fail-closed)"
+        rc=1
+    else
+        n="$(_files_under "$out/filedir")"
+        bytes="$(_bytes_under "$out/filedir")"
+        total=$((total + bytes))
+        log "  filedir/            files=$n bytes=$bytes"
+        if [ "$n" -ne 0 ] || [ "$bytes" -ne 0 ]; then
+            log_error "verify FAIL: filedir/ holds $n file(s) / $bytes byte(s) — USER UPLOADS PRESENT"
+            rc=1
+        fi
+    fi
+
+    # ── nothing may have been copied into the transient/derived dirs ───────────
+    for d in "${FORBIDDEN_COPY_DIRS[@]}"; do
+        n="$(_files_under "$out/$d")"
+        bytes="$(_bytes_under "$out/$d")"
+        total=$((total + bytes))
+        log "  $(printf '%-18s' "$d/") files=$n bytes=$bytes"
+        if [ "$n" -ne 0 ] || [ "$bytes" -ne 0 ]; then
+            log_error "verify FAIL: '$d/' holds $n file(s) / $bytes byte(s) — content was copied"
+            rc=1
+        fi
+    done
+
+    # ── provenance: this must be a declared omit-and-placeholder copy ──────────
+    if [ ! -f "$out/$SCRUB_MARKER" ]; then
+        log_error "verify FAIL: no $SCRUB_MARKER — provenance unproven (fail-closed)"
+        rc=1
+    fi
+
+    log "  TOTAL bytes in scrubbed/omitted dirs: $total"
+    if [ "$rc" -eq 0 ]; then
+        log "verify: CLEAN — filedir/ empty, no sessions/temp/trash/cache content"
+    else
+        log_error "verify: FAILED — this dataroot is NOT safe to treat as scrubbed"
+    fi
+    return "$rc"
+}
+
 # ── moodle_scrub_dataroot — the sibling step ──────────────────────────────────
 moodle_scrub_dataroot() {
-    local dataroot="" output=""
+    local dataroot="" output="" verify_only=false
+    local -a positional=()
     while [ $# -gt 0 ]; do
         case "$1" in
             --dataroot)   dataroot="$2"; shift 2 ;;
             --dataroot=*) dataroot="${1#*=}"; shift ;;
             --output)     output="$2"; shift 2 ;;
             --output=*)   output="${1#*=}"; shift ;;
+            --verify)     verify_only=true; shift ;;
             -h|--help)    usage; return 0 ;;
-            *) log_error "unknown arg: $1"; return 2 ;;
+            -*) log_error "unknown arg: $1"; return 2 ;;
+            # Positional form named by ops#84: <src_dataroot> <dst_dataroot>.
+            *) positional+=("$1"); shift ;;
         esac
     done
+    # Positional operands fill whichever of the two is still unset, in order.
+    if [ "${#positional[@]}" -gt 0 ]; then
+        if [ "${#positional[@]}" -gt 2 ]; then
+            log_error "too many positional args (expected <src_dataroot> <dst_dataroot>)"; return 2
+        fi
+        # --verify takes a single operand: the produced dst.
+        if [ "$verify_only" = true ] && [ "${#positional[@]}" -eq 1 ]; then
+            [ -n "$output" ] || output="${positional[0]}"
+        else
+            [ -n "$dataroot" ] || dataroot="${positional[0]}"
+            [ "${#positional[@]}" -ge 2 ] && { [ -n "$output" ] || output="${positional[1]}"; }
+        fi
+    fi
+
+    # ── --verify is a read-only sweep of an existing artifact; it writes nothing
+    #    and needs no --dataroot (mirrors lib/sanitizers/moodle.sh --verify). ───
+    if [ "$verify_only" = true ]; then
+        moodle_verify_dataroot "$output"
+        return $?
+    fi
 
     [ -n "$dataroot" ] || { log_error "--dataroot DIR is required"; return 2; }
     [ -n "$output" ]   || { log_error "--output DIR is required"; return 2; }
@@ -162,7 +341,9 @@ moodle_scrub_dataroot() {
     # If overwriting a prior scrub, clear it first so the post-condition is clean.
     if [ -f "$output/$SCRUB_MARKER" ]; then
         log "reusing prior scrub target '$output' — clearing it"
-        rm -rf -- "$output"
+        # Audited removal: proves the target is OUR prior scrub AND that its
+        # filedir/ is empty before anything is deleted. Never a bare rm -rf.
+        _rm_prior_scrub "$oc" || { log_error "could not clear prior scrub target (fail-closed)"; return 1; }
     fi
     log "scrubbing moodledata (omit-and-placeholder): '$rc' → '$output'"
     log "  source is READ-ONLY; no user file bytes are read or copied"
@@ -172,13 +353,30 @@ moodle_scrub_dataroot() {
     for d in "${SCAFFOLD_DIRS[@]}"; do
         mkdir -p -- "$output/$d" || { log_error "cannot scaffold $output/$d"; return 1; }
     done
-    # Preserve the source's warning file convention (empty, no PII) so Moodle and
-    # web crawlers still see the standard moodledata guard.
+    # An NWP provenance note (empty of PII). NOTE: this is OURS, at the dataroot
+    # root — it is NOT Moodle's own `filedir/warning.txt`, which Moodle writes
+    # itself the moment it (re)creates filedir (lib/filestorage/file_system_filedir.php:86-92).
+    # We deliberately do not write into filedir/: the emitted filedir must stay
+    # byte-empty for the post-condition and --verify to mean anything.
     printf '%s\n' \
         'This directory contains Moodle data files.' \
         'It is an NWP SCRUBBED (omit-and-placeholder) dev/preview copy:' \
         'filedir/ is empty and no user-uploaded files were copied from prod.' \
         > "$output/warning.txt"
+
+    # ── the protective .htaccess, exactly as Moodle's own installer writes it ──
+    # Moodle's install_init_dataroot() (lib/installlib.php:140-147) drops a
+    # "deny from all" .htaccess into dataroot, and protect_directory()
+    # (lib/setuplib.php:1715-1725) re-writes it for every dir the
+    # make_*_directory family creates. It is defence-in-depth against a
+    # misconfigured Apache serving dataroot directly. Emitting the scaffold
+    # WITHOUT it would hand the operator a dataroot LESS protected than one
+    # Moodle built itself — so we reproduce it rather than rely on first boot.
+    printf '%s\n' \
+        'deny from all' \
+        'AllowOverride None' \
+        'Note: this file is broken intentionally, we do not want anybody to undo it' \
+        > "$output/.htaccess"
 
     # ── scrub marker (records provenance; also the reuse sentinel) ─────────────
     {

@@ -148,3 +148,22 @@ docs/guides/howto-deploy.md:live-domain-apex:15
 
 
 
+
+# scripts/install-mini-runner.sh — operational installer; it must name the forge it
+# registers against and the host it refuses to run anywhere but. Same treatment as
+# scripts/agent-loop/agent-loop.sh (16 entries). Docs stay scrubbed; operational
+# code that genuinely needs the real host is fingerprinted, never path-allowlisted.
+scripts/install-mini-runner.sh:internal-bare-hostname:10
+scripts/install-mini-runner.sh:internal-bare-hostname:12
+scripts/install-mini-runner.sh:internal-bare-hostname:13
+scripts/install-mini-runner.sh:internal-bare-hostname:18
+scripts/install-mini-runner.sh:internal-bare-hostname:21
+scripts/install-mini-runner.sh:internal-bare-hostname:3
+scripts/install-mini-runner.sh:internal-bare-hostname:39
+scripts/install-mini-runner.sh:internal-bare-hostname:88
+scripts/install-mini-runner.sh:internal-bare-hostname:91
+scripts/install-mini-runner.sh:internal-bare-hostname:92
+scripts/install-mini-runner.sh:internal-bare-hostname:94
+scripts/install-mini-runner.sh:live-internal-domain:186
+scripts/install-mini-runner.sh:live-internal-domain:25
+scripts/install-mini-runner.sh:live-internal-domain:50

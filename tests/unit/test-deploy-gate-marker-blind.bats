@@ -39,8 +39,10 @@
 #   the kernel answers with EACCES on stat(). A directory we own at mode 0000
 #   produces the identical EACCES for a non-root process (Linux applies the owner
 #   class strictly; only root bypasses). So the fixtures below are the real
-#   syscall failure, not a stubbed function that returns false. Where passwordless
-#   sudo is available a genuine 0700 root:root fixture runs too (case 4b).
+#   syscall failure, not a stubbed function that returns false. (A sudo-gated 0700 root:root
+#   twin of case 4 was removed: its conditional skip broke the strict
+#   skip-equality contract — CI pins exactly 1 named skip, the local budget
+#   pins 0 — and the kernel answers both fixtures with the same EACCES.)
 #
 # EVERY SECTION CARRIES A NEGATIVE CONTROL. A correctly configured, readable
 # host must still be permitted, or this is an alarm that always rings.
@@ -99,15 +101,6 @@ teardown() {
   [ "$status" -ne 0 ]
   run _dg_marker_verdict "$TEST_TMP/etc/deploy-gate-require"
   [ "$output" = "cannot-verify" ]
-}
-
-@test "4b THE BUG, real 0700 root:root fixture (skips without passwordless sudo)" {
-  sudo -n true 2>/dev/null || skip "no passwordless sudo; case 4 covers the same EACCES"
-  sudo -n mkdir -p -m 0700 "$TEST_TMP/rootetc"
-  sudo -n touch "$TEST_TMP/rootetc/deploy-gate-require"
-  run _dg_marker_verdict "$TEST_TMP/rootetc/deploy-gate-require"
-  [ "$output" = "cannot-verify" ]
-  sudo -n chmod -R 0755 "$TEST_TMP/rootetc"
 }
 
 @test "5 NEGATIVE CONTROL: 0711 search-only dir answers correctly → present, not blind" {

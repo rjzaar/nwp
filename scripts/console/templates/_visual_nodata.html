@@ -1,0 +1,22 @@
+{#
+  THE explicit empty state. Every visual routes here when it has nothing to
+  draw, because the one thing this pane must never do is render an empty-but-
+  green chart that reads as "all clear".
+
+  Two kinds, and they must not look alike:
+
+    state == "clean"    we asked, and the answer really is zero. Reassuring,
+                        and it says who it asked so the zero is checkable.
+    anything else       we could NOT find out. Warned, with the command that
+                        would fix it. An absence of knowledge is never drawn
+                        as a healthy result.
+
+  `nd` is the visual dict; `nd_what` names the chart for the reader.
+#}
+<div class="vznodata {% if nd.state == 'clean' %}vznodata-clean{% else %}vznodata-missing{% endif %}">
+  <p class="vznodata-head">
+    {%- if nd.state == 'clean' %}✓ {{ nd_what }}{% else %}⚠ {{ nd_what }} — no data{% endif -%}
+  </p>
+  <p class="vznodata-why">{{ nd.reason }}</p>
+  {% if nd.hint %}<p class="vznodata-hint">{{ nd.hint }}</p>{% endif %}
+</div>

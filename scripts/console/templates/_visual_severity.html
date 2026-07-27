@@ -1,0 +1,61 @@
+{#
+  V2 — open advisories by severity. Worst first, value at the TIP (outside the
+  bar, so it is legible whatever the bar's length and can never be clipped).
+
+  The interesting case is the empty one, and it is handled in visuals.py, not
+  here: "0 advisories" is only good news when every site was actually audited.
+  With any site stale/unreadable/missing the pane says UNKNOWN instead — the
+  console must never draw an absence of knowledge as a clean bill of health.
+#}
+<section class="vzcard" aria-labelledby="vz-sev-h">
+  <div class="vzhead">
+    <h3 id="vz-sev-h">Open advisories by severity</h3>
+    {% if vz.stale %}<span class="vzstale">⚠ STALE</span>{% endif %}
+  </div>
+
+  {% if not vz.severity.ok %}
+    {% set nd = vz.severity %}{% set nd_what = 'Advisories' %}
+    {% include "_visual_nodata.html" %}
+  {% else %}
+  <p class="vzsub">
+    {{ vz.severity.total }} advisor{{ 'y' if vz.severity.total == 1 else 'ies' }}
+    on {{ vz.severity.sites_affected }} of {{ vz.severity.sites }} site(s)
+  </p>
+
+  <svg class="vzsvg" viewBox="0 0 {{ vz.chart_w }} {{ vz.severity.height }}"
+       width="100%" height="{{ vz.severity.height }}"
+       role="img" aria-label="Advisories by severity: {% for b in vz.severity.bars %}{{ b.count }} {{ b.severity }}{{ ', ' if not loop.last }}{% endfor %}">
+    <title>Advisories by severity</title>
+    {#- one solid hairline baseline; no gridlines needed with a value on every row -#}
+    <line x1="{{ vz.severity.baseline_x }}" y1="0"
+          x2="{{ vz.severity.baseline_x }}" y2="{{ vz.severity.height }}" class="vzaxis"></line>
+    {% for b in vz.severity.bars %}
+    <g>
+      <title>{{ b.severity }}: {{ b.count }}</title>
+      <text x="0" y="{{ b.label_y }}" class="vzrowlabel">{{ b.label }}</text>
+      <path d="{{ b.path }}" class="vzf-{{ b.role }}"></path>
+      <text x="{{ b.tip_x }}" y="{{ b.label_y }}" class="vztip">{{ b.count }}</text>
+    </g>
+    {% endfor %}
+  </svg>
+
+  {% if vz.severity.sites_unknown %}
+  <p class="vzwarn">⚠ {{ vz.severity.sites_unknown }} site(s) in this view could NOT be
+    audited — the bars above are a floor, not a total.</p>
+  {% endif %}
+  {% if vz.severity.platform_alerts %}
+  <p class="vzwarn">⚠ {{ vz.severity.platform_alerts }} site(s) are behind on platform
+    security releases. Those carry no advisory list, so they are not in the bars above.</p>
+  {% endif %}
+
+  <details class="vztable">
+    <summary>Table view</summary>
+    <table class="tbl">
+      <tr><th>Severity</th><th>Advisories</th></tr>
+      {% for r in vz.severity.table %}
+      <tr><td>{{ r.severity }}</td><td>{{ r.count }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</section>

@@ -1,0 +1,68 @@
+{#
+  V1 — fleet RAG. One part-to-whole bar (how is the fleet) over a tile grid
+  (which site). Both are built from the SAME scope-filtered rows, so they
+  cannot disagree with each other or with the Fleet tab.
+
+  Every tile states its grade in words. That is not redundancy for its own
+  sake: green vs amber measures CVD dE 4.5 on this surface, so for a protan
+  reader the colour alone carries nothing. See app/visuals.py.
+#}
+<section class="vzcard" aria-labelledby="vz-fleet-h">
+  <div class="vzhead">
+    <h3 id="vz-fleet-h">Fleet status</h3>
+    {% if vz.stale %}<span class="vzstale">⚠ STALE</span>{% endif %}
+  </div>
+
+  {% if not vz.fleet.ok %}
+    {% set nd = vz.fleet %}{% set nd_what = 'Fleet status' %}
+    {% include "_visual_nodata.html" %}
+  {% else %}
+  <p class="vzsub">{{ vz.fleet.total }} site{{ '' if vz.fleet.total == 1 else 's' }} in view</p>
+
+  <svg class="vzsvg" viewBox="0 0 {{ vz.chart_w }} {{ vz.fleet.bar_h }}"
+       width="100%" height="{{ vz.fleet.bar_h }}"
+       role="img" aria-label="Fleet grade split: {% for l in vz.fleet.legend %}{{ l.count }} {{ l.label }}{{ ', ' if not loop.last }}{% endfor %}">
+    <title>Fleet grade split</title>
+    {% for s in vz.fleet.segments %}
+    <path d="{{ s.path }}" class="vzf-{{ s.role }}"></path>
+    {% endfor %}
+  </svg>
+  {#- The count labels ride OUTSIDE the bar, in the legend, rather than inside
+      the segments: at 360 units wide a one-site segment is ~20px and a value
+      set inside it would be clipped. The legend is always present anyway. -#}
+  <ul class="vzlegend">
+    {% for l in vz.fleet.legend %}
+    <li><span class="vzsw vzb-{{ l.role }}"></span>{{ l.label }} <b>{{ l.count }}</b></li>
+    {% endfor %}
+  </ul>
+
+  <svg class="vzsvg vztiles" viewBox="0 0 {{ vz.chart_w }} {{ vz.fleet.tiles_h }}"
+       width="100%" height="{{ vz.fleet.tiles_h }}"
+       role="img" aria-label="Per-site grades">
+    <title>Per-site grades</title>
+    {% for t in vz.fleet.tiles %}
+    <g>
+      <title>{{ t.site }} — {{ t.grade }}{% if t.phase %} ({{ t.phase }}){% endif %}</title>
+      <rect x="{{ t.x }}" y="{{ t.y }}" width="{{ t.w }}" height="{{ t.h }}"
+            rx="6" class="vztile"></rect>
+      <path d="{{ t.rule }}" class="vzf-{{ t.role }}"></path>
+      <text x="{{ t.label_x }}" y="{{ t.name_y }}" class="vztile-name">{{ t.label }}</text>
+      <text x="{{ t.label_x }}" y="{{ t.grade_y }}" class="vztile-grade">{{ t.grade }}</text>
+    </g>
+    {% endfor %}
+  </svg>
+  {% if vz.fleet.hidden %}
+  <p class="vzmore">+{{ vz.fleet.hidden }} more site(s) — all {{ vz.fleet.total }} are in the table below.</p>
+  {% endif %}
+
+  <details class="vztable">
+    <summary>Table view — {{ vz.fleet.shown }} site(s)</summary>
+    <table class="tbl">
+      <tr><th>Site</th><th>Grade</th><th>Phase</th></tr>
+      {% for r in vz.fleet.table %}
+      <tr><td><strong>{{ r.site }}</strong></td><td>{{ r.grade }}</td><td class="muted">{{ r.phase }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</section>

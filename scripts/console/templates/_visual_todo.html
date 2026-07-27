@@ -1,0 +1,58 @@
+{#
+  V3 — open todo load per site, stacked high -> medium -> low.
+
+  The stack order is FIXED for every row (never sorted per row by size), so a
+  reader compares the red heads straight down the column instead of re-reading
+  the legend on each line. Rows are ordered by total, worst first.
+#}
+<section class="vzcard" aria-labelledby="vz-todo-h">
+  <div class="vzhead">
+    <h3 id="vz-todo-h">Todo load by site</h3>
+    {% if vz.stale %}<span class="vzstale">⚠ STALE</span>{% endif %}
+  </div>
+
+  {% if not vz.todo.ok %}
+    {% set nd = vz.todo %}{% set nd_what = 'Todo load' %}
+    {% include "_visual_nodata.html" %}
+  {% else %}
+  <p class="vzsub">{{ vz.todo.total }} open item(s) across {{ vz.todo.sites }} site(s)</p>
+
+  <svg class="vzsvg" viewBox="0 0 {{ vz.chart_w }} {{ vz.todo.height }}"
+       width="100%" height="{{ vz.todo.height }}"
+       role="img" aria-label="Open todo items per site, split by priority">
+    <title>Open todo items per site</title>
+    <line x1="{{ vz.todo.baseline_x }}" y1="0"
+          x2="{{ vz.todo.baseline_x }}" y2="{{ vz.todo.height }}" class="vzaxis"></line>
+    {% for r in vz.todo.rows %}
+    <g>
+      <title>{{ r.display }}: {{ r.total }} item(s) — {{ r.high }} high, {{ r.medium }} medium, {{ r.low }} low</title>
+      <text x="0" y="{{ r.label_y }}" class="vzrowlabel">{{ r.label }}</text>
+      {% for s in r.segments %}
+      <path d="{{ s.path }}" class="vzf-{{ s.role }}"></path>
+      {% endfor %}
+      <text x="{{ r.tip_x }}" y="{{ r.label_y }}" class="vztip">{{ r.total }}</text>
+    </g>
+    {% endfor %}
+  </svg>
+
+  <ul class="vzlegend">
+    {% for l in vz.todo.legend %}
+    <li><span class="vzsw vzb-{{ l.role }}"></span>{{ l.label }} <b>{{ l.count }}</b></li>
+    {% endfor %}
+  </ul>
+  {% if vz.todo.hidden %}
+  <p class="vzmore">+{{ vz.todo.hidden }} more site(s) with open items — the Todo tab lists every one.</p>
+  {% endif %}
+
+  <details class="vztable">
+    <summary>Table view — {{ vz.todo.shown }} site(s)</summary>
+    <table class="tbl">
+      <tr><th>Site</th><th>High</th><th>Med</th><th>Low</th><th>Total</th></tr>
+      {% for r in vz.todo.table %}
+      <tr><td><strong>{{ r.display }}</strong></td><td>{{ r.high }}</td>
+          <td>{{ r.medium }}</td><td>{{ r.low }}</td><td><b>{{ r.total }}</b></td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</section>

@@ -1,0 +1,66 @@
+{#
+  V4 — CI head-pipeline state, one strip per project. Each cell is one open
+  merge request.
+
+  The cell's <title> is only `!iid — status`, deliberately: an MR title is free
+  text from GitLab, and this chart is about state. The CI tab already shows
+  titles, so nothing is hidden — this simply adds no new free-text surface.
+#}
+<section class="vzcard" aria-labelledby="vz-ci-h">
+  <div class="vzhead">
+    <h3 id="vz-ci-h">CI pipelines</h3>
+    {#- No STALE ribbon here: unlike the three snapshot-fed charts above, this
+        one is read LIVE from the GitLab API on every request. Stamping it with
+        the snapshot's age would be a lie in the reassuring direction. -#}
+    <span class="vzlive" title="read live from GitLab, not from the fleet snapshot">live</span>
+  </div>
+
+  {% if not vz.ci.ok %}
+    {% set nd = vz.ci %}{% set nd_what = 'CI pipelines' %}
+    {% include "_visual_nodata.html" %}
+  {% else %}
+  <p class="vzsub">
+    {{ vz.ci.total }} open merge request{{ '' if vz.ci.total == 1 else 's' }}
+    {%- if vz.ci.failed %} · <span class="vzfailed">{{ vz.ci.failed }} failing</span>{% endif %}
+  </p>
+
+  {% for s in vz.ci.strips %}
+  <div class="vzstrip">
+    <p class="vzstrip-name">{{ s.project }}
+      <span class="muted">{{ s.count }} MR{{ '' if s.count == 1 else 's' }}</span></p>
+    {% if s.cells %}
+    <svg class="vzsvg" viewBox="0 0 {{ vz.chart_w }} {{ s.height }}"
+         width="100%" height="{{ s.height }}"
+         role="img" aria-label="{{ s.project }} pipeline states: {% for t in s.tally %}{{ t.count }} {{ t.status }}{{ ', ' if not loop.last }}{% endfor %}">
+      <title>{{ s.project }} pipeline states</title>
+      {% for c in s.cells %}
+      <g>
+        <title>!{{ c.iid }} — {{ c.status }}</title>
+        <rect x="{{ c.x }}" y="{{ c.y }}" width="{{ c.size }}" height="{{ c.size }}"
+              rx="4" class="vzf-{{ c.role }}"></rect>
+      </g>
+      {% endfor %}
+    </svg>
+    <ul class="vzlegend">
+      {% for t in s.tally %}
+      <li><span class="vzsw vzb-{{ t.role }}"></span>{{ t.status }} <b>{{ t.count }}</b></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">no open MRs · <a href="{{ s.url }}" target="_blank" rel="noopener">GitLab →</a></p>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <details class="vztable">
+    <summary>Table view</summary>
+    <table class="tbl">
+      <tr><th>Project</th><th>Open MRs</th><th>States</th></tr>
+      {% for r in vz.ci.table %}
+      <tr><td><strong>{{ r.project }}</strong></td><td>{{ r.count }}</td>
+          <td class="muted">{% for t in r.tally %}{{ t.count }} {{ t.status }}{{ ', ' if not loop.last }}{% endfor %}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</section>

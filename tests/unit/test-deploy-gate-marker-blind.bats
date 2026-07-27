@@ -48,6 +48,7 @@
 setup() {
   TEST_TMP=$(mktemp -d)
   LIB="${BATS_TEST_DIRNAME}/../../lib"
+  CMD="${BATS_TEST_DIRNAME}/../../scripts/commands/deploy-gate.sh"
   # Isolate from the real operator's keys: an unset NWP_DEPLOY_SK_KEY globs
   # $HOME/.ssh/id_ed25519_sk*, which would make the gate look "configured".
   export HOME="${TEST_TMP}/home"
@@ -205,4 +206,124 @@ teardown() {
     run _dg_marker_verdict /etc/nwp/deploy-gate-require
     [ "$output" = "absent" ]
   fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# `pl deploy-gate status` — THE DISPLAY MUST NOT CONTRADICT THE ENFORCEMENT
+#
+# The library above now answers three ways, but cmd_status kept its own private
+# pair of `[ -e ]` probes and its own hardcoded copy of the marker paths. So on
+# exactly the host the fix was written for, the operator's diagnostic verb said
+#
+#     [i] REQUIRE not enforced — an unconfigured gate is a no-op (fail-open)
+#     [i] Verdict: gate inactive (test-tier default)
+#
+# while _dg_require_enforced returned 2 and the very next deploy ABORTED. A
+# status verb that disagrees with the code it reports on is worse than no status
+# verb: it is the reassurance an operator acts on. Worse, its remedy line told
+# them to `sudo touch /etc/nwp/deploy-gate-require` — creating a second marker
+# they equally cannot read — instead of naming the unsearchable directory.
+#
+# These cases pin the display to the SAME helper and the SAME path list, so the
+# two cannot drift apart again.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Drive cmd_status against a fixture root. The script recomputes PROJECT_ROOT
+# from its own location when sourced, so we re-point it afterwards — the marker
+# lookup reads it at call time, which is precisely the property being tested.
+dg_status() {
+  bash -c 'source "$1" >/dev/null 2>&1; PROJECT_ROOT="$2"; cmd_status' _ "$CMD" "$PROJECT_ROOT"
+}
+
+@test "16 NEGATIVE CONTROL: readable keys/, no marker → status still says NOT enforced" {
+  # Every dev box, CI job and worktree is here. If this goes red the fix cries wolf.
+  mkdir -p -m 0755 "$PROJECT_ROOT/keys"
+  run dg_status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REQUIRE not enforced"* ]]
+  [[ "$output" != *"CANNOT VERIFY"* ]]
+}
+
+@test "17 NEGATIVE CONTROL: readable marker present → status says enforced, and names it" {
+  mkdir -p -m 0755 "$PROJECT_ROOT/keys"
+  touch "$PROJECT_ROOT/keys/deploy-gate.require"
+  run dg_status
+  [[ "$output" == *"REQUIRE enforced"* ]]
+  [[ "$output" == *"deploy-gate.require"* ]]
+  [[ "$output" != *"CANNOT VERIFY"* ]]
+}
+
+@test "18 THE BUG: unsearchable marker dir → status must NOT report fail-open" {
+  mkdir -p "$PROJECT_ROOT/keys"
+  touch "$PROJECT_ROOT/keys/deploy-gate.require"
+  chmod 000 "$PROJECT_ROOT/keys"
+  run dg_status
+  [[ "$output" != *"REQUIRE not enforced"* ]]
+  [[ "$output" != *"fail-open"* ]]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+}
+
+@test "19 THE BUG: the blind verdict line must warn of the abort, not say 'inactive'" {
+  mkdir -p "$PROJECT_ROOT/keys"
+  touch "$PROJECT_ROOT/keys/deploy-gate.require"
+  chmod 000 "$PROJECT_ROOT/keys"
+  run dg_status
+  [[ "$output" != *"gate inactive"* ]]
+  [[ "$output" == *"ABORT"* ]]
+}
+
+@test "20 the blind status names the unreadable path, and does not advise a second marker" {
+  # "Something is unreadable somewhere" is not actionable; a path is. And telling
+  # the operator to create ANOTHER marker they cannot read is worse than silence.
+  mkdir -p "$PROJECT_ROOT/keys"
+  chmod 000 "$PROJECT_ROOT/keys"
+  run dg_status
+  [[ "$output" == *"$PROJECT_ROOT/keys/deploy-gate.require"* ]]
+  [[ "$output" != *"pin fail-closed with"* ]]
+}
+
+@test "21 NEGATIVE CONTROL: env REQUIRE=true still displays enforced, blind dir or not" {
+  export NWP_DEPLOY_GATE_REQUIRE=true
+  mkdir -p "$PROJECT_ROOT/keys"
+  chmod 000 "$PROJECT_ROOT/keys"
+  run dg_status
+  [[ "$output" == *"REQUIRE enforced"* ]]
+  [[ "$output" == *"NWP_DEPLOY_GATE_REQUIRE"* ]]
+}
+
+@test "22 THE INVARIANT: status and enforcement agree across all three fixtures" {
+  # The property, not a spelling of it: whenever _dg_require_enforced would NOT
+  # return 1 (i.e. the deploy will not silently proceed), the display must not
+  # tell the operator the gate is a no-op.
+  local fixture rc
+  for fixture in absent present blind; do
+    rm -rf "$PROJECT_ROOT/keys"
+    case "$fixture" in
+      absent)  mkdir -p -m 0755 "$PROJECT_ROOT/keys" ;;
+      present) mkdir -p -m 0755 "$PROJECT_ROOT/keys"
+               touch "$PROJECT_ROOT/keys/deploy-gate.require" ;;
+      blind)   mkdir -p "$PROJECT_ROOT/keys"
+               touch "$PROJECT_ROOT/keys/deploy-gate.require"
+               chmod 000 "$PROJECT_ROOT/keys" ;;
+    esac
+    rc=0; _dg_require_enforced || rc=$?
+    out="$(dg_status)"
+    if [ "$rc" -ne 1 ]; then
+      [[ "$out" != *"REQUIRE not enforced"* ]] || { echo "fixture=$fixture rc=$rc said not-enforced"; false; }
+    else
+      [[ "$out" == *"REQUIRE not enforced"* ]] || { echo "fixture=$fixture rc=$rc lost the no-op line"; false; }
+    fi
+    chmod -R u+rwX "$PROJECT_ROOT/keys" 2>/dev/null || true
+  done
+}
+
+@test "23 the status display consults the shared helper, not its own [ -e ] probe" {
+  # Structural backstop for cases 16-22: a private copy of the path list is how
+  # the two sides drifted in the first place.
+  run grep -c '_dg_marker_verdict' "$CMD"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 1 ]
+  # No hardcoded blind probe of either marker location may remain.
+  run grep -nE '\[ -e .*(deploy-gate-require|deploy-gate\.require)' "$CMD"
+  [ "$status" -ne 0 ]
 }

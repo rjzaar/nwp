@@ -81,8 +81,7 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 # c. keypair present + owner www-data (do NOT cat the private key)
 sudo ls -la /var/www/nwc/oauth-keys/
 # d. record the access-token TTL — you wait > this before declaring the old key retired
-cd /var/www/nwc/html && sudo -u www-data php8.2 ../vendor/bin/drush \
-     cget simple_oauth.settings access_token_expiration
+pl drush nwc --tier=live --execute -- cget simple_oauth.settings access_token_expiration
 # e. baseline: a real SSO login into ssc still works (browser, one test user)
 ```
 
@@ -104,11 +103,10 @@ treat a live-with-real-students rotation as a change-window action.
 3. **Generate + install the new keypair** (reuse the codified provider step
    `scripts/f26/nwc-provider-oidc-setup.sh:94-97` rather than hand-typing):
    ```bash
-   cd /var/www/nwc/html
-   sudo -u www-data php8.2 ../vendor/bin/drush simple-oauth:generate-keys /var/www/nwc/oauth-keys
-   sudo -u www-data php8.2 ../vendor/bin/drush cset -y simple_oauth.settings public_key  /var/www/nwc/oauth-keys/public.key
-   sudo -u www-data php8.2 ../vendor/bin/drush cset -y simple_oauth.settings private_key /var/www/nwc/oauth-keys/private.key
-   sudo -u www-data php8.2 ../vendor/bin/drush cr
+   pl drush nwc --tier=live --execute -- simple-oauth:generate-keys /var/www/nwc/oauth-keys
+   pl drush nwc --tier=live --execute -- cset -y simple_oauth.settings public_key  /var/www/nwc/oauth-keys/public.key
+   pl drush nwc --tier=live --execute -- cset -y simple_oauth.settings private_key /var/www/nwc/oauth-keys/private.key
+   pl drush nwc --tier=live --execute -- cr
    ```
    > CLI PHP note: the box default `php` is 8.4; Drupal/Moodle CLI must use **php8.2/8.3**
    > (pair contract `oidc.cli_php_version: "8.2"`).
@@ -191,7 +189,7 @@ evidence. Get positive confirmation from the **consumer** side:
 # On the Moodle (consumer) box — did it fetch since the new key was published?
 sudo tail -n 2000 /var/log/nginx/access.log | grep -c 'jwks'     # provider side: consumer IPs hitting JWKS
 # Moodle caches: confirm the cached JWKS set now contains the NEW kid.
-sudo -u www-data php8.2 admin/cli/cfg.php --name=... # (verifier-specific; see refetch_impl)
+pl moodle cli ssc --tier=live --execute -- admin/cli/cfg.php --name=...  # (verifier-specific; see refetch_impl)
 ```
 
 Because ssc has no verifier today there is no cache to inspect — that inspection command
@@ -207,8 +205,8 @@ soak.
 
 ```bash
 # provider: switch the SIGNING key; keep BOTH published
-sudo -u www-data php8.2 ../vendor/bin/drush cset -y simple_oauth.settings private_key <new>
-sudo -u www-data php8.2 ../vendor/bin/drush cr
+pl drush nwc --tier=live --execute -- cset -y simple_oauth.settings private_key <new>
+pl drush nwc --tier=live --execute -- cr
 curl -sS "$JWKS" | jq '.keys | length'      # STILL 2 — do not drop the old key yet
 ```
 
@@ -260,7 +258,7 @@ un-publishing a key — un-publishing is the one irreversible move in this proce
 ```bash
 sudo rm -rf /var/www/nwc/oauth-keys
 sudo mv /var/www/nwc/oauth-keys.bak.<date> /var/www/nwc/oauth-keys
-cd /var/www/nwc/html && sudo -u www-data php8.2 ../vendor/bin/drush cr
+pl drush nwc --tier=live --execute -- cr
 # re-verify JWKS modulus == the pre-swap value, then a test login.
 ```
 

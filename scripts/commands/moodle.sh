@@ -801,10 +801,14 @@ cmd_backup() {
 ################################################################################
 cmd_rollback() {
     local site="" tier="" action="list" dry="false"
+    local anchor="" override_pair="false" paired_ack=""
     for a in "$@"; do
         case "$a" in
             --tier=*)  tier="${a#*=}" ;;
             --dry-run) dry="true" ;;
+            --anchor=*) anchor="${a#*=}" ;;
+            --override-pair) override_pair="true" ;;
+            --paired-restore-ack=*) paired_ack="${a#*=}" ;;
             list)      action="list" ;;
             execute)   action="execute" ;;
             -*)        print_error "Unknown option: $a"; return 1 ;;
@@ -836,6 +840,35 @@ cmd_rollback() {
         | xargs -I{} grep -l '"type": *"moodle-remote"' {} 2>/dev/null | sort | tail -1 || true)
     [ -z "$entry" ] && { print_error "No moodle-remote rollback point for ${BASE}@live."; return 1; }
     local apply="true"; [ "$dry" = "true" ] && apply="false"
+
+    # ops#83 SIDE DOOR, CLOSED. `moodle_remote_rollback_execute` gunzips a dump
+    # straight into the LIVE Moodle DB (lib/moodle-deploy.sh). There are two
+    # doors onto that one executor: lib/rollback.sh reaches it through
+    # pair_guard_restore + deploy_gate_require, and this verb reached it through
+    # neither. For ssc — the consumer half of the real UID-locked pair, with real
+    # students — this is precisely the operation ops#83 exists to refuse: rolling
+    # the consumer's DB backwards while nwc stays forward orphans every
+    # mdl_user.idnumber lock. Same gates, same order, as the other door.
+    # A dry run writes nothing, so it is exempt (as elsewhere in this tree).
+    if [ "$apply" = "true" ]; then
+        local _mr_tier="${tier:-live}"
+        [ "$_mr_tier" = "stage" ] && _mr_tier="stg"
+        if [ -z "$anchor" ]; then
+            anchor=$(grep -m1 '"identity_anchor"' "$entry" 2>/dev/null \
+                | sed 's/.*: *"\{0,1\}\([0-9]*\)"\{0,1\}.*/\1/' || true)
+        fi
+        [ -z "$anchor" ] && anchor="${NWP_RESTORE_ANCHOR:-}"
+        if command -v pair_guard_restore >/dev/null 2>&1; then
+            # code_only is hard-false: this path loads a database.
+            pair_guard_restore "$BASE" "$_mr_tier" "moodle-rollback" \
+                "$anchor" "$override_pair" "" false "$paired_ack" || return 1
+        fi
+        if command -v deploy_gate_require >/dev/null 2>&1; then
+            deploy_gate_require "$BASE" "$_mr_tier" \
+                "moodle rollback: restore the live Moodle DB + plugin code" || return 1
+        fi
+    fi
+
     NWP_SSH_OPTS="$(nwp_ssh_opts "$BASE")" moodle_remote_rollback_execute "$entry" "$(nwp_ssh_opts "$BASE")" "$apply"
 }
 

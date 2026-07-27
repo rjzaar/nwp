@@ -614,6 +614,7 @@ restore_site() {
     local tier=${7:-dev}
     local anchor=${8:-}
     local override_pair=${9:-false}
+    local paired_ack=${11:-}
     # SKIP_VERIFY is read by verify_backup_artifact; keep it script-scoped (not
     # local) so the verification helpers see it.
     SKIP_VERIFY=${10:-false}
@@ -632,8 +633,9 @@ restore_site() {
     # UID-locks) unless a typed, ledgered --override-pair is given. No-op for
     # unpaired sites and uncoupled tiers (the default dev restore). ⚠ A real
     # live/prod restore remains ver/Solo-gated (per the operator threat model); this is the logic gate.
+    # code_only is hard-false here: every path below loads a DB (full or --db-only).
     if command -v pair_guard_restore >/dev/null 2>&1; then
-        if ! pair_guard_restore "$to_site" "$tier" "restore" "$anchor" "$override_pair"; then
+        if ! pair_guard_restore "$to_site" "$tier" "restore" "$anchor" "$override_pair" "" false "$paired_ack"; then
             print_error "Restore refused by the ops#83 pair restore gate (see above)."
             return 1
         fi
@@ -851,6 +853,13 @@ main() {
     local ANCHOR=""
     local OVERRIDE_PAIR=false
     local SKIP_VERIFY=false
+    local PAIRED_ACK=""
+    # NOTE: `pl restore` deliberately has NO --code-only flag. Every path in this
+    # verb loads a database (a full restore, or --db-only), so the flag could only
+    # ever silence the pair gate without changing what the restore does — a side
+    # door wearing the name of a safety property. code_only is DERIVED from the
+    # operation, never asserted by the operator: it is `true` only where the code
+    # genuinely skips the DB (see lib/restore-remote.sh's files-only path).
 
     # --remote turns this into the inverse of `pl backup <site> --remote`:
     # push a verified local DR artifact back ONTO the live host. Handled by
@@ -877,7 +886,7 @@ main() {
 
     # Parse options
     local OPTIONS=hdbfyos:t:
-    local LONGOPTS=help,debug,db-only,first,yes,open,step:,tier:,anchor:,override-pair,skip-verify
+    local LONGOPTS=help,debug,db-only,first,yes,open,step:,tier:,anchor:,override-pair,skip-verify,paired-restore-ack:,code-only
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -931,6 +940,10 @@ main() {
             --skip-verify)
                 SKIP_VERIFY=true
                 shift
+                ;;
+            --paired-restore-ack)
+                PAIRED_ACK="$2"
+                shift 2
                 ;;
             --)
                 shift

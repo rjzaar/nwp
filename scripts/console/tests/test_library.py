@@ -517,8 +517,15 @@ def _fixture_tree(tmp_path):
     return root
 
 
-def _pl_build(root, out, extra=(), env=None):
+def _pl_build(root, out, extra=(), env=None, gitleaks=None):
     e = dict(os.environ, NWP_LIBRARY_SITES=E2E_VOCAB)
+    # Hand the `gitleaks` fixture's resolved binary to the build. The fixture
+    # searches NWP_GITLEAKS_BIN, GITLEAKS_BIN, PATH and ~/.cache/nwp/, but only
+    # PATH crosses into a subprocess — so without this the fixture can resolve a
+    # cached binary, go green, and leave the build under test scannerless. Set
+    # BEFORE `env` so an explicit override (the no-scanner test) still wins.
+    if gitleaks:
+        e["NWP_GITLEAKS_BIN"] = str(gitleaks)
     e.update(env or {})
     return subprocess.run(
         [str(REPO / "pl"), "library", "build",
@@ -531,7 +538,7 @@ def test_e2e_real_corpus_builds_two_bundles(tmp_path, gitleaks):
     """NEGATIVE CONTROL for every refusal below: the real thing does build."""
     root = _fixture_tree(tmp_path)
     out = tmp_path / "out"
-    r = _pl_build(root, out)
+    r = _pl_build(root, out, gitleaks=gitleaks)
     assert r.returncode == 0, r.stdout + r.stderr
     full = lib.load_bundle(out / "library.json")
     pub = lib.load_bundle(out / "library-public.json")
@@ -554,7 +561,7 @@ def test_e2e_planted_operator_identifier_in_a_public_doc_refuses(tmp_path, gitle
     out = tmp_path / "out"
     target = root / "docs/overview/nwp.md"
     target.write_text(target.read_text() + f"\n\nRun it from {planted} on the box.\n")
-    r = _pl_build(root, out)
+    r = _pl_build(root, out, gitleaks=gitleaks)
     assert r.returncode != 0, f"{label} was published: {r.stdout}"
     assert "not certified clean" in (r.stdout + r.stderr)
     assert not (out / "library.json").exists(), "a refused build must write NOTHING"
@@ -570,7 +577,7 @@ def test_e2e_planted_identifier_in_a_private_doc_still_builds(tmp_path, gitleaks
     out = tmp_path / "out"
     target = root / "docs/guides/howto-dr-chain.md"          # audience: private
     target.write_text(target.read_text() + "\n\nSee /home/" + "rob" + "/nwp for the chain.\n")
-    r = _pl_build(root, out)
+    r = _pl_build(root, out, gitleaks=gitleaks)
     assert r.returncode == 0, r.stdout + r.stderr
     full = lib.load_bundle(out / "library.json")
     pub = lib.load_bundle(out / "library-public.json")
@@ -603,13 +610,39 @@ def test_e2e_no_scanner_means_no_public_tier(tmp_path):
     assert not (out / "library-public.json").exists()
 
 
+def test_e2e_the_resolved_scanner_actually_reaches_the_build(tmp_path, gitleaks):
+    """THE FIXTURE MUST NOT BE DECORATIVE.
+
+    `gitleaks` resolves a binary from four places — two env vars, PATH, and the
+    ~/.cache/nwp/gitleaks-<ver>/ directory the bats suites populate. Only ONE of
+    those four (PATH) is inherited by the `pl library build` subprocess, so for
+    the other three the fixture would go green while the build under test saw no
+    scanner at all, marked every doc 'unknown', and refused. That is exactly what
+    happened on CI pipeline 1221: the pytest report line named a binary resolved
+    from the runner's cache directory, and the build in that very same test
+    printed "no gitleaks binary".
+
+    A resolution the code under test never receives is not a resolution. This
+    test replaces PATH so the ONLY way the build can see a scanner is the
+    fixture's value being handed to it, and it is RED unless `_pl_build` does so.
+    """
+    root = _fixture_tree(tmp_path)
+    out = tmp_path / "out"
+    r = _pl_build(root, out, gitleaks=gitleaks, env={"PATH": "/usr/bin:/bin"})
+    combined = r.stdout + r.stderr
+    assert "no gitleaks binary" not in combined, (
+        "the fixture resolved " + str(gitleaks) + " but the build never got it:\n" + combined)
+    assert r.returncode == 0, combined
+    assert (out / "library-public.json").exists()
+
+
 def test_e2e_a_contributor_doc_that_names_a_site_refuses(tmp_path, gitleaks):
     """Cross-project leakage via docs, end to end (stage-1 gate check L14)."""
     root = _fixture_tree(tmp_path)
     out = tmp_path / "out"
     target = root / "docs/guides/howto-console.md"            # audience: contributor
     target.write_text(target.read_text() + "\n\nTry it against ssc first.\n")
-    r = _pl_build(root, out)
+    r = _pl_build(root, out, gitleaks=gitleaks)
     assert r.returncode != 0, r.stdout
     assert "may name NO site" in (r.stdout + r.stderr)
 
@@ -619,7 +652,7 @@ def test_e2e_a_project_doc_naming_a_foreign_site_refuses(tmp_path, gitleaks):
     out = tmp_path / "out"
     target = root / "docs/guides/howto-invite-codes.md"       # audience: project-ss-nw
     target.write_text(target.read_text() + "\n\nThe same works on dir1.\n")
-    r = _pl_build(root, out)
+    r = _pl_build(root, out, gitleaks=gitleaks)
     assert r.returncode != 0, r.stdout
     assert "dir1" in (r.stdout + r.stderr)
 

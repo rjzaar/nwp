@@ -23,6 +23,10 @@
       {% if user.role == 'owner' %}<a href="/notifications">Alerts</a>{% endif %}
       {% if user.role == 'owner' %}<a href="/projects">Projects</a>{% endif %}
       {% if user.role == 'owner' %}<a href="/users">Users</a>{% endif %}
+      {# Unconditional, so they read after the role-gated links; the logout
+         button stays last so the existing tab order is preserved. #}
+      <a href="/help" title="Help" aria-label="Help">?</a>
+      <a href="/library" title="Library">Library</a>
       <form method="post" action="/logout" class="inline"><button class="ghost">{{ user.name }} ⏻</button></form>
     </nav>
     {% endif %}

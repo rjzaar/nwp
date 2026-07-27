@@ -29,6 +29,16 @@
 #     $PROJECT_ROOT/keys/deploy-gate.require  (per-checkout)
 #   If either file exists, an unconfigured gate fails closed regardless of env.
 #
+#   THE MARKER'S DIRECTORY MUST BE SEARCHABLE BY THE OPERATOR (0755, not 0700).
+#   Resolving a name inside a directory costs SEARCH (+x) on it, and every caller
+#   of deploy_gate_require is unprivileged — `pl` asserts no EUID, and stg2live /
+#   live2prod / stg2prod / moodle / drush / demo / secrets inject / rollback /
+#   restore all run as the operator. Create it as:
+#       sudo mkdir -p -m 0755 /etc/nwp && sudo touch /etc/nwp/deploy-gate-require
+#   The marker is NOT a secret; its presence is the whole signal, so 0755 costs
+#   nothing. If the directory is unsearchable the gate can no longer tell present
+#   from unreadable, and it ABORTS rather than assume the permissive answer.
+#
 # Config (env overrides; sane defaults):
 #   NWP_DEPLOY_ALLOWED_SIGNERS  default: $PROJECT_ROOT/keys/allowed_signers
 #   NWP_DEPLOY_SK_KEY           default: ~/.ssh/id_ed25519_sk
@@ -60,13 +70,58 @@ _dg_sk_keys() {
     done
 }
 
-# _dg_require_enforced — is fail-closed-when-unconfigured demanded? True if the
-# env var says so OR a marker file exists (files survive sudo env_reset / cron
-# env stripping — the env-only version was silently bypassable, ops#79).
+# _dg_marker_verdict <path> — three-way, because "[ -e ]" cannot tell "absent"
+# from "I am not allowed to look". If the parent directory is not SEARCHABLE
+# (0700 root:root is the shipped posture for /etc/nwp) then `[ -e ]` is false
+# whether or not the marker exists, and a guard built on it silently reports
+# "not required" — the exact fail-open this file's own comment was written to
+# prevent when the env-only form proved bypassable (ops#79).
+#
+# Deliberately tests SEARCH (-x), not read (-r): a 0711 drop-box directory can
+# be traversed but not listed, and answering "cannot-verify" there would be a
+# false alarm. An alarm that always rings gets ignored, which is the same
+# failure one level up.
+#
+# Echoes present|absent|cannot-verify; returns 0|1|2 to match.
+_dg_marker_verdict() {
+    local marker="$1" parent
+    parent="$(dirname -- "$marker")"
+
+    [ -e "$marker" ] && { echo present; return 0; }
+
+    # Not visible. Absent, or unlookable?
+    [ -d "$parent" ] || { echo absent; return 1; }   # no parent at all: genuinely absent
+    [ -x "$parent" ] && { echo absent; return 1; }   # searchable and not there: genuinely absent
+    echo cannot-verify; return 2
+}
+
+# _dg_marker_paths — the marker locations, in precedence order. One list, so the
+# enforcement path and `pl deploy-gate status` cannot drift apart and disagree
+# about which files were even consulted.
+_dg_marker_paths() {
+    printf '%s\n' /etc/nwp/deploy-gate-require \
+                  "${PROJECT_ROOT:-$HOME/nwp}/keys/deploy-gate.require"
+}
+
+# _dg_require_enforced — is fail-closed-when-unconfigured demanded?
+#   0 = yes   1 = no   2 = CANNOT VERIFY (a marker location exists but is
+#                          unreadable; callers must treat this as "yes", never
+#                          as "no" — see deploy_gate_require).
+#
+# On rc 2 it sets _DG_REQUIRE_BLIND to the specific path(s) that could not be
+# resolved. "Something is unreadable somewhere" is not actionable; a path is.
 _dg_require_enforced() {
+    _DG_REQUIRE_BLIND=""
     [ "${NWP_DEPLOY_GATE_REQUIRE:-false}" = "true" ] && return 0
-    [ -e /etc/nwp/deploy-gate-require ] && return 0
-    [ -e "${PROJECT_ROOT:-$HOME/nwp}/keys/deploy-gate.require" ] && return 0
+
+    local marker v
+    while IFS= read -r marker; do
+        v="$(_dg_marker_verdict "$marker")"
+        [ "$v" = "present" ] && return 0
+        [ "$v" = "cannot-verify" ] && _DG_REQUIRE_BLIND="${_DG_REQUIRE_BLIND:+$_DG_REQUIRE_BLIND, }$marker"
+    done < <(_dg_marker_paths)
+
+    [ -n "$_DG_REQUIRE_BLIND" ] && return 2
     return 1
 }
 
@@ -99,9 +154,31 @@ deploy_gate_require() {
     _dg_note "╰───────────────────────────────────────────────────────────"
 
     if ! deploy_gate_configured; then
-        if _dg_require_enforced; then
+        local rq=0
+        _dg_require_enforced || rq=$?
+        if [ "$rq" -eq 0 ]; then
             _dg_err "Hardware signature gate REQUIRED but not configured (ADR-0028):"
             _dg_err "  need $(_dg_allowed_signers) and an sk key at ~/.ssh/id_ed25519_sk[_*]. Aborting."
+            return 1
+        fi
+        if [ "$rq" -eq 2 ]; then
+            # Blind, not clear. "No marker" here would be a GUESS, and the guess
+            # is the permissive one — which is precisely the silent bypass the
+            # marker file was introduced to close (ops#79). Refuse instead, and
+            # name the path so the operator can fix it rather than divine it.
+            local blind_dir
+            blind_dir="$(dirname -- "${_DG_REQUIRE_BLIND%%,*}")"
+            _dg_err "CANNOT VERIFY whether the deploy gate is REQUIRED here (ADR-0028):"
+            _dg_err "  marker location: $_DG_REQUIRE_BLIND"
+            _dg_err "  Its directory exists but is not searchable as $(id -un 2>/dev/null || echo "${USER:-this user}"),"
+            _dg_err "  so a marker pinning fail-closed could be sitting in it unseen. That is NOT"
+            _dg_err "  the same as 'no marker', and refusing to guess is the whole point."
+            _dg_err "  The marker is not a secret — its PRESENCE is the entire signal — so its"
+            _dg_err "  directory must be searchable by the unprivileged operator who runs pl:"
+            _dg_err "      sudo chmod 0755 $blind_dir"
+            _dg_err "  Or configure the gate properly (allowed_signers + an sk key), which makes"
+            _dg_err "  the question moot. No env override is offered: one would be strippable by"
+            _dg_err "  the same sudo/cron path the marker file exists to survive. Aborting."
             return 1
         fi
         _dg_note "  (hardware signature gate not configured — proceeding without it;"

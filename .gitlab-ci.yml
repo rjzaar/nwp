@@ -911,6 +911,33 @@ test:console:
   stage: test
   needs: []
   before_script:
+    # The library tests decide whether a PUBLIC docs release is authorised, so
+    # their gitleaks fixture REFUSES rather than skips when it cannot resolve a
+    # scanner, and the classifier under test marks every doc 'unknown' and
+    # refuses the build. Both are correct — but they mean this job needs a real
+    # gitleaks on PATH, the same way lint:leakage does. Same pinned release and
+    # sha256 as lint:leakage above; keep the two in step when bumping.
+    #
+    # Installed into a version-named directory that is prepended on its own,
+    # rather than putting all of /tmp on PATH, so nothing else writable in /tmp
+    # can shadow a binary for the rest of the job.
+    - |
+      if ! command -v gitleaks >/dev/null 2>&1; then
+        ver=8.30.0
+        sha=79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e
+        dir="/tmp/nwp-gitleaks-${ver}"
+        if [ ! -x "${dir}/gitleaks" ]; then
+          echo "Installing gitleaks ${ver} (shell runner has no gitleaks on PATH)..."
+          mkdir -p "$dir"
+          curl -sSfL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz"
+          echo "${sha}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C "$dir" gitleaks
+          rm -f /tmp/gitleaks.tgz
+        fi
+        export PATH="${dir}:$PATH"
+      fi
+      command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks unavailable and auto-download failed"; exit 1; }
+      gitleaks version
     - python3 -m venv .venv-console
     - .venv-console/bin/pip install -q -r scripts/console/requirements.txt -r scripts/console/requirements-dev.txt
   script:
@@ -921,11 +948,19 @@ test:console:
         - "scripts/console/**/*"
         - "scripts/ci/test-console.sh"
         - "scripts/ci/.console-collect-baseline"
+        # The library e2e tests shell out to `pl library build`, i.e. they
+        # execute this script. Without it listed, a change to the builder alone
+        # skips the only tests that run it.
+        - "scripts/commands/library.sh"
     - if: $CI_COMMIT_BRANCH == "main"
       changes:
         - "scripts/console/**/*"
         - "scripts/ci/test-console.sh"
         - "scripts/ci/.console-collect-baseline"
+        # The library e2e tests shell out to `pl library build`, i.e. they
+        # execute this script. Without it listed, a change to the builder alone
+        # skips the only tests that run it.
+        - "scripts/commands/library.sh"
   tags:
     - nwp
   allow_failure: false

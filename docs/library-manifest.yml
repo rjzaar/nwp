@@ -1,0 +1,137 @@
+# docs/library-manifest.yml — WHO MAY READ WHICH DOC.
+#
+# This file is a publication decision, not a config file. Read it as one.
+#
+# ---------------------------------------------------------------------------
+# THE ONE RULE: a doc is PRIVATE unless this file says otherwise.
+# ---------------------------------------------------------------------------
+# A doc that is not listed here is private. A doc listed here without an
+# `audience:` is private. A manifest this file's parser cannot fully understand
+# does not build AT ALL — it does not fall back to "assume private and carry
+# on", because an unreadable manifest means the operator's intent is unknown,
+# and publishing on unknown intent is the whole risk.
+#
+# ---------------------------------------------------------------------------
+# THE FOUR AUDIENCES
+# ---------------------------------------------------------------------------
+#   public         the world. Must carry an explicit `clean` verdict from the
+#                  identity checker (tests/helpers/pubrel-docs-check.sh — the
+#                  six operator-identity rules plus a fail-closed gitleaks
+#                  backstop), and may name only sites in `public_sites` below.
+#   contributor    every authenticated console user, IN EVERY PROJECT. So it
+#                  crosses the tenancy boundary: it must also be identity-clean,
+#                  and it may name NO site at all. One site name in one
+#                  contributor doc is a cross-project disclosure.
+#   project-<id>   members of that console project only. May name that
+#                  project's sites and no others. Enforced twice: here against
+#                  the text at build time, and again at render time against the
+#                  live project->sites map in users.json on the console host
+#                  (two authors, so they can drift).
+#   private        the owner. The "complete set as is" the operator asked for.
+#
+# `pl library build` REFUSES the whole build — writing no bundle at all — if any
+# doc breaks its audience's rules. It does not quietly demote the offender: you
+# marked it public and you need to know you were wrong.
+#
+# ---------------------------------------------------------------------------
+# public_sites — the site names the operator has agreed may appear in public
+# ---------------------------------------------------------------------------
+# Empty by default, and a public doc naming anything outside this list refuses
+# the build. Each entry below is a short project code that already appears in
+# public-facing overview prose. NOTE what is NOT here: `dir1`, `nwt`, `nw2`,
+# `ss1`, `mt`, `cathnet`, `ba` — the local/working copies and the operator's
+# other sites. Adding one is a deliberate act, in one place, reviewable in one
+# glance. That is the entire point of the list.
+#
+# Format is a STRICT subset of YAML (see scripts/console/app/library.py):
+# top-level `key: value`, `docs:` then two-space `- key: value` items with
+# four-space continuations, and `[a, b]` inline lists. Comments are whole-line
+# only. Anything else raises rather than being skipped.
+
+schema: nwp.library-manifest
+schema_version: 1
+
+public_sites: [ss, ss2, ssc, ssd, saintschool, nwc, nwd, dir, avc, nw1]
+
+docs:
+
+  # -- overview: written for a newcomer, plain language, already scrubbed -----
+  - path: docs/overview/README.md
+    title: Overview — what all of this is, and how it fits together
+    audience: public
+    summary: The four projects, how a member experiences them, and where to read more.
+    sites: [ss, ssd, nwc, nwd, dir]
+
+  - path: docs/overview/nwp.md
+    title: NWP — the toolbox that builds and looks after everything
+    audience: public
+    summary: Executive summary of the fleet tooling. Names no site.
+
+  - path: docs/overview/saint-school.md
+    title: Saint School — the courses
+    audience: public
+    summary: What the learning site is, who it is for, and how depth levels work.
+    sites: [ss, ss2, ssc, ssd, saintschool]
+
+  - path: docs/overview/narrow-way-commons.md
+    title: Narrow Way Commons — the community
+    audience: public
+    summary: Guilds, membership, and how contribution flows back into the courses.
+    sites: [avc, ssc, nwc, nwd, nw1]
+
+  - path: docs/overview/theocat.md
+    title: theocat — the theology source library
+    audience: public
+    summary: The sources underneath, and the tooling that checks a quotation is real.
+
+  # dir-question is internal decision material, not an introduction: it carries
+  # working-copy paths and a recommendation that has not been taken. Private
+  # until the operator decides otherwise — which is one word on the next line.
+  - path: docs/overview/dir-question.md
+    title: The dir question — join the Commons, or stay its own thing?
+    audience: private
+    summary: Research and a recommendation on where Divine Intimacy Radio belongs.
+
+  # -- guides that name no site: safe across the tenancy boundary -------------
+  - path: docs/guides/howto-console.md
+    title: Using the NWP Console
+    audience: contributor
+    summary: The panes, what each one shows, and what you may act on.
+
+  - path: docs/guides/howto-backup-restore.md
+    title: Backing up and restoring a site
+    audience: contributor
+    summary: Taking a backup, checking it is real, and restoring from it.
+
+  # -- project-scoped: these name ss-nw's sites, so only ss-nw reads them -----
+  - path: docs/guides/howto-console-projects.md
+    title: Console projects and permissions
+    audience: project-ss-nw
+    summary: How a project scopes what a console user can see and do.
+    sites: [ss, ss2, ssc, ssd, saintschool, nwc, nwd]
+
+  - path: docs/guides/howto-demo-tier.md
+    title: The demo tier
+    audience: project-ss-nw
+    summary: The nightly-reset demo pair, and how a demo journey is run.
+    sites: [ssd, nwc, nwd]
+
+  - path: docs/guides/howto-invite-codes.md
+    title: Invite codes
+    audience: project-ss-nw
+    summary: Issuing, redeeming and revoking an invite code.
+    sites: [nwd]
+
+  # -- private ---------------------------------------------------------------
+  # howto-deploy carries a live domain apex, so the identity checker calls it
+  # dirty and the build would REFUSE it as public or contributor. It is the
+  # working proof, on the real corpus, that the checker bites.
+  - path: docs/guides/howto-deploy.md
+    title: Deploying a site
+    audience: private
+    summary: dev -> stg -> live, and the gates between them.
+
+  - path: docs/guides/howto-dr-chain.md
+    title: The disaster-recovery chain
+    audience: private
+    summary: Where the backups go, and how the chain is verified end to end.

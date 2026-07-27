@@ -1,0 +1,79 @@
+{#
+  The doc list. htmx swaps THIS into #library-list on search and on a view
+  switch, so it must stand alone — no state from library.html beyond its own
+  context.
+
+  Every row here has already passed library._doc_allowed() against the LIVE
+  Scope. The template does no filtering of its own, on purpose: a template that
+  decided visibility would be a second, untested authorisation point.
+#}
+{% if not lib.bundle_present %}
+  {# Not "no docs". "No library." A rendered-empty list would read as a corpus
+     that happens to be empty, which is the "0 is not a clean bill of health"
+     failure — so say which artefact is missing and how to produce it. #}
+  <p class="err">
+    {% if lib.variant == 'public' %}
+      No <strong>public</strong> library has been published to this host.
+    {% else %}
+      No library has been published to this host.
+    {% endif %}
+  </p>
+  <p class="muted">
+    The docs live in the repo on the workstation; this host holds none. Publish
+    them with <code>pl library publish</code>.
+    {% if lib.variant == 'public' %}
+      This view reads <code>library-public.json</code> directly — it is never
+      re-derived by filtering the full library, because a filter computed here
+      would be this console's opinion rather than the artefact the build
+      certified.
+    {% endif %}
+  </p>
+
+{% elif not lib.rows %}
+  <p class="muted">
+    {% if lib.q %}
+      Nothing matches “{{ lib.q }}”{% if lib.total_rows %} in the {{ lib.total_rows }}
+      doc{{ '' if lib.total_rows == 1 else 's' }} you may read{% endif %}.
+    {% elif lib.variant == 'public' %}
+      The published public library contains no documents.
+    {% else %}
+      There are no documents you may read.
+    {% endif %}
+  </p>
+
+{% else %}
+  <p class="muted small">
+    {{ lib.rows | length }} of {{ lib.total_rows }} document{{ '' if lib.total_rows == 1 else 's' }}
+    {%- if lib.variant == 'public' %} in the public release{% endif %}.
+  </p>
+
+  <ul class="libl">
+    {% for d in lib.rows %}
+    <li class="libitem aud-{{ d.audience }}">
+      <a class="libtitle" href="/library/doc/{{ d.id }}{% if lib.variant == 'public' %}?view=public{% endif %}">{{ d.title }}</a>
+      <div class="libmeta">
+        <span class="chip aud aud-{{ d.audience }}">{{ d.audience }}</span>
+        {%- if d.sites %}
+        <span class="mono small muted">{{ d.sites | join(' · ') }}</span>
+        {%- endif %}
+        {%- if d.unmanifested %}
+        {# Visible because it is a classification the operator never made. It is
+           private by default, which is safe — but a doc nobody classified is a
+           doc nobody decided about, and that should be nagging, not silent. #}
+        <span class="chip warnchip" title="not in docs/library-manifest.yml — private by default">unclassified</span>
+        {%- endif %}
+      </div>
+      {% if d.summary %}<p class="libsum">{{ d.summary }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+{% if lib.dropped and lib.variant != 'public' %}
+{# Honest about what was withheld, without naming it. The COUNT is not a leak
+   (the reader already knows a fleet exists); the titles would be. #}
+<p class="muted small libdropped">
+  {{ lib.dropped }} further document{{ '' if lib.dropped == 1 else 's' }} in this
+  library {{ 'is' if lib.dropped == 1 else 'are' }} outside your access.
+</p>
+{% endif %}

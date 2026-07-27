@@ -1,0 +1,46 @@
+From: NWP ops#139 (R1.4 part 2a)
+Subject: [PATCH] depthcontent: anchor every course module to its canonical pointid
+
+ops#139 / REMEDIATION-PLAN R1.4 part 2. The Moodle course-module NAME is the
+doctrine title (populate_courses.php:187), and core stamps that name into
+logstore_standard_log.other['name'] on course_module_created/updated — a
+mandatory core field (lib/classes/event/course_module_created.php:126-128), so
+it cannot be dropped at the event level.
+
+This patch does NOT change the displayed name. It fills the course-module
+idnumber slot, which populate_courses.php sets to '' and nothing else uses,
+with the canonical learning-point id (e.g. B5.03).
+
+Why that is worth doing on its own:
+
+  * Every log row for these modules gains a canonical anchor reachable by a
+    join that does NOT pass through the doctrine title.
+  * It is a prerequisite for the real declassification (option A in
+    docs/guides/ops139-logstore-declassification.md §2b — making the cm name
+    itself opaque), which is a member-facing display change and an OPERATOR
+    decision this patch deliberately does not take.
+  * It is additive: no DB schema change, no display change, no behaviour
+    change for members. course_modules.idnumber is currently empty for every
+    depthcontent module.
+
+Applies to mod/depthcontent in the ss-moodle-plugins canonical repo. The
+patch must also land in (or be re-synced to) the ssd checkout, which carries
+the same plugin.
+
+--- a/mod/depthcontent/cli/populate_courses.php
++++ b/mod/depthcontent/cli/populate_courses.php
+@@ -191,8 +191,13 @@
+         $moduleinfo->pointid = $pointid;
+         $moduleinfo->content_json = $json;
+
+         // Required fields for add_moduleinfo().
+-        $moduleinfo->cmidnumber = '';
++        // ops#139: anchor the course module to its CANONICAL learning-point id
++        // (e.g. B5.03) rather than leaving the slot empty. The doctrine title
++        // still populates ->name, so nothing member-facing changes here; this
++        // gives every logstore row a canonical join target that does not pass
++        // through the title. See docs/guides/ops139-logstore-declassification.md.
++        $moduleinfo->cmidnumber = $pointid;
+         $moduleinfo->groupmode = 0;
+         $moduleinfo->groupingid = 0;
+         $moduleinfo->showdescription = 0;

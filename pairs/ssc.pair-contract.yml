@@ -379,8 +379,12 @@ crossref:
 #                       CANNOT-VERIFY rather than "0 rows, clean".
 erasure:
   # Where the ops#81 channel halves live, relative to the crossref roots below.
-  receiver_path: "local/nwc_erase/erase.php"                       # ops#81 P1 — NOT BUILT
-  sender_path: "modules/nwc_moodle/modules/nwc_moodle_erase"       # ops#81 P2 — NOT BUILT
+  # STATUS 2026-07-28 (ADR-0034): both halves are BUILT and staged in the nwp
+  # repo (commit 272e352) but NOT DEPLOYED into these trees — `pl contracts
+  # erasure ssc` reports NOT-DEPLOYED, which is the true state. The earlier
+  # "NOT BUILT" comment here was stale from the P0 contract-surface commit.
+  receiver_path: "local/nwc_erase/erase.php"                       # ops#81 P1 — staged: scripts/moodle/local_nwc_erase
+  sender_path: "modules/nwc_moodle/modules/nwc_moodle_erase"       # ops#81 P2 — staged: scripts/drupal/nwc_moodle_erase
   semantics_approved: false     # OPERATOR ACTION — see above
   backup_ceiling: ""            # OPERATOR ACTION — assert only when provably true
   provider_probe_cmd: ""        # e.g. a `pl drush nwc --tier=live` residual-row count

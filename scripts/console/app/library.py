@@ -289,6 +289,7 @@ def build(manifest, files: dict, vocab, verdicts: dict, meta: dict | None = None
     public_sites = set(manifest.get("public_sites") or ())
 
     entries = {}
+
     reasons = []
     for i, e in enumerate(manifest.get("docs") or ()):
         if not isinstance(e, dict) or not e.get("path"):
@@ -299,6 +300,25 @@ def build(manifest, files: dict, vocab, verdicts: dict, meta: dict | None = None
             reasons.append(f"{p}: listed twice in the manifest")
             continue
         entries[p] = e
+
+    # The vocabulary must be at least as complete as the manifest's own
+    # evidence. A non-empty vocabulary is not the same as a USABLE one: built
+    # from a git worktree (no nwp.yml, no sites/) the resolver returned exactly
+    # one site name, the build passed every cross-project check, and the checks
+    # were blind to eleven sites. "Not empty" was the check that passed without
+    # checking. Every site the manifest itself names must be known.
+    known = set(vocab)
+    evidence = set(public_sites)
+    for e in entries.values():
+        evidence |= set(_entry_sites(e))
+    missing = sorted(evidence - known)
+    if missing:
+        raise BuildRefused([
+            f"the site vocabulary is missing {missing} — sites the manifest itself "
+            f"names. An incomplete vocabulary scans blind for exactly those names. "
+            f"Pass --sites, set NWP_LIBRARY_SITES, or build from a tree that has "
+            f"nwp.yml/sites/ (vocabulary seen: {sorted(known)})"
+        ])
 
     docs = []
     seen_ids = {}
@@ -377,7 +397,7 @@ def build(manifest, files: dict, vocab, verdicts: dict, meta: dict | None = None
         raise BuildRefused(sorted(reasons))
 
     now = now or datetime.now(timezone.utc)
-    meta = dict(meta or {})
+    meta = dict(meta or {}, site_vocabulary=vocab)
     full = _bundle("full", docs, now, meta, sorted(public_sites))
     pub = _bundle("public", [d for d in docs if d["audience"] == PUBLIC], now, meta,
                   sorted(public_sites))
@@ -407,6 +427,9 @@ def _bundle(variant, docs, now, meta, public_sites) -> dict:
             "git_dirty": bool(meta.get("git_dirty", False)),
         },
         "public_sites": list(public_sites),
+        # Recorded so a reviewer can see WHAT the cross-project scan knew about.
+        # A verdict is only as good as the vocabulary behind it.
+        "site_vocabulary": list(meta.get("site_vocabulary") or ()),
         "counts": counts,
         "docs": docs,
     }
@@ -415,6 +438,46 @@ def _bundle(variant, docs, now, meta, public_sites) -> dict:
 # ---------------------------------------------------------------------------
 # reading a published bundle
 # ---------------------------------------------------------------------------
+# The two artefacts, as they land on the console host (0600, shipped by
+# `pl library publish`). Named here rather than in config.py so the filenames
+# the publisher writes and the filenames the console reads cannot drift.
+FULL_FILE = "library.json"
+PUBLIC_FILE = "library-public.json"
+VARIANTS = ("full", "public")
+
+# Docs change on a commit, not on a clock. A fortnight-old library is usually
+# just a fortnight without doc edits, where a fortnight-old RAG grade is a dead
+# publisher. Different number, deliberately — same IDIOM (_provenance.html).
+DEFAULT_MAX_AGE = 14 * 24 * 3600
+
+
+def bundle_path(data_dir, variant: str = "full"):
+    return Path(data_dir) / (PUBLIC_FILE if variant == "public" else FULL_FILE)
+
+
+def load_for(data_dir, variant: str = "full") -> dict | None:
+    """Load ONE variant. The public variant is read from its own artefact and
+    is NEVER synthesised by re-filtering the full one.
+
+    That is the whole point of shipping two files. If the public preview were a
+    filter over library.json, the preview would be a claim this host computed,
+    and it could show a doc as public that the build never certified — the
+    reviewer would be reviewing the console's opinion instead of the artefact.
+    So a missing library-public.json renders as "not published", never as a
+    filtered stand-in.
+    """
+    b = load_bundle(bundle_path(data_dir, variant))
+    if b is None:
+        return None
+    # A bundle that says it is the other variant is not this variant. Refusing
+    # here means a mis-shipped or swapped file cannot present the full corpus
+    # under the "public release" heading.
+    want = "public" if variant == "public" else "full"
+    if b.get("variant") != want:
+        return None
+    return b
+
+
 def load_bundle(path) -> dict | None:
     """Read a published bundle. None for missing/corrupt/foreign/unknown-version
     — never raises, and never guesses at a schema it does not know."""
@@ -738,6 +801,74 @@ def link_resolver_for(doc, rows):
         return f"/library/doc/{did}" if did in ids else None
 
     return resolve
+
+
+# ---------------------------------------------------------------------------
+# route-facing context builders
+# ---------------------------------------------------------------------------
+# main.py is owned by the integrator, so the handlers there must be trivial:
+# load, delegate, render. Everything that decides WHAT A READER SEES lives here,
+# where the tests are. A route that had to remember to call visible_docs() is a
+# route that can forget to.
+def _matches(row, q: str) -> bool:
+    if not q:
+        return True
+    hay = " ".join(str(row.get(k, "")) for k in ("title", "summary", "path", "id")).lower()
+    return all(term in hay for term in q.lower().split())
+
+
+def page_context(data_dir, scope, variant: str = "full", q: str = "",
+                 max_age: int = DEFAULT_MAX_AGE, now: datetime | None = None,
+                 local_host: str = "") -> dict:
+    """Everything /library needs. One call, so a route cannot half-apply it.
+
+    `variant="public"` previews the artefact that would ship. It is still run
+    through the render-time gate: the preview is not a privileged view, and a
+    hand-edited library-public.json must not become a way to read a doc the
+    live Scope does not allow.
+    """
+    variant = variant if variant in VARIANTS else "full"
+    bundle = load_for(data_dir, variant)
+    rows, dropped = visible_docs(bundle, scope)
+    shown = [r for r in rows if _matches(r, q)]
+    return {
+        "variant": variant,
+        "q": q,
+        "rows": shown,
+        "total_rows": len(rows),
+        "dropped": dropped,
+        "counts": counts_for(bundle, scope),
+        "prov": provenance(bundle, max_age, now=now, local_host=local_host),
+        "shards": sorted(library_shards(scope)),
+        "bundle_present": bundle is not None,
+        "public_sites": list((bundle or {}).get("public_sites") or ()),
+        "site_vocabulary": list((bundle or {}).get("site_vocabulary") or ()),
+        "generated_by": dict((bundle or {}).get("generated_by") or {}),
+    }
+
+
+def doc_context(data_dir, scope, doc_id, variant: str = "full",
+                max_age: int = DEFAULT_MAX_AGE, now: datetime | None = None,
+                local_host: str = "") -> dict | None:
+    """One doc, rendered — or None, which the route turns into a 404.
+
+    None means "no such doc OR not yours", deliberately conflated: a 404 that
+    distinguishes them is an existence oracle for private docs.
+    """
+    variant = variant if variant in VARIANTS else "full"
+    bundle = load_for(data_dir, variant)
+    doc = get_doc(bundle, scope, doc_id)
+    if doc is None:
+        return None
+    rows, _ = visible_docs(bundle, scope)
+    body = render_markdown(doc.get("text", ""), link_resolver_for(doc, rows))
+    return {
+        "variant": variant,
+        "doc": {k: v for k, v in doc.items() if k != "text"},
+        "body": body,
+        "prov": provenance(bundle, max_age, now=now, local_host=local_host),
+        "shards": sorted(library_shards(scope)),
+    }
 
 
 # ---------------------------------------------------------------------------

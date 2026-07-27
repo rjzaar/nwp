@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}{% if doc %}{{ doc.title }} — Library{% else %}Library{% endif %} — NWP Console{% endblock %}
+{% block content %}
+
+{#
+  ONE page template, two shapes: the index, and one document. They share a
+  <style> block and a base layout, and splitting them would mean maintaining
+  the reader's typography in two files that drift.
+
+  THE LIBRARY, IN TWO VERSIONS.
+
+  "one the complete set as is, and a second 'public' one which is purged of all
+  my private information."
+
+  Those are two ARTEFACTS, not one artefact and a checkbox. `pl library publish`
+  ships both; this page reads whichever the reader asked for. The public view
+  reads library-public.json directly, so what is previewed here is byte-for-byte
+  what would ship — a filter computed in this page would be a different claim
+  from the one the build certified.
+
+  Not a nav tab: the bottom nav is full at 7 panes + Visuals. This page is
+  reached from the header, like Help.
+#}
+
+{% if doc %}
+{# ---- one document ------------------------------------------------------- #}
+<p class="libback">
+  <a href="/library{% if variant == 'public' %}?view=public{% endif %}">← Library{% if variant == 'public' %} (public release){% endif %}</a>
+</p>
+{% include "_library_doc.html" %}
+
+{% else %}
+{# ---- the index ---------------------------------------------------------- #}
+<h1>Library</h1>
+
+<div class="libviews" role="group" aria-label="library version">
+  <a class="libview {% if lib.variant != 'public' %}on{% endif %}"
+     href="/library{% if lib.q %}?q={{ lib.q | urlencode }}{% endif %}"
+     {% if lib.variant != 'public' %}aria-current="true"{% endif %}>
+    Everything you may read
+  </a>
+  <a class="libview {% if lib.variant == 'public' %}on{% endif %}"
+     href="/library?view=public{% if lib.q %}&amp;q={{ lib.q | urlencode }}{% endif %}"
+     {% if lib.variant == 'public' %}aria-current="true"{% endif %}>
+    Public release
+  </a>
+</div>
+
+{% if lib.variant == 'public' %}
+<p class="muted small">
+  The <strong>public release</strong> — the artefact you could put on a website.
+  Every document here passed the identity checker
+  (<span class="mono">tests/helpers/pubrel-docs-check.sh</span>): no operator home
+  path, organisation, public IP, personal email or live domain, and no site name
+  outside the allowlist. A document that could not be scanned is
+  <strong>not</strong> in it: “could not check” never publishes.
+  {% if lib.public_sites %}
+  <br>Site names permitted in public prose:
+  <span class="mono">{{ lib.public_sites | join(' · ') }}</span>.
+  {% endif %}
+</p>
+{% else %}
+<p class="muted small">
+  Everything your access allows, in one place. A document is
+  <strong>private unless the manifest says otherwise</strong>, so anything
+  unclassified is owner-only by default.
+  {% if lib.shards %}
+  <br>You are reading as:
+  {% for s in lib.shards %}<span class="chip aud aud-{{ s }}">{{ s }}</span>{% endfor %}
+  {% endif %}
+</p>
+{% endif %}
+
+{# The SAME staleness idiom as every fleet pane — never a second one. `prov`
+   is rebound here rather than being passed at the top level so the integrator's
+   route can hand over one `lib` context and nothing else. #}
+{% with prov = lib.prov %}{% include "_provenance.html" %}{% endwith %}
+
+{% if lib.generated_by and lib.generated_by.git_commit %}
+{# The provenance a DOC bundle needs is the commit it was built from — fleet
+   state's provenance is a host and a clock, which is not the same fact. A dirty
+   tree is called out because the bundle then matches no commit anybody can
+   fetch, and "which version of the docs is public" stops being answerable. #}
+<p class="prov {% if lib.generated_by.git_dirty %}prov-warn{% endif %}">
+  built from <span class="mono">{{ lib.generated_by.git_commit }}</span>
+  {%- if lib.generated_by.git_dirty %}
+  <strong>with uncommitted changes</strong> — this bundle corresponds to no
+  commit in the repository{% endif %}.
+</p>
+{% endif %}
+
+<form class="libsearch" hx-get="/library/list" hx-target="#library-list"
+      hx-swap="innerHTML" hx-trigger="submit, keyup changed delay:300ms from:input[name='q']"
+      hx-push-url="false" action="/library" method="get">
+  <input type="search" name="q" value="{{ lib.q }}" placeholder="Search the library"
+         aria-label="search the library" autocomplete="off">
+  <input type="hidden" name="view" value="{{ lib.variant }}">
+  <button type="submit">Search</button>
+  <span class="htmx-indicator muted small">…</span>
+</form>
+
+<div id="library-list">
+  {% include "_library_list.html" %}
+</div>
+
+<p class="footnote muted small">
+  The console holds no documents of its own: the corpus lives in the repo on the
+  workstation and is published here by <code>pl library publish</code>, the same
+  way fleet state is. If the dates above are old, that is the publisher, not the
+  library.
+</p>
+{% endif %}
+
+<style>
+.libback { margin: 0 0 10px; font-size: 14px; }
+.libback a { display: inline-block; min-height: 44px; line-height: 44px; }
+/* Scoped to this page, and inline so the shared stylesheet — which three
+   parallel workstreams are editing — is not a merge conflict. Mobile first:
+   every tap target is >= 44px, and nothing here needs a horizontal scroll. */
+.libviews { display: flex; gap: 8px; margin: 10px 0 12px; flex-wrap: wrap; }
+.libview { display: inline-block; padding: 10px 14px; min-height: 44px;
+  line-height: 24px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); color: var(--muted); font-size: 14px; }
+.libview.on { border-color: var(--accent); color: var(--fg); background: var(--card2); }
+.libsearch { display: flex; gap: 8px; margin: 12px 0; align-items: center; }
+.libsearch input[type=search] { flex: 1 1 auto; min-width: 0; min-height: 44px;
+  padding: 8px 10px; background: var(--card2); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
+.libsearch button { min-height: 44px; }
+.libl { list-style: none; margin: 0; padding: 0; }
+.libitem { border-top: 1px solid var(--line); padding: 12px 0; }
+.libitem:first-child { border-top: none; }
+.libtitle { display: block; font-size: 16px; font-weight: 600; line-height: 1.35;
+  min-height: 32px; }
+.libmeta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 0; }
+.libsum { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.libdropped { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.chip.aud { font-size: 11.5px; text-transform: lowercase; }
+.chip.aud-public { border-color: var(--ok); color: var(--ok); }
+.chip.aud-contributor { border-color: var(--accent); color: var(--accent); }
+.chip.aud-private { border-color: var(--err); color: var(--err); }
+.libdoc-head { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 4px; }
+.libdoc-head h1 { margin-bottom: 4px; }
+.libbody { font-size: 15.5px; line-height: 1.6; overflow-wrap: break-word; }
+.libbody h2 { font-size: 19px; margin: 22px 0 6px; }
+.libbody h3 { font-size: 16.5px; margin: 18px 0 4px; }
+.libbody code { background: var(--card2); border-radius: 4px; padding: 1px 4px; font-size: 13.5px; }
+.libbody pre { overflow-x: auto; }
+.libbody pre code { background: none; padding: 0; }
+.libbody blockquote { margin: 10px 0; padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--line); color: var(--muted); }
+.libbody table { display: block; overflow-x: auto; max-width: 100%; }
+.libbody img { max-width: 100%; height: auto; }
+</style>
+{% endblock %}

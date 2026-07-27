@@ -1140,6 +1140,24 @@ lint:secrets:
     # went red on runner assignment, not on its diff.
     - ./scripts/ci/ensure-bats.sh
     - export PATH="${HOME}/.cache/nwp-ci/bats-v1.11.0/bin:${PATH}"
+    # …and the suite it runs (test-secrets-registry-truth.bats) drives
+    # secrets.sh, which hard-requires yq: with bats bootstrapped, the fallback
+    # runner then failed 127 on yq (job 6725). Same pinned copy as test:unit —
+    # keep the version+sha in lockstep with that block and setup.sh.
+    - |
+      YQ_VER=v4.44.1
+      YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3
+      if ! command -v yq >/dev/null 2>&1; then
+        YQ_DIR="${HOME}/.cache/nwp-ci/yq-${YQ_VER}"
+        mkdir -p "$YQ_DIR"
+        if ! echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c - >/dev/null 2>&1; then
+          curl -fsSL -o "$YQ_DIR/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VER}/yq_linux_amd64"
+        fi
+        echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c -
+        chmod +x "$YQ_DIR/yq"
+        export PATH="$YQ_DIR:$PATH"
+      fi
+      yq --version
   script:
     - ./scripts/ci/lint-secrets.sh
   rules:

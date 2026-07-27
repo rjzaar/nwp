@@ -4483,3 +4483,102 @@ email.**
   reporting permanent **false DRIFT** on remote copies that are byte-identical.
 - The fleet sweep initially emitted tab-separated rows; tab is IFS *whitespace*, so bash collapsed
   the empty ref field and the hash landed in the wrong variable. Every row fell out at the
+## [2026-07-26] d4-demo-reset-fate-manifest-is-now-a-guarantee
+
+**Item:** D4 — `[G9]` of `servers/nwpcode/demo/nwd-demo-reset-restricted` promised something the
+code did not enforce.
+
+The header said: *"Nothing destructive runs until the manifest below has been printed AND logged."*
+The only call site said:
+
+```sh
+render_fate_manifest || log "fate-manifest-failed" "non-fatal — proceeding"
+```
+
+— i.e. on failure the script recorded that it had no manifest and then wiped the site anyway. Two
+statements, one true one false, and the false one was the one an operator reads.
+
+### The choice: make the code true, not the header weaker
+
+The brief allowed either direction. I made the code true, for the destructive path only:
+
+* **A real reset (`nightly` / `reset`) now ABORTS** (`die`, exit 1) if the manifest cannot be
+  rendered *or* cannot be persisted to `LOG_FILE`. The whole point of `[G9]` is that nothing gets
+  destroyed without a surviving record of what was destroyed; a reset that proceeds without one is
+  the exact event the guarantee exists to prevent.
+* **`dry-run` keeps the old fail-open behaviour** and still exits 0. Nothing destructive follows a
+  dry run, so failing closed there would remove an operator's only way to *look* while protecting
+  nothing.
+* **Degradation is still not failure.** The manifest's `"?"` placeholders were deliberate design —
+  a size that cannot be read prints `?` rather than a guess — and that is preserved untouched. A
+  partial manifest still renders, still returns 0, and the reset proceeds. Only a *total* rendering
+  or logging failure aborts. The distinction is now written into the block comment so the next
+  reader does not re-collapse the two.
+
+Weakening the header to "attempted" was the cheaper option and was rejected: this is the only
+mechanised record of a nightly destructive operation on a live box, and "we attempted to keep a
+record" is not a property worth documenting.
+
+### The second, deeper gap: "AND logged" was never checked
+
+`log()` swallowed a failed append with `|| true`, so an unwritable `/var/log/nwp-demo` meant the
+manifest was *printed* but never *logged* — while the header promised both — and the wipe went
+ahead. `log()` is now still fail-**soft** (no caller is obliged to check; `status` keeps answering
+with a broken log dir; the script has no `set -e`, and every other call site uses `log` in statement
+position so a non-zero return changes nothing there) but it is **honest**: its return code says
+whether the line was persisted. `render_fate_manifest` ends with `log … || return 1`, so
+"printed AND logged" is now a thing the code can actually assert.
+
+This is what the second acceptance test exercises, and it is the more valuable of the two: it is a
+failure mode that can really happen (logrotate misconfig, disk full, someone `chmod`s the dir),
+whereas a `render_fate_manifest` that returns non-zero on its own is nearly unreachable by
+construction.
+
+### RED before GREEN
+
+The RED transcript is in the MR. The damning case is the second one: against `origin/main`, with
+`LOG_FILE`'s parent made unwritable, the script printed the full manifest, printed
+`reset-ok|took=0s`, deleted the tester-upload canary and restored from golden — and **not one line
+of that reached the log**, because every `log` call failed silently. Destruction with zero record,
+under a header claiming that cannot happen.
+
+### Test design, and why it looks the way it does
+
+The script's paths are hard-wired *on purpose* (`[G2]`: there must be no way to name another site),
+so it cannot be pointed at a fixture by env var — adding such a knob would punch a hole in the
+guarantee under test. `tests/unit/test-demo-reset-restricted.bats` instead **rehomes a copy**:
+exactly five literal lines (four path constants + the `PATH=` line, so stubs win) are rewritten to
+point inside `BATS_TEST_TMPDIR`, and a control test asserts that those five *and only those five*
+differ from the shipped file. Every other byte — all the guard logic — is what ships.
+
+Four negative controls, because a gate that refuses everything would pass the positive tests:
+
+1. a **healthy** `nightly` still wipes (canary destroyed, golden marker restored, stamp written);
+2. a **healthy** `dry-run` reports and changes nothing;
+3. `[G1]` still refuses a bad action word with exit 2;
+4. the rehoming is narrow (above).
+
+The strongest assertion does not trust the stub trace at all: a `tester-upload.txt` canary is placed
+in the live files dir, and an aborted run must leave it exactly where it is.
+
+`NWP_BATS_MAX_SKIPPED=0` in CI and a `skip` reads as `ok`, so the harness asserts its externals
+(`jq flock du numfmt tar gzip …`) **by name** rather than skipping when one is absent.
+
+### Accepted cost, stated rather than hidden
+
+The abort adds a new way for the nightly to become a no-op: if `LOG_FILE` stops being writable,
+every run refuses. That is the safe direction, and it is visible — the refusal prints to
+stdout/stderr and exits 1, which met's cron captures in `~/logs/demo-nightly-nwd.log`, and the
+30-min retry window means an operator sees seven identical failures rather than one. It is **not**
+self-healing. Recorded in the script's own `NOT GUARANTEED` block, which is where someone debugging
+at 02:00 will actually look.
+
+### Scope not taken
+
+* `[G1]`–`[G8]` and their order are **untouched** (asserted by a control test).
+* The manifest body — including the `"?"` placeholders — is unchanged.
+* **Not deployed.** The repo copy now differs from `/usr/local/bin/nwd-demo-reset-restricted` on the
+  git box; it takes effect only on the next `install-box.sh` run. No live host was touched, so no
+  rollback-registry row was added.
+* `docs/guides/demo-nightly-on-met.md` §Gaps was left alone — outside this item's territory, and
+  another workflow may be in it.

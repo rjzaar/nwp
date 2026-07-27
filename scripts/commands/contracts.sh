@@ -52,7 +52,24 @@ set -euo pipefail
 #                           not present reports CANNOT-VERIFY (non-zero), never
 #                           a silent green.
 #
-# Usage: pl contracts <compat|sums|sign|verify|bundle|sync-plan|crossref> [opts]
+#   key-rotation [<pair>|--all]
+#                           OIDC SIGNING-KEY ROTATION INVARIANT (ops#82). The
+#                           nwc→ssc rotation runbook is safe only because the
+#                           Moodle consumer never verifies the id_token
+#                           signature. That fact lived in prose alone, so
+#                           nothing failed when the code drifted. This verb
+#                           couples the claim to the code, fail-closed:
+#                             * verifies=false → the consumer tree must contain
+#                               no executable signature/JWKS code → CLAIM-DRIFT
+#                             * verifies=true  → the issuer must support key
+#                               overlap, tokens must carry a kid, announce /
+#                               overlap / retire windows must be non-zero, and
+#                               a refetch-on-unknown-kid implementation must
+#                               exist → OVERLAP-REQUIRED / NO-REFETCH
+#                           The unsafe middle state (a verifying consumer on a
+#                           single-key hard swap) is therefore unreachable.
+#
+# Usage: pl contracts <compat|sums|sign|verify|bundle|sync-plan|crossref|key-rotation> [opts]
 ################################################################################
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -729,6 +746,228 @@ _guards_one() {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# key-rotation — the OIDC signing-key rotation invariant (ops#82)
+#
+# WHY THIS EXISTS. The nwc→ssc rotation runbook is safe for exactly one reason:
+# the Moodle consumer never verifies the id_token signature, so swapping the
+# provider's signing key cannot invalidate anything the consumer holds. Every
+# leg of that argument used to live only in prose (a comment in auth.php, a
+# paragraph in the runbook, a `false` in the contract). Nothing failed if the
+# code drifted out from under it — and the day a consumer starts verifying
+# signatures, the documented hard swap becomes a total SSO outage, silently.
+#
+# This verb turns the argument into a coupled, fail-closed check:
+#
+#   consumer_verifies_signature: false  →  the consumer tree must contain NO
+#                                          executable signature-verification
+#                                          code            (else CLAIM-DRIFT)
+#   consumer_verifies_signature: true   →  the provider must be able to publish
+#                                          overlapping keys, tokens must carry
+#                                          a kid, announce/overlap/retire
+#                                          windows must be real, and a
+#                                          refetch-on-unknown-kid implementation
+#                                          must exist      (else OVERLAP-REQUIRED)
+#
+# So you cannot enable verification without first building the overlap path,
+# and you cannot claim the overlap path without the machinery. The unsafe
+# middle state — verifying consumer, single-key hard swap — is unreachable.
+#
+# Contract block consumed (pairs/<consumer>.pair-contract.yml → oidc.key_rotation):
+#   consumer_verifies_signature: <bool>   the load-bearing fact
+#   tokens_carry_kid:            <bool>   can a verifier select key by kid?
+#   provider_supports_overlap:   <bool>   can the issuer publish 2 keys at once?
+#   mode:                        hard_swap | overlap
+#   announce_window / overlap_window / retire_after   durations (0 = none)
+#   refetch_impl:                <repo-relative file>  required when verifying
+#   verification_exempt_paths:   [ <paths whose matches are reviewed + waived> ]
+#   runbook:                     <repo-relative doc that must exist>
+#
+# Exit: 0 invariant holds · 1 broken or CANNOT-VERIFY.
+# ---------------------------------------------------------------------------
+
+# Executable (comment-stripped) signature-verification call sites under <roots>.
+# Emits "<file>:<line>:<text>" so a human can adjudicate each hit.
+_keyrot_verify_sites() { # <exclude-list> <roots...>
+    local excludes="$1"; shift
+    local roots=("$@") f rel
+    [ "${#roots[@]}" -gt 0 ] || return 0
+    local pat='JWT::decode|Firebase.{0,2}JWT|CachedKeySet|openssl_verify|verify_?signature|validateSignature|jwks|id_token'
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        rel="${f#"$PROJECT_ROOT"/}"
+        if [ -n "$excludes" ] && printf '%s\n' "$excludes" | grep -qxF "$rel"; then continue; fi
+        _guards_strip_comments < "$f" | grep -nEi "$pat" 2>/dev/null \
+            | while IFS= read -r hit; do printf '%s:%s\n' "$rel" "$hit"; done
+    done < <(grep -rlEi "$pat" --include='*.php' --include='*.module' --include='*.inc' \
+                --include='*.install' --include='*.theme' "${roots[@]}" 2>/dev/null)
+}
+
+cmd_key_rotation() {
+    local want=() all=false quiet=false arg
+    for arg in "$@"; do
+        case "$arg" in
+            --all)   all=true ;;
+            --quiet) quiet=true ;;
+            -*)      _err "contracts key-rotation: unknown option '$arg'"; return 2 ;;
+            *)       want+=("$arg") ;;
+        esac
+    done
+
+    if ! command -v yq >/dev/null 2>&1; then
+        _err "contracts key-rotation: CANNOT-VERIFY — yq not installed (the contract cannot be parsed)."
+        return 1
+    fi
+
+    if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
+        want=()
+        local f
+        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
+            [ -e "$f" ] || continue
+            want+=("$(basename "$f" .pair-contract.yml)")
+        done
+        if [ "${#want[@]}" -eq 0 ]; then
+            _err "contracts key-rotation: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            return 1
+        fi
+    fi
+
+    local rc=0 pair
+    for pair in "${want[@]}"; do
+        _keyrot_one "$pair" "$quiet" || rc=1
+    done
+    if [ "$rc" -eq 0 ]; then
+        [ "$quiet" = true ] || _say "contracts key-rotation: OK ✓ — the rotation invariant holds."
+    fi
+    return "$rc"
+}
+
+_keyrot_one() {
+    local pair="$1" quiet="${2:-false}"
+    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+    local bad=0
+
+    if [ ! -f "$contract" ]; then
+        _err "[$pair] CANNOT-VERIFY: no contract at $contract"
+        return 1
+    fi
+    if [ -z "$(_crossref_yq "$contract" '.oidc.key_rotation')" ]; then
+        _err "[$pair] CANNOT-VERIFY: the contract declares no 'oidc.key_rotation:' clause."
+        _say  "  A pair whose issuer can rotate a signing key, with no recorded rotation"
+        _say  "  obligations, is not a passing contract — it is an unwritten outage."
+        _say  "  See docs/guides/ops82-key-rotation.md §Contract linkage."
+        return 1
+    fi
+
+    local verifies kid overlap mode runbook refetch
+    verifies="$(_crossref_yq "$contract" '.oidc.key_rotation.consumer_verifies_signature')"
+    kid="$(_crossref_yq      "$contract" '.oidc.key_rotation.tokens_carry_kid')"
+    overlap="$(_crossref_yq  "$contract" '.oidc.key_rotation.provider_supports_overlap')"
+    mode="$(_crossref_yq     "$contract" '.oidc.key_rotation.mode')"
+    runbook="$(_crossref_yq  "$contract" '.oidc.key_rotation.runbook')"
+    refetch="$(_crossref_yq  "$contract" '.oidc.key_rotation.refetch_impl')"
+
+    # A field we cannot read is never treated as a safe default.
+    if [ "$verifies" != "true" ] && [ "$verifies" != "false" ]; then
+        _err "[$pair] CANNOT-VERIFY: oidc.key_rotation.consumer_verifies_signature is not a"
+        _err "                       literal true/false (got: '${verifies:-<absent>}'). This is the"
+        _err "                       load-bearing fact; it may not be left implicit."
+        return 1
+    fi
+    if [ -z "$mode" ]; then
+        _err "[$pair] MISSING-FIELD: oidc.key_rotation.mode (hard_swap|overlap)."
+        bad=1
+    fi
+
+    # The runbook must exist — a clause pointing at a missing document is folklore.
+    if [ -n "$runbook" ] && [ ! -f "$PROJECT_ROOT/$runbook" ]; then
+        _err "[$pair] MISSING-RUNBOOK: oidc.key_rotation.runbook -> '$runbook' does not exist."
+        bad=1
+    elif [ -z "$runbook" ]; then
+        _err "[$pair] MISSING-FIELD: oidc.key_rotation.runbook (the procedure an operator follows)."
+        bad=1
+    fi
+
+    # --- the consumer corpus (reuse the crossref roots) ----------------------
+    local cons_roots=() r
+    while IFS= read -r r; do [ -n "$r" ] && cons_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.consumer_roots[]' | _crossref_existing_roots)
+    if [ "${#cons_roots[@]}" -eq 0 ]; then
+        _err "[$pair] CANNOT-VERIFY: none of the declared crossref.consumer_roots exist here, so"
+        _err "                       the 'consumer does not verify signatures' claim cannot be"
+        _err "                       checked against code. Absence of evidence is not a pass."
+        return 1
+    fi
+
+    local exempt
+    exempt="$(_crossref_yq "$contract" '.oidc.key_rotation.verification_exempt_paths[]')"
+
+    [ "$quiet" = true ] || _say "[$pair] mode=$mode verifies=$verifies kid=${kid:-<unset>} overlap=${overlap:-<unset>} corpus=${#cons_roots[@]} root(s)"
+
+    local hits
+    hits="$(_keyrot_verify_sites "$exempt" "${cons_roots[@]}")"
+
+    if [ "$verifies" = "false" ]; then
+        # ---- the drift check: prose says "does not verify"; does the code agree?
+        if [ -n "$hits" ]; then
+            _err "[$pair] CLAIM-DRIFT: the contract says consumer_verifies_signature=false, but the"
+            _err "                     consumer tree contains executable signature/JWKS code. If the"
+            _err "                     consumer now verifies, the documented hard swap is an OUTAGE."
+            printf '%s\n' "$hits" | while IFS= read -r h; do [ -n "$h" ] && _say "    $h"; done
+            _say  "  Fix by EITHER removing the code, OR flipping consumer_verifies_signature=true"
+            _say  "  and building the overlap path (this gate will then demand it), OR — if the hit"
+            _say  "  is genuinely inert — listing the file under"
+            _say  "  oidc.key_rotation.verification_exempt_paths (an explicit, reviewable waiver)."
+            bad=1
+        else
+            [ "$quiet" = true ] || _say "[$pair] verify  OK           no executable signature/JWKS code in the SCANNED consumer roots (custom plugins only — NOT Moodle core; core was verified by hand 2026-07-28, see the contract's key_rotation comments)"
+        fi
+        # hard_swap is only legitimate while nobody verifies.
+        if [ -n "$mode" ] && [ "$mode" != "hard_swap" ]; then
+            _err "[$pair] MODE-MISMATCH: mode='$mode' but consumer_verifies_signature=false."
+            _err "                       Overlap machinery with no verifier is unnecessary ceremony;"
+            _err "                       declare hard_swap or explain the third consumer."
+            bad=1
+        fi
+    else
+        # ---- verification is ON: every overlap obligation becomes mandatory.
+        local need_fail=0
+        if [ "$overlap" != "true" ]; then
+            _err "[$pair] OVERLAP-REQUIRED: consumer_verifies_signature=true but"
+            _err "                         provider_supports_overlap='${overlap:-<unset>}'. A verifying"
+            _err "                         consumer + a single-key issuer means every rotation is a"
+            _err "                         hard outage. Build overlap before enabling verification."
+            need_fail=1
+        fi
+        if [ "$kid" != "true" ]; then
+            _err "[$pair] OVERLAP-REQUIRED: tokens_carry_kid='${kid:-<unset>}'. Without a kid a verifier"
+            _err "                         cannot select the right key during the overlap window, so"
+            _err "                         overlap cannot actually be used."
+            need_fail=1
+        fi
+        local w
+        for w in announce_window overlap_window retire_after; do
+            local v; v="$(_crossref_yq "$contract" ".oidc.key_rotation.${w}")"
+            if [ -z "$v" ] || [ "$v" = "0" ]; then
+                _err "[$pair] OVERLAP-REQUIRED: ${w}='${v:-<unset>}'. A verifying consumer needs a real"
+                _err "                         announce → overlap → retire schedule, not a zero."
+                need_fail=1
+            fi
+        done
+        if [ -z "$refetch" ] || [ ! -f "$PROJECT_ROOT/$refetch" ]; then
+            _err "[$pair] NO-REFETCH: consumer_verifies_signature=true but refetch_impl"
+            _err "                    ('${refetch:-<unset>}') does not name an existing file. A verifier"
+            _err "                    that caches a JWKS and does NOT refetch on an unknown kid will"
+            _err "                    reject every token signed by the new key until its cache expires."
+            need_fail=1
+        fi
+        [ "$need_fail" -eq 0 ] || bad=1
+        [ "$bad" -ne 0 ] || { [ "$quiet" = true ] || _say "[$pair] verify  OK           overlap obligations satisfied"; }
+    fi
+
+    return "$bad"
+}
+
 main() {
     local verb="${1:-help}"; shift || true
     case "$verb" in
@@ -740,11 +979,12 @@ main() {
         bundle)    cmd_bundle "$@" ;;
         sync-plan) cmd_sync_plan "$@" ;;
         crossref)  cmd_crossref "$@" ;;
+        key-rotation|key_rotation) cmd_key_rotation "$@" ;;
         -h|--help|help)
-            sed -n '3,62p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '3,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             ;;
         *)
-            _err "pl contracts: unknown verb '$verb' (compat|sums|sign|verify|bundle|sync-plan|crossref)"
+            _err "pl contracts: unknown verb '$verb' (compat|sums|sign|verify|bundle|sync-plan|crossref|key-rotation)"
             return 2
             ;;
     esac

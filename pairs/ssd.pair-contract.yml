@@ -318,12 +318,39 @@ oidc:
     # USERINFO endpoint and do NOT verify the id_token signature against JWKS, so
     # a provider signing-key swap does not break SSO. Trust anchors = TLS +
     # confidential client + PKCE(S256) + bearer userinfo.
-    consumer_verifies_signature: false
-    mode: hard_swap
-    cadence: annual
+    consumer_verifies_signature: false     # <- the load-bearing fact
+    jwks_uri: "https://nwd.<example-prod-domain>/.well-known/jwks.json"
+    tokens_carry_kid: false                # bare RSA key: no kid/alg/use in JWKS
+    provider_supports_overlap: false       # simple_oauth 6.1 = single public/private key
+    mode: hard_swap                        # atomic; native overlap not available
+    cadence: annual                        # or immediate on suspected key compromise
     post_rotate_checks:
       - jwks_200_new_modulus
       - browser_sso_login_ssd
+      - verify_consumer_refetches: n/a     # becomes REQUIRED if consumer_verifies_signature flips true
+    runbook: "docs/guides/ops82-key-rotation.md"
+
+    # --- ANNOUNCE → OVERLAP → RETIRE obligations (ops#82) --------------------
+    # Identical shape and rationale to the ssc contract — see that file for the
+    # long-form note. Zero is legitimate ONLY while consumer_verifies_signature
+    # is false; `pl contracts key-rotation` fails with OVERLAP-REQUIRED the
+    # moment it flips without these becoming real durations.
+    #
+    # ⚠ THIS PAIR IS THE REHEARSAL TARGET. nwd→ssd is the disposable demo pair,
+    # so a rotation is practised here FIRST and only then run against the real
+    # pair (docs/guides/ops82-key-rotation.md §8). ops#146 is the cautionary
+    # tale: an unprivileged key probe silently re-minted the nwd signing key on
+    # every provisioning run, invalidating every issued token — and nothing
+    # noticed, because no consumer verifies signatures. Rotation being *safe*
+    # here is exactly why an accidental rotation was *invisible* here.
+    announce_window: 0                     # N/A while consumer_verifies_signature=false
+    overlap_window: 0                      # N/A — simple_oauth cannot publish 2 keys
+    retire_after: 0                        # N/A — nothing to retire; one key is ever published
+    refetch_impl: null                     # none needed; the consumer verifies nothing
+    # Empty for the SCANNED corpus only (custom-plugin roots, not Moodle core;
+    # core verified by hand 2026-07-28 — see the ssc contract's key_rotation
+    # comments for the full statement incl. the LTI 1.3 caveat).
+    verification_exempt_paths: []
 
 # --- Onboarding smoke: the URL set checked after any promotion (D5) ----------
 # ⚠ ops#133 Phase 2 REPLACED the `oidc_discovery` probe. A Drupal simple_oauth

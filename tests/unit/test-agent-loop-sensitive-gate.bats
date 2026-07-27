@@ -66,6 +66,35 @@ gate_verdict() {
   return 0
 }
 
+# Assert a pattern is ABSENT — and actually fail the test when it isn't.
+#
+# `! grep -q X "$f"` cannot fail a bats test. bash's errexit explicitly exempts
+# "a command whose return value is being inverted with !", so every non-final
+# `! grep` in a test body always passes, whatever the file contains. The most
+# important claim this file makes — "the gate never reached the push" — was
+# written exactly that way and was therefore asserting nothing. Verified
+# against bats 1.10.0: a test body containing `! true` followed by `true`
+# passes. Route negative assertions through this helper instead; it is a plain
+# command, so errexit applies to it normally.
+refute_in() {
+  local file="$1" pattern="$2"
+  if grep -q -- "$pattern" "$file" 2>/dev/null; then
+    echo "REFUTE FAILED: '$pattern' is present in $file" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Same, for a string rather than a file.
+refute_str() {
+  local haystack="$1" pattern="$2"
+  if grep -q -- "$pattern" <<<"$haystack"; then
+    echo "REFUTE FAILED: '$pattern' is present in the given text" >&2
+    return 1
+  fi
+  return 0
+}
+
 # --------------------------------------------------------------------------
 # THE REGRESSION THIS FILE WAS WRITTEN FOR: the NWP Console.
 # --------------------------------------------------------------------------
@@ -288,7 +317,7 @@ gate_verdict() {
   grep -q 'remove_labels' <<<"$block"
   grep -q 'issues/${iid}/notes' <<<"$block"
   grep -q 'continue' <<<"$block"
-  ! grep -q 'worktree remove' <<<"$block"
+  refute_str "$block" 'worktree remove'
 }
 
 # Structural assertions can pass on dead code. This one EXECUTES the real gate
@@ -328,8 +357,8 @@ STUB
     bash "$harness"
 
   # 1. never pushed
-  ! grep -q REACHED_PUSH "$calls"
-  ! grep -q 'GIT push' "$calls"
+  refute_in "$calls" REACHED_PUSH
+  refute_in "$calls" 'GIT push'
   # 2. refusal logged, naming the offending file
   grep -q 'REFUSING PUSH' "$calls"
   grep -q 'authz.py' "$calls"
@@ -337,7 +366,7 @@ STUB
   grep -q 'API PUT .*issues/99.*remove_labels' "$calls"
   grep -q 'API POST .*issues/99/notes' "$calls"
   # 4. worktree left for inspection
-  ! grep -q 'worktree remove' "$calls"
+  refute_in "$calls" 'worktree remove'
   [ -f "$FIXTURE/scripts/console/app/authz.py" ]
 }
 
@@ -366,8 +395,131 @@ STUB
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" bash "$harness"
 
   grep -q REACHED_PUSH "$calls"
-  ! grep -q 'REFUSING PUSH' "$calls"
-  ! grep -q remove_labels "$calls"
+  refute_in "$calls" 'REFUSING PUSH'
+  refute_in "$calls" remove_labels
+}
+
+# --------------------------------------------------------------------------
+# A GATE THAT CANNOT SEE MUST REFUSE (ops#91 remaining).
+#
+# The gate's decision is `git diff --name-only <base> HEAD | grep -E <re>`.
+# `grep` prints nothing both when the diff is clean AND when the diff is
+# EMPTY — and the diff is empty whenever `git diff` itself failed. So a gate
+# that only tests `-n "$sensitive_hits"` treats "I looked and saw nothing"
+# and "I could not look" as the same answer, and pushes on both. That is
+# fail-OPEN on exactly the input an attacker would want: a blind gate.
+#
+# This is not hypothetical hardening of a hypothetical failure. The agent
+# under the gate is `claude -p --dangerously-skip-permissions` acting on a
+# member-controlled issue body, and it runs INSIDE the worktree the diff is
+# taken from — it can write .git/, exhaust the disk, or otherwise make the
+# diff command fail, and every one of those outcomes currently ends in an
+# unchecked `git push`.
+#
+# Empty-but-successful is refused for the same reason: the driver only
+# reaches the gate after asserting HEAD != main, so a commit that changes no
+# file is already an anomaly, not a normal clean diff.
+# --------------------------------------------------------------------------
+
+# Slice the live gate into a runnable harness with the GitLab calls stubbed.
+# `git` is stubbed from $GIT_STUB so a test can make `git diff` fail.
+_gate_harness() {
+  local out="$1"
+  {
+    echo 'set -uo pipefail'
+    grep -m1 '^SENSITIVE_PATH_RE=' "$LOOP_SH"
+    cat <<'STUB'
+LOG_FILE=/dev/null
+pid=16; iid=99; processed=0
+log() { printf 'LOG %s\n' "$*" >>"$CALLS"; }
+gitlab_curl() { printf 'API %s %s %s\n' "$1" "$2" "$3" >>"$CALLS"; }
+git() {
+  if [ -n "${GIT_STUB:-}" ]; then "$GIT_STUB" "$@"; return $?; fi
+  command git "$@"
+}
+for _once in 1; do
+STUB
+    sed -n '/---- ops#91 Half A/,/---- end ops#91 Half A gate ----/p' "$LOOP_SH"
+    cat <<'STUB'
+  printf 'REACHED_PUSH\n' >>"$CALLS"
+done
+STUB
+  } >"$out"
+}
+
+@test "BEHAVIOURAL: a FAILING git diff must refuse the push (the gate must not fail open when blind)" {
+  local harness="$BATS_TEST_TMPDIR/h3.sh" calls="$BATS_TEST_TMPDIR/c3.log"
+  local stub="$BATS_TEST_TMPDIR/gitstub.sh"
+  _gate_harness "$harness"
+
+  # `git diff` fails the way a broken/hostile worktree makes it fail: non-zero
+  # exit, nothing on stdout. Everything else behaves normally.
+  cat >"$stub" <<'SH'
+#!/usr/bin/env bash
+if [ "$1" = diff ]; then exit 128; fi
+exec git "$@"
+SH
+  chmod +x "$stub"
+
+  # A real, ordinary (benign) change — so the ONLY reason to refuse is blindness.
+  mkdir -p docs
+  echo 'a doc tweak' >docs/note.md
+  git add -A && git commit -q -m 'agent edited a doc'
+
+  CALLS="$calls" GIT_STUB="$stub" work_dir="$FIXTURE" head_main="$BASE" \
+    branch=agent-99 bash "$harness"
+
+  # The push must NOT be reached when the gate could not see the diff.
+  refute_in "$calls" REACHED_PUSH
+  grep -q 'REFUSING PUSH' "$calls"
+  # ...and it must fail closed the same way: label pulled, comment posted,
+  # worktree left for inspection.
+  grep -q 'API PUT .*issues/99.*remove_labels' "$calls"
+  grep -q 'API POST .*issues/99/notes' "$calls"
+  refute_in "$calls" 'worktree remove'
+}
+
+@test "BEHAVIOURAL: an EMPTY diff must refuse the push (HEAD != main, so no files changed is an anomaly)" {
+  local harness="$BATS_TEST_TMPDIR/h4.sh" calls="$BATS_TEST_TMPDIR/c4.log"
+  local stub="$BATS_TEST_TMPDIR/gitstub2.sh"
+  _gate_harness "$harness"
+
+  # `git diff` succeeds but reports no changed files.
+  cat >"$stub" <<'SH'
+#!/usr/bin/env bash
+if [ "$1" = diff ]; then exit 0; fi
+exec git "$@"
+SH
+  chmod +x "$stub"
+
+  mkdir -p docs
+  echo 'a doc tweak' >docs/note2.md
+  git add -A && git commit -q -m 'agent edited a doc'
+
+  CALLS="$calls" GIT_STUB="$stub" work_dir="$FIXTURE" head_main="$BASE" \
+    branch=agent-99 bash "$harness"
+
+  refute_in "$calls" REACHED_PUSH
+  grep -q 'REFUSING PUSH' "$calls"
+  grep -q 'API PUT .*issues/99.*remove_labels' "$calls"
+}
+
+@test "NEGATIVE CONTROL: with git working normally, a benign diff still reaches the push" {
+  # Without this, the two tests above would pass on a gate that refused
+  # everything unconditionally.
+  local harness="$BATS_TEST_TMPDIR/h5.sh" calls="$BATS_TEST_TMPDIR/c5.log"
+  _gate_harness "$harness"
+
+  mkdir -p docs
+  echo 'a doc tweak' >docs/note3.md
+  git add -A && git commit -q -m 'agent edited a doc'
+
+  CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" branch=agent-99 \
+    bash "$harness"
+
+  grep -q REACHED_PUSH "$calls"
+  refute_in "$calls" 'REFUSING PUSH'
+  refute_in "$calls" remove_labels
 }
 
 @test "agent-loop.sh is syntactically valid" {

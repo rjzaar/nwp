@@ -920,7 +920,7 @@ _keyrot_one() {
             _say  "  oidc.key_rotation.verification_exempt_paths (an explicit, reviewable waiver)."
             bad=1
         else
-            [ "$quiet" = true ] || _say "[$pair] verify  OK           no executable signature/JWKS code in the consumer tree"
+            [ "$quiet" = true ] || _say "[$pair] verify  OK           no executable signature/JWKS code in the SCANNED consumer roots (custom plugins only — NOT Moodle core; core was verified by hand 2026-07-28, see the contract's key_rotation comments)"
         fi
         # hard_swap is only legitimate while nobody verifies.
         if [ -n "$mode" ] && [ "$mode" != "hard_swap" ]; then

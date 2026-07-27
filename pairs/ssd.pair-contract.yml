@@ -347,7 +347,10 @@ oidc:
     overlap_window: 0                      # N/A — simple_oauth cannot publish 2 keys
     retire_after: 0                        # N/A — nothing to retire; one key is ever published
     refetch_impl: null                     # none needed; the consumer verifies nothing
-    verification_exempt_paths: []          # verified empty by `pl contracts key-rotation ssd`
+    # Empty for the SCANNED corpus only (custom-plugin roots, not Moodle core;
+    # core verified by hand 2026-07-28 — see the ssc contract's key_rotation
+    # comments for the full statement incl. the LTI 1.3 caveat).
+    verification_exempt_paths: []
 
 # --- Onboarding smoke: the URL set checked after any promotion (D5) ----------
 # ⚠ ops#133 Phase 2 REPLACED the `oidc_discovery` probe. A Drupal simple_oauth

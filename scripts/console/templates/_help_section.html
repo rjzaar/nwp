@@ -1,0 +1,37 @@
+{#
+  One help section. Knows exactly four block kinds and nothing else.
+
+  Every string here comes from app/help.py and is rendered with Jinja's normal
+  autoescaping — there is deliberately no `|safe` anywhere in this file, so no
+  amount of editing the content file can turn help text into markup.
+#}
+<section class="helpsec" id="help-{{ s.id }}">
+  <h2 class="helpsec-h"><a href="/help/{{ s.id }}" title="just this section">{{ s.title }}</a></h2>
+  <p class="muted helpsec-sum">{{ s.summary }}</p>
+
+  {% for b in s.blocks %}
+    {% if b.kind == 'text' %}
+    <p class="helptext">{{ b.text }}</p>
+
+    {% elif b.kind == 'list' %}
+    <ul class="helplist">
+      {% for item in b['items'] %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+
+    {% elif b.kind == 'defs' %}
+    <table class="tbl helpdefs">
+      {% for row in b.rows %}
+      <tr><th scope="row">{{ row.term }}</th><td>{{ row.desc }}</td></tr>
+      {% endfor %}
+    </table>
+
+    {% elif b.kind == 'note' %}
+    <p class="helpnote">{{ b.text }}</p>
+
+    {% else %}
+    {# An unknown kind must be LOUD, not silent: a block nobody renders is a
+       paragraph of help that quietly stopped existing. #}
+    <p class="err">help: unknown block kind {{ b.kind }} — the template needs updating</p>
+    {% endif %}
+  {% endfor %}
+</section>

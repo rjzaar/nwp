@@ -1,0 +1,585 @@
+diff --git a/mod/depthcontent/classes/local/renderer.php b/mod/depthcontent/classes/local/renderer.php
+new file mode 100644
+index 0000000..1c1d34a
+--- /dev/null
++++ b/mod/depthcontent/classes/local/renderer.php
+@@ -0,0 +1,268 @@
++<?php
++// This file is part of Moodle - http://moodle.org/
++//
++// Moodle is free software: you can redistribute it and/or modify
++// it under the terms of the GNU General Public License as published by
++// the Free Software Foundation, either version 3 of the License, or
++// (at your option) any later version.
++//
++// Moodle is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// You should have received a copy of the GNU General Public License
++// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
++
++namespace mod_depthcontent\local;
++
++defined('MOODLE_INTERNAL') || die();
++
++/**
++ * Markdown rendering for depthcontent, including the <details> escape hatch.
++ *
++ * Moodle's FORMAT_MARKDOWN drops <details>/<summary>, so the accordion markup
++ * authors rely on cannot simply be passed through format_text(). The renderer
++ * therefore lifts those blocks out, renders the remaining markdown normally, and
++ * splices the blocks back in.
++ *
++ * That splice is a sanitiser bypass by construction: whatever comes back in
++ * never met format_text(). Before ops#90 the blocks were re-inserted verbatim,
++ * so any HTML an author could store -- on* handlers, <script>, javascript: URLs
++ * -- rendered live. On Moodle a stored XSS in course content is a privilege
++ * escalation: a teacher or admin viewing the page runs the payload with their
++ * session. sanitise_details_block() is what now stands in that gap, and it is
++ * deliberately allowlist-based: only known-safe elements, attributes and URL
++ * schemes survive, so an element nobody thought about fails closed.
++ *
++ * sanitise_details_block() is pure -- no $DB, no $CFG, no $COURSE -- so it can be
++ * exercised without a Moodle bootstrap. See tests/sanitise_details_test.php.
++ *
++ * @package    mod_depthcontent
++ * @copyright  2026 NWP (https://nwpcode.org)
++ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
++ */
++class renderer {
++
++    /**
++     * Elements removed together with their entire subtree.
++     *
++     * These carry or can resurrect script in ways that unwrapping would not
++     * defuse (<svg>/<math> are the classic mXSS re-parsing vectors).
++     */
++    const DROP_ELEMENTS = [
++        'script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button',
++        'select', 'option', 'textarea', 'link', 'meta', 'base', 'noscript',
++        'template', 'svg', 'math', 'applet', 'frame', 'frameset', 'portal',
++    ];
++
++    /** Elements allowed to remain. Anything else is unwrapped (children kept). */
++    const ALLOW_ELEMENTS = [
++        'details', 'summary',
++        'p', 'div', 'span', 'br', 'hr', 'pre', 'blockquote', 'q', 'cite',
++        'strong', 'b', 'em', 'i', 'u', 's', 'del', 'ins', 'mark', 'small',
++        'sub', 'sup', 'code', 'kbd', 'samp', 'var', 'abbr', 'time', 'wbr',
++        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
++        'ul', 'ol', 'li', 'dl', 'dt', 'dd',
++        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
++        'colgroup', 'col',
++        'a', 'img', 'figure', 'figcaption',
++        'audio', 'video', 'source', 'track',
++    ];
++
++    /** Attributes allowed on any allowed element. */
++    const ALLOW_ATTRS_GLOBAL = ['class', 'id', 'title', 'lang', 'dir', 'role'];
++
++    /** Attributes allowed only on specific elements. */
++    const ALLOW_ATTRS_BY_ELEMENT = [
++        'details' => ['open'],
++        'a'       => ['href', 'target', 'rel', 'name'],
++        'img'     => ['src', 'alt', 'width', 'height', 'loading', 'decoding'],
++        'th'      => ['colspan', 'rowspan', 'scope', 'headers', 'abbr'],
++        'td'      => ['colspan', 'rowspan', 'headers'],
++        'col'     => ['span'],
++        'colgroup' => ['span'],
++        'ol'      => ['start', 'reversed', 'type'],
++        'li'      => ['value'],
++        'time'    => ['datetime'],
++        'blockquote' => ['cite'],
++        'q'       => ['cite'],
++        'del'     => ['cite', 'datetime'],
++        'ins'     => ['cite', 'datetime'],
++        'audio'   => ['src', 'controls', 'preload', 'loop', 'muted'],
++        'video'   => ['src', 'controls', 'preload', 'loop', 'muted', 'poster', 'width', 'height'],
++        'source'  => ['src', 'type', 'media', 'srcset', 'sizes'],
++        'track'   => ['src', 'kind', 'srclang', 'label', 'default'],
++    ];
++
++    /** Attributes whose value is a URL and must be scheme-checked. */
++    const URL_ATTRS = ['href', 'src', 'srcset', 'poster', 'cite', 'action', 'formaction', 'background'];
++
++    /** URL schemes permitted in URL_ATTRS. A URL with no scheme is also allowed. */
++    const ALLOW_SCHEMES = ['http', 'https', 'mailto', 'tel', 'ftp', 'ftps'];
++
++    /**
++     * Sanitise one raw <details>...</details> block for re-insertion.
++     *
++     * @param string $block Raw, author-controlled HTML for a single block.
++     * @return string Sanitised HTML safe to splice into rendered output.
++     */
++    public static function sanitise_details_block($block) {
++        if (trim($block) === '') {
++            return '';
++        }
++
++        $prev = libxml_use_internal_errors(true);
++        $doc = new \DOMDocument('1.0', 'UTF-8');
++        $doc->loadHTML(
++            '<?xml encoding="UTF-8"?><body><div id="dc-wrap">' . $block . '</div></body>',
++            LIBXML_NOERROR | LIBXML_NONET | LIBXML_NOWARNING
++        );
++        libxml_clear_errors();
++        libxml_use_internal_errors($prev);
++
++        $xpath = new \DOMXPath($doc);
++
++        // 1. Drop script-bearing elements outright, subtree and all.
++        $q = '//' . implode(' | //', self::DROP_ELEMENTS);
++        foreach (iterator_to_array($xpath->query($q)) as $node) {
++            if ($node->parentNode) {
++                $node->parentNode->removeChild($node);
++            }
++        }
++
++        // 2. Unwrap anything not on the allowlist, keeping its text content.
++        //    Iterate deepest-first so nested unknowns collapse cleanly.
++        $all = iterator_to_array($xpath->query('//body//*'));
++        foreach (array_reverse($all) as $el) {
++            $name = strtolower($el->nodeName);
++            if ($name === 'body' || ($el->getAttribute('id') === 'dc-wrap')) {
++                continue;
++            }
++            if (in_array($name, self::ALLOW_ELEMENTS, true)) {
++                continue;
++            }
++            if (!$el->parentNode) {
++                continue;
++            }
++            while ($el->firstChild) {
++                $el->parentNode->insertBefore($el->firstChild, $el);
++            }
++            $el->parentNode->removeChild($el);
++        }
++
++        // 3. Enforce the attribute allowlist on every surviving element.
++        foreach ($xpath->query('//body//*') as $el) {
++            $name = strtolower($el->nodeName);
++            if ($el->getAttribute('id') === 'dc-wrap') {
++                continue;
++            }
++            $allowed = array_merge(
++                self::ALLOW_ATTRS_GLOBAL,
++                self::ALLOW_ATTRS_BY_ELEMENT[$name] ?? []
++            );
++            for ($i = $el->attributes->length - 1; $i >= 0; $i--) {
++                $attr = $el->attributes->item($i);
++                $aname = strtolower($attr->nodeName);
++
++                // data-* and aria-* are safe by shape and widely used for styling/a11y.
++                $isprefixed = (strpos($aname, 'data-') === 0 || strpos($aname, 'aria-') === 0);
++                if (!$isprefixed && !in_array($aname, $allowed, true)) {
++                    $el->removeAttributeNode($attr);
++                    continue;
++                }
++
++                if (in_array($aname, self::URL_ATTRS, true)) {
++                    $clean = self::sanitise_url((string) $attr->nodeValue);
++                    if ($clean === null) {
++                        $el->removeAttributeNode($attr);
++                    } else {
++                        $attr->nodeValue = htmlspecialchars($clean, ENT_QUOTES, 'UTF-8');
++                    }
++                }
++            }
++        }
++
++        // 4. Serialise the sanitised children of the wrapper.
++        $wrap = $xpath->query('//div[@id="dc-wrap"]')->item(0);
++        if (!$wrap) {
++            return '';
++        }
++        $out = '';
++        foreach ($wrap->childNodes as $child) {
++            $out .= $doc->saveHTML($child);
++        }
++        return $out;
++    }
++
++    /**
++     * Validate a URL attribute value against the scheme allowlist.
++     *
++     * Browsers strip TAB/LF/CR (and treat NUL as a terminator) from a URL before
++     * resolving its scheme, so "jav&#x09;ascript:alert(1)" executes even though a
++     * naive test for a leading "javascript:" does not match it. Control
++     * characters are therefore removed BEFORE the scheme is read, and the cleaned
++     * value -- not the original -- is what gets written back.
++     *
++     * @param string $value Raw attribute value, already entity-decoded by the DOM.
++     * @return string|null Cleaned URL, or null if it must be dropped.
++     */
++    protected static function sanitise_url($value) {
++        // Remove every C0 control, DEL, and the Unicode whitespace browsers ignore.
++        $clean = preg_replace('/[\x00-\x20\x7F]+/u', '', $value);
++        if ($clean === null) {
++            // preg failed (invalid UTF-8); fail closed.
++            return null;
++        }
++        $clean = trim($clean);
++        if ($clean === '') {
++            return null;
++        }
++
++        // A leading "//" is protocol-relative, and a leading "/", "?", "#" or a
++        // bare path has no scheme at all -- none of these can name javascript:.
++        if (preg_match('#^(//|/|\?|\#)#', $clean)) {
++            return $clean;
++        }
++
++        // Does it declare a scheme? Scheme grammar: ALPHA *( ALPHA / DIGIT / + / - / . ) ":"
++        if (preg_match('/^([a-z][a-z0-9+.\-]*)\s*:/i', $clean, $m)) {
++            return in_array(strtolower($m[1]), self::ALLOW_SCHEMES, true) ? $clean : null;
++        }
++
++        // No scheme, and the first colon (if any) is not a scheme separator:
++        // a relative reference such as "page.html" or "a/b?x=1:2".
++        return $clean;
++    }
++
++    /**
++     * Render markdown text, preserving <details> blocks.
++     *
++     * The blocks bypass format_text(), so each is sanitised on the way out.
++     *
++     * @param string $text Raw markdown that may contain <details> blocks.
++     * @return string Rendered HTML.
++     */
++    public static function render_markdown($text) {
++        $blocks = [];
++        $text = preg_replace_callback(
++            '/<details\b[^>]*>.*?<\/details>/is',
++            function ($match) use (&$blocks) {
++                $key = '%%DETAILS_' . count($blocks) . '%%';
++                // ops#90: sanitise now -- this block never meets format_text().
++                $blocks[$key] = self::sanitise_details_block($match[0]);
++                return $key;
++            },
++            $text
++        );
++
++        $html = format_text($text, FORMAT_MARKDOWN);
++
++        foreach ($blocks as $key => $block) {
++            $html = str_replace('<p>' . $key . '</p>', $block, $html);
++            $html = str_replace($key, $block, $html);
++        }
++
++        return $html;
++    }
++}
+diff --git a/mod/depthcontent/tests/sanitise_details_test.php b/mod/depthcontent/tests/sanitise_details_test.php
+new file mode 100644
+index 0000000..11c30cd
+--- /dev/null
++++ b/mod/depthcontent/tests/sanitise_details_test.php
+@@ -0,0 +1,210 @@
++<?php
++// This file is part of Moodle - http://moodle.org/
++//
++// Moodle is free software: you can redistribute it and/or modify
++// it under the terms of the GNU General Public License as published by
++// the Free Software Foundation, either version 3 of the License, or
++// (at your option) any later version.
++//
++// Moodle is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// You should have received a copy of the GNU General Public License
++// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
++
++/**
++ * Stored-XSS regression tests for the <details> block sanitiser (ops#90).
++ *
++ * depthcontent_render_markdown() lifts <details>...</details> blocks out of the
++ * text BEFORE format_text() runs, so those blocks never meet Moodle's sanitiser.
++ * Before ops#90 they were re-inserted RAW — every event handler, <script> and
++ * javascript: URL an author could write reached the rendered page. That is a
++ * stored XSS, and on a Moodle site a stored XSS in course content that a teacher
++ * views is a privilege-escalation primitive.
++ *
++ * These tests pin the sanitiser that now stands in that gap. They deliberately
++ * run WITHOUT a Moodle bootstrap: renderer::sanitise_details_block() is pure
++ * (no $DB, no $CFG, no $COURSE), which is the whole reason the ops#90 refactor
++ * moved it out of view.php. Run directly:
++ *
++ *     php mod/depthcontent/tests/sanitise_details_test.php
++ *
++ * @package    mod_depthcontent
++ * @copyright  2026 NWP (https://nwpcode.org)
++ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
++ */
++
++// The renderer is a plain, dependency-free class; satisfy the Moodle guard so it
++// can be included standalone.
++if (!defined('MOODLE_INTERNAL')) {
++    define('MOODLE_INTERNAL', true);
++}
++require_once(__DIR__ . '/../classes/local/renderer.php');
++
++use mod_depthcontent\local\renderer;
++
++$failures = 0;
++$checks   = 0;
++
++/**
++ * Assert that a rendered fragment does NOT contain a dangerous pattern.
++ *
++ * @param string $name Human-readable vector name.
++ * @param string $payload Attacker-controlled <details> block.
++ * @param array $forbidden Regexes that must not appear in the output.
++ * @return void
++ */
++function dc_assert_stripped($name, $payload, array $forbidden) {
++    global $failures, $checks;
++    $checks++;
++    $out = renderer::sanitise_details_block($payload);
++    $hits = [];
++    foreach ($forbidden as $re) {
++        if (preg_match($re, $out)) {
++            $hits[] = $re;
++        }
++    }
++    if ($hits) {
++        $failures++;
++        printf("FAIL  %-24s leaked %s\n        -> %s\n", $name, implode(' ', $hits), trim($out));
++    } else {
++        printf("ok    %-24s\n", $name);
++    }
++}
++
++/**
++ * Assert that a rendered fragment DOES contain an expected pattern.
++ *
++ * Negative control: an over-eager sanitiser that deletes everything would pass
++ * every stripping test above while destroying the feature.
++ *
++ * @param string $name Human-readable case name.
++ * @param string $payload Legitimate <details> block.
++ * @param array $expected Regexes that must appear in the output.
++ * @return void
++ */
++function dc_assert_kept($name, $payload, array $expected) {
++    global $failures, $checks;
++    $checks++;
++    $out = renderer::sanitise_details_block($payload);
++    $missing = [];
++    foreach ($expected as $re) {
++        if (!preg_match($re, $out)) {
++            $missing[] = $re;
++        }
++    }
++    if ($missing) {
++        $failures++;
++        printf("FAIL  %-24s lost %s\n        -> %s\n", $name, implode(' ', $missing), trim($out));
++    } else {
++        printf("ok    %-24s\n", $name);
++    }
++}
++
++$anyhandler = '/\son[a-z]+\s*=/i';
++$anyscript  = '/<script/i';
++$anyjs      = '/javascript\s*:/i';
++
++print "-- event handlers --\n";
++dc_assert_stripped('outer ontoggle',
++    '<details ontoggle="alert(1)"><summary>s</summary>b</details>', [$anyhandler]);
++dc_assert_stripped('summary onclick',
++    '<details><summary onclick="alert(1)">s</summary>b</details>', [$anyhandler]);
++dc_assert_stripped('img onerror',
++    '<details><summary>s</summary><img src=x onerror="alert(1)"></details>', [$anyhandler]);
++dc_assert_stripped('ONERROR uppercase',
++    '<details><summary>s</summary><img src=x ONERROR="alert(1)"></details>', [$anyhandler]);
++dc_assert_stripped('body onload via svg',
++    '<details><summary>s</summary><svg onload="alert(1)"></svg></details>', [$anyhandler, '/<svg/i']);
++
++print "-- script-bearing elements --\n";
++dc_assert_stripped('script tag',
++    '<details><summary>s</summary><script>alert(1)</script></details>', [$anyscript]);
++dc_assert_stripped('iframe srcdoc',
++    '<details><summary>s</summary><iframe srcdoc="&lt;script&gt;alert(1)&lt;/script&gt;"></iframe></details>',
++    ['/<iframe/i', '/srcdoc/i']);
++dc_assert_stripped('object data',
++    '<details><summary>s</summary><object data="javascript:alert(1)"></object></details>',
++    ['/<object/i', $anyjs]);
++dc_assert_stripped('embed src',
++    '<details><summary>s</summary><embed src="javascript:alert(1)"></details>',
++    ['/<embed/i', $anyjs]);
++dc_assert_stripped('form formaction',
++    '<details><summary>s</summary><form><button formaction="javascript:alert(1)">x</button></form></details>',
++    ['/<form/i', $anyjs]);
++dc_assert_stripped('noscript mXSS',
++    '<details><summary>s</summary><noscript><p title="</noscript><img src=x onerror=alert(1)>">x</p></noscript></details>',
++    [$anyhandler, '/<noscript/i']);
++dc_assert_stripped('math mglyph mXSS',
++    '<details><summary>s</summary><math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></mtext></math></details>',
++    [$anyhandler, '/<math/i', '/<style/i']);
++dc_assert_stripped('base href hijack',
++    '<details><summary>s</summary><base href="//evil"></details>', ['/<base/i']);
++
++print "-- dangerous URL schemes --\n";
++dc_assert_stripped('javascript: href',
++    '<details><summary>s</summary><a href="javascript:alert(1)">x</a></details>', [$anyjs]);
++dc_assert_stripped('JaVaScRiPt: href',
++    '<details><summary>s</summary><a href="JaVaScRiPt:alert(1)">x</a></details>', [$anyjs]);
++dc_assert_stripped('vbscript: href',
++    '<details><summary>s</summary><a href="vbscript:msgbox(1)">x</a></details>', ['/vbscript\s*:/i']);
++dc_assert_stripped('data: href',
++    '<details><summary>s</summary><a href="data:text/html;base64,PHNjcmlwdD4=">x</a></details>',
++    ['/data\s*:\s*text/i']);
++dc_assert_stripped('srcset javascript:',
++    '<details><summary>s</summary><img srcset="javascript:alert(1)"></details>', [$anyjs]);
++
++// Browsers strip TAB/LF/CR from a URL before resolving its scheme, so
++// "jav<TAB>ascript:alert(1)" executes. A scheme test that only allows for
++// LEADING whitespace does not see it. Until ops#90 hardening these two survived
++// the sanitiser's own logic and were neutralised only incidentally, by libxml
++// percent-encoding them on serialisation -- a defence the sanitiser does not own
++// and must not depend on.
++dc_assert_stripped('TAB-split scheme',
++    '<details><summary>s</summary><a href="jav&#x09;ascript:alert(1)">x</a></details>',
++    ['/jav\W*ascript/i', '/%09/i']);
++dc_assert_stripped('LF-split scheme',
++    '<details><summary>s</summary><a href="java&#10;script:alert(1)">x</a></details>',
++    ['/java\W*script/i', '/%0A/i']);
++dc_assert_stripped('NUL-split scheme',
++    "<details><summary>s</summary><a href=\"java\0script:alert(1)\">x</a></details>",
++    ['/java\W*script/i']);
++
++print "-- style / expression --\n";
++dc_assert_stripped('style expression',
++    '<details><summary>s</summary><p style="width:expression(alert(1))">x</p></details>',
++    ['/style\s*=/i', '/expression\(/i']);
++
++print "-- negative controls (must survive) --\n";
++dc_assert_kept('plain accordion',
++    '<details><summary>Title</summary><p>Body</p></details>',
++    ['/<details/', '/<summary>Title<\/summary>/', '/<p>Body<\/p>/']);
++dc_assert_kept('open attribute kept',
++    '<details open><summary>T</summary><p>B</p></details>', ['/<details open>/']);
++dc_assert_kept('inline formatting kept',
++    '<details><summary>T</summary><p>a <strong>b</strong> <em>c</em> <code>d</code></p></details>',
++    ['/<strong>b<\/strong>/', '/<em>c<\/em>/', '/<code>d<\/code>/']);
++dc_assert_kept('safe link kept',
++    '<details><summary>T</summary><a href="https://example.org/page">x</a></details>',
++    ['/href="https:\/\/example\.org\/page"/']);
++dc_assert_kept('relative link kept',
++    '<details><summary>T</summary><a href="/course/view.php?id=2">x</a></details>',
++    ['/href="\/course\/view\.php\?id=2"/']);
++dc_assert_kept('class and data-* kept',
++    '<details class="dc-box" data-depth="deep"><summary>T</summary><p>B</p></details>',
++    ['/class="dc-box"/', '/data-depth="deep"/']);
++dc_assert_kept('nested list kept',
++    '<details><summary>T</summary><ul><li>one</li><li>two</li></ul></details>',
++    ['/<ul>/', '/<li>one<\/li>/']);
++dc_assert_kept('safe image kept',
++    '<details><summary>T</summary><img src="/pluginfile.php/1/x.png" alt="d"></details>',
++    ['/src="\/pluginfile\.php\/1\/x\.png"/', '/alt="d"/']);
++
++print "-- degenerate input --\n";
++dc_assert_kept('empty block is empty',
++    '', ['/^$/']);
++
++printf("\n%d checks, %d failures\n", $checks, $failures);
++exit($failures === 0 ? 0 : 1);
+diff --git a/mod/depthcontent/view.php b/mod/depthcontent/view.php
+index 3e88aab..123150c 100644
+--- a/mod/depthcontent/view.php
++++ b/mod/depthcontent/view.php
+@@ -154,57 +154,7 @@ if ($quizcount !== 'all') {
+  * @return string Sanitised HTML safe to embed.
+  */
+ function depthcontent_sanitise_details_block($block) {
+-    if (trim($block) === '') {
+-        return '';
+-    }
+-    $prev = libxml_use_internal_errors(true);
+-    $doc = new DOMDocument('1.0', 'UTF-8');
+-    $doc->loadHTML(
+-        '<?xml encoding="UTF-8"?><body><div id="dc-wrap">' . $block . '</div></body>',
+-        LIBXML_NOERROR | LIBXML_NONET | LIBXML_NOWARNING
+-    );
+-    libxml_clear_errors();
+-    libxml_use_internal_errors($prev);
+-
+-    $xpath = new DOMXPath($doc);
+-
+-    // 1. Remove entire dangerous elements.
+-    $kill = $xpath->query('//script | //style | //iframe | //object | //embed | //form '
+-        . '| //link | //meta | //base | //noscript | //template | //svg | //math');
+-    foreach (iterator_to_array($kill) as $node) {
+-        if ($node->parentNode) {
+-            $node->parentNode->removeChild($node);
+-        }
+-    }
+-
+-    // 2. Strip dangerous attributes from every remaining element.
+-    $urlattrs = ['href', 'src', 'action', 'formaction', 'xlink:href', 'poster', 'background', 'srcset'];
+-    foreach ($xpath->query('//*') as $el) {
+-        for ($i = $el->attributes->length - 1; $i >= 0; $i--) {
+-            $attr = $el->attributes->item($i);
+-            $name = strtolower($attr->nodeName);
+-            $val  = (string) $attr->nodeValue;
+-            $remove = (strpos($name, 'on') === 0)
+-                   || $name === 'style'
+-                   || $name === 'srcdoc'
+-                   || (in_array($name, $urlattrs, true)
+-                       && preg_match('/^\s*(javascript|vbscript|data)\s*:/i', $val));
+-            if ($remove) {
+-                $el->removeAttributeNode($attr);
+-            }
+-        }
+-    }
+-
+-    // 3. Serialise the sanitised children of the wrapper.
+-    $wrap = $xpath->query('//div[@id="dc-wrap"]')->item(0);
+-    if (!$wrap) {
+-        return '';
+-    }
+-    $out = '';
+-    foreach ($wrap->childNodes as $child) {
+-        $out .= $doc->saveHTML($child);
+-    }
+-    return $out;
++    return \mod_depthcontent\local\renderer::sanitise_details_block($block);
+ }
+ 
+ /**
+@@ -217,30 +167,7 @@ function depthcontent_sanitise_details_block($block) {
+  * @return string Rendered HTML.
+  */
+ function depthcontent_render_markdown($text) {
+-    // Extract <details> blocks and replace with placeholders.
+-    $blocks = [];
+-    $text = preg_replace_callback(
+-        '/<details\b[^>]*>.*?<\/details>/s',
+-        function ($match) use (&$blocks) {
+-            $key = '%%DETAILS_' . count($blocks) . '%%';
+-            // ops#90: sanitise now — the block bypasses format_text(), so raw
+-            // author HTML here would otherwise be a stored-XSS vector.
+-            $blocks[$key] = depthcontent_sanitise_details_block($match[0]);
+-            return $key;
+-        },
+-        $text
+-    );
+-
+-    // Render the markdown.
+-    $html = format_text($text, FORMAT_MARKDOWN);
+-
+-    // Re-insert the <details> blocks (they may be wrapped in <p> tags).
+-    foreach ($blocks as $key => $block) {
+-        $html = str_replace('<p>' . $key . '</p>', $block, $html);
+-        $html = str_replace($key, $block, $html);
+-    }
+-
+-    return $html;
++    return \mod_depthcontent\local\renderer::render_markdown($text);
+ }
+ 
+ /**

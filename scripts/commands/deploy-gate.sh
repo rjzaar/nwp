@@ -83,23 +83,38 @@ cmd_status() {
         print_status "INFO" "Gate NOT configured — prod-write verbs proceed without it (no-op)"
     fi
 
-    # REQUIRE (fail-closed-when-unconfigured) enforcement, and via which mechanism
-    local require_via=""
+    # REQUIRE (fail-closed-when-unconfigured) enforcement, and via which mechanism.
+    #
+    # This walks _dg_marker_paths through _dg_marker_verdict — the same list and
+    # the same three-way discriminator the enforcement path uses — rather than
+    # keeping a private pair of `[ -e ]` probes. A blind probe here reported an
+    # UNREADABLE marker as "not enforced (fail-open)" while deploy_gate_require
+    # was aborting on that very host: the status verb contradicted the code it
+    # exists to report on, which is the reassurance an operator acts on.
+    local require_via="" require_blind="" marker
     if [ "${NWP_DEPLOY_GATE_REQUIRE:-false}" = "true" ]; then
         require_via="env var NWP_DEPLOY_GATE_REQUIRE=true"
     fi
-    if [ -e /etc/nwp/deploy-gate-require ]; then
-        require_via="${require_via:+$require_via, }marker file /etc/nwp/deploy-gate-require"
-    fi
-    if [ -e "$PROJECT_ROOT/keys/deploy-gate.require" ]; then
-        require_via="${require_via:+$require_via, }marker file keys/deploy-gate.require"
-    fi
+    while IFS= read -r marker; do
+        case "$(_dg_marker_verdict "$marker")" in
+            present)       require_via="${require_via:+$require_via, }marker file $marker" ;;
+            cannot-verify) require_blind="${require_blind:+$require_blind, }$marker" ;;
+        esac
+    done < <(_dg_marker_paths)
 
     if [ -n "$require_via" ]; then
         print_status "OK" "REQUIRE enforced (unconfigured gate fails CLOSED) via: $require_via"
+        # Still worth saying: a second location we cannot read is a latent surprise.
+        [ -n "$require_blind" ] && print_info "(also unreadable, not consulted: $require_blind)"
+    elif [ -n "$require_blind" ]; then
+        # Blind, not clear — and the permissive reading is the one that would be a
+        # guess. Report it as the enforcement path treats it: REQUIRED.
+        print_status "FAIL" "REQUIRE CANNOT VERIFY — marker location unreadable: $require_blind"
+        print_info "Treated as REQUIRED (never as absent): prod-write verbs will ABORT until this is readable."
+        print_info "The directory needs SEARCH (+x) for you, e.g.: sudo chmod 0755 $(dirname -- "${require_blind%%,*}")"
     else
         print_status "INFO" "REQUIRE not enforced — an unconfigured gate is a no-op (fail-open)"
-        print_info "On ver, pin fail-closed with: sudo touch /etc/nwp/deploy-gate-require"
+        print_info "On ver, pin fail-closed with: sudo mkdir -p -m 0755 /etc/nwp && sudo touch /etc/nwp/deploy-gate-require"
     fi
 
     # Verdict line
@@ -108,6 +123,8 @@ cmd_status() {
         print_status "OK" "Verdict: gate ACTIVE. Try it: pl deploy-gate test"
     elif [ -n "$require_via" ]; then
         print_status "FAIL" "Verdict: gate REQUIRED but unconfigured — prod-write verbs will ABORT"
+    elif [ -n "$require_blind" ]; then
+        print_status "FAIL" "Verdict: cannot tell whether the gate is REQUIRED — prod-write verbs will ABORT"
     else
         print_status "INFO" "Verdict: gate inactive (test-tier default)"
     fi

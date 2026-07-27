@@ -71,10 +71,12 @@
 </p>
 {% endif %}
 
-{# The SAME staleness idiom as every fleet pane — never a second one. `prov`
-   is rebound here rather than being passed at the top level so the integrator's
-   route can hand over one `lib` context and nothing else. #}
-{% with prov = lib.prov %}{% include "_provenance.html" %}{% endwith %}
+{# The SAME staleness idiom as every fleet pane — never a second one. `prov` is
+   read from the TOP level of the context, exactly where every other pane keeps
+   it, so scope.redact() strips the publisher host for a scoped reader here too.
+   Do not rebind it from `lib`: that is how a pane stops obeying a shared
+   policy without anyone noticing. #}
+{% include "_provenance.html" %}
 
 {% if lib.generated_by and lib.generated_by.git_commit %}
 {# The provenance a DOC bundle needs is the commit it was built from — fleet

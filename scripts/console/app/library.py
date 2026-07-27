@@ -832,18 +832,29 @@ def page_context(data_dir, scope, variant: str = "full", q: str = "",
     rows, dropped = visible_docs(bundle, scope)
     shown = [r for r in rows if _matches(r, q)]
     return {
-        "variant": variant,
-        "q": q,
-        "rows": shown,
-        "total_rows": len(rows),
-        "dropped": dropped,
-        "counts": counts_for(bundle, scope),
+        # `prov` is TOP LEVEL, not nested under `lib`, and that is load-bearing.
+        # scope.redact() strips ctx["prov"]["host"]/["note"] for a scoped reader
+        # by exact path. Nesting it as ctx["lib"]["prov"] would leave the shared
+        # redactor walking past it — the library would quietly stop obeying a
+        # policy every other pane obeys, and nothing would say so. Same idiom,
+        # same shape, or it is not the same idiom.
         "prov": provenance(bundle, max_age, now=now, local_host=local_host),
-        "shards": sorted(library_shards(scope)),
-        "bundle_present": bundle is not None,
-        "public_sites": list((bundle or {}).get("public_sites") or ()),
-        "site_vocabulary": list((bundle or {}).get("site_vocabulary") or ()),
-        "generated_by": dict((bundle or {}).get("generated_by") or {}),
+        "doc": None,
+        "body": "",
+        "variant": variant,
+        "lib": {
+            "variant": variant,
+            "q": q,
+            "rows": shown,
+            "total_rows": len(rows),
+            "dropped": dropped,
+            "counts": counts_for(bundle, scope),
+            "shards": sorted(library_shards(scope)),
+            "bundle_present": bundle is not None,
+            "public_sites": list((bundle or {}).get("public_sites") or ()),
+            "site_vocabulary": list((bundle or {}).get("site_vocabulary") or ()),
+            "generated_by": dict((bundle or {}).get("generated_by") or {}),
+        },
     }
 
 
@@ -863,11 +874,13 @@ def doc_context(data_dir, scope, doc_id, variant: str = "full",
     rows, _ = visible_docs(bundle, scope)
     body = render_markdown(doc.get("text", ""), link_resolver_for(doc, rows))
     return {
-        "variant": variant,
+        "prov": provenance(bundle, max_age, now=now, local_host=local_host),
+        # The doc's SOURCE never rides along: the index ships no bodies, and the
+        # reader ships only the rendered one.
         "doc": {k: v for k, v in doc.items() if k != "text"},
         "body": body,
-        "prov": provenance(bundle, max_age, now=now, local_host=local_host),
-        "shards": sorted(library_shards(scope)),
+        "variant": variant,
+        "lib": None,
     }
 
 

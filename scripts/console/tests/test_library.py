@@ -685,8 +685,18 @@ def _publish(tmp_path, files=None, manifest_text=MANIFEST, verdicts=None):
 
 
 def _page(data_dir, scope, **kw):
+    """The ctx exactly as the route hands it to _pane()."""
     return lib.page_context(data_dir, scope,
                             now=datetime(2026, 7, 27, 9, 5, tzinfo=timezone.utc), **kw)
+
+
+def _render_page(ctx, scope=None, user=None):
+    """Render library.html the way the route does: the whole context splatted,
+    plus the two keys _pane() adds. Rendering from a hand-built context instead
+    would let the template and the real ctx shape drift apart."""
+    sc = scope if scope is not None else _scope()
+    return _render("library.html", **dict(
+        ctx, user=user or {"name": "dana", "role": "viewer"}, scope=sc))
 
 
 # -- the two artefacts are two artefacts ------------------------------------
@@ -695,10 +705,9 @@ def test_public_view_reads_the_published_public_artefact(tmp_path):
     published, the public view renders it."""
     d = _publish(tmp_path)
     ctx = _page(d, _scope(), variant="public")
-    assert ctx["bundle_present"] is True
-    assert [r["id"] for r in ctx["rows"]] == ["overview.readme"]
-    html = _render("library.html", lib=ctx, doc=None, variant="public",
-                   user={"name": "dana", "role": "viewer"}, scope=_scope())
+    assert ctx["lib"]["bundle_present"] is True
+    assert [r["id"] for r in ctx["lib"]["rows"]] == ["overview.readme"]
+    html = _render_page(ctx)
     assert "Overview" in html
     assert "No public library" not in html
 
@@ -717,10 +726,9 @@ def test_a_missing_public_artefact_is_never_synthesised_by_filtering(tmp_path):
     assert lib.load_for(d, "full") is not None, "the full library is still there"
 
     ctx = _page(d, _scope(), variant="public")
-    assert ctx["bundle_present"] is False
-    assert ctx["rows"] == []
-    html = _render("library.html", lib=ctx, doc=None, variant="public",
-                   user={"name": "dana", "role": "viewer"}, scope=_scope())
+    assert ctx["lib"]["bundle_present"] is False
+    assert ctx["lib"]["rows"] == []
+    html = _render_page(ctx)
     assert "No <strong>public</strong> library" in html
     assert "Overview" not in html, "the full library leaked into the public view"
 
@@ -734,8 +742,8 @@ def test_the_full_library_shipped_as_the_public_file_is_refused(tmp_path):
     (d / lib.PUBLIC_FILE).write_text((d / lib.FULL_FILE).read_text())
     assert lib.load_for(d, "public") is None
     ctx = _page(d, _scope(role="owner", project_role="maintainer"), variant="public")
-    assert ctx["bundle_present"] is False
-    assert ctx["rows"] == []
+    assert ctx["lib"]["bundle_present"] is False
+    assert ctx["lib"]["rows"] == []
 
 
 def test_a_corrupt_bundle_is_absent_not_empty(tmp_path):
@@ -743,18 +751,69 @@ def test_a_corrupt_bundle_is_absent_not_empty(tmp_path):
     d = _publish(tmp_path)
     (d / lib.FULL_FILE).write_text("{ this is not json")
     ctx = _page(d, _scope())
-    assert ctx["bundle_present"] is False
-    html = _render("_library_list.html", lib=ctx)
+    assert ctx["lib"]["bundle_present"] is False
+    html = _render("_library_list.html", lib=ctx["lib"])
     assert "No library has been published" in html
     assert "no documents you may read" not in html.lower()
+
+
+# -- the context is the shape the shared tenancy nets already act on --------
+def test_the_shared_redactor_reaches_the_librarys_publisher_host(tmp_path):
+    """`prov` sits at the TOP level of the context, which is the only reason
+    scope.redact() applies to the library at all: it strips ctx["prov"]["host"]
+    by exact path. Nested as ctx["lib"]["prov"] the redactor would walk straight
+    past it and the library would quietly stop obeying a policy every other read
+    pane obeys — with every test still green. So assert the wiring, not the
+    intention."""
+    from app import scope as scope_mod
+    d = _publish(tmp_path)
+
+    # A host token that appears NOWHERE in the page's own prose. The default
+    # fixture host is "workstation", which the footnote uses as an English word
+    # ("the corpus lives in the repo on the workstation") — asserting on that
+    # would have been asserting on the copy, not on the redactor.
+    HOST = "publisher-box-7f3"
+    for f in (lib.FULL_FILE, lib.PUBLIC_FILE):
+        b = json.loads((d / f).read_text())
+        b["generated_by"] = dict(b["generated_by"], host=HOST)
+        (d / f).write_text(json.dumps(b))
+
+    ctx = _page(d, _scope())
+    assert ctx["prov"]["host"] == HOST, "nothing to redact — the test would be vacuous"
+    assert HOST in _render_page(ctx), "it must be rendered BEFORE redaction, or ditto"
+
+    red = scope_mod.redact(ctx, _scope())
+    assert "host" not in red["prov"]
+    assert HOST not in _render_page(red)
+
+    # NEGATIVE CONTROL: redaction is for SCOPED readers. An all-sites owner is
+    # exempt and must still be told which host published the library — without
+    # this, a redactor that simply deleted everything would satisfy the above.
+    owner = _scope(role="owner", project_role="maintainer", all_sites=True)
+    octx = _page(d, owner)
+    assert scope_mod.redact(octx, owner)["prov"]["host"] == HOST
+    assert HOST in _render_page(octx, scope=owner,
+                                user={"name": "rob", "role": "owner"})
+
+
+def test_the_context_carries_no_row_the_scrubber_would_have_to_drop(tmp_path):
+    """_pane() scrubs any dict carrying a foreign `site` key, and under
+    SCOPE_STRICT (CI) a single dropped row RAISES. Library rows key their sites
+    as a `sites` LIST, so the scrubber is a no-op here — which is worth pinning,
+    because a future row that grew a `site` key would take the whole page down
+    in CI rather than in review."""
+    from app import scope as scope_mod
+    d = _publish(tmp_path)
+    for ctx in (_page(d, _scope()), lib.doc_context(d, _scope(), "overview.readme")):
+        _clean, dropped = scope_mod.scrub(ctx, _scope())
+        assert dropped == 0
 
 
 # -- the index renders only what the reader may see -------------------------
 def test_index_renders_visible_docs_and_no_others(tmp_path):
     d = _publish(tmp_path)
     ctx = _page(d, _scope())
-    html = _render("library.html", lib=ctx, doc=None, variant="full",
-                   user={"name": "dana", "role": "viewer"}, scope=_scope())
+    html = _render_page(ctx)
     assert "Using the console" in html          # contributor
     assert "The demo tier" in html              # their project
     assert "Deploying" not in html              # private — owner only
@@ -765,8 +824,8 @@ def test_index_reports_that_something_was_withheld_without_naming_it(tmp_path):
     """Honest, but not an oracle: the count is fine, the titles are not."""
     d = _publish(tmp_path)
     ctx = _page(d, _scope())
-    assert ctx["dropped"] == 2
-    html = _render("_library_list.html", lib=ctx)
+    assert ctx["lib"]["dropped"] == 2
+    html = _render("_library_list.html", lib=ctx["lib"])
     assert "2 further documents" in html
     assert "Deploying" not in html
     assert "howto-dr-chain" not in html
@@ -778,9 +837,9 @@ def test_owner_sees_the_private_docs_the_member_could_not(tmp_path):
     d = _publish(tmp_path)
     owner = _scope(role="owner", project_role="maintainer")
     ctx = _page(d, owner)
-    html = _render("_library_list.html", lib=ctx)
+    html = _render("_library_list.html", lib=ctx["lib"])
     assert "Deploying" in html
-    assert ctx["dropped"] == 0
+    assert ctx["lib"]["dropped"] == 0
 
 
 def test_unclassified_docs_are_flagged_not_silently_private(tmp_path):
@@ -788,15 +847,15 @@ def test_unclassified_docs_are_flagged_not_silently_private(tmp_path):
     nobody made. The owner's view says so."""
     d = _publish(tmp_path)
     ctx = _page(d, _scope(role="owner", project_role="maintainer"))
-    html = _render("_library_list.html", lib=ctx)
+    html = _render("_library_list.html", lib=ctx["lib"])
     assert "unclassified" in html
 
 
 def test_search_filters_the_rendered_list(tmp_path):
     d = _publish(tmp_path)
     ctx = _page(d, _scope(), q="demo")
-    assert [r["id"] for r in ctx["rows"]] == ["guides.howto-demo-tier"]
-    html = _render("_library_list.html", lib=ctx)
+    assert [r["id"] for r in ctx["lib"]["rows"]] == ["guides.howto-demo-tier"]
+    html = _render("_library_list.html", lib=ctx["lib"])
     assert "The demo tier" in html
     assert "Using the console" not in html
 
@@ -807,8 +866,8 @@ def test_search_cannot_reach_a_doc_the_reader_may_not_see(tmp_path):
     front of it."""
     d = _publish(tmp_path)
     ctx = _page(d, _scope(), q="Deploying")
-    assert ctx["rows"] == []
-    html = _render("_library_list.html", lib=ctx)
+    assert ctx["lib"]["rows"] == []
+    html = _render("_library_list.html", lib=ctx["lib"])
     # The page echoes the term the reader typed — that is their own input, not a
     # disclosure. What must not appear is any way to REACH the doc, or any
     # confirmation that a doc by that name exists.
@@ -822,8 +881,7 @@ def test_doc_context_renders_a_body_for_a_permitted_doc(tmp_path):
     ctx = lib.doc_context(d, _scope(), "overview.readme")
     assert ctx is not None
     assert "text" not in ctx["doc"], "the raw source must not ride along with the render"
-    html = _render("library.html", doc=ctx["doc"], body=ctx["body"], variant="full",
-                   lib=None, user={"name": "dana", "role": "viewer"}, scope=_scope())
+    html = _render_page(ctx)
     assert "ss and nwc are the two member sites" in html
 
 
@@ -873,8 +931,7 @@ def test_rendered_doc_body_escapes_hostile_prose(tmp_path):
     assert "&lt;script&gt;" in body, "it should still be VISIBLE as text, just inert"
     assert "&lt;img src=x onerror=alert(3)&gt;" in body
 
-    html = _render("library.html", doc=ctx["doc"], body=body, variant="full",
-                   lib=None, user={"name": "dana", "role": "viewer"}, scope=_scope())
+    html = _render_page(ctx)
     # Not `"alert(" not in html`: the escaped text legitimately contains it. The
     # property is that none of the doc's tags survive as TAGS in the shipped
     # page. base.html has no <img> of its own, and its two <script>s are the
@@ -889,14 +946,12 @@ def test_doc_page_shows_which_version_the_reader_is_in(tmp_path):
     'this is in my complete set' at a glance — that distinction is the feature."""
     d = _publish(tmp_path)
     pub = lib.doc_context(d, _scope(), "overview.readme", variant="public")
-    html = _render("library.html", doc=pub["doc"], body=pub["body"], variant="public",
-                   lib=None, user={"name": "dana", "role": "viewer"}, scope=_scope())
+    html = _render_page(pub)
     assert "published public release" in html
 
     owner = _scope(role="owner", project_role="maintainer")
     priv = lib.doc_context(d, owner, "guides.howto-deploy")
-    html = _render("library.html", doc=priv["doc"], body=priv["body"], variant="full",
-                   lib=None, user={"name": "rob", "role": "owner"}, scope=owner)
+    html = _render_page(priv, scope=owner, user={"name": "rob", "role": "owner"})
     assert "Owner only" in html
     assert "no published public release" in html
 
@@ -907,8 +962,7 @@ def test_index_shouts_when_the_published_library_is_stale(tmp_path):
     ctx = lib.page_context(d, _scope(), max_age=60,
                            now=datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc))
     assert ctx["prov"]["stale"] is True
-    html = _render("library.html", lib=ctx, doc=None, variant="full",
-                   user={"name": "dana", "role": "viewer"}, scope=_scope())
+    html = _render_page(ctx)
     assert "STALE" in html
 
 
@@ -923,6 +977,5 @@ def test_index_calls_out_a_bundle_built_from_a_dirty_tree(tmp_path):
     (d / lib.FULL_FILE).write_text(json.dumps(full))
     (d / lib.PUBLIC_FILE).write_text(json.dumps(pub))
     ctx = _page(d, _scope())
-    html = _render("library.html", lib=ctx, doc=None, variant="full",
-                   user={"name": "dana", "role": "viewer"}, scope=_scope())
+    html = _render_page(ctx)
     assert "uncommitted changes" in html

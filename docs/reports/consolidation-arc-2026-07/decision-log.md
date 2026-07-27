@@ -4056,3 +4056,20 @@ reads "a *pl mons* verb with poll/close subcommands (proposed — does not exist
 several MRs should not be hostage to either one's review.
 
 **Reversible-how:** `git revert -m 1 <merge>` — restores the bundle byte-for-byte and the previous doc line.
+
+**Addendum, same day — a third red gate, revealed by fixing the first two.** With `lint` green
+the `test` stage ran for the first time, and `test:unit` failed: `adopt: refuses a key that is
+already declared`. Pre-existing on main and unrelated to this MR's diff. The cause is the
+`set -o pipefail` + `grep -q` hazard:
+
+    "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" | grep -qxF ".secrets.yml:$key" && die …
+
+`grep -q` exits at the first match, the still-writing `yq` takes SIGPIPE, the pipeline reports
+141, and `&&` never fires — the guard silently passes a duplicate. Reproduced deterministically
+with a 200k-line producer: the old form does not fire and reports rc=141; buffering first and
+using `grep -c` fires correctly. It shows up on the CI runner and not on a fast local disk,
+which is the shape of bug a gate must not have: it was green everywhere anyone looked.
+
+Only this one call site is fixed here, because it is the one that is red and this MR's job is to
+unblock. `!213` fixes the whole family (four `yq | grep -q` sites; after it, none remain) and
+carries the tests for it; the two fixes are written identically so they converge on rebase.

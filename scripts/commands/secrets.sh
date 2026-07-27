@@ -858,8 +858,15 @@ cmd_adopt(){
   local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>   e.g. linode.provision_token"
   local len; len=$("$YQ" e "(.$key // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
   [ "${len:-0}" -eq 0 ] && die "$key is empty or missing in $SECRETS_FILE — nothing to adopt"
-  "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null | grep -qxF ".secrets.yml:$key" \
-    && die "$key is already declared by a registry entry"
+  # NOT `yq | grep -q && die`: with `set -o pipefail` (line 2), grep -q exits at
+  # the FIRST match, the still-writing yq takes SIGPIPE, the pipeline reports 141
+  # and the `&&` never fires — so the guard silently lets a duplicate through.
+  # This is why `test:unit` fails on main: it reproduces on the CI runner and not
+  # on a fast local disk, which is exactly the shape of bug a gate must not have.
+  # Buffer first, then match.
+  if [ "$( { "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null || true; } | grep -cxF ".secrets.yml:$key" || true)" -gt 0 ]; then
+    die "$key is already declared by a registry entry"
+  fi
   local id; id=$(printf '%s' "$key" | tr '.' '_')
   local prov="${key%%.*}"
   ID="$id" PROV="$prov" KEY="$key" "$YQ" e -i '.secrets += [{

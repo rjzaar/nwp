@@ -379,7 +379,7 @@ crossref:
 #                       CANNOT-VERIFY rather than "0 rows, clean".
 erasure:
   # Where the ops#81 channel halves live, relative to the crossref roots below.
-  # STATUS 2026-07-28 (ADR-0034): both halves are BUILT and staged in the nwp
+  # STATUS 2026-07-28 (ADR-0035): both halves are BUILT and staged in the nwp
   # repo (commit 272e352) but NOT DEPLOYED into these trees — `pl contracts
   # erasure ssc` reports NOT-DEPLOYED, which is the true state. The earlier
   # "NOT BUILT" comment here was stale from the P0 contract-surface commit.

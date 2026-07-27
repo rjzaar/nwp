@@ -1,4 +1,4 @@
-# ADR-0034: Erasure propagation from nwc (OP) to ss/ssc (RP)
+# ADR-0035: Erasure propagation from nwc (OP) to ss/ssc (RP)
 
 **Status:** Proposed
 **Date:** 2026-07-28

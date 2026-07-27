@@ -37,12 +37,21 @@
 #   [G8] Non-zero exit on failure; 3 = "active, retry"; 0 = reset done/no-op.
 #   [G9] FATE MANIFEST (ops#47 impact contract, ops#143). Nothing destructive
 #        runs until the manifest below has been printed AND logged, naming every
-#        component and its fate with sizes read live off this box. `dry-run`
-#        prints exactly the same manifest and stops — so a dry run is a truthful
-#        preview, not a different code path. There is no prompt here (the caller
-#        is met's cron over a forced command, never a human at a TTY), so the
-#        manifest is the whole of the contract: `-y` skips the PROMPT, never the
-#        REPORT, and here there is only report.
+#        component and its fate with sizes read live off this box. This is
+#        ENFORCED, not attempted: if the manifest cannot be rendered, or cannot
+#        be persisted to LOG_FILE, a real reset ABORTS (exit 1) and destroys
+#        nothing — because a reset with no surviving record of what it destroyed
+#        is exactly the thing this guarantee exists to prevent. Degradation is
+#        not failure: any figure that cannot be read prints "?" and the manifest
+#        still stands, so only a total rendering/logging failure aborts.
+#        `dry-run` prints exactly the same manifest and stops — so a dry run is
+#        a truthful preview, not a different code path — and a dry run whose
+#        manifest fails still exits 0, since nothing destructive follows it and
+#        failing closed there would only take away an operator's ability to
+#        look. There is no prompt here (the caller is met's cron over a forced
+#        command, never a human at a TTY), so the manifest is the whole of the
+#        contract: `-y` skips the PROMPT, never the REPORT, and here there is
+#        only report.
 #
 # impact-contract: inline
 #   This script is DEPLOYED TO A BOX WITH NO REPO CHECKOUT, so it cannot source
@@ -57,8 +66,16 @@
 #     met can only *invoke* this script, not choose what it does — not that the
 #     script is itself unprivileged. A dedicated unix account + a narrow
 #     sudoers rule would remove that residue; recorded as follow-up.
+#   * [G9]'s abort adds a way for the nightly to become a no-op: if LOG_FILE
+#     stops being writable, every run refuses. That is the intended direction
+#     (no record → no destruction), and it is visible: the refusal still prints
+#     to stdout/stderr and exits 1, which met's cron captures in
+#     ~/logs/demo-nightly-nwd.log, and the 30-min retry window means an operator
+#     sees seven identical failures rather than one. It is NOT self-healing —
+#     `status` (which never aborts) is the way to look.
 #
-# Exit codes: 0 ok/no-op · 1 failure · 2 refused (bad action word) · 3 active
+# Exit codes: 0 ok/no-op · 1 failure (incl. [G9] no-manifest abort) ·
+#             2 refused (bad action word) · 3 active
 ################################################################################
 
 set -uo pipefail
@@ -99,13 +116,20 @@ SMOKE_SLEEP=5
 
 log() {
     local event="$1" detail="${2:-}"
-    local line
+    local line rc=0
     line="$(date -u '+%Y-%m-%dT%H:%M:%SZ')|${event}|${detail}"
     mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
     # The redirection itself is what can fail (unwritable log dir), so it is
     # wrapped — `>> f 2>/dev/null` would still print the shell's own error.
-    { printf '%s\n' "$line" >> "$LOG_FILE"; } 2>/dev/null || true
+    { printf '%s\n' "$line" >> "$LOG_FILE"; } 2>/dev/null || rc=1
     printf '%s\n' "$line"
+    # log() is still fail-SOFT for control flow — no caller is obliged to check,
+    # nothing aborts merely because the log dir broke, and `status` keeps
+    # answering. But it is now HONEST: the return code says whether the line was
+    # actually PERSISTED, which is the one thing [G9] has to be able to ask.
+    # Every other call site uses `log` in statement position, and this script
+    # does not run under `set -e`, so a non-zero return changes nothing there.
+    return "$rc"
 }
 
 die() { log "$1" "${2:-}"; echo "ERROR: ${1} ${2:-}" >&2; exit "${3:-1}"; }
@@ -280,8 +304,15 @@ echo "OK  idle for >= $(( IDLE_WINDOW / 60 )) min (newest=${NEWEST})"
 #
 # Every figure is read live off this box (du, drush, jq, stat). Nothing here is
 # assumed: if a size cannot be read the field says "?" rather than a guess, so
-# the manifest can never overstate how much is known. Rendering must never be
-# able to abort the reset, hence the `|| true` discipline throughout.
+# the manifest can never overstate how much is known.
+#
+# Two different things are deliberately NOT conflated:
+#   * DEGRADED — a figure could not be read. The `|| true` / "?" discipline
+#     throughout means this never fails; a partial manifest is still a manifest
+#     and the reset proceeds.
+#   * FAILED — the manifest could not be produced at all, or could not be
+#     written to LOG_FILE. Then there is no record, and [G9] says a reset
+#     without a record does not happen. The call site below enforces that.
 ################################################################################
 
 _size_of() {   # human size of a path, or "?" — never fails
@@ -328,10 +359,25 @@ render_fate_manifest() {
     echo "    • ${LOG_FILE} and the harvest digests"
     echo ""
 
-    log "fate-manifest" "action=${ACTION} db=${db_size} files=${files_size:-?} codes=${code_count} golden=${golden_captured}"
+    # Last statement on purpose: "printed AND logged" means this function is
+    # only successful if the line actually landed in LOG_FILE.
+    log "fate-manifest" "action=${ACTION} db=${db_size} files=${files_size:-?} codes=${code_count} golden=${golden_captured}" \
+        || return 1
 }
 
-render_fate_manifest || log "fate-manifest-failed" "non-fatal — proceeding"
+# [G9] enforcement. The manifest is the licence to destroy, so a real reset that
+# has not got one stops here rather than proceeding to wipe with the failure
+# merely noted. A dry-run keeps the old fail-open behaviour: nothing destructive
+# follows it, so aborting would remove an operator's only way to look without
+# protecting anything.
+if ! render_fate_manifest; then
+    if [[ "$ACTION" == "dry-run" ]]; then
+        log "fate-manifest-failed" "dry-run — nothing destructive follows, continuing"
+    else
+        die "fate-manifest-failed" \
+            "refusing to destroy anything without a printed+logged manifest [G9]" 1
+    fi
+fi
 
 if [[ "$ACTION" == "dry-run" ]]; then
     log "dry-run-ok" "all guards passed; nothing changed"

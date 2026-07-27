@@ -181,6 +181,10 @@ and never guess a token's identity, scope, expiry, or storage location:
 | Which token can create an MR / manage CI vars? | `pl secrets capabilities` |
 | Register a `.secrets.yml` key lint says is undeclared | `pl secrets adopt <dotted.key>` |
 | Bring an old registry up to the `stored_in` grammar | `pl secrets migrate-registry [--apply]` |
+| Make an entry's SCOPE claim checkable (incl. negative "must NOT reach X") | `pl secrets probe-scaffold <#\|id\|--all>` |
+| Put the registry under version control (nested private repo) | `pl secrets registry-track` |
+| Provision the daily audit by code, here or on a remote role | `pl secrets cron install [--host=<role>]` · `cron status` |
+| Would a rotation stamp honestly right now? (no prompt, no write) | `pl secrets rotate <#\|id> --dry-run` |
 
 Rules:
 - **Every token has three names** — the `.secrets.yml` key, the registry `id`, and
@@ -195,8 +199,20 @@ Rules:
 - **`stored_in` is a grammar, not prose.** `<path>:<ref>` · `host=<role>:<path>:<ref>` ·
   `external:<text>`. Anything else is a lint error, because a location the tooling
   cannot parse is a location it silently stops checking. Notes go in `stored_in_notes:`.
-- **Recording a rotation requires having propagated it.** `pl secrets done` refuses to
-  stamp `last_rotated` while any declared copy still holds a different value.
+- **Recording a rotation requires having propagated it.** `pl secrets done` AND
+  `pl secrets rotate` both refuse to stamp `last_rotated` while any declared copy still
+  holds a different value. Check before you start: `pl secrets rotate <id> --dry-run`.
+- **A declared scope must carry a `probe:`.** `pl secrets lint` fails with `NO-PROBE`
+  otherwise, because a capability the registry never checks is folklore — that is how
+  "can destroy every prod Linode" came to be recorded against a DNS-only token. Probes may
+  be NEGATIVE (`expect: 401/403` = "must NOT reach this"), which is the only way to record
+  a *limit* so that widening it goes red.
+- **A blind audit is not a clean audit.** `pl secrets audit` retries, then reports
+  `AUDIT-BLIND` and returns 2 without stamping `last_successful_audit`. Never treat exit 2
+  as a pass; grade AMBER.
+- **Admin and backup-decryption credentials do not belong in `.secrets.yml`.** It is the
+  tier this file tells you that you MAY read. `pl secrets lint` fails with `TIER:` on them;
+  moving one to `.secrets.data.yml` is an OPERATOR action (you are deny-ruled from it).
 - **After any token change**, the registry must reflect reality: `pl secrets rotate`/`done`
   stamps `expires`/`last_rotated` and appends `private/rotation-YYYY-MM.md`; if you
   add/retire a token or change where it's stored or read, update its entry

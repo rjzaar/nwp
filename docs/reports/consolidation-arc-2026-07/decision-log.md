@@ -1400,6 +1400,108 @@ is the exact ambiguity being removed.
 **Reversible-how:** restore that file if ever needed; `pl contracts verify` will then correctly
 report AMBIGUOUS TRUST ANCHOR again.
 
+## [2026-07-26] item1-registry-stays-out-of-nwp-nwp — programme point 9 mechanism rejected on evidence
+**Programme said:** "Un-ignore `private/secrets-registry.yml`, commit it, and lint-assert it is
+tracked and clean."
+**Decision:** implement the GOAL (history, review, a second copy) and REJECT the stated mechanism.
+The registry stays ignored by `nwp/nwp`; `pl secrets registry-track` puts it under version control
+in a nested private repo at `private/.git` instead.
+**Why — measured, not assumed.** `gitleaks detect --no-git` over the live registry with the
+repo's own `.gitleaks.toml` reports **162 findings**: 66 `live-domain-apex`, 65
+`live-internal-domain`, 25 `internal-bare-hostname`, 4 `operator-public-ip`, 2
+`operator-personal-email`, and **0 credential findings**. Both halves matter. Zero credential
+findings confirms the registry is value-free exactly as designed. 162 identity findings confirm it
+is simultaneously a complete map of the estate plus the operator's public IP and personal address.
+`nwp/nwp` is the public-release track, and `operator-public-ip` / `operator-personal-email` /
+`live-domain-apex` are the three rules the leakage-gate item landed *specifically* to keep that
+material out of it. Committing the registry there would be that gate's own counterexample.
+**Alternatives considered:**
+(a) commit + 162 `.gitleaksignore` fingerprints — brittle (every registry edit shifts them), and
+    it still publishes the topology, which is the actual harm;
+(b) commit + a per-path allowlist for the identity rules on that one file — cleaner mechanically,
+    identical outcome: the topology is on the forge;
+(c) genericise the hostnames first — destroys the registry-id ↔ live-account crosswalk the
+    registry exists to hold (this was the previous session's stated blocker, and it is real);
+(d) **chosen** — nested private repo. History and review are satisfied locally; the second copy
+    needs a private remote, which only the operator can choose, so lint reports `NO-REGISTRY-REMOTE`
+    as a warning rather than pretending the property is met.
+**How the lint stays honest:** `UNTRACKED-REGISTRY` resolves `git -C $(dirname "$REGISTRY")`, i.e.
+the *innermost* repo, so either arrangement can satisfy it — the rule states the property, not the
+location. `pl secrets registry-track` REFUSES to run if the outer repo does not ignore the registry,
+so the rejected mechanism is not reachable by accident. The `.gitignore` comment was rewritten from
+"deferred pending .gitleaksignore work" to this measured decision, with an explicit "do not fix the
+lint error by un-ignoring it here".
+**Reversible-how:** `git revert` the MR. To undo `registry-track` on a machine: `rm -rf private/.git`
+(the registry file itself is never moved or rewritten by that verb).
+
+## [2026-07-26] item1-live-registry-deliberately-not-mutated
+**Decision:** shipped the verbs and gates; did **not** apply the registry DATA corrections
+(programme points 1, 2, 5 — adopt the mini token, correct `linode_api_token.scopes`, add the
+`provision_token` entry, prune the `verify-test*` phantoms, scaffold the 10 missing probes) to the
+live `~/nwp/private/secrets-registry.yml`. Verified byte-unchanged: sha256
+`367e9a4a1b5d111590dddc7f9a2f3453630f9a06cf627a59a839186230e95a40` before and after.
+**Why:** the live registry is untracked, so a change to it appears in no MR and is reviewable by
+nobody — and five other agents were running against the same shared checkout during this session.
+Writing 10 scaffolded probe blocks into a file with no VCS and no merge resolution, concurrently,
+is the same class of hazard the programme's own "never commit in ~/nwp directly" rule exists for.
+Applying it *after* `registry-track` gives it history and makes it reversible; that ordering is the
+recommendation below rather than something done blind mid-session.
+**What was shipped instead, so this is one command and not a chore:**
+`pl secrets registry-track` → `pl secrets probe-scaffold --all` → `pl secrets audit` (correct each
+`SCOPE-DRIFT` against what the provider actually says) → `pl secrets lint`.
+`probe-scaffold` prints a loud warning that every scaffolded expectation is a TEMPLATE, because an
+unverified probe is the same folklore in a new shape.
+**Evidence the gap is real (captured before the fix):** `pl secrets lint` against the live estate
+reported **10 × NO-PROBE** (`gitlab_operator_pat`, `gitlab_automation_met`, `gitlab_ci_nwc_pub`,
+`gitlab_bot_ops_note`, `gitlab_bot_verifier_say`, `gitlab_bot_llm_alerts`, `gitlab_bot_ci_audit`,
+`github_finegrained_pat`, `linode_api_token`, `gitlab_composer_registry_read`) — i.e. every entry
+in the estate that claims a scope, confirming 0 of 25 carried a probe.
+**Reversible-how:** N/A (nothing was changed). The pre-work byte copy is at
+`<scratch>/item1/registry-BEFORE.yml` regardless.
+
+## [2026-07-26] item1-tier-rule-found-four-violations-not-two
+**Finding:** the programme named two credentials sitting in the AI-readable tier
+(`gitlab.admin.password`, `restic.dr_pull.password`). The new `TIER:` lint rule, which keys on the
+KEY NAME (deliberately — a rule that needed the value would have to read the value), reports
+**four** in the live `.secrets.yml`: those two plus `gitlab.admin.initial_password` and
+`gotify.admin_password`.
+**Decision:** ship the rule; do NOT perform the move. CLAUDE.md deny-rules the agent from
+`.secrets.data.yml`, so relocating a credential into it is an operator action by construction. The
+rule exists so the violation is *visible and blocking* rather than structural and silent.
+**Reversible-how:** `git revert`; or drop the four glob patterns from lint check 8.
+
+## [2026-07-26] item1-ci-gate-checks-what-ci-can-actually-know
+**Decision:** `lint:secrets` does **not** run the real `pl secrets lint`. CI has no estate — no
+`.secrets.yml`, no registry, no provider reachability — so running it there would either error out
+or, far worse, "pass" against an absent registry. That is exactly the vacuous-green shape this
+programme exists to delete, and shipping it would have added a new one while removing others.
+**What the job checks instead (all decidable from the repo alone):** (1) CONTAINMENT — no
+credential file and no registry is tracked here; (2) WIRED — the hermetic secrets bats suites run,
+with a floor of 30 tests so a rename or a bad glob cannot silently reduce the gate to zero cases
+while staying green; (3) SELF-TEST — it builds a throwaway registry that declares a scope with no
+probe and asserts `pl secrets lint` actually fails on it, in the pipeline, on every run.
+**All three were proven to go red on purpose** in a scratch clone before merge: (1) `git add -f`
+the registry → `FAIL: private/secrets-registry.yml is TRACKED`; (3) renaming the rule →
+`FAIL: lint failed, but not with NO-PROBE`; deleting the rule outright →
+`FAIL: lint PASSED a registry that claims a scope with no probe`.
+**Reversible-how:** delete the `lint:secrets` block from `.gitlab-ci.yml` and
+`scripts/ci/lint-secrets.sh`.
+
+## [2026-07-26] item1-blindness-is-a-state-not-a-pass
+**Decision:** `pl secrets audit`'s reachability gate now retries (default 3, `--max-time 10`)
+before declaring an outage, says `AUDIT-BLIND` out loud, and never stamps `last_successful_audit`
+while blind. `scripts/secrets-daily-audit.sh` counts CONSECUTIVE blind runs and exits non-zero at
+`SECRETS_BLIND_MAX_DAYS` (default 3) instead of its previous `echo "skipped (no alarm)"; exit 0`.
+**Why:** the single 12s probe made a slow 3.8 GB forge box indistinguishable from an outage, and an
+outage indistinguishable from "audited clean" — the one condition under which the check cannot work
+was the one condition it reported as fine. `last_successful_audit` is what lets every downstream
+surface tell "checked, clean" from "never checked", which is the input item 2's UNKNOWN/AMBER state
+needs.
+**Note:** findings do NOT suppress the stamp. An audit that found problems is still an audit that
+ran; conflating the two would re-create the same ambiguity one level up.
+**Reversible-how:** `git revert`; or set `NWP_SECRETS_AUDIT_RETRIES=1` and
+`SECRETS_BLIND_MAX_DAYS=999` to restore the old behaviour without a code change.
+
 ## [2026-07-26] item8-third-minisig-in-a-stash-not-reproducible
 **Finding, recorded rather than acted on:** the audit reported a THIRD copy of
 `contracts/SHA256SUMS.minisig` inside `stash@{0}` of `~/nwp`. Re-checked 2026-07-26:
@@ -4309,3 +4411,75 @@ self-asserts `dev` on entry; `demo_pair_contract_for nwc` → rc=1, `ssc` → rc
 `ssd`'s carries `demo.enabled: true`. Verdict (a) stands.
 
 **Reversible-how:** `git revert -m 1 <merge>`. Repo-only; host contact was read-only probing only.
+## [2026-07-27] item1-registry-data-corrected — the capability was recorded against the wrong token
+
+**Context.** The previous pass on this item built the *machinery* (`probe:`, `NO-PROBE`,
+gated `rotate`, `AUDIT-BLIND`, the CI job) but deliberately did not touch the live registry,
+because the registry is untracked and five agents shared the checkout. That left the headline
+finding unfixed **in data**: the machinery could now detect a false capability claim, and the
+false capability claim was still sitting there.
+
+**Measured again before changing anything** (GET only; DELETE was not re-run — the capability
+was already established, and re-probing destruction is not free):
+
+| token | `/v4/linode/instances` | `/v4/domains` | `/v4/account` |
+|---|---|---|---|
+| `linode.api_token` | 401 | 200 | 401 |
+| `linode.provision_token` | **200** | 200 | 401 |
+
+`provision_token` enumerates 2 running instances, one of which is the production forge.
+It lives in `.secrets.yml` — the tier CLAUDE.md tells an agent it MAY read.
+
+**Red observed on the real defect, before correcting it.** A probe was written asserting what
+the registry *claimed* (`scopes: [read_write]` ⇒ instances reachable ⇒ `expect: 200`).
+`pl secrets audit` returned `SCOPE-DRIFT(instances-per-recorded-read_write want=200 got=401)`,
+exit 1. Only then were the scopes corrected to `[domains:read_write]` and the probe rewritten as
+a NEGATIVE assertion (`not-instances: expect 401`), so that *widening* this token later goes red.
+
+**Decisions taken.**
+1. `linode_api_token` is DNS-only. Its notes said "account-scoped = prod blast radius"; that was
+   folklore and is now recorded as such.
+2. `linode_provision_token` is tracked for the first time, `status: REVOKE-PENDING`, with POSITIVE
+   probes — while it exists, the registry states the danger out loud rather than omitting it.
+3. **New lint rule `TIER-CAPABILITY`.** The existing `TIER` rule keys on the key NAME, and would
+   never have caught this: `linode.provision_token` reads like an ordinary infra token. The
+   threat-model rule ("no AI-run machine may hold a key that reaches a production server") is
+   about what a credential CAN DO, so the lint now also keys on the entry's recorded scope —
+   which `NO-PROBE` has just forced to be a *measured* claim rather than an assumed one.
+4. `gitlab_bot_llm_bot` declared `host=<agent-host>:~/.nwp-agent-loop.env:GITLAB_TOKEN` as a location of a
+   token that had been dead since 2026-07-18. That file actually holds a **live** `api`-scoped
+   group bot (user id 28, token id 26, expires 2027-07-16), probed **on that host** so the value never
+   left the host. Recording a live credential as a location of a retired one is precisely why that host
+   read as unprovisioned while it was calling the API daily. Split: entry RETIRED, live token
+   adopted under its own entry.
+
+**Programme point 9 — un-ignoring the registry: DEFERRED again, with the number re-measured.**
+The previous pass measured 162 gitleaks findings. Running `pl secrets migrate-registry --apply`
+this pass replaced 61 literal host references with the `<gitlab-host>` placeholder, so the honest
+current number is **53** (36 `internal-bare-hostname`, 6 `operator-public-ip`, 5 `live-domain-apex`,
+4 `live-internal-domain`, 2 `operator-personal-email`, **0 credential findings**). Better, and still
+not committable to the public-release track. Two specific blockers, both measured rather than
+assumed:
+- `.secrets.yml:gitlab.server.ip` is still the unfilled template literal `YOUR_SERVER_IP`, so the
+  forge's public IP **cannot** be placeholdered without an operator action first. `<gitlab-ip>`
+  support is implemented and ready; it simply has nothing to resolve to today.
+- `operator-personal-email` has no placeholder mechanism at all, and inventing one for a person's
+  address inside a security-critical file is not this item's business.
+Suppression was explicitly rejected (it would mean ~53 `.gitleaksignore` fingerprints on the one
+file carrying operator PII, baked into history). The GOAL of point 9 — history, review, a second
+copy — is delivered by `pl secrets registry-track` (nested private repo), which is implemented and
+tested. **Un-ignoring stays closed until the operator fills `gitlab.server.ip` and rules on the
+email.**
+
+**Bugs found while building, each of the "check that cannot fail" family this item exists to kill:**
+- `set -o pipefail` + `yq … | grep -q && die`: `grep -q` exits at the first match, the still-writing
+  `yq` takes SIGPIPE, the pipeline reports 141, and the guard **silently does not fire**. `adopt`
+  therefore never refused an already-declared location. Small fixtures hide this; the existing unit
+  test passed against a 1-entry registry while the real 26-entry one was broken.
+- A remote read that finds nothing hashes to `e3b0c44298fc1c14…` — the SHA-256 of the empty string,
+  a perfectly well-formed digest. It was being accepted as proof a location existed.
+- Registry paths are written `~/…`, but were sent to the remote **single-quoted**, so the tilde
+  never expanded and `verify-copy` compared the hash of nothing against canonical. It has been
+  reporting permanent **false DRIFT** on remote copies that are byte-identical.
+- The fleet sweep initially emitted tab-separated rows; tab is IFS *whitespace*, so bash collapsed
+  the empty ref field and the hash landed in the wrong variable. Every row fell out at the

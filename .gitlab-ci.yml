@@ -1096,3 +1096,34 @@ e2e:production:
 # ![Coverage](https://git.${BASE_DOMAIN}/${CI_PROJECT_PATH}/badges/${CI_DEFAULT_BRANCH}/coverage.svg)
 #
 ################################################################################
+
+################################################################################
+# Secrets gate (fix programme item 1, `secrets-truth-and-gate`)
+################################################################################
+#
+# `pl secrets lint|audit|discover-copies|consumers` were invoked by NO cron, NO
+# CI job and NO verb — the only two matches in the entire tree were comments —
+# while CLAUDE.md asserted a daily audit that was installed on zero hosts. So
+# the registry could disagree with the estate indefinitely and nothing anywhere
+# would say so. `pl secrets cron install --host=<role>` fixes the daily half;
+# this job is the CI half.
+#
+# It deliberately does NOT run the real `pl secrets lint`: CI has no estate, so
+# that would either error out or "pass" against an absent registry — the exact
+# vacuous shape this programme exists to delete. Instead it checks the three
+# things decidable from the repo alone (containment / wired / provably able to
+# fail). See scripts/ci/lint-secrets.sh for the full reasoning.
+#
+# allow_failure is false ON PURPOSE. Its check 1 is a containment guard for the
+# public-release track, and it was proven to go red on demand for all three
+# checks before merge (see the MR description).
+lint:secrets:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-secrets.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  allow_failure: false
+  tags:
+    - nwp

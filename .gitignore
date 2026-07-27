@@ -35,15 +35,22 @@ private/*/
 # metadata only — dates, ids, and which code reads which key — never a value.
 !private/token-consumers.md
 !private/rotation-*.md
-# NOTE (item 1, secrets-registry-truth): private/secrets-registry.yml is the
-# third candidate and is deliberately still ignored. It names live GitLab bot
-# ACCOUNTS, several of which are role-bound host names that the leakage gate's
-# internal-bare-hostname rule flags (5 findings). Those account names cannot be
-# genericised without destroying the registry-id <-> live-account crosswalk the
-# registry exists to hold, so un-ignoring it needs .gitleaksignore fingerprints
-# — and .gitleaksignore belongs to the leakage-gate work item. Land that first,
-# then add `!private/secrets-registry.yml` here. `pl secrets migrate-registry`
-# already does the host-placeholder half of the job.
+# NOTE (item 1, secrets-truth-and-gate): private/secrets-registry.yml stays
+# ignored HERE, permanently, and that is now a measured decision rather than a
+# deferral. The leakage gate (which has since landed) reports 162 findings over
+# the registry: 66 live-domain-apex, 65 live-internal-domain, 25
+# internal-bare-hostname, 4 operator-public-ip, 2 operator-personal-email — and
+# ZERO credential findings. So the registry is value-free exactly as designed,
+# and is simultaneously a complete map of the estate plus the operator's public
+# IP and personal address. nwp/nwp is the public-release track and carries those
+# three rules specifically to keep that material out of it; committing the
+# registry here would be the leakage gate's own counterexample.
+#
+# The GOAL (history, review, a second copy) still holds and is now enforced:
+# `pl secrets lint` fails with UNTRACKED-REGISTRY / UNCOMMITTED-REGISTRY /
+# NO-REGISTRY-REMOTE, and `pl secrets registry-track` satisfies it by making
+# private/ its own repo — which this rule keeps invisible to the outer one.
+# Do not "fix" the lint error by adding `!private/secrets-registry.yml` here.
 
 # Command entry points
 # Users run ./setup.sh to bootstrap

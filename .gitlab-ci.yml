@@ -452,6 +452,15 @@ test:unit:
   image: ubuntu:22.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq bats git php-cli || true
+    # Shell runner: the apt line above is a permission-denied no-op. Root-free
+    # pinned bats bootstrap for a host without it (the fallback runner, registered
+    # 2026-07-27, broke main pipeline 1224 by winning jobs it could not run).
+    # NOTE the fallback runner still lacks php, which NWP_BATS_REQUIRED_TOOLS below demands —
+    # this job stays red there until php-cli is installed on the host (ops
+    # issue filed); the bootstrap is still correct and unblocks the other
+    # bats jobs. See scripts/ci/ensure-bats.sh for the pin/verify contract.
+    - ./scripts/ci/ensure-bats.sh
+    - export PATH="${HOME}/.cache/nwp-ci/bats-v1.11.0/bin:${PATH}"
     - |
       YQ_VER=v4.44.1
       YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3
@@ -548,6 +557,11 @@ test:integration:
   image: ubuntu:22.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq bats git
+    # Root-free pinned bootstrap for a shell runner without bats (the fallback runner) —
+    # apt above is a permission-denied no-op there. This job's required tools
+    # are bats+git only, so the bootstrap makes it fully runnable there.
+    - ./scripts/ci/ensure-bats.sh
+    - export PATH="${HOME}/.cache/nwp-ci/bats-v1.11.0/bin:${PATH}"
   variables:
     NWP_BATS_REQUIRED_TOOLS: "bats git"
     NWP_BATS_SUITE: "integration"
@@ -897,6 +911,33 @@ test:console:
   stage: test
   needs: []
   before_script:
+    # The library tests decide whether a PUBLIC docs release is authorised, so
+    # their gitleaks fixture REFUSES rather than skips when it cannot resolve a
+    # scanner, and the classifier under test marks every doc 'unknown' and
+    # refuses the build. Both are correct — but they mean this job needs a real
+    # gitleaks on PATH, the same way lint:leakage does. Same pinned release and
+    # sha256 as lint:leakage above; keep the two in step when bumping.
+    #
+    # Installed into a version-named directory that is prepended on its own,
+    # rather than putting all of /tmp on PATH, so nothing else writable in /tmp
+    # can shadow a binary for the rest of the job.
+    - |
+      if ! command -v gitleaks >/dev/null 2>&1; then
+        ver=8.30.0
+        sha=79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e
+        dir="/tmp/nwp-gitleaks-${ver}"
+        if [ ! -x "${dir}/gitleaks" ]; then
+          echo "Installing gitleaks ${ver} (shell runner has no gitleaks on PATH)..."
+          mkdir -p "$dir"
+          curl -sSfL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz"
+          echo "${sha}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C "$dir" gitleaks
+          rm -f /tmp/gitleaks.tgz
+        fi
+        export PATH="${dir}:$PATH"
+      fi
+      command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks unavailable and auto-download failed"; exit 1; }
+      gitleaks version
     - python3 -m venv .venv-console
     - .venv-console/bin/pip install -q -r scripts/console/requirements.txt -r scripts/console/requirements-dev.txt
   script:
@@ -907,11 +948,19 @@ test:console:
         - "scripts/console/**/*"
         - "scripts/ci/test-console.sh"
         - "scripts/ci/.console-collect-baseline"
+        # The library e2e tests shell out to `pl library build`, i.e. they
+        # execute this script. Without it listed, a change to the builder alone
+        # skips the only tests that run it.
+        - "scripts/commands/library.sh"
     - if: $CI_COMMIT_BRANCH == "main"
       changes:
         - "scripts/console/**/*"
         - "scripts/ci/test-console.sh"
         - "scripts/ci/.console-collect-baseline"
+        # The library e2e tests shell out to `pl library build`, i.e. they
+        # execute this script. Without it listed, a change to the builder alone
+        # skips the only tests that run it.
+        - "scripts/commands/library.sh"
   tags:
     - nwp
   allow_failure: false
@@ -1119,6 +1168,13 @@ e2e:production:
 # checks before merge (see the MR description).
 lint:secrets:
   stage: lint
+  before_script:
+    # lint-secrets.sh check 2 FAILS (correctly) when bats is absent — it cannot
+    # verify the secrets rules run at all. The fallback shell runner has no bats,
+    # so give it the same root-free pinned bootstrap as the test jobs; MR !221
+    # went red on runner assignment, not on its diff.
+    - ./scripts/ci/ensure-bats.sh
+    - export PATH="${HOME}/.cache/nwp-ci/bats-v1.11.0/bin:${PATH}"
   script:
     - ./scripts/ci/lint-secrets.sh
   rules:

@@ -1,0 +1,58 @@
+{#
+  One document.
+
+  `body` is pre-rendered HTML from library.render_markdown(), which escapes
+  EVERYTHING first and then re-introduces a fixed tag allowlist. That is why
+  `| safe` is defensible here and nowhere else in this codebase: the string was
+  built by an escape-first renderer, not by trusting the source. Never pass raw
+  doc text through this filter.
+
+  Reaching this template at all means library._doc_allowed() said yes against
+  the live Scope. There is no visibility logic below.
+#}
+<article class="libdoc">
+  <div class="libdoc-head">
+    <h1>{{ doc.title }}</h1>
+    <p class="libmeta">
+      <span class="chip aud aud-{{ doc.audience }}">{{ doc.audience }}</span>
+      {%- if doc.sites %}
+      <span class="mono small muted">{{ doc.sites | join(' · ') }}</span>
+      {%- endif %}
+      <span class="mono small muted">{{ doc.path }}</span>
+    </p>
+
+    {% if doc.audience == 'public' %}
+    <p class="notice small">
+      <strong>Public.</strong> This document is in the published public release:
+      it carries an explicit <code>clean</code> verdict from the identity
+      checker and names only allowlisted sites.
+    </p>
+    {% elif doc.audience == 'private' %}
+    <p class="muted small">
+      <strong>Private.</strong> Owner only. It is in the complete library and in
+      no published public release.
+    </p>
+    {% elif doc.audience == 'contributor' %}
+    <p class="muted small">
+      <strong>Contributor.</strong> Readable by every signed-in console user in
+      every project — which is why it may name no site.
+    </p>
+    {% else %}
+    <p class="muted small">
+      <strong>Project document.</strong> Readable by members of
+      <code>{{ doc.audience|replace('project-', '') }}</code> whose access covers
+      the sites it names.
+    </p>
+    {% endif %}
+  </div>
+
+  <div class="libbody">
+    {{ body | safe }}
+  </div>
+
+  <p class="footnote muted small">
+    Source: <span class="mono">{{ doc.path }}</span> ·
+    {{ doc.bytes }} bytes ·
+    sha256 <span class="mono">{{ doc.sha256[:12] }}</span>
+  </p>
+</article>

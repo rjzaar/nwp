@@ -410,13 +410,50 @@ _fake_golden() {
   grep -q 'TIER" == "dev" \]\] && CURL_TLS=(-k)' "$s"
 }
 
-@test "the live keypair probe is privileged (or it re-mints the signing key every run)" {
+@test "the live keypair probe is privileged FOR THE WHOLE COMPOUND (or it re-mints the signing key every run)" {
   # The live key dir is 0700 www-data; an unprivileged 'test -r' there always
   # answers "absent", so the caller regenerates — silently invalidating every
-  # id_token already signed. The probe must therefore run under sudo on live.
+  # id_token already signed.
+  #
+  # Asserting that the word "sudo" appears is NOT enough, and that weaker
+  # assertion is exactly what let the first version of this fix ship broken.
+  # `rexec "sudo $1"` with a compound probe sends
+  #     sudo test -r …/private.key && test -r …/public.key
+  # and the REMOTE SHELL binds `&&` outside sudo: only the first test is
+  # privileged. The second still runs as the ssh user, still cannot read inside
+  # 0700, so the probe still says "absent" and the key still rotates every run.
+  # Confirmed on the live host: the prefix form returned 1, `sudo sh -c` returns 0.
+  #
+  # So execute the real definition and assert BOTH halves reach sudo.
   s="${REPO_ROOT}/scripts/demo/nwd-issuer-provision.sh"
   grep -q 'rprobe "test -r \$KEY_DIR/private.key' "$s"
-  awk '/^if \[\[ "\$TIER" == "live" \]\]; then/,/^fi$/' "$s" | grep -q 'rprobe() { rexec "sudo \$1"; }'
+
+  # the live branch's rprobe, verbatim — not a paraphrase of it
+  awk '/^if \[\[ "\$TIER" == "live" \]\]; then/,/^else$/' "$s" \
+      | grep -E '^[[:space:]]*rprobe\(\)' > "${TEST_TMP}/rprobe.sh"
+  [ -s "${TEST_TMP}/rprobe.sh" ]
+
+  mkdir -p "${TEST_TMP}/fakebin"
+  cat > "${TEST_TMP}/fakebin/sudo" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$SUDO_LOG"
+exit 0
+EOF
+  chmod +x "${TEST_TMP}/fakebin/sudo"
+
+  # rexec stands in for ssh: it hands the string to a shell, as the remote does.
+  : > "${TEST_TMP}/sudo.log"
+  SUDO_LOG="${TEST_TMP}/sudo.log" PATH="${TEST_TMP}/fakebin:${PATH}" \
+    bash -c '
+      rexec() { bash -c "$1"; }
+      # shellcheck disable=SC1090
+      source "$1"
+      rprobe "test -r /K/private.key && test -r /K/public.key"
+    ' _ "${TEST_TMP}/rprobe.sh" || true
+
+  run cat "${TEST_TMP}/sudo.log"
+  [[ "$output" == *"private.key"* ]]
+  [[ "$output" == *"public.key"* ]]   # RED if `&&` escaped sudo
 }
 
 # --- ops#146: the SSRF relaxation is reachable ONLY on dev --------------------

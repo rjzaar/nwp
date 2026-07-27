@@ -132,7 +132,15 @@ if [[ "$TIER" == "live" ]]; then
     # RS256 signing keypair and silently invalidate every id_token and refresh
     # token this issuer has already signed. Idempotence on an auth surface is a
     # security property, not a nicety.
-    rprobe() { rexec "sudo $1"; }
+    #
+    # The WHOLE probe must be privileged, which is why this hands the string to
+    # `sudo sh -c` rather than prefixing `sudo ` to it. A bare prefix produces
+    #     sudo test -r …/private.key && test -r …/public.key
+    # and the remote shell binds `&&` OUTSIDE sudo: only the FIRST test is
+    # privileged, the second still runs as the ssh user, still cannot read inside
+    # 0700 www-data, and the key still rotates on every run. Verified on the live
+    # host: the prefix form returns 1, `sudo sh -c '<compound>'` returns 0.
+    rprobe() { rexec "sudo sh -c $(printf '%q' "$1")"; }
     d() {
         local q="" a
         for a in "$@"; do q+=" $(printf '%q' "$a")"; done

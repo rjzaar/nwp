@@ -4258,3 +4258,54 @@ live transport. A refusal test must be refused *before* the socket, not by it.
 
 **Reversible-how:** `git revert -m 1 <merge>`. Repo-only; the only host contact was read-only
 probing plus the two accidental idempotent re-provisions described above, both verified benign.
+
+## [2026-07-27] ops#146 landing review — the key-rotation fix was right in shape and wrong in shell
+**Trigger:** independent re-read of !210 before merge, specifically of the auth-touching commit
+`9fce46e` ("the live issuer key probe must be privileged"). The tier-guard verdict above
+re-verified clean (see below). The key-rotation fix did not.
+
+**The diagnosis in that entry is correct and the fix as shipped did not deliver it.** The probe
+is a *compound*:
+
+    rprobe "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key"
+
+and `rprobe() { rexec "sudo $1"; }` prefixes `sudo ` to the whole string before handing it to
+`ssh`, i.e. the **remote shell** parses it — and `&&` binds outside `sudo`. Only the *first*
+`test` was privileged. The second still ran as `gitlab`, still could not read inside
+0700 `www-data`, so the probe still answered "absent" and the key would still have been re-minted
+on every live run. The fix moved the failure one `&&` to the right; it did not remove it.
+
+Demonstrated locally with a `sudo` shim (it receives only `test -r …/private.key`), then settled
+on the live host, read-only, after a `pl server health nwpcode` preflight:
+
+    drwx------ 2 www-data www-data  /var/www/nwd/keys
+    sudo test -r …/private.key && test -r …/public.key   → rc=1   ← the shipped fix
+    sudo sh -c 'test -r …/private.key && test -r …/public.key' → rc=0   ← correct
+    test -r …/private.key && test -r …/public.key        → rc=1   ← pre-fix
+
+**Fixed properly:** `rprobe() { rexec "sudo sh -c $(printf '%q' "$1")"; }`, so the entire probe —
+not its first word — runs privileged. Verified against the live host: rc=0, keys correctly seen
+as present, so the generate branch is no longer taken. Key mtimes unchanged (`Jul 26 18:10`); no
+write was performed.
+
+**Why it got through, and what changed in the test.** The regression test asserted the fix by
+`grep`-ing for the literal string `rprobe() { rexec "sudo $1"; }`. A test that greps for the word
+`sudo` cannot see a precedence bug — it was pinning the *patch text*, not the *property*, so it
+was green against code that still rotated the key. Replaced with a runtime test: it extracts the
+real `rprobe` definition, runs it with a recording `sudo` shim, and asserts **both** key paths
+reach `sudo`. Red-proofed against the exact shipped bug — restoring the prefix form turns it red
+on the `public.key` assertion, and the corrected form is green. Suite: 57/57.
+
+**Generalisable:** a remote-exec helper that string-prefixes a privilege escalation is wrong
+whenever its argument can contain a shell operator. `sudo sh -c "$(printf '%q' …)"` is the form.
+The other two compounds in this script are safe — one needs no privilege (`cd … && drush`), the
+other already says `sudo` on both halves.
+
+**The tier-guard verdict re-verified independently, all four legs:**
+`grep -c curlsecurityblockedhosts scripts/demo/nwd-issuer-provision.sh` = 0; `apply_dev_prereqs`
+has exactly one call site (`ssd-oidc-wire.sh:436`) inside `if [[ "$TIER" == "dev" ]]` and
+self-asserts `dev` on entry; `demo_pair_contract_for nwc` → rc=1, `ssc` → rc=1, `nwd`/`ssd` →
+`pairs/ssd.pair-contract.yml`; and `pairs/ssc.pair-contract.yml` carries no `demo:` block while
+`ssd`'s carries `demo.enabled: true`. Verdict (a) stands.
+
+**Reversible-how:** `git revert -m 1 <merge>`. Repo-only; host contact was read-only probing only.

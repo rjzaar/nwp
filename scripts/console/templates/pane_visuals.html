@@ -1,0 +1,109 @@
+{#
+  The Visuals pane — the at-a-glance graphical read of the fleet.
+
+  READ-ONLY. There is no form, no button and no action anywhere in this pane
+  or its partials; it renders four charts from the same scoped gatherers the
+  Fleet/Todo/CI tabs already use, so it can never disagree with them.
+
+  Everything is SERVER-RENDERED SVG. No chart library, no CDN, no new
+  dependency — the geometry is computed in app/visuals.py and this template
+  only places the numbers.
+
+  Styles live in the <style> block below rather than in static/style.css
+  because several workstreams are editing that file; every selector is
+  `.vz*`-prefixed and the block is self-contained, so it can be lifted into
+  the stylesheet later as a single move.
+#}
+{% include "_tabcount.html" %}
+{% include "_provenance.html" %}
+
+<style>
+/* Roles, not hexes. These resolve to the console's OWN status tokens, so a
+   retheme happens once in style.css and the charts follow. `muted` means
+   UNKNOWN — never "fine". */
+.vzf-crit  { fill: var(--err); }
+.vzf-warn  { fill: var(--warn); }
+.vzf-ok    { fill: var(--ok); }
+.vzf-muted { fill: var(--muted); }
+.vzb-crit  { background: var(--err); }
+.vzb-warn  { background: var(--warn); }
+.vzb-ok    { background: var(--ok); }
+.vzb-muted { background: var(--muted); }
+
+.vzcard { border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  padding: 10px 12px 12px; margin: 12px 0; }
+.vzhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vzhead h3 { margin: 0; font-size: 15px; }
+.vzsub { color: var(--muted); font-size: 12.5px; margin: 4px 0 10px; }
+
+/* Uniform scaling: viewBox + width:100% + height:auto. No preserveAspectRatio
+   tricks — stretching would distort the 4px data-ends and the 2px gaps, which
+   are the two things doing the separating. */
+.vzsvg { display: block; width: 100%; height: auto; max-width: 560px; overflow: visible; }
+.vztiles { margin-top: 10px; }
+
+/* Text wears TEXT tokens, never the data colour — the colored mark beside it
+   carries the identity. */
+.vzrowlabel { fill: var(--fg); font-size: 11.5px; }
+.vztip { fill: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.vztile { fill: var(--card2); }
+.vztile-name { fill: var(--fg); font-size: 11.5px; }
+.vztile-grade { fill: var(--muted); font-size: 10px; letter-spacing: .04em; }
+/* one solid hairline, one step off the surface — never dashed */
+.vzaxis { stroke: var(--line); stroke-width: 1; }
+.vzsvg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+.vzlegend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px;
+  margin: 8px 0 0; padding: 0; font-size: 12.5px; color: var(--muted); }
+.vzlegend b { color: var(--fg); font-weight: 600; }
+.vzsw { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+  margin-right: 5px; vertical-align: -1px; }
+
+.vzstale { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--err);
+  border: 1px solid var(--err); border-radius: 999px; padding: 1px 8px; }
+.vzlive { font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 8px; }
+.vzfailed { color: var(--err); }
+.vzwarn { color: var(--warn); font-size: 12.5px; margin: 8px 0 0; }
+.vzmore { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.vzstrip { margin-top: 10px; }
+.vzstrip-name { margin: 0 0 4px; font-size: 13px; }
+.vzstrip-name .muted { font-size: 12px; margin-left: 6px; }
+
+.vztable { margin-top: 10px; }
+.vztable > summary { color: var(--muted); font-size: 12.5px; cursor: pointer;
+  min-height: 30px; display: flex; align-items: center; }
+.vztable .tbl { font-size: 12.5px; }
+.vztable th { color: var(--muted); font-weight: 500; }
+
+/* The two zeros, kept visually apart on purpose. */
+.vznodata { border-radius: 8px; padding: 9px 11px; margin: 6px 0 0; font-size: 13px; }
+.vznodata-missing { border: 1px solid var(--warn); background: var(--card2); }
+.vznodata-clean { border: 1px solid var(--line); background: var(--card2); }
+.vznodata-head { margin: 0 0 3px; font-weight: 600; }
+.vznodata-missing .vznodata-head { color: var(--warn); }
+.vznodata-clean .vznodata-head { color: var(--ok); }
+.vznodata-why { margin: 0; color: var(--fg); }
+.vznodata-hint { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+</style>
+
+{% if vz.stale %}
+<p class="vzwarn"><strong>⚠ These charts are drawn from STALE fleet state.</strong>
+  Every number below is older than the freshness window shown above — treat them as
+  history, not as the current state of the fleet.</p>
+{% endif %}
+
+{% include "_visual_fleet.html" %}
+{% include "_visual_severity.html" %}
+{% include "_visual_todo.html" %}
+{% include "_visual_ci.html" %}
+
+<p class="muted footnote">Read-only. Charts are rendered on the console host from the
+  published fleet snapshot (and, for CI, live from GitLab); no chart library and no
+  external request is involved. Every chart carries a table view with the same numbers.</p>
+
+{#- Self-refresh, matching the tab bar's own 90 s count poll. The poller lives
+    INSIDE the pane, so switching tabs replaces #pane-body and it stops by
+    construction — no orphaned timer, and no polling of a pane nobody is
+    looking at. htmx swaps atomically, so there is no skeleton flash. -#}
+<div hx-get="/panes/visuals" hx-target="#pane-body" hx-trigger="every 120s" hx-swap="innerHTML"></div>

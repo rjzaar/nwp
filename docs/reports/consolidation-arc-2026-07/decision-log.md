@@ -4016,3 +4016,43 @@ parents and the result and diff them **as data**, not as lines — assert no top
 missing and report every key whose value changed, expecting only the deliberate ones. Doing that
 here showed exactly one legitimate change (`test:unit.variables`) and zero missing jobs.
 **Reversible-how:** `git revert -m 1 <merge>`.
+
+## [2026-07-27] main was RED on two blocking gates, and one of them was the arc's own defect, re-committed
+**Trigger:** trying to land !210 and !213. Both were refused with `405 Method Not Allowed` — the project
+requires a green pipeline — and both pipelines failed the same two BLOCKING `lint` jobs. Neither MR touches
+either file. `main` @ `084b679` fails both on its own: pipeline 1198, and a clean `origin/main` checkout
+fails `tests/unit/test-doc-truth.bats:3` and `tests/unit/test-vcs-truth.bats:28` locally. `main` had been red
+before either MR existed, and because `lint` precedes `test`, **`test:unit` had not run on anything** — the
+suites everyone was reading as passing were being skipped.
+
+**1. `lint:snapshot-bundles` — a brick bundle, the second instance of a defect this arc already fixed.**
+`docs/reports/consolidation-arc-2026-07/gdpr-artifacts/ssc-depthcontent-art9-20260726.bundle` is thin: head
+`bcc7f49…`, prerequisite `346025ce…` not contained. It arrived in `docs(arc): rescue four deliverables that
+existed only as untracked files`, which committed a set of untracked files wholesale — without running
+`pl snapshot audit` over them. The irony is exact: a rescue whose stated purpose was "work that exists in
+only one place" re-committed an artifact that restores from only one place, four days after
+`ssc-118-artifact/README.md` documented that precise trap and deleted its twin.
+
+Checked, not assumed: `346025ce…` and `bcc7f49…` are both **404 in `nwp/ss-moodle-plugins`** — the content
+was re-committed there under different shas, so the prerequisite is reachable only from `sites/ssc/dev` on
+this laptop. A `--prereq-source` declaration would therefore have been a URL that does not contain the
+object: the gate goes green, the artifact stays exactly as unrestorable. That is the original defect with a
+certificate stapled to it, so the recorded precedent was followed instead — replace with a standalone
+`.patch` (`git show bcc7f496`, 286 KB, applies to any Moodle checkout) and delete the bundle.
+
+**Nothing was lost, and that was verified rather than claimed.** Shallow-cloned
+`nwp/ss-moodle-plugins@gdpr/art9-depthcontent-fixes` and diffed it against `git archive bcc7f496
+mod/depthcontent`: **40 files each, zero differences**; `classes/privacy/provider.php` is blob
+`020adf0a…` on both sides. The bundle blob also survives in history at `e82c8734…`.
+
+**2. `lint:doc-truth` — one NEW drift item.** `docs/reports/nwp-vortex-pleasy-comparison-2026-07-23.md`
+recommended `pl mons poll` / `pl mons close` in a code span. That verb does not exist — it is the report's
+*proposal*, and the gate correctly reads a code span as a command claim. Fixed by saying so: the row now
+reads "a *pl mons* verb with poll/close subcommands (proposed — does not exist yet)". Not baselined —
+`.doc-truth-baseline` is shrink-only, and this was a real (if small) false claim, not a false positive.
+
+**Why this is a separate MR and not folded into !210 or !213.** Both are `REVIEW:` MRs on sensitive paths
+(one auth, one secrets). Neither should carry an unrelated artifact deletion, and a fix that unblocks
+several MRs should not be hostage to either one's review.
+
+**Reversible-how:** `git revert -m 1 <merge>` — restores the bundle byte-for-byte and the previous doc line.

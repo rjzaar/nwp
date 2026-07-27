@@ -518,7 +518,16 @@ test:unit:
     # job ALSO goes RED and tells you to lower this number. It is not a ceiling.
     # tests/.skip-budget keeps unit=0 because the operator's clone HAS the
     # archive remote, so B2 really runs there.
-    NWP_BATS_MAX_SKIPPED: "1"
+    # EXACTLY TWO skips are expected on the CI runner, and both are named:
+    #   1. tests/unit/test-stale-branch-sweep.bats B2 (see above);
+    #   2. tests/unit/test-oidc-key-rotation.bats case 15 — it runs the
+    #      key-rotation gate against the REAL ssc/ssd contracts, which needs
+    #      the consumer checkout under sites/; sites/ is gitignored and never
+    #      on a runner, and the gate correctly refuses to call absence of
+    #      evidence a pass (CANNOT-VERIFY), so the test skips rather than
+    #      passing blind. It runs for real on the operator's clone, where
+    #      tests/.skip-budget still pins unit=0.
+    NWP_BATS_MAX_SKIPPED: "2"
   script:
     - ./scripts/ci/run-bats.sh .logs/junit/unit tests/unit/
   artifacts:

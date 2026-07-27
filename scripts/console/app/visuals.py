@@ -204,6 +204,19 @@ def stack(counts: list[tuple[str, int, str]], width: float, x0: float = 0.0,
     return out
 
 
+def _err_of(feed, default: str) -> str:
+    """The error a feed reports, or `default`.
+
+    Takes the non-dict case seriously: a gatherer that hands back a bare
+    string (or None) must produce the honest no-data state, not an
+    AttributeError. A chart is never allowed to be the thing that 500s the
+    pane — that would turn a missing feed into a missing PANE.
+    """
+    if isinstance(feed, dict):
+        return str(feed.get("error", "") or default)
+    return default
+
+
 def _nodata(reason: str, hint: str = "", kind: str = "missing") -> dict:
     """The explicit empty state.
 
@@ -233,8 +246,8 @@ def fleet_view(rag: dict, max_tiles: int = MAX_TILES) -> dict:
     they cannot disagree.
     """
     if not isinstance(rag, dict) or not rag.get("ok"):
-        err = str((rag or {}).get("error", "") or "fleet state unavailable")
-        return _nodata(err, "Publish from the machine that holds the sites: pl fleet publish")
+        return _nodata(_err_of(rag, "fleet state unavailable"),
+                       "Publish from the machine that holds the sites: pl fleet publish")
 
     sites = [s for s in (rag.get("sites") or []) if isinstance(s, dict)]
     if not sites:
@@ -317,9 +330,9 @@ def severity_view(sec: dict) -> dict:
     different states, never as the same empty chart.
     """
     if not isinstance(sec, dict) or not sec.get("ok"):
-        err = str((sec or {}).get("error", "") or "no security data in this snapshot")
-        return _nodata(err, "The console cannot run composer audit — it holds no sites. "
-                            "Publish with: pl fleet publish")
+        return _nodata(_err_of(sec, "no security data in this snapshot"),
+                       "The console cannot run composer audit — it holds no sites. "
+                       "Publish with: pl fleet publish")
 
     totals = sec.get("totals") if isinstance(sec.get("totals"), dict) else {}
     by_sev = totals.get("by_severity") if isinstance(totals.get("by_severity"), dict) else {}
@@ -401,8 +414,8 @@ def todo_view(todo: dict, max_rows: int = MAX_TODO_ROWS) -> dict:
     the bars down the column without re-reading the legend each row.
     """
     if not isinstance(todo, dict) or not todo.get("ok"):
-        err = str((todo or {}).get("error", "") or "todo sweep unavailable")
-        return _nodata(err, "The sweep runs where the sites live: pl todo check")
+        return _nodata(_err_of(todo, "todo sweep unavailable"),
+                       "The sweep runs where the sites live: pl todo check")
 
     items = [i for i in (todo.get("items") or []) if isinstance(i, dict)]
     if not items:

@@ -132,16 +132,20 @@ step "Register"
 ################################################################################
 
 # Token via env, NOT argv: argv is world-readable in /proc/<pid>/cmdline.
+# GitLab 16+ authentication tokens (glrt-): tags, run-untagged, locked,
+# access-level, maximum-timeout and paused are OWNED BY THE SERVER, set when the
+# runner was created in the UI. Passing them here is FATAL:
+#   "Runner configuration other than name and executor configuration is
+#    reserved ... and cannot be specified when registering with a runner
+#    authentication token."
+# Only --url, --name and executor config may be passed.
 CI_SERVER_TOKEN="$TOKEN" gitlab-runner register \
   --non-interactive \
   --url "$GITLAB_URL" \
   --name "$RUNNER_NAME" \
-  --executor "$EXECUTOR" \
-  --tag-list "$RUNNER_TAGS" \
-  --run-untagged=false \
-  --locked=false
+  --executor "$EXECUTOR"
 unset TOKEN CI_SERVER_TOKEN
-ok "registered as '$RUNNER_NAME' (tags: $RUNNER_TAGS, executor: $EXECUTOR)"
+ok "registered as '$RUNNER_NAME' (executor: $EXECUTOR; tags/untagged come from the server)"
 
 sed -i "s/^concurrent = .*/concurrent = $CONCURRENT/" /etc/gitlab-runner/config.toml
 grep -q "^concurrent = $CONCURRENT" /etc/gitlab-runner/config.toml \
@@ -174,7 +178,7 @@ else
 fi
 
 printf '\n'
-printf '  registered tags : %s\n' "$(grep -m1 -oP '(?<=tags = \[).*(?=\])' /etc/gitlab-runner/config.toml 2>/dev/null || echo '?')"
+printf '  tags/untagged   : set on the GitLab server, not locally — confirm in Settings → CI/CD → Runners\n'
 printf '  executor        : %s\n' "$(grep -m1 -oP '(?<=executor = ").*(?=")' /etc/gitlab-runner/config.toml 2>/dev/null || echo '?')"
 printf '  concurrent      : %s\n' "$(grep -m1 -oP '(?<=^concurrent = ).*' /etc/gitlab-runner/config.toml 2>/dev/null || echo '?')"
 

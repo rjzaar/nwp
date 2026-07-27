@@ -803,7 +803,27 @@ EOF
     # pull the agent-eligible label so the loop won't re-attempt, comment, and
     # leave the worktree. The pattern is SENSITIVE_PATH_RE (top of file) and is
     # pinned by tests/unit/test-agent-loop-sensitive-gate.bats.
-    changed_files="$(cd "$work_dir" && git diff --name-only "${head_main}" HEAD 2>/dev/null || true)"
+    # A gate that cannot SEE must refuse. `grep` prints nothing both when the
+    # diff is clean and when the diff is EMPTY — and it is empty whenever the
+    # `git diff` itself failed. Swallowing that failure with `|| true` made
+    # "I looked and saw nothing" indistinguishable from "I could not look",
+    # and pushed on both. The agent runs INSIDE this worktree with
+    # --dangerously-skip-permissions, so it is in a position to make the diff
+    # fail; that must not be a way past the gate. Empty-but-successful is
+    # refused too: we only get here after asserting HEAD != main, so a commit
+    # that changes no file is an anomaly, not a clean diff.
+    diff_rc=0
+    changed_files="$(cd "$work_dir" && git diff --name-only "${head_main}" HEAD 2>/dev/null)" || diff_rc=$?
+    if (( diff_rc != 0 )) || [[ -z "${changed_files//[[:space:]]/}" ]]; then
+      log "    REFUSING PUSH — could not enumerate the agent's diff (git rc=${diff_rc}, files=$(printf '%s' "$changed_files" | wc -l)); a blind gate refuses (ops#91 fail-closed)"
+      gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
+        '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
+      gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
+        '{"body":"🚫 Agent-loop **refused to push**: the sensitive-path gate could not read the agent'"'"'s diff (git diff failed, or the commit changed no files), so it could not confirm the change is safe. A gate that cannot see refuses. The worktree was left for inspection and `agent-eligible` was removed."}' \
+        >>"$LOG_FILE" 2>&1 || true
+      processed=$((processed + 1))
+      continue
+    fi
     sensitive_hits="$(printf '%s\n' "$changed_files" | grep -En "$SENSITIVE_PATH_RE" || true)"
     if [[ -n "$sensitive_hits" ]]; then
       log "    REFUSING PUSH — agent diff touched sensitive path(s) (ops#91 fail-closed):"

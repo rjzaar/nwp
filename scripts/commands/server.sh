@@ -24,7 +24,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-NWP_DIR="$PROJECT_ROOT"
+# Respect a caller-supplied NWP_DIR. lib/project-resolver.sh and
+# lib/server-resolver.sh already read declarations from ${NWP_DIR:-PROJECT_ROOT}
+# (see discover_sites / get_server_sites), so forcing it here made this one
+# command the odd one out and left `pl server roots` unable to be pointed at a
+# fixture inventory. Unset in production, this is exactly the old behaviour.
+NWP_DIR="${NWP_DIR:-$PROJECT_ROOT}"
 
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/common.sh"
@@ -261,6 +266,217 @@ cmd_forge() {
 }
 
 ################################################################################
+# Subcommand: roots <name>            (nwp/ops#149)
+#
+# Enumerates what the box ACTUALLY SERVES and reconciles it against what NWP
+# DECLARES. See lib/served-roots.sh for the full rationale; the short version
+# is that the `rgs` live site served stored XSS for eleven days while being both
+# reachable and invisible to every `pl` gate, because the corpus of every check
+# was a hand-maintained list.
+#
+# This verb is LIGHT and SERIAL by design — one ssh round trip, a few greps
+# over config files, no gitlab-rails/gitlab-rake, no nginx -t. It is safe on
+# the 3.8 GB forge box. `pl server health <name>` remains the required
+# preflight for anything heavy; this is not that.
+#
+# Exit codes:
+#   0  reconciled — every served root is declared and every declaration gated
+#      (WARN lines may still be present: retirement is legitimate)
+#   1  UNDECLARED-ROOT and/or UNGATED-DECLARATION found
+#   2  usage error
+#   3  CANNOT-VERIFY — blindness. Transport dead, config unreadable, no nginx
+#      master, or zero roots enumerated. NEVER conflated with 0.
+################################################################################
+cmd_roots() {
+    local raw_out=0 target="" arg
+    PROBE_CMD=""
+    for arg in "$@"; do
+        case "$arg" in
+            --raw)         raw_out=1 ;;
+            --probe-cmd=*) PROBE_CMD="${arg#--probe-cmd=}" ;;
+            -*)            echo "Unknown option: $arg" >&2; return 2 ;;
+            *)             target="$arg" ;;
+        esac
+    done
+    if [[ -z "$target" ]]; then
+        echo "Usage: pl server roots <name> [--raw]" >&2
+        return 2
+    fi
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/served-roots.sh"
+
+    local prefix
+    prefix=$(_resolve_probe_prefix "$target") || {
+        echo "CANNOT-VERIFY: cannot resolve a destination for '${target}'" >&2; return 3; }
+
+    local capture
+    if ! capture=$(served_roots_probe "$prefix"); then
+        printf '%s\n' "$capture"
+        return 3
+    fi
+    [[ $raw_out -eq 1 ]] && printf '%s\n' "$capture"
+
+    served_roots_parse "$capture"
+
+    ############################################################################
+    # BLINDNESS GATE — runs BEFORE any reconciliation. A partial corpus is not
+    # graded at all; it is reported as unverifiable. This ordering is the whole
+    # point of the verb: the incident happened because an incomplete corpus was
+    # allowed to produce a confident answer.
+    ############################################################################
+    if [[ "$SR_MASTER" != "yes" ]]; then
+        echo "CANNOT-VERIFY: no running nginx master on '$target' — cannot know what is served"
+        return 3
+    fi
+    if [[ ${#SR_UNREADABLE[@]} -gt 0 ]]; then
+        echo "CANNOT-VERIFY: the config include graph is not fully readable, so the"
+        echo "               enumeration is INCOMPLETE and must not be graded:"
+        local u
+        for u in "${SR_UNREADABLE[@]}"; do
+            printf '                 unreadable: %s\n' "$u"
+        done
+        return 3
+    fi
+    if [[ ${#SR_SERVER_ROOTS[@]} -eq 0 ]]; then
+        echo "CANNOT-VERIFY: zero served roots enumerated from ${SR_CONFIG:-<no config>}"
+        echo "               An empty enumeration is NOT 'nothing undeclared'."
+        return 3
+    fi
+
+    # Distinct served roots, and the names that reach each.
+    local -A root_names=()
+    local entry path names
+    for entry in "${SR_SERVER_ROOTS[@]}"; do
+        path="${entry%%|*}"; names="${entry#*|}"
+        path="${path%/}"
+        root_names["$path"]="${root_names[$path]:+${root_names[$path]} }${names}"
+    done
+    local -A loc_names=()
+    for entry in "${SR_LOC_ROOTS[@]:-}"; do
+        [[ -z "$entry" ]] && continue
+        path="${entry%%|*}"; names="${entry#*|}"
+        path="${path%/}"
+        loc_names["$path"]="${loc_names[$path]:+${loc_names[$path]} }${names}"
+    done
+
+    local all_names=""
+    for path in "${!root_names[@]}"; do all_names="$all_names ${root_names[$path]}"; done
+    for path in "${!loc_names[@]}"; do all_names="$all_names ${loc_names[$path]}"; done
+
+    served_roots_declarations "$target" "$NWP_DIR" "$all_names"
+
+    printf 'served roots on %s: %d (from %d config file(s), corpus=%s)\n' \
+        "$target" "${#root_names[@]}" "$SR_FILES" "${SR_CONFIG:-?}"
+    printf 'declarations attributed to %s: %d\n\n' "$target" "${#SR_DECL[@]}"
+
+    ############################################################################
+    # (1) UNDECLARED-ROOT — the ops#149 class. RED.
+    ############################################################################
+    local fails=0 warns=0 d dpath dname dgated dsrc covered
+    local -a undeclared=()
+    for path in $(printf '%s\n' "${!root_names[@]}" | sort); do
+        covered=0
+        for d in "${SR_DECL[@]:-}"; do
+            [[ -z "$d" ]] && continue
+            IFS='|' read -r dname dpath _ dgated dsrc <<< "$d"
+            if served_roots_covered_by "$path" "$dpath"; then covered=1; break; fi
+        done
+        if [[ $covered -eq 0 ]]; then
+            undeclared+=("$path")
+            printf '  UNDECLARED-ROOT       %-28s served as: %s\n' "$path" "${root_names[$path]:-?}"
+            fails=$((fails + 1))
+        fi
+    done
+
+    ############################################################################
+    # (2) UNGATED-DECLARATION — the rgs shape. RED.
+    #     Declared in the inventory, therefore believed covered; but with no
+    #     sites/<name>/.nwp.yml it is refused by name by every `pl` gate.
+    ############################################################################
+    for d in "${SR_DECL[@]:-}"; do
+        [[ -z "$d" ]] && continue
+        IFS='|' read -r dname dpath _ dgated dsrc <<< "$d"
+        if [[ "$dgated" != "yes" ]]; then
+            printf '  UNGATED-DECLARATION   %-28s declared in %s; MISSING sites/%s/.nwp.yml\n' \
+                "$dname" "$dsrc" "$dname"
+            printf '                        → every `pl` gate refuses this site by name\n'
+            fails=$((fails + 1))
+        fi
+    done
+
+    ############################################################################
+    # (3) UNREACHABLE-DECLARATION — WARN, not red.
+    #     Retiring a site is legitimate and routine (/var/www/_retired_ss_*,
+    #     ss.archived-*). Reddening it would make this gate noisy, and a noisy
+    #     gate is an ignored gate — which is how we got here. It is still worth
+    #     a line: a declaration nothing serves is a declaration that will
+    #     silently no-op the next time someone deploys through it.
+    ############################################################################
+    for d in "${SR_DECL[@]:-}"; do
+        [[ -z "$d" ]] && continue
+        IFS='|' read -r dname dpath _ dgated dsrc <<< "$d"
+        [[ -z "$dpath" ]] && continue
+        covered=0
+        for path in "${!root_names[@]}"; do
+            if served_roots_covered_by "$path" "$dpath"; then covered=1; break; fi
+        done
+        if [[ $covered -eq 0 ]]; then
+            printf '  WARN UNREACHABLE-DECLARATION  %-22s %s — no vhost serves it\n' "$dname" "$dpath"
+            warns=$((warns + 1))
+        fi
+    done
+
+    ############################################################################
+    # (4) STALE-TREE — WARN. An unserved tree still on disk is unreachable
+    #     today, but it is still code: /var/www/ss.archived-20260522 is a
+    #     second copy of the very mod_depthcontent that caused this issue, with
+    #     no vhost in front of it. Restoring a vhost, or any local include,
+    #     makes it live again. Worth a distinct line, not a failure.
+    ############################################################################
+    local dir base
+    for dir in $(printf '%s\n' "${SR_DIRS[@]:-}" | sort -u); do
+        [[ -z "$dir" ]] && continue
+        base="$(basename "$dir")"
+        # Moodle data dirs live beside their docroot BY DESIGN and must never
+        # be served; the same convention discover_sites() already uses.
+        case "$base" in *_moodledata*|html) continue ;; esac
+        covered=0
+        for path in "${!root_names[@]}"; do
+            if served_roots_covered_by "$path" "$dir" || served_roots_covered_by "$dir" "$path"; then
+                covered=1; break
+            fi
+        done
+        for path in "${!loc_names[@]}"; do
+            [[ $covered -eq 1 ]] && break
+            served_roots_covered_by "$path" "$dir" && covered=1
+        done
+        if [[ $covered -eq 0 ]]; then
+            printf '  WARN STALE-TREE       %-28s on disk, served by nothing\n' "$dir"
+            warns=$((warns + 1))
+        fi
+    done
+
+    ############################################################################
+    # (5) LOCATION-ROOT — informational. An ACME stub is not a site docroot.
+    ############################################################################
+    if [[ ${#loc_names[@]} -gt 0 ]]; then
+        for path in $(printf '%s\n' "${!loc_names[@]}" | sort); do
+            [[ -z "$path" ]] && continue
+            printf '  LOCATION-ROOT         %-28s location-scoped (ACME stub or similar)\n' "$path"
+        done
+    fi
+
+    echo
+    if [[ $fails -gt 0 ]]; then
+        printf 'RESULT: %d finding(s) requiring action, %d warning(s) — FAIL\n' "$fails" "$warns"
+        return 1
+    fi
+    printf 'RESULT: every served root is declared and every declaration is gated (%d warning(s))\n' "$warns"
+    return 0
+}
+
+################################################################################
 # Subcommand: sites <name>
 ################################################################################
 cmd_sites() {
@@ -326,6 +542,7 @@ case "$sub" in
     status)  cmd_status "$@" ;;
     health)  cmd_health "$@" ;;
     forge)   cmd_forge "$@" ;;
+    roots)   cmd_roots "$@" ;;
     sites)   cmd_sites "$@" ;;
     schema)  cmd_schema "$@" ;;
     migrate) cmd_migrate "$@" ;;
@@ -343,6 +560,10 @@ Subcommands:
   forge status <name>   Forge package version, apt signing-key expiry and
                         pending upgrades — package manager only, never the
                         Rails console (that OOM-killed the box on 2026-07-25).
+  roots <name>          Enumerate what nginx ACTUALLY SERVES and reconcile it
+                        against what NWP declares. Exit 1 = an undeclared root
+                        or a declaration no gate can see (the ops#149 shape),
+                        3 = CANNOT-VERIFY (never treated as clean).
   sites <name>          List sites configured to deploy to this server
   schema                Print current server schema version
   migrate <name|--all>  Run schema migrations on a server config

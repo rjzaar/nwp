@@ -48,6 +48,50 @@ NWP operates under a **paranoid + open-source + local-first** threat model. When
 
 See [ADR-0017: Distributed Build/Deploy Pipeline](docs/decisions/0017-distributed-build-deploy-pipeline.md) for the full architecture and rationale.
 
+## STANDING ORDER: everything goes through `pl`
+
+**Operator order, 2026-07-28. Permanent. This one is not negotiable for convenience.**
+
+If a `pl` verb exists for what you are about to do, **use it**. If a `pl` verb *should*
+exist and does not, or exists and is broken for your case, **fix the verb** and use the
+fixed verb — do not step around it. Ultimately every operation on this estate is performed
+by a `pl` command.
+
+**What "stepping around it" looks like** (all of these are violations, not shortcuts):
+
+```bash
+# NO                                          # YES
+scp file host:/tmp && ssh host 'sudo cp …'    pl moodle plugin deploy <site> <plugin> --tier=live --apply
+ssh host 'sudo -u www-data php … drush …'     pl drush <site> --tier=live --execute -- <args>
+ssh host 'sudo -u www-data php admin/cli/…'   pl moodle cli <site> --tier=live --execute -- <script>
+ssh host 'tail /var/log/nginx/…'              pl logs <name> --source=nginx --tail=200
+ssh host 'free -h; uptime'                    pl server health <name>
+```
+
+**Why this is a rule and not a preference.** The `pl` verbs are where the guarantees live:
+the dry-run default, the typed live confirm, the `live.enabled` check, the ADR-0028 deploy
+gate, `pair_guard`, the fate manifest, the rollback ledger, the no-secret-printing rule,
+the php-version and `max_input_vars` assertions that stop a Moodle upgrade from stranding a
+site in maintenance mode. A hand-rolled `ssh`+`sudo` one-liner reproduces the *effect* of a
+verb while silently dropping every one of those. `lint:doc-truth`'s `raw-remote-cli` check
+already fails any runbook that prescribes the raw idiom; this rule says the same thing
+about what you actually *run*.
+
+**When the verb does not fit, that is a bug report, not a licence.** Write the verb, or
+extend it, red-then-green, as its own REVIEW MR. A gap you route around stays a gap
+forever; a gap you fix is fixed for every future session and for the operator.
+
+**Recorded failure, so the next reader believes the rule:** on 2026-07-28 the ops#149
+depthcontent XSS fix was deployed to live `rgs` with `scp` + `sudo cp` + a raw
+`admin/cli/upgrade.php`. It worked, was backed up and verified — and it still bypassed
+`pl moodle plugin deploy`'s guard chain and left no rollback-ledger entry. The correct
+command existed the whole time (`--from=DIR` is a supported flag). Doing it by hand is how
+the estate acquires operations that only one session knows how to repeat.
+
+**The one exception is read-only reconnaissance** for which no verb exists yet — e.g.
+enumerating served nginx roots before `pl server roots` was written. Take the reading, then
+*write the verb*, which is exactly how `pl server roots` came to exist.
+
 ## Critical: Protected Files
 
 ### nwp.yml - NEVER COMMIT

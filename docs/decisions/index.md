@@ -62,6 +62,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Accepted (ratified by operator 2026-07-18, nwp/ops#95) |
 | [0030](0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes + impact/fate-manifest contract | 2026-07-09 | Accepted (ratified 2026-07-18, nwp/ops#95); supersedes 0013 (ops#33 `canonical:` + P67 `maturity:` + ops#47 `lib/impact.sh`) |
 | [0032](0032-non-prod-data-refresh-and-file-store.md) | Non-prod data refresh & file store (Flow B) | 2026-07-23 | Accepted (2026-07-23) — implementation merged to `main`; live host validation still outstanding (nwp/ops#120) |
+| [0034](0034-paired-restore-identity-invariant-enforcement.md) | Paired-restore identity invariant — enforcement | 2026-07-28 | Proposed (nwp/ops#83) — amends 0031 D9: unrecorded counterpart position is CANNOT-VERIFY and refuses; adds the paired-checkpoint "both" branch |
 | [0035](0035-erasure-propagation-op-to-rp.md) | Erasure propagation nwc (OP) → ss/ssc (RP) | 2026-07-28 | **Proposed** — bespoke signed channel over the P74 contract machinery, not OpenID Provider Commands (draft-02); staged path with the operator runbook as the standing fallback (nwp/ops#81) |
 
 ## Rejected Proposals

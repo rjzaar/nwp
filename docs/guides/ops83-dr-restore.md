@@ -55,6 +55,39 @@ consistency. Neither alone is sufficient.
    with every nwc backup (`identity.restore.ledger: provider`). This is the deterministic
    old-uid→uuid repair map; do **not** trust email.
 
+> ⚠ **These two artifacts are necessary, not sufficient — and until 2026-07-28 capturing them
+> made things WORSE.** The gate's last check compares the two halves' identity anchors, and no
+> code has ever *recorded* an anchor, so it used to read "no anchor" as "no locks to orphan" and
+> **pass**. The pre-checks above were the only thing refusing; satisfying them is what removed the
+> refusal. That is now closed: an unrecorded counterpart position is `CANNOT VERIFY` and refuses.
+> See [ADR-0034](../decisions/0034-paired-restore-identity-invariant-enforcement.md).
+
+### 2b. Declare the cut — the BOTH branch
+
+Restoring both halves to one instant is the *preferred* path, and it now has its own verb instead
+of borrowing the danger override. Record the joint cut once, then name it on each half:
+
+```bash
+# Record the joint cut (both anchors required — one half is not a joint cut).
+pl pair checkpoint ssc live CP-2026-07-28-live --provider-anchor=<N> --consumer-anchor=<M>
+pl pair checkpoint ssc live --list
+
+# Rehearse the decision. target-anchor is optional; omit it to see the "cut unknown" refusal.
+pl pair restore-check ssc live
+pl pair restore-check ssc live <N> --paired-restore-ack=CP-2026-07-28-live
+
+# Then restore EACH half naming the same checkpoint.
+pl restore <half> --tier=live --anchor=<N> --paired-restore-ack CP-2026-07-28-live
+```
+
+The ack is a **reference to the record**, not a promise: an unknown, ambiguous, wrong-tier, or
+anchor-mismatched checkpoint id **refuses**. After the first half lands the pair goes RAG **red**
+and stays red until §4's join probe passes — a half-restored pair must not look promotable.
+
+**A code-only restore (no DB loaded) is always allowed** at any tier: it cannot move an identity
+set. Note there is deliberately no `--code-only` flag on `pl restore` — every path in that verb
+loads a database, so the flag could only silence the gate without changing the operation.
+
 ---
 
 ## 3. Reconciliation / repair (after a provider restore, if uids may have shifted)

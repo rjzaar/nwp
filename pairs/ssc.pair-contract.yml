@@ -289,12 +289,51 @@ oidc:
     provider_supports_overlap: false       # simple_oauth 6.1 = single public/private key
     mode: hard_swap                        # atomic; native overlap not available
     cadence: annual                        # or immediate on suspected key compromise
-    overlap_window: 0                      # N/A while consumer_verifies_signature=false
     post_rotate_checks:
       - jwks_200_new_modulus               # /.well-known/jwks.json 200 + "n" changed
       - browser_sso_login_ssc              # real login; idnumber == sub (UID-lock holds)
       - verify_consumer_refetches: n/a     # becomes REQUIRED if consumer_verifies_signature flips true
     runbook: "docs/guides/ops82-key-rotation.md"
+
+    # --- ANNOUNCE → OVERLAP → RETIRE obligations (ops#82) --------------------
+    # These are ZERO today, and that is only legitimate because
+    # consumer_verifies_signature=false. `pl contracts key-rotation` enforces
+    # the coupling: the moment that flips true, all three must become real
+    # durations, tokens_carry_kid and provider_supports_overlap must be true,
+    # and refetch_impl must name a file that exists — otherwise the gate fails
+    # with OVERLAP-REQUIRED / NO-REFETCH. The unsafe middle state (a verifying
+    # consumer on a single-key hard swap) is therefore unreachable by
+    # construction rather than by anyone remembering this paragraph.
+    #
+    # announce_window  how long the NEW key is published in the JWKS *before*
+    #                  it starts signing, so every consumer has fetched it.
+    # overlap_window   how long BOTH keys stay published after cut-over, so a
+    #                  consumer holding a stale JWKS can still verify.
+    # retire_after     how long after cut-over the OLD key may be removed.
+    #                  MUST exceed the longest-lived token signed by it
+    #                  (access_token_expiration; refresh tokens if verified).
+    announce_window: 0                     # N/A while consumer_verifies_signature=false
+    overlap_window: 0                      # N/A — simple_oauth cannot publish 2 keys
+    retire_after: 0                        # N/A — nothing to retire; one key is ever published
+    # Refetch-on-unknown-kid implementation. REQUIRED (must exist) whenever
+    # consumer_verifies_signature=true; a verifier that caches a JWKS and does
+    # not refetch on an unseen kid rejects every new-key token until its cache
+    # expires — the classic rotation outage this clause exists to prevent.
+    refetch_impl: null                     # none needed; the consumer verifies nothing
+    # Files whose signature/JWKS matches are reviewed and waived. Empty is the
+    # honest value for the SCANNED corpus (the custom-plugin roots above —
+    # `pl contracts key-rotation ssc` watches those, ~105 PHP files, NOT the
+    # ~16.5k-file Moodle core tree). Core was verified BY HAND 2026-07-28: the
+    # SSO login path never parses id_token (auth/oauth2 → get_userinfo() plain
+    # GET; lib/oauthlib.php reads only access/refresh/expires; vendored
+    # php-jwt CachedKeySet has zero callers). CAVEAT: core DOES contain an
+    # executable JWS/JWKS/kid path — LTI 1.3 (lib/lti1p3 LtiMessageLaunch
+    # validateJwtSignature, enrol/lti/launch.php) — verifying against LTI
+    # *platform* keys, a different issuer; irrelevant to nwc rotation but it
+    # means "the consumer tree contains no such code" is FALSE stated broadly.
+    # A core upgrade that starts verifying id_token will NOT trip this gate;
+    # widening the corpus to core needs an LTI exemption list (follow-up).
+    verification_exempt_paths: []
 
 # --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
 # Paths are relative to that side's tier base URL. A failure sets the pair RAG

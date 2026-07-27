@@ -22,6 +22,24 @@ Two routes, both `GET`, both HTML, both behind `scoped("viewer")`. No POSTs.
 
 Add `help` to main.py's existing `from . import (...)` block.
 
+> **Wiring this is a SENSITIVE-PATH edit — a human has to make it.**
+> `scripts/agent-loop/agent-loop.sh` (`SENSITIVE_PATH_RE`, line 125) denies the
+> whole of `scripts/console/app/`, `main.py` emphatically included, and the gate
+> at lines 797-820 **refuses to push, with no marker escape hatch**, then pulls
+> the `agent-eligible` label. The rationale comment is explicit that `main.py` is
+> where `require()` / `current_user()` / the session signer and every per-route
+> `Depends(require(...))` live, so leaving it open would make denying `authz.py`
+> a paper gate. Practical consequence: **do not route the integration MR through
+> the autonomous loop** — it will be refused, not merely flagged. Author it by
+> hand and mark it `REVIEW:` so it lands in the human-review queue. (Note the two
+> gates differ: CI's `scripts/ci/review-marker-gate.sh` uses the CLAUDE.md list,
+> which does *not* cover `scripts/console/`, so CI will not demand the marker for
+> you. Mark it anyway — this diff changes the app's route table.)
+>
+> Same rule, for the same reason, applies to `app/help.py` itself: this stage's
+> content module is on the loop's denylist. `templates/` and `tests/` are
+> deliberately NOT (documented as accepted residuals at `agent-loop.sh:113-123`).
+
 ```python
 @app.get("/help", response_class=HTMLResponse)
 def help_page(request: Request, sc: Scope = Depends(scoped("viewer"))):
@@ -39,6 +57,27 @@ def help_section(request: Request, section_id: str, sc: Scope = Depends(scoped("
 That snippet is not prose: `tests/test_help.py::wired` **executes exactly these
 two handler bodies** against the real `scoped("viewer")` and the real `_pane()`.
 If the fixture and this section ever disagree, one of them is wrong.
+
+### One behaviour the fixture does NOT reproduce — signed-out is a 303, not a 401
+
+`test_help_is_behind_authentication` asserts **401**, and that is correct *for
+the fixture*: it builds a bare `FastAPI()` carrying these two routes and nothing
+else, so the 401 that `scoped("viewer")` raises surfaces unhandled.
+
+The real app is different. `main.py` registers `@app.exception_handler(401)`,
+which converts that same 401 into **`303 -> /login`** whenever the request is a
+GET whose `Accept` header contains `text/html` — i.e. every browser. (An
+htmx/JSON caller, and a `TestClient` using its default `Accept: */*`, still get
+the plain 401.) There is a matching 403 handler that redirects the project-less
+case to `/no-project`.
+
+So after wiring, a signed-out visitor to `/help` lands on the sign-in page.
+Nothing needs changing for that to happen — it is inherited — but do not read the
+fixture's `401` as a promise about browsers, and do not "fix" the fixture by
+asserting 303 against an app that has no such handler.
+`test_the_real_app_redirects_an_unauthenticated_browser_to_login` pins the real
+behaviour against the real `app` object so the delta is written down in code as
+well as here.
 
 ### Notes that are not style preferences
 
@@ -106,8 +145,7 @@ of whether the allowlist grows an entry.
 ## 2. Header entry (NOT a nav tab)
 
 The bottom tab bar is full (7 panes) and Help is not a pane. It goes in the
-**header** in `base.html`, inside the `{% if user %}` block, next to where the
-Library link goes:
+**header** in `base.html`, inside the `{% if user %}` block:
 
 ```html
 <a href="/help" title="Help" aria-label="Help">?</a>
@@ -116,9 +154,29 @@ Library link goes:
 Visible to **every authenticated user** — no role condition. Every topic on the
 page describes something a viewer can see or a limit that applies to them.
 
-Stage 4's contract already refers to "the Help `?` button" as the anchor its
-Library link sits beside; this is that button. Whichever of us lands second,
-the two are adjacent and neither needs the other to exist.
+### Where exactly, given there is no Library link yet
+
+Read this before pattern-matching on the other stage's wording.
+[`stage4-wiring.md`](stage4-wiring.md) (merged, Stage 4 / Library) says its
+Library link goes "next to the Help `?` button", and an earlier draft of *this*
+file said the `?` goes next to the Library link. **Both anchors are currently
+vacuous**: as of this branch's merge base, `templates/base.html` has neither. Its
+`{% if user %}` nav is exactly:
+
+```
+Audit (operator+) · Alerts (owner) · Projects (owner) · Users (owner) · logout form
+```
+
+So anchor on something that exists. Concretely: put the `?` **inside the `<nav>`,
+after the four role-gated links and before the logout `<form>`** — it is
+unconditional, so it reads better after the conditional ones, and keeping the
+logout button last preserves the existing tab order. The Library link (`📚` or
+`Library`) belongs immediately beside it.
+
+Whichever of the two stages you wire second, the pair ends up adjacent and
+neither needs the other to exist. If you wire Library at the same time, add both
+links in one edit and the circular "next to the other one" wording in the two
+contracts resolves itself.
 
 ---
 
@@ -134,12 +192,21 @@ There is no max-age knob because there is nothing to be stale.
 ### CI baseline
 
 `scripts/ci/.console-collect-baseline` is checked in both directions
-(`collection_errors=0`, `skipped=1`). This stage adds **46 tests, 0 collection
+(`collection_errors=0`, `skipped=1`). This stage adds **48 tests, 0 collection
 errors and 0 skips** when the declared requirements are installed — the
 `importorskip` calls in `test_help.py` are for `jinja2`, `fastapi` and `httpx`,
-all of which are in `requirements.txt` / `requirements-dev.txt`. Measured
-locally: **533 passed, 1 skipped** (the pre-existing optional-STT skip). The
-baseline file needs **no edit**.
+all of which are in `requirements.txt` / `requirements-dev.txt`. The baseline
+file needs **no edit**.
+
+Measured on this branch after merging `origin/main` (which brought in Stage 4 /
+Library): **605 passed, 1 skipped** — the skip is the pre-existing optional
+`faster_whisper` STT one. `scripts/ci/test-console.sh` exits **0** with
+`skipped=1 skip_baseline=1`.
+
+> Counts move as sibling stages land. The number that must hold is
+> `skipped=1` / `collection_errors=0`; treat the totals as a timestamp, not a
+> contract. (An earlier revision of this file said "533 passed" and was already
+> stale by the time Library merged.)
 
 ---
 
@@ -195,32 +262,42 @@ change any of these, the corresponding section needs a line changed:
 | Section | Derived from | Goes stale if you change… |
 |---------|--------------|---------------------------|
 | `start` | `main.py` docstring, `README.md`, `index.html` footnote | the tier story (reads here, live/prod elsewhere) |
-| `panes` | `PANES`, every `pane_*` route + template, `tab_counts` | adding/removing/reordering a pane, the 90 s count refresh, the 60-row todo cap |
+| `panes` | `PANES`, every `pane_*` route + template, `tab_counts`, **which panes accept `force=`** (fleet/todo/backups/demo/quokka do; issues and CI are uncached and do not) | adding/removing/reordering a pane, the 90 s count refresh, the 60-row todo cap, `PANE_CACHE_TTL`, or caching the GitLab-backed panes |
 | `rag` | `scripts/commands/rag.sh` help text, `parsers.parse_rag` | the RED/AMBER/GREEN rule, or the unscanned-is-never-green property |
 | `roles` | `authz.py` (`ROLES`, `PROJECT_ROLES`, `CAP`, `effective_project_role`) | any role name, or the global-role ceiling |
-| `projects` | `scope.py`, `_scopebar.html`, `no_project.html` | what a project narrows (sites/issues/CI/demo/audit), legacy mode |
+| `projects` | `scope.py`, `_scopebar.html` **plus which routes actually pass `scope` into the template** (only `/`, the panes via `_pane()`, and `/audit` — not `/users`, `/projects`, `/notifications`, `/no-project`, `/login`), `no_project.html` | what a project narrows (sites/issues/CI/demo/audit), legacy mode, or any route gaining/losing a `scope` in its context |
 | `freshness` | `fleet_state.py`, `_provenance.html` | the three provenance shapes or the stale banner |
 | `actions` | `actions.py` (`ACTIONS`, `FORBIDDEN_VERBS`), `_action_gate` | adding, removing or renaming an action; the global-action refusal |
-| `audit` | `/audit` route, `store.AuditLog`, `Scope.audit_allowed` | who sees which entries |
+| `audit` | `/audit` route (`scoped("operator")` — a PROJECT-role floor, not the console role), `_notify_pass`'s `if events or sent:` gate, `store.AuditLog`, `Scope.audit_allowed`, the header link's `user.role` condition in `base.html` | who sees which entries; whether a quiet notification pass still writes a line; whether the header link and the route agree |
 | `notifications` | `_notify_view` rows, `config.NOTIFY_EVENTS` | the event list |
 | `quokka` | `quokka.py`, `voice.py`, the chat/brief/stt/tts routes | the no-cloud-speech property, the mic gating |
 | `pwa` | `static/sw.js`, `manifest`, session cookie settings | adding offline caching, or adding keyboard shortcuts (there are none today, and the help says so) |
-| `library` | Stage 4's `stage4-wiring.md` | wiring `/library` — the section says "not wired here yet" and should then say where it is |
+| `library` | [`stage4-wiring.md`](stage4-wiring.md), now merged and sitting beside this file | wiring `/library` — the section says "not wired here yet" and should then say where it is |
 | `trouble` | the degraded paths in every pane | any new "this looks broken but isn't" shape |
 
 The `library` section deliberately describes `/library` as forthcoming-if-absent
 rather than asserting it exists, since the two stages land independently.
 
+**Status as of this branch's merge base:** Stage 4's *code* is on `main`
+(`app/library.py`, `templates/library.html`, `_library_list.html`,
+`_library_doc.html`, `tests/test_library.py`) but `/library` is **not registered
+in `main.py`** and `base.html` has no Library link — exactly the same
+wired-nowhere position as this stage. The help text's "if the header has no
+Library link on this install, it is not wired here yet" is therefore still
+literally true, and stays true until someone does the `main.py` edit for both.
+When you wire Library, flip that `_n(...)` note in `help.py`'s `library` section
+to say where it is.
+
 ---
 
 ## 6. Evidence
 
-- **46 test cases** in `tests/test_help.py`; **533 console tests green,
+- **48 test cases** in `tests/test_help.py`; **605 console tests green,
   1 skipped** (`python3 -m pytest scripts/console/tests/`), unchanged skip count.
 - The suite is in three layers, because each can be wrong alone: the content
   *shape*, the *render* through a real Jinja environment, and the *routes*
   through a real `TestClient` using the real `scoped()` + `_pane()`.
-- **5 mutations, each proven to turn specific tests RED** — harness output:
+- **6 mutations, each proven to turn specific tests RED** — harness output:
 
 ```
 === M1: unknown topic renders as an empty section instead of 404 ===
@@ -243,6 +320,11 @@ rather than asserting it exists, since the two stages land independently.
     RED: test_a_scoped_member_gets_help_with_strict_scoping_on
 === M5: an unknown block kind renders as silence ===
     RED: test_an_unknown_block_kind_is_loud_rather_than_silent
+=== M6: the block loop is gutted to a title-only shell ===
+    RED: test_the_full_page_renders_the_body_of_each_section
+    RED: test_every_block_kind_reaches_the_page
+    RED: test_an_unknown_block_kind_is_loud_rather_than_silent
+    RED: test_help_text_is_escaped_not_interpreted
 ```
 
 **One defect was found this way rather than assumed away.** M4 originally
@@ -257,6 +339,31 @@ That tuple blind spot is a property of `scope.scrub()` itself, not of this
 stage. **Any other stage whose context nests rows inside a tuple is being
 scrubbed only in appearance.** Worth a look during integration; I have not
 touched `scope.py` because it is not mine.
+
+**A second defect, found by adversarial review of this branch and fixed here.**
+M6 did not exist originally, and the body test could not have caught it. The old
+`test_the_full_page_renders_the_body_of_each_section` probed the page for
+`next(_strings_of(s["blocks"][0]))` — but `_strings_of()` walks `dict.values()`,
+and a block's *first* value is its **kind**. So the probe for every one of the
+thirteen sections was the literal string `'text'` (or `'defs'` for `trouble`),
+and the page contains `helptext` / `helpdefs` / `helplist` / `helpnote` in the
+stylesheet regardless of whether one word of help rendered. Replayed against a
+gutted, title-only template the old probe reported **PASS on all 13 sections**.
+It was decoration.
+
+Note *why* the sibling test could not cover for it: `help.html` renders each
+section's title and summary in the table of contents as well as in the section
+itself, so `test_the_full_page_renders_every_declared_section` also survives a
+title-only shell.
+
+Fixed by `_content_strings()` (read the content keys **by name**, and raise on an
+unknown kind rather than silently probing nothing) plus `_body_probe()`, which
+takes a 40+ character run of real prose from **every block of every section** and
+escapes it as Jinja will. `test_the_body_probe_is_not_satisfied_by_an_empty_shell`
+is the standing meta-test: it renders a title-only shell that deliberately
+carries all four help class names and asserts the probes are **absent**, so if
+the probe ever drifts back to matching page furniture, that test says so instead
+of the coverage silently evaporating.
 
 ### Known gap — please close it when you wire
 

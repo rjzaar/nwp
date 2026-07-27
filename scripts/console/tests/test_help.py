@@ -206,15 +206,84 @@ def test_the_full_page_renders_every_declared_section(jinja):
         assert s["summary"] in html
 
 
+def _content_strings(block, where: str) -> list:
+    """A block's actual CONTENT strings — never its discriminator.
+
+    This exists because the obvious implementation is silently vacuous.
+    `_strings_of()` walks `dict.values()`, and a block's FIRST value is its
+    kind: `{"kind": "text", "text": "…"}` yields `"text"` before it yields a
+    word of help. Probing the page for that string proves nothing whatsoever,
+    because the template's own class names — `helptext`, `helplist`, `helpdefs`,
+    `helpnote` — each contain their kind as a substring, and they are emitted by
+    the stylesheet in `help.html` whether or not a single block rendered. A body
+    test built that way passes forever, including over a title-only shell.
+
+    So: read the content keys BY NAME, and refuse to guess at an unknown kind
+    rather than quietly probing nothing.
+    """
+    kind = block.get("kind")
+    if kind in ("text", "note"):
+        return [block["text"]]
+    if kind == "list":
+        return [str(i) for i in block["items"]]
+    if kind == "defs":
+        return [r["desc"] for r in block["rows"]] + [r["term"] for r in block["rows"]]
+    raise AssertionError(
+        f"{where}: unknown block kind {kind!r} — this probe would cover nothing. "
+        "Teach _content_strings() the new kind at the same time as the template."
+    )
+
+
+def _body_probe(block, where: str) -> str:
+    """A distinctive run of this block's prose, escaped as Jinja will escape it.
+
+    Distinctive = long. A 40+ character run of English cannot be satisfied by a
+    class name, an id, a heading or any of the page furniture, which is the
+    whole failure this replaces.
+    """
+    from markupsafe import escape          # a hard dependency of jinja2
+
+    best = max(_content_strings(block, where), key=len)
+    assert len(best) >= 40, (
+        f"{where}: longest content string is only {len(best)} chars ({best!r}) — "
+        "too short to prove anything; probing it could collide with page furniture"
+    )
+    return str(escape(best[:80]))
+
+
 def test_the_full_page_renders_the_body_of_each_section(jinja):
-    """Titles alone would pass if every section rendered as an empty shell."""
+    """Titles alone would pass if every section rendered as an empty shell —
+    and note that titles and summaries BOTH also appear in the table of
+    contents, so the sibling test above cannot detect that shell either.
+
+    This one probes every block of every section for a long, distinctive run of
+    its real prose. Gut the `{% for b in s.blocks %}` loop in
+    `_help_section.html` and this is the test that goes red.
+    """
     html = _render(jinja, help_mod.page_context())
     for s in help_mod.SECTIONS:
-        first = next(_strings_of(s["blocks"][0]))
-        # Compare on a distinctive prefix: Jinja escapes quotes/ampersands.
-        probe = first.split(".")[0][:60]
-        assert probe.replace("'", "&#39;").replace("&", "&amp;") in html or probe in html, \
-            f"section {s['id']} rendered no body text"
+        for i, block in enumerate(s["blocks"]):
+            where = f"section {s['id']} block {i} ({block.get('kind')})"
+            assert _body_probe(block, where) in html, f"{where} rendered no body text"
+
+
+def test_the_body_probe_is_not_satisfied_by_an_empty_shell(jinja):
+    """The meta-test: prove the probe above can actually FAIL.
+
+    Renders each section as a title-only shell — exactly what a gutted block
+    loop produces — and asserts the probes are absent. Without this, a probe
+    that had drifted back to matching page furniture would look like coverage.
+    """
+    shell = jinja.from_string(
+        '<section id="help-{{ s.id }}"><h2>{{ s.title }}</h2>'
+        '<p class="helptext helplist helpdefs helpnote">{{ s.summary }}</p></section>'
+    )
+    for s in help_mod.SECTIONS:
+        html = shell.render(s=s)
+        for i, block in enumerate(s["blocks"]):
+            where = f"section {s['id']} block {i}"
+            assert _body_probe(block, where) not in html, (
+                f"{where}: the probe matches a title-only shell — it is vacuous")
 
 
 def test_a_single_section_page_renders_only_that_section(jinja):
@@ -276,20 +345,48 @@ def test_no_template_in_this_stage_uses_safe():
 # ---------------------------------------------------------------------------
 # 5. the routes, wired exactly as help-wiring.md declares them
 # ---------------------------------------------------------------------------
-@pytest.fixture(scope="module")
-def env():
-    tmp = tempfile.mkdtemp(prefix="nwp-console-help-test-")
-    os.environ["NWP_CONSOLE_DATA"] = tmp
-    os.environ["NWP_CONSOLE_ROOT"] = tmp
-    os.environ["NWP_CONSOLE_QUOKKA_URL"] = "http://127.0.0.1:9"
-    os.environ["NWP_CONSOLE_STT_BACKEND"] = "off"
-    os.environ["NWP_CONSOLE_TTS_BACKEND"] = "off"
-    # A leak must RAISE here, not be quietly repaired — same as the tenancy suite.
-    os.environ["NWP_CONSOLE_SCOPE_STRICT"] = "1"
+def _purge_app_modules() -> None:
+    """Drop `app.*` so the next import re-reads config from the environment."""
     for m in list(sys.modules):
         if m == "app" or m.startswith("app."):
             del sys.modules[m]
-    return tmp
+
+
+@pytest.fixture(scope="module")
+def env():
+    """Module-scoped env, RESTORED on teardown.
+
+    `NWP_CONSOLE_SCOPE_STRICT=1` in particular must not outlive this file.
+    `os.environ` is process-global and pytest runs modules in one process in
+    sorted order, so setting it and walking away silently re-configures every
+    test module sorted after `test_help.py` — turning a scrub drop from a
+    counted return value into a raised exception in suites that never asked for
+    that. Teardown restores the previous values (unsetting the ones that were
+    absent) and purges `app.*` again, so the next module imports under the
+    environment it actually declared.
+    """
+    tmp = tempfile.mkdtemp(prefix="nwp-console-help-test-")
+    wanted = {
+        "NWP_CONSOLE_DATA": tmp,
+        "NWP_CONSOLE_ROOT": tmp,
+        "NWP_CONSOLE_QUOKKA_URL": "http://127.0.0.1:9",
+        "NWP_CONSOLE_STT_BACKEND": "off",
+        "NWP_CONSOLE_TTS_BACKEND": "off",
+        # A leak must RAISE here, not be quietly repaired — same as the tenancy suite.
+        "NWP_CONSOLE_SCOPE_STRICT": "1",
+    }
+    saved = {k: os.environ.get(k) for k in wanted}
+    os.environ.update(wanted)
+    _purge_app_modules()
+    try:
+        yield tmp
+    finally:
+        for k, old in saved.items():
+            if old is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = old
+        _purge_app_modules()
 
 
 @pytest.fixture(scope="module")
@@ -367,8 +464,40 @@ def test_an_unknown_section_404s_rather_than_rendering_an_empty_page(wired):
 
 
 def test_help_is_behind_authentication(wired):
+    """The fixture app is a BARE `FastAPI()`: it registers the two handlers and
+    nothing else, so an unauthenticated request surfaces the raw 401 that
+    `scoped("viewer")` raises. That is what is being pinned here — the route
+    refuses, rather than rendering help to a stranger.
+
+    It is NOT what a browser will see once this is wired into the real app; see
+    the next test. Do not "fix" that difference by loosening this assertion.
+    """
     r = _client(wired, None).get("/help")
     assert r.status_code == 401
+
+
+def test_the_real_app_redirects_an_unauthenticated_browser_to_login(wired):
+    """The delta the integrator would otherwise meet as a surprise.
+
+    `main.py` registers `@app.exception_handler(401)`, which turns the same 401
+    into `303 -> /login` when the request is a GET that says it accepts HTML.
+    So once `/help` is wired into the real app, a signed-out browser lands on
+    the sign-in page, not on a 401 — while an htmx/JSON caller still gets the
+    401. Asserted against the REAL app object (on `/`, which is already wired)
+    so it stays true independently of this stage.
+    """
+    from fastapi.testclient import TestClient
+
+    _api, app_main, _ = wired
+    c = TestClient(app_main.app)
+
+    browser = c.get("/", headers={"accept": "text/html"}, follow_redirects=False)
+    assert browser.status_code == 303, f"expected a redirect for a browser, got {browser.status_code}"
+    assert browser.headers["location"] == "/login"
+
+    # …and the machine-shaped request is still a plain 401, not a redirect.
+    api_call = c.get("/", headers={"accept": "application/json"}, follow_redirects=False)
+    assert api_call.status_code == 401
 
 
 def test_a_scoped_member_gets_help_with_strict_scoping_on(wired):

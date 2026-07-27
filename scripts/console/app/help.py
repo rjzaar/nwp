@@ -91,12 +91,16 @@ SECTIONS: tuple = (
                            "note, add or remove a label, or close one. With no API token "
                            "provisioned on the host the pane still renders and simply "
                            "deep-links into GitLab instead."),
-                ("Todo", "The `pl todo check` sweep: work and drift items grouped by site, "
-                         "each with a high/medium/low priority chip. The table shows the first "
-                         "60 items; the counts above it describe the whole set."),
-                ("Demo", "Per demo-tier site: reset status, the live invite codes, the last "
-                         "reset event, and an alert flag when a reset failed or was skipped. "
-                         "Operators get the demo actions here."),
+                ("Todo", "The `pl todo check` sweep as a FLAT list — one row per item, in the "
+                         "order the sweep emitted them, each row naming its site in bold and "
+                         "carrying a high/medium/low priority chip. It is not grouped or "
+                         "re-sorted by site. The table shows the first 60 items; the counts "
+                         "above it describe the whole set."),
+                ("Demo", "Per demo-tier site: its reset status as a few highlight lines, with "
+                         "the full output one tap away, and its invite-code registry — which "
+                         "lists HASHES and ids only, never a usable code. Operators get the demo "
+                         "actions here. When a reset failed or was skipped it is the Demo TAB "
+                         "that raises a dot, not a flag inside the pane."),
                 ("Backups", "The backup-freshness slice of the same todo sweep. Read-only "
                             "always — the sweep runs where the backups live, not here."),
                 ("CI", "Open merge requests per configured CI project with their head "
@@ -108,8 +112,11 @@ SECTIONS: tuple = (
             _t("Numbers in the tab bar refresh on load and then every 90 seconds. Each count "
                "is computed independently and best-effort: a feed that breaks loses its "
                "number, it never breaks the tab."),
-            _l("The ⟳ button re-fetches the pane you are on with the cache bypassed. "
-               "Without it, pane data is served from a short-lived cache.",
+            _l("The ⟳ button re-fetches the pane you are on. What that means differs by pane: "
+               "the ones built from `pl` output — Fleet, Todo, Backups, Demo and Quokka's "
+               "context — are served from a short-lived cache, about a minute by default, and "
+               "⟳ is what bypasses it. Issues and CI are not cached at all; they ask GitLab on "
+               "every load, so there ⟳ simply asks again.",
                "A link or a push notification ending in “?tab=” plus a pane name opens "
                "straight on that pane — that is how tapping an alert lands you where it "
                "happened.",
@@ -150,21 +157,27 @@ SECTIONS: tuple = (
                "inside one project."),
             _d(
                 ("viewer (global)", "Read every pane in scope. No actions, no audit page."),
-                ("operator (global)", "Viewer, plus the allowlisted safe actions and the "
-                                      "issue/CI actions, plus the audit page."),
+                ("operator (global)", "Viewer, plus the allowlisted safe actions, the issue/CI "
+                                      "actions and the audit page — each of which ALSO needs "
+                                      "operator in the project you are scoped into."),
                 ("owner (global)", "Operator, plus user management, project management, the "
                                    "notifications page, and the unscoped all-projects view."),
             ),
             _d(
                 ("viewer (project)", "Read this project's sites, issues and CI."),
-                ("operator (project)", "Run the safe actions on this project's demo sites."),
+                ("operator (project)", "Run the safe actions on this project's demo sites, and "
+                                       "read this project's slice of the audit log."),
                 ("maintainer (project)", "Assign existing users to this project — but never "
                                          "above their own project role, and never mint a new "
                                          "user (that is an owner power)."),
             ),
-            _n("The global role is a CEILING. A global viewer recorded as a project maintainer "
-               "is still, effectively, a project viewer. A membership can never grant more "
-               "than your console role already allows."),
+            _n("The global role is a CEILING and the project role is a FLOOR, and you need to "
+               "clear both. A global viewer recorded as a project maintainer is still, "
+               "effectively, a project viewer — a membership can never grant more than your "
+               "console role already allows. Equally, a global operator recorded as a viewer in "
+               "the project they are scoped into is refused the operator surfaces there; the "
+               "console role does not rescue them. An owner is the one exception, resolving to "
+               "maintainer in every project."),
             _t("Everything is enforced server-side, per route. A button you cannot see is not "
                "the control; the route refusing you is."),
         ),
@@ -190,9 +203,13 @@ SECTIONS: tuple = (
                 ("Audit", "Only entries stamped with your project."),
             ),
             _t("The bar under the header shows the active project and spells out the sites it "
-               "covers. It is always visible when projects exist, because a dashboard quietly "
-               "showing a subset of the fleet is how someone concludes “everything is "
-               "green” about sites they cannot see."),
+               "covers. It rides on every screen that shows you fleet data — the dashboard, all "
+               "seven panes, and the audit page — because a dashboard quietly showing a subset "
+               "of the fleet is how someone concludes “everything is green” about sites they "
+               "cannot see."),
+            _t("It is not on every page. The owner-only admin screens (users, projects, alerts), "
+               "the no-project landing and the sign-in page carry no bar, because none of them "
+               "is reporting fleet state to you in the first place."),
             _l("More than one membership: the bar becomes a picker, and your choice is "
                "remembered on this device.",
                "An owner starts unscoped (“All projects”) and can step into any "
@@ -267,9 +284,21 @@ SECTIONS: tuple = (
         "title": "The audit log",
         "summary": "Every action, every denial — at /audit, and in a file on the host.",
         "blocks": (
-            _t("Every action POST, every login, every scope denial and every notification pass "
-               "appends one line to the console's audit log. The page at /audit shows the most "
-               "recent entries and is open to operators and owners."),
+            _t("Every action POST, every login and every scope denial appends one line to the "
+               "console's audit log. A notification pass appends one only when it actually had "
+               "something to report: a pass that found no events and sent nothing writes "
+               "nothing, so the log is not padded with an entry every interval saying so. "
+               "Silence in the log therefore means “no events”, not “the checker stopped” — "
+               "the notifications page is where you confirm the checker is alive."),
+            _t("The page at /audit is gated on your PROJECT role, not your console role: it "
+               "requires operator INSIDE the project you are currently scoped into. That rule "
+               "bites in both directions. A console operator who is recorded as a mere viewer in "
+               "that project is refused, and switching projects can change the answer. An owner "
+               "resolves to maintainer in every project, so an owner always passes."),
+            _n("The Audit link in the header is drawn from your CONSOLE role alone, so it is "
+               "shown to every operator and owner — including an operator the route will then "
+               "refuse. The link is a hint; the route is the rule. That is the same property "
+               "stated under “Roles”, seen from the other side."),
             _l("Inside a project you see only entries stamped with that project.",
                "Entries written before projects existed carry no project stamp and are "
                "therefore owner-only — a backfill would have to guess, and a guess in an "

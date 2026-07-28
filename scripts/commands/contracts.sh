@@ -610,7 +610,8 @@ EOF
 # ---------------------------------------------------------------------------
 
 # Strip PHP comments from stdin: MULTI-LINE /* */ and /** */ docblocks (state
-# machine, not a per-line regex), plus // and # line comments.
+# machine, not a per-line regex), plus // and # line comments — WITHOUT
+# mistaking a comment opener that appears INSIDE A STRING LITERAL for a comment.
 #
 # The multi-line case is load-bearing, not pedantry. The first version of this
 # gate used a per-line `sed` and reported the ops#138 guard ADOPTED because
@@ -618,29 +619,61 @@ EOF
 # `* Art9ConsentGate::assertMayWriteArt9($uid) first;` inside a docblock. A
 # guard-adoption gate that goes green on a comment is the exact defect it exists
 # to find.
+#
+# ops#152 — STRING AWARENESS. The previous version took the earliest `//`, `#`
+# or `/*` on the line regardless of context, so it truncated ordinary code:
+#
+#   $u = "https://nwc.example.org/.well-known/jwks.json";  ->  $u = "https:
+#   $hash = "#not-a-comment-jwks";                         ->  $hash = "
+#
+# Every token after the `//` — including `jwks` — was deleted BEFORE the grep,
+# so a URL naming a JWKS endpoint was invisible to a gate whose entire job is
+# to notice JWKS code. That is a fail-OPEN blind spot in a fail-closed gate:
+# it does not merely miss a finding, it destroys the evidence first. Verified
+# 2026-07-28 against the live function.
+#
+# The scanner now tracks single- and double-quoted strings with backslash
+# escapes, so a comment opener inside a literal is kept as code.
+#
+# String state is deliberately reset at end-of-line rather than carried across
+# lines. PHP strings *can* span lines, but of the two failure modes only this
+# one is fail-CLOSED: an unterminated quote then leaves the following lines
+# visible to the grep (possibly a false positive, which a human adjudicates),
+# whereas carrying the state would let one stray quote swallow the rest of the
+# file and hide real verification code (a false negative, which nobody sees).
+#
+# ACCEPTED RESIDUAL: a PHP 8 attribute `#[Foo]` is still treated as a `#`
+# comment and truncates the line. Pre-existing behaviour, left alone to keep
+# this change reviewable; attributes do not carry JWKS/JWT tokens, and the
+# failure is confined to the line the attribute is on.
 _guards_strip_comments() {
     awk '
     {
         line = $0
+        n = length(line)
         out = ""
-        while (length(line) > 0) {
+        instr = ""          # "" | "\x27" | "\"" — reset every line, see header
+        i = 1
+        while (i <= n) {
+            c = substr(line, i, 1)
             if (inblock) {
-                p = index(line, "*/")
-                if (p == 0) { line = ""; break }
-                line = substr(line, p + 2); inblock = 0; continue
+                if (c == "*" && substr(line, i + 1, 1) == "/") { inblock = 0; i += 2 }
+                else { i++ }
+                continue
             }
-            p = index(line, "/*")
-            q = index(line, "//")
-            r = index(line, "#")
-            # Earliest comment opener on the remaining text wins.
-            best = 0; kind = ""
-            if (p > 0)              { best = p; kind = "block" }
-            if (q > 0 && (best == 0 || q < best)) { best = q; kind = "line" }
-            if (r > 0 && (best == 0 || r < best)) { best = r; kind = "line" }
-            if (best == 0) { out = out line; line = ""; break }
-            out = out substr(line, 1, best - 1)
-            if (kind == "line") { line = ""; break }
-            line = substr(line, best + 2); inblock = 1
+            if (instr != "") {
+                out = out c
+                if (c == "\\") { out = out substr(line, i + 1, 1); i += 2; continue }
+                if (c == instr) { instr = "" }
+                i++
+                continue
+            }
+            if (c == "\"" || c == "\x27") { instr = c; out = out c; i++; continue }
+            if (c == "/" && substr(line, i + 1, 1) == "*") { inblock = 1; i += 2; continue }
+            if (c == "/" && substr(line, i + 1, 1) == "/") { break }
+            if (c == "#") { break }
+            out = out c
+            i++
         }
         print out
     }' 2>/dev/null
@@ -811,21 +844,63 @@ _guards_one() {
 # Exit: 0 invariant holds · 1 broken or CANNOT-VERIFY.
 # ---------------------------------------------------------------------------
 
+# Is <path> waived by the contract's verification_exempt_paths?
+#
+# ops#152 — entries are SHELL GLOBS and are tested against TWO anchorings:
+#   * the PROJECT_ROOT-relative path  (e.g. sites/ssc/dev/mod/lti/token.php)
+#   * the SCANNED-ROOT-relative path  (e.g. mod/lti/token.php)
+# The second is what makes a declared waiver readable and portable: the LTI
+# exemptions are properties of *Moodle*, so they are written the way Moodle
+# names them (`mod/lti/**`) and do not have to repeat wherever a particular
+# estate happens to mount the core tree.
+#
+# An entry containing no glob metacharacter still matches exactly, so this is
+# backward compatible with the previous `grep -qxF` semantics.
+_keyrot_is_exempt() { # <project-rel path> <root-rel path> <exempt list>
+    local rel="$1" rrel="$2" excludes="$3" e
+    [ -n "$excludes" ] || return 1
+    while IFS= read -r e; do
+        [ -n "$e" ] || continue
+        # shellcheck disable=SC2254  # $e is a glob ON PURPOSE
+        case "$rel"  in $e) return 0 ;; esac
+        # shellcheck disable=SC2254
+        case "$rrel" in $e) return 0 ;; esac
+    done <<<"$excludes"
+    return 1
+}
+
 # Executable (comment-stripped) signature-verification call sites under <roots>.
 # Emits "<file>:<line>:<text>" so a human can adjudicate each hit.
+#
+# Iterates PER ROOT (rather than handing every root to one grep) so each hit
+# knows which root it came from and can be matched against a root-relative
+# exemption.
+#
+# PERFORMANCE (ops#152, measured on the real ssc tree, 16,517 core PHP/inc
+# files): the `grep -rlE` prefilter is the only thing that touches all 16.5k
+# files and costs 0.54s; it narrows to 80 candidates, and only those are
+# comment-stripped. End-to-end 0.74s. The expensive per-character awk pass is
+# therefore bounded by the prefilter, not by the tree size — which is why
+# widening the corpus to core does not need the grep to be scoped to
+# "interesting" subdirectories. Scoping it would also have reintroduced the
+# very fail-open this issue is about: a gate that only looks where it already
+# expects trouble.
 _keyrot_verify_sites() { # <exclude-list> <roots...>
     local excludes="$1"; shift
-    local roots=("$@") f rel
+    local roots=("$@") root f rel rrel
     [ "${#roots[@]}" -gt 0 ] || return 0
     local pat='JWT::decode|Firebase.{0,2}JWT|CachedKeySet|openssl_verify|verify_?signature|validateSignature|jwks|id_token'
-    while IFS= read -r f; do
-        [ -n "$f" ] || continue
-        rel="${f#"$PROJECT_ROOT"/}"
-        if [ -n "$excludes" ] && printf '%s\n' "$excludes" | grep -qxF "$rel"; then continue; fi
-        _guards_strip_comments < "$f" | grep -nEi "$pat" 2>/dev/null \
-            | while IFS= read -r hit; do printf '%s:%s\n' "$rel" "$hit"; done
-    done < <(grep -rlEi "$pat" --include='*.php' --include='*.module' --include='*.inc' \
-                --include='*.install' --include='*.theme' "${roots[@]}" 2>/dev/null)
+    for root in "${roots[@]}"; do
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            rel="${f#"$PROJECT_ROOT"/}"
+            rrel="${f#"$root"/}"
+            _keyrot_is_exempt "$rel" "$rrel" "$excludes" && continue
+            _guards_strip_comments < "$f" | grep -nEi "$pat" 2>/dev/null \
+                | while IFS= read -r hit; do printf '%s:%s\n' "$rel" "$hit"; done
+        done < <(grep -rlEi "$pat" --include='*.php' --include='*.module' --include='*.inc' \
+                    --include='*.install' --include='*.theme' "$root" 2>/dev/null)
+    done
 }
 
 cmd_key_rotation() {
@@ -924,13 +999,50 @@ _keyrot_one() {
         return 1
     fi
 
+    # --- the CORE corpus (ops#152) ------------------------------------------
+    # consumer_roots names the first-party PLUGIN tree — about 105 PHP files.
+    # But "the consumer does not verify the id_token signature" is a claim about
+    # the CONSUMER, and the consumer is Moodle: core (~16,500 PHP files) plus
+    # plugins. Scanning only the plugins and printing OK was a fail-open: JWT
+    # verification planted at lib/classes/oauth2/client.php — the very file the
+    # ssc contract's comment cites as hand-verified — did NOT trip CLAIM-DRIFT.
+    # Verified by reproduction 2026-07-28.
+    #
+    # The core tree's location is DECLARED, not guessed, and its absence is
+    # CANNOT-VERIFY rather than a pass — the same fail-closed rule already
+    # applied to consumer_roots. A gate that silently narrows its own corpus is
+    # how the hand-verification became folklore in the first place.
+    local core_declared core_roots=()
+    core_declared="$(_crossref_yq "$contract" '.oidc.key_rotation.consumer_core_roots[]')"
+    if [ -z "$core_declared" ]; then
+        _err "[$pair] CANNOT-VERIFY: oidc.key_rotation.consumer_core_roots is not declared."
+        _err "                       consumer_roots covers the first-party plugin tree only."
+        _err "                       The 'consumer does not verify signatures' claim is a claim"
+        _err "                       about the WHOLE consumer — Moodle core included — so the"
+        _err "                       contract must say where core lives. Scanning the plugins"
+        _err "                       and calling it OK is the fail-open this field closes."
+        return 1
+    fi
+    while IFS= read -r r; do [ -n "$r" ] && core_roots+=("$r"); done < <(
+        printf '%s\n' "$core_declared" | _crossref_existing_roots)
+    if [ "${#core_roots[@]}" -eq 0 ]; then
+        _err "[$pair] CANNOT-VERIFY: none of the declared oidc.key_rotation.consumer_core_roots"
+        _err "                       exist here, so the Moodle core tree cannot be scanned."
+        _err "                       Absence of evidence is not a pass."
+        printf '%s\n' "$core_declared" | while IFS= read -r r; do
+            [ -n "$r" ] && _say "    declared, missing: $r"
+        done
+        return 1
+    fi
+
     local exempt
     exempt="$(_crossref_yq "$contract" '.oidc.key_rotation.verification_exempt_paths[]')"
 
-    [ "$quiet" = true ] || _say "[$pair] mode=$mode verifies=$verifies kid=${kid:-<unset>} overlap=${overlap:-<unset>} corpus=${#cons_roots[@]} root(s)"
+    local scan_roots=("${cons_roots[@]}" "${core_roots[@]}")
+    [ "$quiet" = true ] || _say "[$pair] mode=$mode verifies=$verifies kid=${kid:-<unset>} overlap=${overlap:-<unset>} corpus=${#scan_roots[@]} root(s) (${#cons_roots[@]} plugin + ${#core_roots[@]} core), $(printf '%s\n' "$exempt" | grep -c .) exempt path(s)"
 
     local hits
-    hits="$(_keyrot_verify_sites "$exempt" "${cons_roots[@]}")"
+    hits="$(_keyrot_verify_sites "$exempt" "${scan_roots[@]}")"
 
     if [ "$verifies" = "false" ]; then
         # ---- the drift check: prose says "does not verify"; does the code agree?
@@ -945,7 +1057,7 @@ _keyrot_one() {
             _say  "  oidc.key_rotation.verification_exempt_paths (an explicit, reviewable waiver)."
             bad=1
         else
-            [ "$quiet" = true ] || _say "[$pair] verify  OK           no executable signature/JWKS code in the SCANNED consumer roots (custom plugins only — NOT Moodle core; core was verified by hand 2026-07-28, see the contract's key_rotation comments)"
+            [ "$quiet" = true ] || _say "[$pair] verify  OK           no executable signature/JWKS code in the consumer plugin tree OR Moodle core, outside the contract's declared verification_exempt_paths (ops#152: core is now scanned; the 2026-07-28 hand verification of lib/classes/oauth2/ is machine-checked from here on)"
         fi
         # hard_swap is only legitimate while nobody verifies.
         if [ -n "$mode" ] && [ "$mode" != "hard_swap" ]; then

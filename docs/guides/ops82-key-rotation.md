@@ -360,8 +360,38 @@ The verified behaviour is recorded in `pairs/ssc.pair-contract.yml` and
 | `overlap_window` | `0` | §4.3 — both keys published across cut-over. |
 | `retire_after` | `0` | §4.4 — must exceed the longest-lived token signed by the old key, plus margin. |
 | `refetch_impl` | `null` | §4.0 — must name an existing file once verifying (`NO-REFETCH`). |
-| `verification_exempt_paths` | `[]` | Explicit, reviewable waivers for inert matches. |
+| `consumer_core_roots` | `sites/<pair>/dev` | **ops#152** — where the Moodle **core** tree lives. Undeclared or absent ⇒ `CANNOT-VERIFY`. |
+| `verification_exempt_paths` | 19 entries | Explicit, reviewable waivers for inert matches. Shell globs. |
 | `runbook` | this file | Must exist (`MISSING-RUNBOOK`). |
+
+### ops#152 — what the gate actually scans
+
+Until ops#152 the gate scanned only `crossref.consumer_roots`, i.e. the first-party
+plugin trees (**~105 PHP files**). The claim under test is a claim about *the consumer*,
+and the consumer is Moodle: core (**~16,517 PHP/inc files**) plus plugins. Scanning the
+plugins and printing OK was fail-open at the worst possible spot — JWT verification
+planted at `sites/ssc/dev/lib/classes/oauth2/client.php`, the very file this runbook's
+hand verification cites, did **not** trip `CLAIM-DRIFT`.
+
+Core is now a declared, scanned root. Two consequences worth knowing:
+
+* **The hand verification is now machine-checked.** With core in the corpus,
+  `lib/classes/oauth2/` and `auth/oauth2/` produce **zero** hits for the whole
+  signature/JWKS pattern — so §"the SSO login path never parses `id_token`" is
+  re-confirmed on every run, and a core upgrade that starts verifying `id_token`
+  **will** go red.
+* **`verification_exempt_paths` carries the real exceptions.** Moodle core genuinely
+  does verify JWS — for **LTI 1.3** (`lib/lti1p3` `LtiMessageLaunch::validateJwtSignature`,
+  `enrol/lti/**`, `mod/lti/**`), against LTI *platform* keys: a different issuer with its
+  own JWKS and its own rotation story. The rest of the waiver list is other trust domains
+  (WebAuthn attestation, MNet peer signing, BBB, the Google API client) and substring
+  false positives (`BADGE_USER_ID_TOKEN`, `INVALID_TOKEN`). Each entry is listed and
+  justified in `pairs/ssc.pair-contract.yml`, so removing one is a reviewable act — a
+  blanket "skip core" would not be.
+
+**Cost:** the `grep -rlE` prefilter is the only pass over all 16.5k files (~0.5 s) and
+narrows to ~80 candidates; only those are comment-stripped. `pl contracts key-rotation
+--all` over both real pairs measures **5.9 s**.
 
 **How to flip verification on, safely.** Do not edit `consumer_verifies_signature` on its
 own — the gate will reject it, by design. The order is: (1) open an ops issue for

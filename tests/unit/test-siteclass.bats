@@ -659,3 +659,40 @@ EOF
   done
   [ "$found" -eq 1 ]   # the rgs declaration must have been scanned
 }
+
+# =============================================================================
+# gate-status verdict — the class-aware half of ops#153's follow-up. The
+# per-plugin [UNGATED] rows are SCAN FACTS and never change; only the final
+# verdict (and exit code) may be reclassified, and only by a valid exemption.
+# =============================================================================
+
+@test "VERDICT: ungated count + valid exemption -> EXEMPT (class), rc 0" {
+  source "${REPO_ROOT}/lib/moodle-gate.sh"
+  run moodle_gate_status_verdict standalone 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"EXEMPT"* ]]
+  [[ "$output" == *"none-stored"* ]]
+  [[ "$output" == *"2099-01-01"* ]]        # the expiry is shown — the clock is visible
+}
+
+@test "VERDICT: ungated count on an undeclared site -> refusal text, rc 1" {
+  source "${REPO_ROOT}/lib/moodle-gate.sh"
+  run moodle_gate_status_verdict nodecl-verdict 2
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"NOT satisfied"* ]]
+}
+
+@test "VERDICT: broken evidence does not reclassify (member cap) -> rc 1" {
+  source "${REPO_ROOT}/lib/moodle-gate.sh"
+  sabotage '.art9.evidence.attestation.member_count = 5'
+  run moodle_gate_status_verdict standalone 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"NOT satisfied"* ]]
+}
+
+@test "VERDICT: zero ungated is OK regardless of class, and claims no exemption" {
+  source "${REPO_ROOT}/lib/moodle-gate.sh"
+  run moodle_gate_status_verdict standalone 0
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"EXEMPT"* ]]
+}

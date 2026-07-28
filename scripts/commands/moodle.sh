@@ -690,13 +690,11 @@ echo PRESENT \$c \$g \$f; fi"
         echo ""
     fi
 
-    if [ "$total_ungated" -gt 0 ]; then
-        print_warning "Ship-together invariant NOT satisfied: ${total_ungated} UNGATED artifact(s) above (ops#137)."
-        print_info    "Deploys from an UNGATED source are now REFUSED by 'pl moodle plugin deploy'."
-        return 1
-    fi
-    print_status "OK" "Every gate-bearing plugin found carries the Art.9 consent gate."
-    return 0
+    # Class-aware verdict (ops#153/ADR-0036): the [UNGATED] rows above are scan
+    # facts and stand as printed; a valid none-stored exemption reclassifies
+    # only the verdict — the same siteclass_art9_exempt predicate the deploy
+    # gate consults, so status and deploy can never disagree.
+    moodle_gate_status_verdict "$BASE" "$total_ungated"
 }
 
 ################################################################################

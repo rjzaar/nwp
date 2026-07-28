@@ -168,6 +168,57 @@ moodle_gate_report() {
     return 0
 }
 
+# moodle_gate_status_verdict <site> <ungated_count> — the FINAL verdict line(s)
+# of `pl moodle gate-status`, class-aware (the ops#153 follow-up recorded in
+# ADR-0036). The per-plugin [UNGATED] rows above it are scan facts and are
+# never rewritten; this reclassifies only the VERDICT, and only when the site
+# carries a valid, evidenced none-stored exemption — the same predicate the
+# deploy gate uses (siteclass_art9_exempt), so status and deploy cannot
+# disagree about whether the estate is in an acceptable state.
+#   rc 0  no ungated artifacts, OR the failure is class-exempt (says so loudly)
+#   rc 1  ungated and no valid exemption
+moodle_gate_status_verdict() {
+    local site="${1:-}" ungated="${2:-0}"
+    if [ "${ungated:-0}" -le 0 ]; then
+        if command -v print_status >/dev/null 2>&1; then
+            print_status "OK" "Every gate-bearing plugin found carries the Art.9 consent gate."
+        else
+            printf 'OK: every gate-bearing plugin found carries the Art.9 consent gate.\n'
+        fi
+        return 0
+    fi
+    if declare -F siteclass_art9_exempt >/dev/null 2>&1 && [ -n "$site" ] \
+       && siteclass_art9_exempt "$site"; then
+        local _gs_cls _gs_exp _gs_att
+        _gs_cls="$(siteclass_of "$site" 2>/dev/null || echo '?')"
+        _gs_exp="$(_sc_yq "$(siteclass_decl_file "$site")" '.art9.expires')"
+        _gs_att="$(_sc_yq "$(siteclass_decl_file "$site")" '.art9.evidence.attestation.at')"
+        _mg_warn "${ungated} UNGATED artifact(s) above — the scan facts stand."
+        _mg_warn "SITE CLASS: '$site' (${_gs_cls}) carries a DECLARED, EVIDENCED Art.9"
+        _mg_warn "exemption (posture: none-stored; attested ${_gs_att}; expires ${_gs_exp})."
+        _mg_info "The exemption reclassifies the failure — same predicate the deploy gate"
+        _mg_info "uses, so 'pl moodle plugin deploy $site' proceeds without --allow-ungated"
+        _mg_info "while the evidence holds. Re-check: pl class evidence $site"
+        if command -v print_status >/dev/null 2>&1; then
+            print_status "OK" "EXEMPT (class) — bounded, expiring, ledgered on use."
+        else
+            printf 'OK: EXEMPT (class) — bounded, expiring, ledgered on use.\n'
+        fi
+        return 0
+    fi
+    _mg_warn "Ship-together invariant NOT satisfied: ${ungated} UNGATED artifact(s) above (ops#137)."
+    _mg_info "Deploys from an UNGATED source are now REFUSED by 'pl moodle plugin deploy'."
+    if declare -F siteclass_of >/dev/null 2>&1 && [ -n "$site" ]; then
+        local _gs_cls2; _gs_cls2="$(siteclass_of "$site" 2>/dev/null || true)"
+        case "$_gs_cls2" in
+            undeclared)
+                _mg_info "If this gate can never be satisfied here (no consent source), declare"
+                _mg_info "what the site IS instead of overriding forever:  pl class check $site" ;;
+        esac
+    fi
+    return 1
+}
+
 ################################################################################
 # Ledger — an --allow-ungated deploy is an audited operator decision
 ################################################################################

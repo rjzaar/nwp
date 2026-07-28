@@ -30,6 +30,16 @@
 #                                docs / nwc-drupal)
 #   CLAUDE_BIN                  (default "claude")
 #
+# Resource preflight (ops#109 / decision 23) — see lib/loop-preflight.sh for the
+# full rationale and the defaults:
+#   AGENT_LOOP_MIN_MEM_MB          (default 2048)
+#   AGENT_LOOP_MAX_LOAD_PCT        (default 150, percent of one core)
+#   AGENT_LOOP_REQUIRE_IDLE_OLLAMA (default 1)
+#   AGENT_LOOP_OLLAMA_URL          (default http://127.0.0.1:11434)
+#   AGENT_LOOP_MAX_RUNNER_JOBS     (default 0)
+#   AGENT_LOOP_RUNNER_USER         (default gitlab-runner)
+#   AGENT_LOOP_SKIP_PREFLIGHT      (default 0)
+#
 # Fix-repo routing + gating (ops#41, OPERATING-MODEL §6):
 #   nwp/ops is a tracker with no code. An ops issue is picked up ONLY when a
 #   human has labelled it agent-eligible (deliberate promotion — the A14
@@ -121,8 +131,24 @@ PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 #      <script>. Accepted as the price of keeping the gate usable in the
 #      console's highest-churn area; this gate matches PATHS, not content, and
 #      making it content-aware would trade a clear rule for a flaky one.
+#
+# THE LOOP'S OWN CONTROL LIBRARIES (added 2026-07-28, ops#109). `lib/loop-` is
+# denied as a PREFIX, not as a list of files. `scripts/agent-loop/` was already
+# denied, but the controls that bound this loop had migrated OUT of that
+# directory and into lib/ without the pattern following them:
+#   * lib/loop-parts.sh is the WRAPPER-ENFORCED kill switch — the thing that
+#     makes `pl loop disable` more than a request. It was agent-writable. An
+#     agent that rewrote loop_part_enabled() to `return 0` would have disarmed
+#     every off-switch the operator has, and the diff would have passed this
+#     gate.
+#   * lib/loop-preflight.sh is the resource gate this same commit adds. Same
+#     argument: a gate the gated party may edit is not a gate.
+# Prefix rather than enumeration for the reason the app/ rule gives — a denylist
+# that has to be remembered is a denylist that lapses. The cost is bounded:
+# `lib/loop-` is a namespace the loop owns, so nothing else is caught (verified
+# by a negative control in tests/unit/test-agent-loop-preflight.bats).
 # shellcheck disable=SC2016
-SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
+SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-|loop-)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
 
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 
@@ -494,6 +520,45 @@ if ! loop_part_enabled fix-loop; then
   log "fix-loop part disabled — skipping autonomous issue poll"
   exit 0
 fi
+
+# --- ops#109 / decision 23: RESOURCE PREFLIGHT --------------------------------
+# Decision 23 makes ONE host the sole owner of this loop. Consolidation is only
+# safe if the loop yields when that host is busy — it is also the LLM host, the
+# webhook receiver and a gitlab-runner. This gate answers "is the box busy?" and
+# DEFERS the run (exit 0, logged, no issue claimed, no label touched, no claude
+# spawned) rather than failing. Thresholds + full rationale: lib/loop-preflight.sh.
+#
+# PLACEMENT. Here, and not higher up, on purpose:
+#   * AFTER drain_respawn_markers, because that path is a handful of GitLab API
+#     calls with essentially no local cost, and it is the operator's own
+#     power-user request. Deferring it would add 30 minutes of latency to a
+#     human action while saving no resources.
+#   * BEFORE the poll, because everything past this point leads to a headless
+#     `claude -p` — and before it, so a deferral claims no issue and applies no
+#     label. The loop must look, to GitLab, exactly as if this tick never ran.
+#
+# FAIL-SAFE, NOT FAIL-CLOSED: if the preflight library is missing we DEFER. A
+# 30-minute wait logged loudly every tick is a better failure than an unguarded
+# spawn — the opposite choice from the loop-parts fallback above, which is
+# permissive because a missing parts library must not disable a documented
+# default. Here the default we want on ignorance is "wait".
+PREFLIGHT_LIB="${SCRIPT_DIR}/../../lib/loop-preflight.sh"
+HOST_CAPTURE_LIB="${SCRIPT_DIR}/../../lib/host-capture.sh"
+if [[ -f "$PREFLIGHT_LIB" && -f "$HOST_CAPTURE_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$HOST_CAPTURE_LIB"
+  # shellcheck source=/dev/null
+  source "$PREFLIGHT_LIB"
+else
+  log "PREFLIGHT DEFER: lib/loop-preflight.sh or lib/host-capture.sh missing from this checkout — refusing to run unguarded"
+  exit 0
+fi
+
+if ! loop_preflight "an agent-loop run"; then
+  log "agent-loop deferred by preflight — no issue claimed, no label changed; next tick will retry"
+  exit 0
+fi
+# --- end resource preflight ---------------------------------------------------
 
 count_today="$(prs_today)"
 if (( count_today >= DAILY_CAP )); then

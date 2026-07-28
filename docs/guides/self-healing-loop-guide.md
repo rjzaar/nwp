@@ -3,8 +3,9 @@
 **Audience:** the operator (a coder, not a devops person — jargon is explained
 as it appears).
 **Status:** written 2026-07-03, the day the loop went live end-to-end
-(ops#41 / MR !38). This is the system-level guide; the per-component docs it
-links to go deeper.
+(ops#41 / MR !38); updated 2026-07-28 with the resource preflight and the
+ai-host arming procedure (ops#109). This is the system-level guide; the
+per-component docs it links to go deeper.
 **Read time:** ~15 minutes.
 
 ---
@@ -127,6 +128,55 @@ paused fallback copy). Per tick it takes at most one eligible issue and:
 Guardrails: daily MR cap (5), per-issue retry budget (3), max-age cutoff,
 kill-switch file, and it **never merges anything**.
 
+### 2.5b The resource preflight — the loop yields to a busy box (ops#109)
+
+The loop's home (the ai-host) is a **shared** box: it is also the local-LLM
+host, the webhook receiver and a CI runner. So before each tick claims an
+issue, a preflight (`lib/loop-preflight.sh`) asks one question — *is this box
+busy enough that the run should wait?* — and if yes, the tick **defers**.
+
+**Deferral semantics** (this is the part worth remembering):
+
+- A deferral is **not an error**. The tick exits 0 (cron stays green), logs
+  `PREFLIGHT DEFER: <reason>` to `~/nwp/logs/agent-loop.log`, and stops
+  *before* the poll — so it claims no issue, touches no label, spawns no
+  Claude, and consumes none of the daily-cap or retry budgets. To GitLab it
+  looks as if the tick never ran; the next :00/:30 tick simply retries.
+- The gate is **fail-safe, not fail-closed**: a probe that *cannot answer*
+  (missing command, unreadable `/proc`, the health library absent from the
+  checkout) also defers — a 30-minute wait is a better failure than an
+  unguarded spawn on a box that could not be measured.
+- The **one documented exception** is ollama, because it is optional: an
+  unreachable or garbled ollama API is read as "no model resident" (the
+  permissive answer), never as a defer. Otherwise every host *without* ollama
+  would defer forever.
+
+**What it checks, and the defaults** (each is an env override in the cron
+line's environment; full rationale in the `lib/loop-preflight.sh` header):
+
+| signal | knob | default | defers when |
+|---|---|---|---|
+| available **system** RAM | `AGENT_LOOP_MIN_MEM_MB` | 2048 | below the floor |
+| load average per core | `AGENT_LOOP_MAX_LOAD_PCT` | 150 (% of one core) | above the threshold |
+| resident ollama model | `AGENT_LOOP_REQUIRE_IDLE_OLLAMA` | 1 (on) | any model loaded (`/api/ps` non-empty) |
+| CI runner activity | `AGENT_LOOP_MAX_RUNNER_JOBS` (user: `AGENT_LOOP_RUNNER_USER`, default `gitlab-runner`) | 0 | any process owned by the runner user |
+| disk + swap pressure | `NWP_HEALTH_MIN_DISK_MB` / `NWP_HEALTH_MIN_SWAP_FREE_PCT` | 2048 / 25% | inherited for free — see below |
+
+Two design points:
+
+- **RAM means *system* RAM.** On the ai-host the LLM's ~96 GB lives in iGPU
+  VRAM — a *different pool* from the ~30 GB of system RAM the preflight reads.
+  That is exactly why the ollama signal exists: a fully-loaded model and an
+  idle box report the same `MemAvailable`. Load is judged **per core** (32
+  cores at load 8 is 25%, idle; 2 cores at load 8 is drowning).
+- **It reuses `pl server health`'s engine**, not a copy of it. Signals 1–2
+  (plus disk and swap) go through the same `host_health_*` functions in
+  `lib/host-capture.sh` that back `pl server health`, so the loop and the verb
+  the standing orders call "a REQUIRED PREFLIGHT" cannot drift apart.
+
+`AGENT_LOOP_SKIP_PREFLIGHT=1` is the escape hatch for a hand-run — logged
+loudly, consulted by nothing automatic.
+
 ### 2.6 Approve and re-check
 
 You review the MR like any PR and merge or reject — the second A14 gate. After
@@ -176,6 +226,7 @@ least-privilege `ops_note_token` from `.secrets.yml`.
 | agent edits sensitive paths | prompt hard-boundaries (CI config, auth/secrets, keys, live-deploy scripts → stop + note) + your MR review |
 | bad code reaches main | **nothing auto-merges** |
 | runaway loop | daily cap 5, one issue per tick, retry budget 3, `touch ~/nwp/.loop-paused` on the ai-host stops it within 30 min |
+| loop piles onto a busy shared box (LLM in use, CI job running, low RAM/high load) | resource preflight defers the tick — exit 0, nothing claimed, retried next tick (§2.5b, ops#109) |
 | issue spam | idempotent upserts, real-fleet filter, auto-close on green (`.rag-sync-paused` pauses the sync) |
 | anything reaching real prod | out of scope of this loop entirely (the ver boundary, ADR-0024) |
 
@@ -245,7 +296,48 @@ ssh <ai-host> rm ~/nwp/.loop-paused
 
 # agent MR missed the mark? comment on the MR:
 #   @agent-loop <what was wrong>   → closes MR, re-queues issue (retry budget 3)
+
+# is the preflight deferring? (a deferring loop and a quiet loop look identical
+# except in the log — grep for the reason)
+ssh <ai-host> "grep 'PREFLIGHT DEFER' ~/nwp/logs/agent-loop.log | tail -20"
 ```
+
+### 6.1 ARMING the loop on the ai-host — **operator-run, by hand, only**
+
+These commands are recorded here so the procedure is not folklore. They are
+**not for AI sessions to run**: arming the loop is an operator decision (the
+A14 boundary starts with you switching it on), and every step below happens
+*on the ai-host itself*. The role→machine binding is in
+`~/nwp-instances/instance-manifest.yml`, as ever.
+
+```bash
+# ── OPERATOR ONLY — run these yourself, on the ai-host ────────────────────
+# 0. Preconditions: ~/nwp up to date (git pull), and the loop's token present:
+#      echo 'GITLAB_TOKEN=<glpat-…>' >> ~/.nwp-agent-loop.env && chmod 600 ~/.nwp-agent-loop.env
+#    (never inline in the crontab — the cron line sources this file).
+
+# 1. Install the cron entries (agent-loop :00/:30, rag-sync 04:30, log rotation):
+crontab -l > /tmp/cron.bak
+cat ~/nwp/scripts/agent-loop/crontab.entry >> /tmp/cron.bak
+crontab /tmp/cron.bak
+crontab -l          # verify
+
+# 2. Enable the parts you want (wrapper-enforced switches, host-local state):
+pl loop enable fix-loop
+pl loop enable respawn-drain
+pl loop parts       # confirm
+
+# 3. Remove the whole-loop sentinel LAST — this is the actual arming act:
+rm ~/nwp/.loop-paused
+
+# 4. Watch the first tick (next :00/:30) do its preflight:
+tail -f ~/nwp/logs/agent-loop.log
+#    On a busy box the first thing you'll see is a PREFLIGHT DEFER with the
+#    reason — that is the gate working, not a fault. It retries next tick.
+```
+
+Disarming is the reverse and faster: `touch ~/nwp/.loop-paused` stops it
+within 30 minutes (or `pl loop disable all`); the crontab can stay installed.
 
 Logs: `~/nwp/logs/agent-loop.log` (ai-host and dev), `~/nwp/logs/rag-sync.log`
 (dev). Loop state (caps/retries): `~/nwp/.agent-loop.state.json`.

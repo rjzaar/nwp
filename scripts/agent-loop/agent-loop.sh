@@ -653,12 +653,48 @@ except Exception: print("")')"
       (cd "$local_path" && git worktree remove --force "$work_dir" >>"$LOG_FILE" 2>&1 || true)
       rm -rf "$work_dir"
     fi
-    log "    creating worktree $work_dir on $branch"
+    # ops#151 F2 — PIN the sensitive-path gate's diff base HERE, before the
+    # agent exists, and never re-read it afterwards.
+    #
+    # A linked worktree SHARES the parent repository's ref store. The agent
+    # runs inside that worktree as `claude -p --dangerously-skip-permissions`,
+    # so it can run `git update-ref refs/heads/main <sha>` and move the very
+    # ref the gate later diffs against. The attack is three commands:
+    #   commit the sensitive change -> update-ref refs/heads/main to it ->
+    #   commit a benign change on top.
+    # The gate's `HEAD != main` liveness check still holds (main now points at
+    # the sensitive commit, HEAD at the benign one), and `git diff main HEAD`
+    # reports ONLY the benign file — while the branch that gets pushed carries
+    # both. Reproduced end-to-end 2026-07-28 on git 2.43.0.
+    #
+    # The fix is to compare against a base the audited party cannot rewrite.
+    # `gate_base` is resolved in the DRIVER's memory before the worktree is
+    # created and is never re-derived from a ref, so nothing the agent does to
+    # the ref store can move it. We also create the branch AT `$gate_base`
+    # rather than at `main`, so the recorded base and the branch's actual
+    # starting point are the same object by construction — not two reads of a
+    # ref that could differ.
+    #
+    # Why a pinned SHA and not `git merge-base main HEAD`: merge-base is
+    # recomputed from refs at gate time, so it inherits exactly the mutability
+    # we are removing. A pinned SHA also makes the comparison a TREE diff
+    # between a known-good starting tree and the pushed tree, which is
+    # invariant under any history rewriting (rebase, reset, amend, grafted
+    # parents) the agent might attempt — the gate sees every file that differs
+    # from what the driver handed it, regardless of how the history got there.
+    gate_base=""
+    gate_base="$(cd "$local_path" && git rev-parse --verify "main^{commit}" 2>/dev/null)" || gate_base=""
+    if [[ -z "$gate_base" ]]; then
+      log "    skip: cannot resolve main to a commit — refusing to build a worktree with no pinned gate base"
+      state_bump_retry "$issue_key"
+      continue
+    fi
+    log "    creating worktree $work_dir on $branch (gate base pinned at ${gate_base})"
     (
       cd "$local_path"
       # If branch already exists locally, drop it so we start clean.
       git branch -D "$branch" >>"$LOG_FILE" 2>&1 || true
-      git worktree add "$work_dir" -b "$branch" main
+      git worktree add "$work_dir" -b "$branch" "$gate_base"
     ) >>"$LOG_FILE" 2>&1 || {
       log "    skip: worktree add failed"
       state_bump_retry "$issue_key"
@@ -783,9 +819,10 @@ EOF
     fi
 
     # Check if claude actually committed anything.
-    head_main="$(cd "$local_path" && git rev-parse main)"
+    # Compared against the PINNED $gate_base (ops#151 F2), not a live read of
+    # refs/heads/main — the agent shares this ref store and can move main.
     head_branch="$(cd "$work_dir" && git rev-parse HEAD)"
-    if [[ "$head_main" == "$head_branch" ]]; then
+    if [[ "$gate_base" == "$head_branch" ]]; then
       log "    claude produced no commits (HEAD==main) — leaving worktree for inspection"
       gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
         '{"body":"Agent-loop ran but produced no commits. See AGENT-NOTE.md on the agent host if present. No MR opened."}' \
@@ -812,20 +849,73 @@ EOF
     # fail; that must not be a way past the gate. Empty-but-successful is
     # refused too: we only get here after asserting HEAD != main, so a commit
     # that changes no file is an anomaly, not a clean diff.
+    #
+    # ops#151 F1 — READ THE PATHS UNQUOTED, AND MATCH THEM AS WHOLE RECORDS.
+    # `git diff --name-only` renders any path containing a byte outside plain
+    # ASCII in C-quoted form, e.g.  "scripts/console/app/authz\303\251.py"  —
+    # note the LEADING DOUBLE QUOTE. Every rule in SENSITIVE_PATH_RE is
+    # anchored on `(^|/)`, so with a quote sitting where the anchor expects
+    # start-of-string or a slash, NOTHING matches: the gate cheerfully allowed
+    # a diff that rewrote the console's authorisation module. Reproduced
+    # end-to-end 2026-07-28 on git 2.43.0.
+    #   `-c core.quotePath=false` alone is NOT sufficient — it de-quotes the
+    #   non-ASCII case but a path containing a NEWLINE is still emitted quoted
+    #   (verified: `"scripts/console/app/a\nb.py"`), which re-opens the same
+    #   hole. `-z` is the unconditional form: it disables quoting entirely and
+    #   separates records with NUL, the one byte that cannot occur in a path.
+    #   Both are set — `-z` is load-bearing, `core.quotePath=false` is the
+    #   backstop should a future edit drop it.
+    # The scan uses `grep -z` so records are NUL-delimited there too: a newline
+    # embedded in a filename is then an ordinary character inside one record,
+    # not a record boundary that could split a sensitive path into two benign
+    # looking halves.
+    # The NUL stream must NOT pass through `$( )` — bash silently DELETES NUL
+    # bytes from command substitution, which would concatenate every path into
+    # a single unanchored blob. It is written to a file and read with
+    # `mapfile -d ''`.
+    #
+    # ops#151 F3 — a scan that ERRORED is not a scan that found nothing.
+    # `grep … || true` collapses rc=2 (grep itself failed) onto rc=1 (no
+    # match), which is the same "I looked and saw nothing" vs "I could not
+    # look" conflation this gate's blindness check exists to reject. The rc is
+    # now trichotomous: 0 = sensitive hit -> refuse; 1 = clean -> proceed;
+    # anything else = CANNOT-VERIFY -> refuse.
+    gate_tmp="$(mktemp -d)"
+    gate_diff="${gate_tmp}/changed.z"
+    gate_hits="${gate_tmp}/hits.z"
     diff_rc=0
-    changed_files="$(cd "$work_dir" && git diff --name-only "${head_main}" HEAD 2>/dev/null)" || diff_rc=$?
-    if (( diff_rc != 0 )) || [[ -z "${changed_files//[[:space:]]/}" ]]; then
-      log "    REFUSING PUSH — could not enumerate the agent's diff (git rc=${diff_rc}, files=$(printf '%s' "$changed_files" | wc -l)); a blind gate refuses (ops#91 fail-closed)"
+    ( cd "$work_dir" && git -c core.quotePath=false diff --name-only -z "${gate_base}" HEAD ) \
+      >"$gate_diff" 2>/dev/null || diff_rc=$?
+    changed_paths=()
+    if (( diff_rc == 0 )); then
+      mapfile -d '' -t changed_paths <"$gate_diff" || true
+    fi
+    if (( diff_rc != 0 )) || (( ${#changed_paths[@]} == 0 )); then
+      log "    REFUSING PUSH — could not enumerate the agent's diff (git rc=${diff_rc}, files=${#changed_paths[@]}); a blind gate refuses (ops#91 fail-closed)"
       gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
         '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
       gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
         '{"body":"🚫 Agent-loop **refused to push**: the sensitive-path gate could not read the agent'"'"'s diff (git diff failed, or the commit changed no files), so it could not confirm the change is safe. A gate that cannot see refuses. The worktree was left for inspection and `agent-eligible` was removed."}' \
         >>"$LOG_FILE" 2>&1 || true
+      rm -rf "$gate_tmp"
       processed=$((processed + 1))
       continue
     fi
-    sensitive_hits="$(printf '%s\n' "$changed_files" | grep -En "$SENSITIVE_PATH_RE" || true)"
-    if [[ -n "$sensitive_hits" ]]; then
+    grep_rc=0
+    grep -zE "$SENSITIVE_PATH_RE" "$gate_diff" >"$gate_hits" 2>/dev/null || grep_rc=$?
+    if (( grep_rc != 0 && grep_rc != 1 )); then
+      log "    REFUSING PUSH — the sensitive-path scan itself failed (grep rc=${grep_rc}); CANNOT-VERIFY, so the gate refuses (ops#151 F3)"
+      gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
+        '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
+      gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
+        '{"body":"🚫 Agent-loop **refused to push**: the sensitive-path scan errored, so the gate could not confirm the change is safe. A gate that cannot see refuses. The worktree was left for inspection and `agent-eligible` was removed."}' \
+        >>"$LOG_FILE" 2>&1 || true
+      rm -rf "$gate_tmp"
+      processed=$((processed + 1))
+      continue
+    fi
+    if (( grep_rc == 0 )); then
+      sensitive_hits="$(tr '\0' '\n' <"$gate_hits")"
       log "    REFUSING PUSH — agent diff touched sensitive path(s) (ops#91 fail-closed):"
       printf '%s\n' "$sensitive_hits" | while IFS= read -r sh; do log "      $sh"; done
       gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
@@ -833,9 +923,11 @@ EOF
       gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
         "$(python3 -c 'import json,sys; print(json.dumps({"body": "🚫 Agent-loop **refused to push**: the change touched a sensitive path (CI / secrets / keys / auth / sanitizers / deploy / console code / the loop itself). This requires human review (A14 boundary). The worktree was left for inspection and `agent-eligible` was removed."}))')" \
         >>"$LOG_FILE" 2>&1 || true
+      rm -rf "$gate_tmp"
       processed=$((processed + 1))
       continue
     fi
+    rm -rf "$gate_tmp"
     # ---- end ops#91 Half A gate ----
 
     # Push branch.

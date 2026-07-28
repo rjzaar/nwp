@@ -1,0 +1,45 @@
+# =============================================================================
+# classes/ssc.class.yml — site class declaration (ADR-0036 / ops#153)
+# =============================================================================
+# Site ssc — Moodle, REAL students, consumer half of the ssc<->nwc pair.
+# This is the NEGATIVE CONTROL for the class machinery: a site whose Art.9 gate
+# is satisfiable the ordinary way, declaring the ordinary posture, and which
+# must therefore keep passing with no exemption of any kind.
+#
+# If a change to the class machinery ever lets ssc pass by EXEMPTION rather
+# than by DELEGATION, that change is wrong. tests/unit/test-siteclass.bats
+# asserts ssc's posture is `delegated` and that it consumes no evidence.
+# =============================================================================
+
+site: ssc
+class: member-paired
+
+# Decision procedure (classes/registry.yml):
+#   Q1 "real non-operator accounts?" — YES, real students.
+#   Q2 "paired provider supplying identity and consent?" — YES:
+#      pairs/ssc.pair-contract.yml, provider nwc, identity.uid_lock: true,
+#      coupled_tiers [live, prod].
+#   => member-paired.
+classified_by: "operator@authoring"
+classified_at: "2026-07-28"
+classified_ref: "nwp/ops#153"
+
+art9:
+  # The consent source EXISTS and is reachable, so the writer must ask it.
+  # This posture consumes NO evidence block and grants NO exemption: it leaves
+  # the ops#137 artifact scan exactly as it was. Declaring a class for ssc
+  # changes ssc's behaviour not at all — which is the correct outcome for a
+  # site the gate already fits.
+  posture: delegated
+  consent_source: nwc                    # must equal the pair contract's provider
+  consent_source_class: auth_nwc         # the class a shipped artifact must delegate to
+
+# Invariants this class marks REQUIRED, and where each is actually enforced.
+# Listed so that a reviewer can see the class is not inventing obligations —
+# it is naming ones the estate already carries.
+enforced_by:
+  art9_consent_gate: "lib/moodle-gate.sh (ops#137 artifact scan)"
+  erasure_channel: "pl contracts erasure ssc (ops#81 / ADR-0035)"
+  pair_contract: "pairs/ssc.pair-contract.yml, lib/pair.sh pair_guard"
+  uid_lock_code_only: "pair_guard D6 — full-DB push to live/prod refused"
+  sanitize_on_downcopy: "live2stg / prod2stg default-sanitize (ADR-0030)"

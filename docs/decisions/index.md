@@ -91,6 +91,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 |-----|-------|------|------|
 | 0023 | *(reserved for the AI Confidentiality Boundary, P67 — not yet drafted)* | — | Reserved |
 | [0029](0029-nwc-authorization-model.md) | nwc authorization model (domain-layer choke-point, machine-id guild resolution, fail-closed floors) | 2026-07-09 | Proposed; generalises P73, cites OWASP A01 |
+| [0036](0036-site-classes-and-invariant-sets.md) | Site classes — what a site IS, therefore which invariants apply (third axis beside canonical/maturity; N/A asserted by evidence) | 2026-07-28 | Proposed; nwp/ops#153, ops#154 |
 
 ## Creating a New ADR
 

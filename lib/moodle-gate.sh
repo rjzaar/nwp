@@ -33,9 +33,35 @@
 # deliberately (add it to the allowlist, or ship the gate) — the speed bump is
 # the point. `--allow-ungated` is the audited escape hatch.
 #
+# SITE CLASS (ops#153, ADR-0036)
+#   The three roles above classify the PLUGIN. They do not ask what kind of SITE
+#   it is landing on, and that omission is what made this gate unsatisfiable on
+#   rgs: an unpaired site has no auth_nwc to delegate to, so `consumer` could
+#   never be met and `--allow-ungated` became permanent (ops#154).
+#
+#   lib/siteclass.sh supplies the missing dimension, in two places. (1) A
+#   fully-validated `posture: local` declaration RETARGETS the delegation scan
+#   at the site's own consent source — run before the scan, it changes WHICH
+#   class the artifact must delegate to (never WHETHER it must; an artifact
+#   delegating to the wrong source is refused, deliberately). (2) On the
+#   FAILURE PATH only, a failure may be reclassified as an EXEMPTION when the
+#   site declares `art9.posture: none-stored` AND that claim's own evidence
+#   holds (fresh attestation, zero formation rows, member count under cap, not
+#   expired). Neither path can suppress the scan or waive the call-site
+#   requirement; every exempt pass is ledgered.
+#
 # PURE + unit-testable: no ssh, no network, no secrets. Everything degrades to a
 # clear refusal when a dependency is absent.
 ################################################################################
+
+# Soft dependency: the class axis is optional. Without it every posture read
+# below is empty and this file behaves exactly as it did before ops#153.
+if ! declare -F siteclass_art9_exempt >/dev/null 2>&1; then
+    if [ -f "${PROJECT_ROOT:-$HOME/nwp}/lib/siteclass.sh" ]; then
+        # shellcheck source=/dev/null
+        . "${PROJECT_ROOT:-$HOME/nwp}/lib/siteclass.sh"
+    fi
+fi
 
 # --- soft-dep messaging (works standalone or with lib/ui.sh) -----------------
 if ! declare -F _mg_err >/dev/null 2>&1; then
@@ -99,7 +125,7 @@ moodle_gate_scan() {
         prod="$(grep -rI --include='*.php' -e "$MOODLE_GATE_SYMBOL" "$dir" 2>/dev/null \
                 | grep -v "^${dir%/}/tests/" | grep -v '/tests/' || true)"
         calls=$(printf '%s' "$prod" | grep -c . || true)
-        delegations=$(printf '%s' "$prod" | grep -c -- "$MOODLE_GATE_PROVIDER_CLASS" || true)
+        delegations=$(printf '%s' "$prod" | grep -cF -- "$MOODLE_GATE_PROVIDER_CLASS" || true)
         definitions=$(printf '%s' "$prod" | grep -cE "function[[:space:]]+${MOODLE_GATE_SYMBOL}" || true)
         tests=$(grep -rIl --include='*.php' -e "$MOODLE_GATE_SYMBOL" "${dir%/}/tests" 2>/dev/null | wc -l | tr -d ' ')
     fi
@@ -169,6 +195,45 @@ moodle_gate_assert() {
     local -a failed=() checked=()
     local plugin dir role
 
+    # --- SITE CLASS, part 1 of 2: posture `local` retargets the delegation ---
+    # A standalone site that has built its OWN consent source must delegate to
+    # THAT, not to auth_nwc. This changes what the scan looks for; it does not
+    # weaken it — a call site is still mandatory, still artifact-level.
+    #
+    # THE RETARGET IS ITSELF GATED. Only a declaration that (a) resolves to a
+    # valid, uncontradicted class for THIS site, (b) whose class PERMITS
+    # posture local (registry), and (c) whose obligations all hold
+    # (siteclass_art9_check: source named, root exists) may change what the
+    # scan demands. Anything less — a bare 4-line file, a posture the class
+    # forbids, a body naming a different site — changes NOTHING, and the scan
+    # keeps demanding auth_nwc. The class name is also validated as a literal
+    # PHP-class token and matched fixed-string, because it reaches a grep
+    # pattern: a declaration must never be able to smuggle a regex (".") that
+    # matches every line.
+    local _mg_posture="" _mg_local_class=""
+    if declare -F siteclass_art9_posture >/dev/null 2>&1 && [ -n "$site" ]; then
+        _mg_posture="$(siteclass_art9_posture "$site" 2>/dev/null || true)"
+        if [ "$_mg_posture" = "local" ]; then
+            if siteclass_of "$site" >/dev/null 2>&1 \
+               && siteclass_art9_check "$site" >/dev/null 2>&1; then
+                _mg_local_class="$(siteclass_art9_local_class "$site" 2>/dev/null || true)"
+                case "$_mg_local_class" in
+                    ""|*[!A-Za-z0-9_\\]*|[0-9]*)
+                        [ -n "$_mg_local_class" ] && \
+                            _mg_warn "Art.9: consent_source_class '${_mg_local_class}' is not a valid class token — retarget REFUSED, auth_nwc still required."
+                        _mg_local_class=""
+                        ;;
+                esac
+                if [ -n "$_mg_local_class" ]; then
+                    local MOODLE_GATE_PROVIDER_CLASS="$_mg_local_class"
+                    _mg_info "Art.9: site '$site' is class-declared posture=local — the artifact must delegate to '${_mg_local_class}' (not auth_nwc)."
+                fi
+            else
+                _mg_warn "Art.9: site '$site' declares posture=local but the declaration does not hold up — retarget REFUSED, auth_nwc still required."
+            fi
+        fi
+    fi
+
     while [ "$#" -ge 2 ]; do
         plugin="$1"; dir="$2"; shift 2
         role="$(moodle_gate_requirement "$plugin")"
@@ -183,6 +248,44 @@ moodle_gate_assert() {
         [ "${#checked[@]}" -gt 0 ] && \
             _mg_info "Art.9 gate assertion: OK — ${#checked[@]} gate-bearing plugin(s) carry the consent gate (${checked[*]})."
         return 0
+    fi
+
+    # --- SITE CLASS, part 2 of 2: is this failure a DECLARED, EVIDENCED N/A? --
+    # Reached only because the scan already FAILED. The class cannot suppress
+    # the scan; it can only answer "and is that failure legitimate here?" — and
+    # only ever with evidence that fails closed on absence, staleness, expiry, a
+    # non-zero formation row count, or an exceeded member cap.
+    if declare -F siteclass_art9_exempt >/dev/null 2>&1 && [ -n "$site" ]; then
+        if siteclass_art9_exempt "$site"; then
+            local _mg_cls _mg_exp _mg_att _mg_rows _mg_mem
+            _mg_cls="$(siteclass_of "$site" 2>/dev/null || echo '?')"
+            _mg_exp="$(_sc_yq "$(siteclass_decl_file "$site")" '.art9.expires')"
+            _mg_att="$(_sc_yq "$(siteclass_decl_file "$site")" '.art9.evidence.attestation.at')"
+            _mg_rows="$(_sc_yq "$(siteclass_decl_file "$site")" '.art9.evidence.attestation.formation_rows')"
+            _mg_mem="$(_sc_yq "$(siteclass_decl_file "$site")" '.art9.evidence.attestation.member_count')"
+            echo "" >&2
+            _mg_warn "════════════════════════════════════════════════════════════════"
+            _mg_warn "ART.9 GATE: DECLARED N/A FOR THIS SITE — EXEMPT BY EVIDENCE"
+            _mg_warn "════════════════════════════════════════════════════════════════"
+            _mg_warn "  site        : $site   (class: $_mg_cls, posture: none-stored)"
+            _mg_warn "  declaration : classes/${site}.class.yml   [TRACKED — reviewable in an MR]"
+            _mg_warn "  evidence    : attested $_mg_att — formation_rows=$_mg_rows member_count=$_mg_mem"
+            _mg_warn "  expires     : $_mg_exp"
+            _mg_warn ""
+            _mg_warn "  This is NOT --allow-ungated. The exemption is bounded and self-"
+            _mg_warn "  dissolving: it fails closed the moment the attestation goes stale,"
+            _mg_warn "  the expiry passes, a formation row appears, or the member cap is"
+            _mg_warn "  exceeded. Re-check any time with:  pl class check $site"
+            _mg_warn "════════════════════════════════════════════════════════════════"
+            local entry p d
+            for entry in "${failed[@]}"; do
+                p="${entry%%|*}"; d="${entry##*|}"
+                siteclass_ledger_append "$site" \
+                    "action=class-exempt ref=ops#153 class=${_mg_cls} posture=none-stored tier=${tier:-?} plugin=${p} src=${d:-none} evidence=[at=${_mg_att} rows=${_mg_rows} members=${_mg_mem} expires=${_mg_exp}]"
+            done
+            echo "" >&2
+            return 0
+        fi
     fi
 
     echo "" >&2
@@ -212,6 +315,32 @@ moodle_gate_assert() {
     _mg_info "~/nwptoolkit/moodle/plugins is a STALE 2026-07-03 snapshot — it predates"
     _mg_info "the ops#118 gate and has no auth/nwc, local/mentor or local/practice at all."
     echo "" >&2
+
+    # If the site is UNPAIRED, the canonical-source advice above is a dead end —
+    # no artifact it can run will ever delegate to auth_nwc. Say so, and name the
+    # supported way out, rather than leaving --allow-ungated as the only door.
+    if declare -F siteclass_of >/dev/null 2>&1 && [ -n "$site" ]; then
+        local _mg_cls2; _mg_cls2="$(siteclass_of "$site" 2>/dev/null || true)"
+        case "$_mg_cls2" in
+            undeclared|cannot-verify:*|contradictory:*|invalid:*)
+                _mg_warn "SITE CLASS: '$site' is ${_mg_cls2} (ADR-0036)."
+                _mg_warn "  This gate cannot tell whether it even APPLIES here. If '$site' has no"
+                _mg_warn "  consent source to delegate to, no artifact will ever satisfy the check"
+                _mg_warn "  and --allow-ungated becomes permanent — the ops#154 ritual."
+                _mg_info "  Declare what this site IS, once, reviewably:"
+                _mg_info "    pl class check $site        # what is missing"
+                _mg_info "    pl class set $site <member-paired|member-standalone|demo|service>"
+                echo "" >&2
+                ;;
+            member-standalone|demo|service)
+                _mg_warn "SITE CLASS: '$site' is class '$_mg_cls2', whose Art.9 posture may be"
+                _mg_warn "  satisfied WITHOUT delegating to auth_nwc — but its declaration does not"
+                _mg_warn "  currently hold up. The exemption was checked and REFUSED:"
+                siteclass_art9_check "$site" || true
+                echo "" >&2
+                ;;
+        esac
+    fi
 
     if [ "$allow" = "true" ]; then
         _mg_warn "════════════════════════════════════════════════════════════════"

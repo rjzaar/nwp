@@ -79,6 +79,46 @@ endpoints:
     issuer: "https://nwc.<example-prod-domain>"
   # prod: add when the provider has a prod tier.
 
+# --- Key-rotation invariant (ops#82 / ops#152; `pl contracts key-rotation`) --
+# The gate couples the rotation claim to code, fail-closed. Every field below
+# is REQUIRED — an absent clause, an unreadable boolean, an undeclared corpus
+# are all CANNOT-VERIFY, never a pass. Worked, justified real values:
+# pairs/ssc.pair-contract.yml; procedure: docs/guides/ops82-key-rotation.md.
+oidc:
+  key_rotation:
+    consumer_verifies_signature: false # the load-bearing fact; literal true/false only
+    tokens_carry_kid: false
+    provider_supports_overlap: false
+    mode: hard_swap                    # hard_swap is refused once verification flips true
+    announce_window: 0                 # all three become real durations if verifying
+    overlap_window: 0
+    retire_after: 0
+    refetch_impl: null                 # must name an existing file once verifying
+    # ops#152 — where the CONSUMER'S CORE tree (the ~16,500-file Moodle
+    # checkout, not just the first-party plugins in crossref.consumer_roots)
+    # lives, so the gate can scan it. Undeclared, absent, or empty-of-PHP is
+    # CANNOT-VERIFY.
+    consumer_core_roots:
+      - "sites/<consumer>/dev"
+    # Files whose signature/JWKS matches are reviewed and WAIVED — shell
+    # globs, matched against the PROJECT_ROOT-relative path AND the
+    # scanned-root-relative path (so Moodle-shaped entries like "mod/lti/**"
+    # work wherever the core tree is mounted). Each entry must be a DIFFERENT
+    # ISSUER (e.g. LTI 1.3 platform keys) or a substring false positive —
+    # justify every one; see the per-entry rationale in the ssc contract.
+    verification_exempt_paths: []
+    runbook: "docs/guides/ops82-key-rotation.md"
+
+# --- Cross-reference corpus (`pl contracts crossref` + key-rotation) ---------
+# Repo-relative roots holding each side's code. consumer_roots = the
+# first-party plugin tree (the key-rotation gate scans consumer_roots PLUS
+# oidc.key_rotation.consumer_core_roots above).
+crossref:
+  provider_roots:
+    - "sites/<provider>/dev/html/profiles/custom/<provider>"
+  consumer_roots:
+    - "sites/<consumer>/.plugin-src/<plugins-repo>"
+
 # --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
 # pair-smoke.sh probes these on the given side (provider|consumer) at the
 # resolved tier. A failure sets the pair RAG to red (which pair_guard then

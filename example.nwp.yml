@@ -219,6 +219,14 @@ sites:
         # it in. lib/pair.sh fails CLOSED if a site is declared paired here but its
         # contract is missing/invalid. Inspect with `pl pair status <consumer>`.
         #
+        # Key-rotation gate (ops#82/ops#152): the contract's
+        # oidc.key_rotation.consumer_core_roots declares where the consumer's
+        # Moodle CORE tree lives (scanned in full, ~16.5k files), and
+        # oidc.key_rotation.verification_exempt_paths carries the reviewed
+        # waivers (shell globs; e.g. the LTI 1.3 platform-key paths). These
+        # live in the PAIR CONTRACT, never in nwp.yml. `pl contracts
+        # key-rotation` fails CLOSED on an undeclared/absent/empty core tree.
+        #
         # ⚠ D6 STANDING RULE: while ssc users hold UID-locks against nwc's live tier,
         #   NO full-DB `pl stg2live nwc` — use --code-only (or flip nwc to
         #   canonical: live). pair_guard enforces this once the contract is authored.

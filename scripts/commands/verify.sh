@@ -3458,7 +3458,20 @@ run_machine_checks() {
     if [[ "$needs_test_site" == true ]]; then
         echo -e "${BLUE}Creating test site...${NC}"
         VERIFY_TEST_PREFIX="$prefix"
-        test_site=$(create_test_site "$prefix" "d" 2>/dev/null)
+        # THE `|| test_site=""` IS LOAD-BEARING (nwp/ops#148).
+        #
+        # This file runs under `set -euo pipefail`. A bare
+        #     test_site=$(create_test_site …)
+        # is a simple command whose status IS the substitution's status, so when
+        # create_test_site returned 1 — which it does on EVERY clean runner, and
+        # on any machine without DDEV — the shell aborted the whole script right
+        # here. The `if [[ -z "$test_site" ]]` warning below could therefore
+        # never run: the graceful-degradation branch was unreachable code, and
+        # `test:verification` died mid-job instead of skipping the checks that
+        # need a site. Assignment-with-fallback keeps the failure a VALUE
+        # (empty) instead of an EVENT (abort), which is what the branch below
+        # was always written to handle.
+        test_site=$(create_test_site "$prefix" "d" 2>/dev/null) || test_site=""
         if [[ -z "$test_site" ]]; then
             echo -e "${YELLOW}Warning:${NC} Could not create test site, some checks may be skipped"
         else
@@ -3603,6 +3616,67 @@ run_machine_checks() {
     return 0
 }
 
+################################################################################
+# CI-ONLY: give a clean build slot a config to read.        (nwp/ops#148)
+#
+# `verify.sh ci` → run_machine_checks → create_test_site → install.sh, and
+# install.sh's very first act is
+#
+#     [ -f "$config_file" ] || { print_error "Configuration file 'nwp.yml' not
+#                                found"; exit 1; }
+#
+# `nwp.yml` is gitignored — deliberately and permanently, it is operator
+# machine state — so a FRESH clone can never have one. `test:verification` was
+# therefore structurally incapable of passing on a clean runner. The green runs
+# in its history came from an UNTRACKED LEFTOVER in a reused met build slot:
+# the job was passing on a file that was not in the commit under test.
+#
+# THE ONE DANGEROUS FAILURE MODE IS CLOBBERING A REAL nwp.yml, so the rule here
+# is absolute and is what the tests pin: if a config EXISTS, this function reads
+# nothing, writes nothing, and returns 0. It only ever creates a file that is
+# not there. There is no --force, and there must never be one: a CI convenience
+# that can overwrite the operator's site inventory is worse than a red job.
+#
+# Called ONLY from run_ci_mode, i.e. the `ci` verb — the interactive/`--run`
+# paths are untouched and still fail loudly on a missing config, which on a
+# workstation is the correct answer.
+#
+# Returns 0 when a usable config is present afterwards (pre-existing OR
+# bootstrapped), 1 when it could not produce one — and 1 is NOT fatal to the
+# job: the caller degrades, exactly as it now does for a missing test site.
+################################################################################
+verify_ci_bootstrap_config() {
+    local root="${1:-$PROJECT_ROOT}"
+    local config="$root/nwp.yml"
+    local template="$root/example.nwp.yml"
+
+    # NEVER touch an existing config. Not even to read it.
+    if [[ -e "$config" ]]; then
+        echo -e "${DIM}verify ci: using the existing nwp.yml (left untouched)${NC}"
+        return 0
+    fi
+
+    if [[ ! -f "$template" ]]; then
+        echo -e "${YELLOW}Warning:${NC} no nwp.yml and no example.nwp.yml to bootstrap from"
+        echo -e "${DIM}         checks that need a site config will be skipped${NC}"
+        return 1
+    fi
+
+    if ! cp "$template" "$config" 2>/dev/null; then
+        echo -e "${YELLOW}Warning:${NC} could not bootstrap nwp.yml from example.nwp.yml"
+        return 1
+    fi
+
+    echo -e "${BLUE}verify ci:${NC} bootstrapped nwp.yml from example.nwp.yml (none was present)"
+    # Say what this config is NOT, so a later reader does not mistake a skipped
+    # check for a broken one: example.nwp.yml ships exactly one recipe (`pod`),
+    # and create_test_site asks for `d`. A bootstrapped slot can therefore still
+    # decline to build a test site — it just does so with a diagnosable "recipe
+    # not found" instead of dying on a missing file.
+    echo -e "${DIM}           template config: only the 'pod' recipe is defined${NC}"
+    return 0
+}
+
 # CI mode - run checks and generate reports
 # Usage: run_ci_mode [--depth=LEVEL] [--export-json] [--junit]
 run_ci_mode() {
@@ -3643,11 +3717,22 @@ run_ci_mode() {
     # Initialize logging
     init_verify_log
 
-    # Run all machine checks
-    MACHINE_STATE_WRITES=0
-    run_machine_checks --depth="$depth" --all
+    # CI-only: a clean build slot has no nwp.yml (it is gitignored). Bootstrap
+    # one from the template if — and only if — none exists. See ops#148.
+    verify_ci_bootstrap_config "$PROJECT_ROOT" || true
+    echo ""
 
-    local exit_code=$?
+    # Run all machine checks
+    #
+    # `|| exit_code=$?` for the same `set -e` reason as the test-site
+    # assignment above: run_machine_checks returns 1 when any item failed, and a
+    # bare call would abort run_ci_mode right here — before the
+    # MACHINE_STATE_WRITES honesty gate, before .badges.json, before the
+    # pass-rate line. The job would then fail with no artifact and no summary,
+    # which reads as "the runner broke" rather than "N checks failed".
+    MACHINE_STATE_WRITES=0
+    local exit_code=0
+    run_machine_checks --depth="$depth" --all || exit_code=$?
 
     # A run that persisted no results verified nothing. It used to exit 0 and
     # regenerate .badges.json from the SAME stale counts it started with, so a

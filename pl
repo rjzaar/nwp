@@ -258,6 +258,9 @@ ${BOLD}MATURITY (code-flow classes, P67/ops#48):${NC}
     maturity show [site]            Show per-site class (incubating|stabilizing|production)
     maturity set <site> <class>     Explicit transition (ledgered; downgrades typed-confirm)
     maturity check <site>           Show which code-deploy gate is in force
+    class show [site]               Show per-site class (what the site IS)
+    class check <site>              Which data invariants apply + what fails
+    class set <site> <class>        Declare a class (tracked, reviewable)
 
 ${BOLD}INTERSITE BOUNDARY (P74 change-impact gate):${NC}
     impact [--base=main] [--json]   Classify a diff INTERNAL vs BOUNDARY-TOUCHING (nwc↔ssc)
@@ -889,6 +892,11 @@ main() {
         # Maturity classes + code-flow guards (P67 / nwp/ops#48)
         maturity)
             run_script "maturity.sh" "$@"
+            ;;
+
+        # Site classes: what a site IS → which invariants apply (ADR-0036 / ops#153)
+        class)
+            run_script "class.sh" "$@"
             ;;
 
         # Paired-site versioning: contract status/guard (ADR-0031 / nwp/ops#75)

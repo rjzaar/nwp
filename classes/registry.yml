@@ -1,0 +1,192 @@
+# =============================================================================
+# classes/registry.yml — the CLOSED set of site classes (ADR-0036 / ops#153)
+# =============================================================================
+#
+# A site's CLASS answers "what IS this site, and therefore which data
+# invariants apply to it?" It is the third per-site axis, orthogonal to the two
+# that already exist (ADR-0030):
+#
+#   canonical:  dev | live | prod                 which host is true for CONTENT
+#   maturity:   incubating|stabilizing|production how carefully CODE changes
+#   class:      (this file)                       what the site IS → which
+#                                                 DATA invariants bind it
+#
+# WHY THIS FILE IS TRACKED AND THE DECLARATIONS ARE TOO
+# -----------------------------------------------------
+# `nwp.yml` is never committed and `sites/*` is gitignored. A classification
+# that decides whether the Art.9 consent gate applies to a live formation site
+# is exactly the kind of claim that must be reviewable in a merge request. So
+# the authoritative declaration lives in `classes/<site>.class.yml` (tracked),
+# with the site-config `class:` key honoured as a cross-check — the same
+# shape lib/pair.sh already uses for pair membership (tracked contract is the
+# source of truth; config keys are ALSO HONOURED; disagreement fails closed).
+#
+# THE RULE THAT KEEPS A CLASS FROM BECOMING AN OFF-SWITCH
+# -------------------------------------------------------
+# A class may RECLASSIFY a gate failure into an evidenced exemption. It may
+# NEVER suppress the scan that produces the failure. Every "N/A" below is a
+# positive obligation with its own checkable evidence — the pattern proven by
+# `pl contracts key-rotation`, where `consumer_verifies_signature: false`
+# REQUIRES a positive scan showing no verification code exists, and where an
+# unreadable corpus is CANNOT-VERIFY rather than a pass.
+#
+#   "Absence of evidence is not a pass."  — scripts/commands/contracts.sh
+#
+# ADDING A CLASS IS A DELIBERATE ACT. tests/unit/test-siteclass.bats asserts
+# this set is exactly four; widening it fails CI until the test is updated in
+# the same reviewable change.
+# =============================================================================
+
+registry_version: 1
+
+# The decision procedure. Answer in order; FIRST MATCH WINS. This is a
+# procedure, not a vibe: each branch turns on a fact that can be checked.
+decision_procedure:
+  - q: "Does the site hold, or is it intended to hold, accounts belonging to real
+        people who are not operators of the estate?"
+    no_and_accounts_are_seeded_or_synthetic_and_site_is_resettable: demo
+    no_and_there_are_no_non_operator_accounts_at_all: service
+    yes: "→ next question"
+  - q: "Does an external PAIRED PROVIDER supply this site's identity and consent
+        (a contract exists in pairs/, and identity.uid_lock is true)?"
+    yes: member-paired
+    no: member-standalone
+
+classes:
+
+  # ---------------------------------------------------------------------------
+  member-paired:
+    summary: >-
+      Serves real members. Identity AND consent are supplied by a paired
+      provider over a declared contract. The provider half of such a pair is
+      also member-paired (it is where the member identities actually live).
+    estate: [nwc, ssc]
+    art9:
+      posture_required: delegated
+      why: >-
+        The consent source exists and is reachable, so a formation-data writer
+        can and must ask it. This is the gate exactly as ops#118/ops#137 built
+        it: >=1 may_keep_formation call delegating to the provider's consent
+        class.
+    invariants:
+      art9_consent_gate: REQUIRED          # delegated to the pair provider
+      erasure_channel: REQUIRED            # ops#81 / ADR-0035 OP→RP
+      pair_contract: REQUIRED              # pairs/<consumer>.pair-contract.yml
+      uid_lock_code_only: REQUIRED         # ADR-0029 D6 — no full-DB to coupled tiers
+      sanitize_on_downcopy: REQUIRED       # live2stg / prod2stg default-sanitize
+      real_member_pii: YES
+
+  # ---------------------------------------------------------------------------
+  member-standalone:
+    summary: >-
+      Serves (or is intended to serve) real members, but has NO paired provider
+      and therefore no external consent source. This class exists because rgs
+      exists: the gate as built could never be satisfied here, and a gate that
+      can never be satisfied is not a gate, it is a ritual (ops#154).
+    estate: [rgs]
+    art9:
+      posture_required: [local, none-stored]
+      why: >-
+        There is nothing to delegate TO. Either the site carries its own consent
+        source (posture: local), or it positively asserts and EVIDENCES that it
+        stores no formation data at all (posture: none-stored). The second is a
+        BOUNDED, EXPIRING exemption whose evidence includes a member cap, so it
+        dissolves automatically the day the site takes a member.
+    invariants:
+      art9_consent_gate: REQUIRED          # satisfied locally, or exempted-by-evidence
+      erasure_channel: CONDITIONAL         # required once it holds member data
+      pair_contract: FORBIDDEN             # declaring one contradicts the class
+      uid_lock_code_only: NOT_APPLICABLE   # asserted: no uid_lock to sever
+      sanitize_on_downcopy: REQUIRED
+      real_member_pii: CONDITIONAL
+
+  # ---------------------------------------------------------------------------
+  demo:
+    summary: >-
+      Synthetic or seeded data only. Resettable by design. MUST NEVER hold real
+      member data — that is the defining assertion, and `pl demo reset` is only
+      safe because of it.
+    estate: [nwd, ssd, nwt]
+    art9:
+      posture_required: none-stored
+      why: >-
+        No real person's formation data is present, so there is no
+        special-category processing to consent to. The claim is checkable: every
+        account must be seeded/synthetic.
+    invariants:
+      art9_consent_gate: NOT_APPLICABLE    # asserted via none-stored evidence
+      erasure_channel: NOT_APPLICABLE      # asserted: no real data subject
+      pair_contract: OPTIONAL              # ssd/nwd are a demo pair (uid_lock false)
+      uid_lock_code_only: OPTIONAL
+      sanitize_on_downcopy: NOT_APPLICABLE # nothing to sanitize
+      real_member_pii: FORBIDDEN
+
+  # ---------------------------------------------------------------------------
+  service:
+    summary: >-
+      No non-operator accounts at all. Publishes content to anonymous visitors,
+      or is internal tooling with no web audience. Distinguished from demo by
+      having no user accounts to reset rather than synthetic ones.
+    estate: []                             # operator to ratify — see ADR-0036 §Migration
+    art9:
+      posture_required: none-stored
+      why: >-
+        No member accounts means no member-generated formation data. Checkable
+        as a zero-account assertion.
+    invariants:
+      art9_consent_gate: NOT_APPLICABLE
+      erasure_channel: NOT_APPLICABLE
+      pair_contract: FORBIDDEN
+      uid_lock_code_only: NOT_APPLICABLE
+      sanitize_on_downcopy: NOT_APPLICABLE
+      real_member_pii: FORBIDDEN
+
+# =============================================================================
+# Art.9 postures — the vocabulary of `art9.posture` in a class declaration.
+# Each posture carries a POSITIVE obligation. None of them is a skip.
+# =============================================================================
+art9_postures:
+
+  delegated:
+    means: "A paired provider holds consent; writers must ask it."
+    requires:
+      - "a pair contract exists for this site in pairs/"
+      - "art9.consent_source names that contract's provider"
+      - "the shipped artifact carries >=1 may_keep_formation call delegating to
+         the provider consent class (the existing ops#137 scan, unchanged)"
+    failure_tokens: [NO-CONSENT-SOURCE, CONSENT-SOURCE-MISMATCH]
+
+  local:
+    means: "The site carries its own consent source; writers delegate to it."
+    requires:
+      - "art9.consent_source_plugin names a plugin"
+      - "that plugin exists in the scanned corpus (absence => CANNOT-VERIFY)"
+      - "the shipped artifact delegates to that local consent class"
+    failure_tokens: [NO-LOCAL-CONSENT-SOURCE, LOCAL-SOURCE-ABSENT]
+
+  none-stored:
+    means: >-
+      "This site stores no Art.9 formation data." A BOUNDED, EVIDENCED,
+      EXPIRING exemption — never a bare claim. It is the only posture that lets
+      an artifact ship without a consent-gate call site, and it costs more to
+      declare than --allow-ungated costs to type, which is the point.
+    requires:
+      - "art9.evidence.probe_cmd is non-empty        (else NO-PROBE)"
+      - "art9.evidence.attestation exists with at/member_count/formation_rows
+                                                     (else NO-ATTESTATION)"
+      - "the attestation is fresher than max_age_days (else STALE-ATTESTATION)"
+      - "attestation.formation_rows == 0              (else EVIDENCE-CONTRADICTS)"
+      - "attestation.member_count <= max_members      (else MEMBER-CAP-EXCEEDED)"
+      - "art9.expires is in the future                (else EXEMPTION-EXPIRED)"
+    failure_tokens:
+      - NO-PROBE
+      - NO-ATTESTATION
+      - STALE-ATTESTATION
+      - EVIDENCE-CONTRADICTS
+      - MEMBER-CAP-EXCEEDED
+      - EXEMPTION-EXPIRED
+    note: >-
+      MEMBER-CAP-EXCEEDED is the load-bearing one. ops#153 says the rgs exposure
+      "becomes real the day rgs takes a member". Encoding the cap as evidence
+      makes that day trip the gate by construction, instead of depending on
+      someone remembering the sentence.

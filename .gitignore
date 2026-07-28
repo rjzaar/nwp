@@ -133,6 +133,18 @@ scripts/commands/.rollback/**
 !contracts/
 !contracts/**
 
+# Site class declarations (ADR-0036 / ops#153): the closed class registry plus
+# one declaration per site, saying what that site IS and therefore which data
+# invariants bind it. These MUST be tracked — that is the whole design. nwp.yml
+# is never committed and sites/* is ignored above, so neither can carry a claim
+# that switches the Art.9 consent gate off; such a claim has to be visible in a
+# merge request. Metadata only: classes, postures, and attested row/member
+# COUNTS — never a credential, never a row of member data.
+# Whitelist the whole dir so a future declaration is not silently dropped by
+# the root /* rule (the reason ops#96 compat.py went missing the first time).
+!classes/
+!classes/**
+
 # Migration scripts (access via pl or scripts/commands/)
 
 # Documentation directory

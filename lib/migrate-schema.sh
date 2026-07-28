@@ -14,7 +14,7 @@
 
 # Current schema versions expected by the running NWP code.
 # Bump these when adding a new migration under lib/migrations/<scope>/.
-CURRENT_SITE_SCHEMA=2
+CURRENT_SITE_SCHEMA=3
 CURRENT_GLOBAL_SCHEMA=1
 CURRENT_SERVER_SCHEMA=1
 

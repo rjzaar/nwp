@@ -87,10 +87,10 @@ lib/sanitizers/mayo.allow:live-domain-apex:1
 
 scripts/agent-loop/agent-loop.sh:live-internal-domain:12
 scripts/agent-loop/agent-loop.sh:live-internal-domain:21
-scripts/agent-loop/agent-loop.sh:live-internal-domain:60
+scripts/agent-loop/agent-loop.sh:live-internal-domain:70
 scripts/agent-loop/agent-loop.sh:operator-home-path:7
 scripts/agent-loop/agent-loop.sh:operator-home-path:9
-scripts/agent-loop/agent-loop.sh:operator-home-path:46
+scripts/agent-loop/agent-loop.sh:operator-home-path:56
 
 scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:34
 scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:116

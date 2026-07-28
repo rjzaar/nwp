@@ -411,6 +411,13 @@ _e2e_env() {
   grep -q 'PREFLIGHT DEFER' "$logf"
   refute_in "$logf" 'polling project'       # no issue was even looked at
   refute_in "$logf" 'spawning claude'
+  # DEFER IS NOT A SUPPRESSED FAILURE. The loop's EXIT trap (ok_or_exit_clean)
+  # rewrites EVERY non-zero exit to 0 for cron, logging "WARN: shell exited"
+  # when it does — so the [ $status -eq 0 ] above can never distinguish a clean
+  # deferral from a hard error the trap swallowed. The log can: a deferral must
+  # leave NO suppressed-exit warning. (This is the assertion that catches an
+  # `exit 0` -> `exit 1` mutation in the defer branch; without it, none does.)
+  refute_in "$logf" 'WARN: shell exited'
 }
 
 @test "BEHAVIOURAL NEGATIVE CONTROL: an idle host reaches the poll" {

@@ -478,6 +478,14 @@ recipes:
     profile: standard
     install_modules: [pathauto, simple_sitemap, podcast_publisher]
 settings:
+  # `pl backup replicate` — copy each site's newest backup artifact(s) to
+  # these ssh targets (verified by remote sha256), so one dead disk is an
+  # inconvenience, not a loss. DELIBERATELY no default: an undeclared replica
+  # is an unchecked replica, and host names do not belong in tracked files.
+  # backup:
+  #   replicas:
+  #     - user@backup-host-1
+  #     - user@backup-host-2
   todo:
     thresholds:
       # A site's newest backup older than this many days is flagged stale by

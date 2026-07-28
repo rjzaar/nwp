@@ -1384,6 +1384,125 @@ sweep_main() {
 }
 
 ################################################################################
+# Replicate — copy the newest backup(s) of every site to the configured
+# backup peers, so one dead disk is an inconvenience and not a loss.
+#
+# Targets come from `settings.backup.replicas` in nwp.yml (a list of ssh
+# targets) or from --to flags. They are DELIBERATELY not defaulted and not
+# hardcoded: host names in a tracked script are a leakage-gate violation, and
+# a replication target nobody declared is a replication nobody checks.
+# Every transferred file is verified by remote sha256 against the local one —
+# a copy that was never verified is a hope, not a backup.
+################################################################################
+
+show_replicate_help() {
+    cat << EOF
+${BOLD}NWP Backup Replicate${NC}
+
+Copy each site's newest backup artifact(s) to the configured backup peers.
+
+${BOLD}USAGE:${NC}
+    ./backup.sh replicate [OPTIONS]
+
+${BOLD}OPTIONS:${NC}
+    -h, --help        Show this help
+    --dry-run         Print the plan; transfer nothing
+    --to=<target>     ssh target (repeatable). Overrides config.
+    --newest=N        How many newest .sql.gz per site to send (default 1)
+
+${BOLD}CONFIG:${NC}
+    settings:
+      backup:
+        replicas:
+          - user@backup-host-1          # ssh target, any reachable alias
+          - user@backup-host-2
+
+Files land at <target>:~/nwp-backup-set/<site>/ with their manifests.
+Every file is sha256-verified on the far side after transfer.
+EOF
+}
+
+replicate_main() {
+    local dry_run=false newest=1
+    local -a targets=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)   show_replicate_help; exit 0 ;;
+            --dry-run)   dry_run=true ;;
+            --to=*)      targets+=("${1#*=}") ;;
+            --newest=*)  newest="${1#*=}" ;;
+            *) print_error "replicate: unknown option '$1'"; exit 1 ;;
+        esac
+        shift
+    done
+    case "$newest" in ''|*[!0-9]*) print_error "--newest must be a positive integer"; exit 1 ;; esac
+
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        local cfg="${PROJECT_ROOT}/nwp.yml"
+        if [[ -f "$cfg" ]] && command -v yq >/dev/null 2>&1; then
+            while IFS= read -r t; do
+                [[ -n "$t" && "$t" != "null" ]] && targets+=("$t")
+            done < <(yq eval '.settings.backup.replicas[]' "$cfg" 2>/dev/null)
+        fi
+    fi
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        print_error "No replication targets: pass --to=<ssh-target> or set settings.backup.replicas in nwp.yml."
+        print_info  "Refusing to guess — an undeclared replica is an unchecked replica."
+        exit 1
+    fi
+
+    local site backup_dir sent=0 failed=0 skipped=0
+    local -a sites=()
+    mapfile -t sites < <(discover_sites)
+    print_header "Backup replication → ${targets[*]}"
+
+    for site in "${sites[@]}"; do
+        backup_dir="$(get_backup_dir "$site" 2>/dev/null)"
+        [[ -n "$backup_dir" && -d "$backup_dir" ]] || { skipped=$((skipped+1)); continue; }
+        local -a files=()
+        mapfile -t files < <(ls -t "$backup_dir"/*.sql.gz 2>/dev/null | head -n "$newest")
+        [[ ${#files[@]} -gt 0 ]] || { skipped=$((skipped+1)); continue; }
+
+        local f m t
+        for t in "${targets[@]}"; do
+            for f in "${files[@]}"; do
+                # the manifest travels with its artifact
+                m="${f%.sql.gz}.manifest.json"
+                if [[ "$dry_run" == "true" ]]; then
+                    echo "  WOULD send $(basename "$f") ($(du -h "$f" | cut -f1)) → ${t}:~/nwp-backup-set/${site}/"
+                    continue
+                fi
+                if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$t" "mkdir -p ~/nwp-backup-set/${site}" 2>/dev/null; then
+                    print_error "  ${t}: unreachable — nothing sent for '$site'"
+                    failed=$((failed+1)); continue 2
+                fi
+                local -a payload=("$f"); [[ -f "$m" ]] && payload+=("$m")
+                if ! rsync -a --timeout=60 "${payload[@]}" "${t}:nwp-backup-set/${site}/" 2>/dev/null; then
+                    print_error "  ${t}: rsync failed for $(basename "$f")"
+                    failed=$((failed+1)); continue
+                fi
+                # Verify: the far copy must hash identically. No hash, no trust.
+                local lsha rsha
+                lsha="$(sha256sum "$f" | cut -d' ' -f1)"
+                rsha="$(ssh -o BatchMode=yes "$t" "sha256sum ~/nwp-backup-set/${site}/$(basename "$f")" 2>/dev/null | cut -d' ' -f1)"
+                if [[ -n "$lsha" && "$lsha" == "$rsha" ]]; then
+                    echo "  ✓ ${site} → ${t} $(basename "$f") (sha256 verified)"
+                    sent=$((sent+1))
+                else
+                    print_error "  ${t}: sha256 MISMATCH for $(basename "$f") (local ${lsha:0:12}… remote ${rsha:0:12}…)"
+                    failed=$((failed+1))
+                fi
+            done
+        done
+    done
+
+    echo ""
+    print_info "replicate: ${sent} verified, ${failed} failed, ${skipped} site(s) without backups skipped"
+    [[ "$failed" -eq 0 ]] || exit 1
+    exit 0
+}
+
+################################################################################
 # Main Script
 ################################################################################
 
@@ -1393,6 +1512,12 @@ main() {
     if [[ "${1:-}" == "sweep" ]]; then
         shift
         sweep_main "$@"
+    fi
+
+    # Subcommand dispatch: `backup replicate [flags]` (reserved name).
+    if [[ "${1:-}" == "replicate" ]]; then
+        shift
+        replicate_main "$@"
     fi
 
     # Subcommand dispatch: `backup prune [flags]` (ops#124 retention; reserved,

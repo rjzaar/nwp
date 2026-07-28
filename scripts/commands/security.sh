@@ -59,30 +59,24 @@ EOF
 # Security Check Functions
 ################################################################################
 
-# Normalize site path - handles both "sitename" and "sites/sitename" inputs
+# Normalize site path — the directory the DDEV project actually lives in.
+# Delegates to resolve_project (lib/project-resolver.sh) so the F17/F23 v2
+# nested layout (sites/<name>/dev) and the v1 flat layout both work; this
+# function previously knew only the flat layout, so every v2 site failed with
+# "no .ddev/config.yaml" AFTER the pre-update backup had already run.
 get_site_path() {
     local sitename="$1"
+    local p
 
-    # If already a valid directory, return as-is
-    if [ -d "$sitename" ]; then
+    # An explicit existing path is honoured as-is.
+    if [ -d "$sitename" ] && [ -d "$sitename/.ddev" ]; then
         echo "$sitename"
         return 0
     fi
 
-    # Try with sites/ prefix
-    if [ -d "sites/$sitename" ]; then
-        echo "sites/$sitename"
-        return 0
-    fi
-
-    # Try from PROJECT_ROOT
-    if [ -d "${PROJECT_ROOT}/sites/$sitename" ]; then
-        echo "${PROJECT_ROOT}/sites/$sitename"
-        return 0
-    fi
-
-    # Not found
-    return 1
+    p="$(resolve_project "$sitename" dev 2>/dev/null)" || return 1
+    [ -n "$p" ] && [ -d "$p" ] || return 1
+    echo "$p"
 }
 
 # Check for Drupal security updates
@@ -230,24 +224,38 @@ security_update() {
     "${SCRIPT_DIR}/backup.sh" -b "$sitename" "Pre-security-update"
     cd "$site_path" || return 1
 
-    # Update Drupal core and contrib
-    print_info "Updating Drupal packages..."
+    # Update Drupal core and contrib, plus guzzlehttp — the HTTP stack is as
+    # much a security surface as drupal/* and is where the 2026-07 fleet
+    # advisories (4× Guzzle) actually lived; drupal/* alone missed it on any
+    # site whose core pin didn't happen to drag guzzle forward.
+    print_info "Updating Drupal + HTTP-stack packages..."
     if [ "$yes" == "true" ]; then
-        ddev composer update "drupal/*" --with-dependencies -n
+        ddev composer update "drupal/*" "guzzlehttp/*" --with-dependencies -n
     else
-        ddev composer update "drupal/*" --with-dependencies
+        ddev composer update "drupal/*" "guzzlehttp/*" --with-dependencies
     fi
 
-    # Run database updates
-    print_info "Running database updates..."
-    ddev drush updb -y
+    # DB steps only make sense against an INSTALLED site. Several dev tiers
+    # are uninstalled code shells (near-empty DB, content lives on live);
+    # there updb can only fail its bootstrap, which used to turn a successful
+    # package update into a failed run. Deferring is honest: updb runs on the
+    # tier that owns the database, at deploy.
+    local bootstrap
+    bootstrap="$(ddev drush status --field=bootstrap 2>/dev/null || true)"
+    if printf '%s' "$bootstrap" | grep -qi "successful"; then
+        print_info "Running database updates..."
+        ddev drush updb -y
 
-    # Clear cache
-    ddev drush cr
+        # Clear cache
+        ddev drush cr
 
-    # Export config if needed
-    print_info "Exporting configuration..."
-    ddev drush cex -y 2>/dev/null || true
+        # Export config if needed
+        print_info "Exporting configuration..."
+        ddev drush cex -y 2>/dev/null || true
+    else
+        print_info "No installed site in this dev tier (bootstrap: '${bootstrap:-none}') —"
+        print_info "updb/cr/cex deferred to the tier that owns the database (at deploy)."
+    fi
 
     cd - > /dev/null
 

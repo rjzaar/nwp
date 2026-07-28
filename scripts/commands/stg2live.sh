@@ -1794,10 +1794,20 @@ deploy_to_live() {
     # step in the script, so we don't want to do even read-only DB queries
     # in dry-run beyond what the snapshot already did.
     if [ "${DRY_RUN:-false}" == "true" ]; then
-        local stg_db_name="${base_name}_stg"
-        local live_db_name="${base_name}"
-        print_info "[dry-run] would dump stg DB '${stg_db_name}' and import into live DB '${live_db_name}' on ${server_ip}"
-        print_info "[dry-run] would generate fresh settings.local.php for live"
+        # The plan must match what the real run would DO. This printer used to
+        # announce the DB import unconditionally, so a --code-only --dry-run
+        # showed "would import into live DB" — a plan for a step the real run
+        # provably skips. A dry run that misdescribes the mutation it is
+        # rehearsing is worse than none: it teaches the operator to expect (or
+        # fear) the wrong thing.
+        if [ "${CODE_ONLY:-false}" == "true" ]; then
+            print_info "[dry-run] [code-only] DB push SKIPPED — live content preserved"
+        else
+            local stg_db_name="${base_name}_stg"
+            local live_db_name="${base_name}"
+            print_info "[dry-run] would dump stg DB '${stg_db_name}' and import into live DB '${live_db_name}' on ${server_ip}"
+            print_info "[dry-run] would generate fresh settings.local.php for live"
+        fi
         print_info "[dry-run] would run drush updatedb -y + cache:rebuild on live (§3.6)"
         print_info "[dry-run] would run drush cr on live"
         print_status "OK" "Dry run complete; no destructive ops executed"

@@ -323,6 +323,83 @@ served_roots_parse() {
 }
 
 # ---------------------------------------------------------------------------
+# INFRASTRUCTURE roots — the second kind of legitimate declaration.
+#
+# WHY THIS IS NOT AN ALLOWLIST (design rule 2, and the whole point of the verb)
+# ----------------------------------------------------------------------------
+# Not every served root is a SITE. The real case that prompted this: a docroot
+# that is EMPTY by design because it is only a certbot webroot, in front of a
+# vhost that does nothing but reverse-proxy to a service on loopback. That
+# service was the fleet's mesh controller — as load-bearing as anything on the
+# box — and there was no `sites/<n>/.nwp.yml` to write, because there is no site.
+#
+# The tempting fix is an `ignore:` list of known-good paths in this file. That
+# would reintroduce the ops#149 failure mode verbatim: a hand-maintained list,
+# in code, that goes green by omission and that nothing ever re-checks against
+# the box.
+#
+# So an infrastructure root is DECLARED, in the same inventory every other
+# `pl server` verb already reads — servers/<name>/.nwp-server.yml — and it must
+# name the SERVICE that owns it:
+#
+#     infrastructure_roots:
+#       - path: /var/www/hs/html
+#         service: headscale
+#         domain: hs.example.org
+#
+# Three properties make this a declaration rather than a mute:
+#   * it lives in the server inventory, next to `services:` and `hosted_sites:`,
+#     where an operator reading "what is this box" will see it;
+#   * `service:` is REQUIRED — a bare path with no owner is ignored, so nobody
+#     can silence a root without saying what it is for;
+#   * matching is EXACT, never ancestor-wise. Declaring /var/www/hs/html does
+#     not quietly cover /var/www/hs/html/anything-else. Site declarations cover
+#     subtrees because a docroot legitimately sits under a site root; an ACME
+#     stub has no subtree to own.
+#
+# FAIL CLOSED: an absent, unreadable or unparseable server config declares
+# NOTHING, so every served root stays red. Blindness never becomes coverage.
+#
+# Populates SR_INFRA[] as "path|service|domain".
+# ---------------------------------------------------------------------------
+served_roots_infra() {
+    local server="$1" root="$2"
+    local yq="${YQ:-yq}"
+    SR_INFRA=()
+
+    local cfg="$root/servers/$server/.nwp-server.yml"
+    [ -f "$cfg" ] || return 0
+    # A config we cannot parse is not a config that declares things.
+    "$yq" -e '.' "$cfg" >/dev/null 2>&1 || return 0
+
+    local p s d
+    while IFS=$'\t' read -r p s d; do
+        [ -n "$p" ] && [ -n "$s" ] || continue   # path AND owning service required
+        case "$p" in /*) ;; *) continue ;; esac  # absolute paths only
+        SR_INFRA+=("${p%/}|${s}|${d}")
+    done < <("$yq" -r '.infrastructure_roots // [] | .[]
+                       | [(.path // ""), (.service // ""), (.domain // "")] | @tsv' \
+             "$cfg" 2>/dev/null)
+
+    return 0
+}
+
+# Is <path> declared as an infrastructure root? Echoes "service|domain" and
+# returns 0 on an EXACT match; returns 1 otherwise.
+served_roots_infra_match() {
+    local rootpath="${1%/}" entry ipath rest
+    for entry in "${SR_INFRA[@]:-}"; do
+        [ -z "$entry" ] && continue
+        ipath="${entry%%|*}"; rest="${entry#*|}"
+        if [ "$rootpath" = "$ipath" ]; then
+            printf '%s\n' "$rest"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # Declaration loading — yq only (ADR-0015). Populates SR_DECL[] as
 # "name|path|domain|gated|source".
 #

@@ -365,16 +365,23 @@ cmd_roots() {
     for path in "${!loc_names[@]}"; do all_names="$all_names ${loc_names[$path]}"; done
 
     served_roots_declarations "$target" "$NWP_DIR" "$all_names"
+    # Infrastructure roots (ACME webroots, proxy vhosts) are declared in the
+    # SERVER inventory rather than as sites — see lib/served-roots.sh. Read
+    # separately so a site declaration can never be mistaken for one, or vice
+    # versa.
+    served_roots_infra "$target" "$NWP_DIR"
 
     printf 'served roots on %s: %d (from %d config file(s), corpus=%s)\n' \
         "$target" "${#root_names[@]}" "$SR_FILES" "${SR_CONFIG:-?}"
-    printf 'declarations attributed to %s: %d\n\n' "$target" "${#SR_DECL[@]}"
+    printf 'declarations attributed to %s: %d (+%d infrastructure)\n\n' \
+        "$target" "${#SR_DECL[@]}" "${#SR_INFRA[@]}"
 
     ############################################################################
     # (1) UNDECLARED-ROOT — the ops#149 class. RED.
     ############################################################################
     local fails=0 warns=0 d dpath dname dgated dsrc covered
     local -a undeclared=()
+    local infra_hit isvc idom
     for path in $(printf '%s\n' "${!root_names[@]}" | sort); do
         covered=0
         for d in "${SR_DECL[@]:-}"; do
@@ -382,6 +389,18 @@ cmd_roots() {
             IFS='|' read -r dname dpath _ dgated dsrc <<< "$d"
             if served_roots_covered_by "$path" "$dpath"; then covered=1; break; fi
         done
+        # An INFRASTRUCTURE declaration also covers a root — but it is reported
+        # on its own line rather than silently absorbed, because "served by a
+        # service that owns no site" is a distinct and interesting answer, and
+        # the operator should be able to see at a glance that the mesh
+        # controller's ACME stub is not an undeclared Drupal.
+        if [[ $covered -eq 0 ]] && infra_hit="$(served_roots_infra_match "$path")"; then
+            isvc="${infra_hit%%|*}"; idom="${infra_hit#*|}"
+            printf '  INFRA-ROOT            %-28s service: %-12s %s\n' \
+                "$path" "$isvc" "${idom:-—}"
+            printf '                        declared in servers/%s/.nwp-server.yml (not a site)\n' "$target"
+            covered=1
+        fi
         if [[ $covered -eq 0 ]]; then
             undeclared+=("$path")
             printf '  UNDECLARED-ROOT       %-28s served as: %s\n' "$path" "${root_names[$path]:-?}"

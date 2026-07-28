@@ -59,7 +59,19 @@ HOST_PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$_HOST_LIB_DIR/.." && pwd)}"
 
 # Where captured host state lives. Overridable for tests and for operators who
 # keep servers/ outside the tool checkout.
-HOST_SERVERS_DIR="${NWP_SERVERS_DIR:-$HOST_PROJECT_ROOT/servers}"
+#
+# NWP_DIR IS HONOURED HERE TOO (ops#149). `NWP_DIR` is the documented root of
+# the DECLARATIONS — lib/project-resolver.sh, lib/server-resolver.sh and
+# scripts/commands/server.sh all read `${NWP_DIR:-$PROJECT_ROOT}` — while this
+# file resolved the SSH ROUTE from PROJECT_ROOT alone. Setting NWP_DIR (which is
+# what you do to run a checkout's code against the operator's inventory: a git
+# worktree, a release candidate, CI) therefore half-worked: `pl server roots`
+# found the site declarations and then could not resolve a destination for the
+# very server they name, failing with ssh rc=255 — reported honestly as
+# CANNOT-VERIFY, but for a reason that was ours, not the box's. Same precedence
+# as everywhere else: explicit NWP_SERVERS_DIR wins, then NWP_DIR, then
+# PROJECT_ROOT — so with neither set nothing changes.
+HOST_SERVERS_DIR="${NWP_SERVERS_DIR:-${NWP_DIR:-$HOST_PROJECT_ROOT}/servers}"
 
 # The private role -> hostname manifest (same file `pl host <role>` reads).
 HOST_MANIFEST="${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"

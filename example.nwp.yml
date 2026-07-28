@@ -124,6 +124,26 @@ sites:
     # typed confirmation). Invalid pairs with canonical are refused.
     # maturity: incubating
     #
+    # Site CLASS (ADR-0036/ops#153) — the THIRD axis. canonical says where
+    # content is true, maturity says how carefully code moves; class says what
+    # the site IS, and therefore which DATA invariants bind it:
+    #   member-paired      real members; identity+consent from a paired provider
+    #                      → Art.9 gate REQUIRED, delegated to that provider
+    #   member-standalone  real members; NO provider, no consent source
+    #                      → Art.9 satisfied locally, or exempted BY EVIDENCE
+    #   demo               synthetic/seeded only; resettable; never real members
+    #   service            no non-operator accounts at all
+    # NOTE the default differs from maturity ON PURPOSE. Absent maturity means
+    # `incubating` (permissive). Absent class means UNDECLARED and FAILS CLOSED
+    # — "assume no members, assume no special-category data" is an assertion no
+    # machine may make on no evidence.
+    # This key is only a CROSS-CHECK. The authoritative, reviewable declaration
+    # is the tracked classes/<site>.class.yml — because nwp.yml is never
+    # committed, and a claim that switches off the Art.9 consent gate has to be
+    # visible in a merge request. A disagreement between the two is
+    # `contradictory:` and refuses. Declare with `pl class set <site> <class>`.
+    # class: member-paired
+    #
     # Branch-twin lineage (P67 §5b/§5c) — written by `pl branch`, shown
     # nested in `pl status`. A twin has NO live: block (deploy-incapable).
     # branch_of: <parent-site>

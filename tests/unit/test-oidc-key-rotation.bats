@@ -446,6 +446,20 @@ PHP
   [[ "$output" == *"sites/cons/nope"* ]]
 }
 
+@test "ops#152 CANNOT-VERIFY: a core root that EXISTS but holds no PHP is a vacuous corpus, not a pass" {
+  # The [ -d ] existence check cannot distinguish a real checkout from an empty
+  # mount point (or a tree this user cannot read — find reports nothing either
+  # way). "No hits across zero files" must refuse, not go green.
+  write_contract false hard_swap false false 0 0 0 null '[]' \
+    docs/guides/ops82-key-rotation.md '      - "sites/cons/hollow"'
+  mkdir -p "${PROJECT_ROOT}/sites/cons/hollow/lib"   # exists, zero PHP files
+  run_gate
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CANNOT-VERIFY"* ]]
+  [[ "$output" == *"no PHP files"* ]]
+  [[ "$output" == *"sites/cons/hollow"* ]]
+}
+
 # --- the comment-stripper false negative -------------------------------------
 #
 # `_guards_strip_comments` treated `//` and `#` inside a STRING LITERAL as

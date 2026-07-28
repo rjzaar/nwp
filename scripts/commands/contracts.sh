@@ -652,7 +652,7 @@ _guards_strip_comments() {
         line = $0
         n = length(line)
         out = ""
-        instr = ""          # "" | "\x27" | "\"" — reset every line, see header
+        instr = ""          # "" | "\047" (apostrophe) | "\"" — reset every line, see header
         i = 1
         while (i <= n) {
             c = substr(line, i, 1)
@@ -668,7 +668,10 @@ _guards_strip_comments() {
                 i++
                 continue
             }
-            if (c == "\"" || c == "\x27") { instr = c; out = out c; i++; continue }
+            # \047 (octal, POSIX awk) not \x27 — hex escapes are undefined in
+            # POSIX awk and rejected by gawk --posix; a scanner that silently
+            # stops recognising apostrophes reverts to the pre-ops#152 bug.
+            if (c == "\"" || c == "\047") { instr = c; out = out c; i++; continue }
             if (c == "/" && substr(line, i + 1, 1) == "*") { inblock = 1; i += 2; continue }
             if (c == "/" && substr(line, i + 1, 1) == "/") { break }
             if (c == "#") { break }
@@ -1034,6 +1037,21 @@ _keyrot_one() {
         done
         return 1
     fi
+    # A core root that EXISTS but holds no PHP at all cannot be a Moodle core
+    # tree — an empty mount point, a half-finished checkout, or a directory
+    # this user cannot read (find reports nothing either way). "No hits across
+    # zero files" is the vacuous pass this gate exists to refuse; a real core
+    # tree has ~16,500 PHP files, so one-file-exists is the cheapest possible
+    # floor and can only fire on a genuinely hollow corpus.
+    for r in "${core_roots[@]}"; do
+        if [ -z "$(find "$r" -type f -name '*.php' -print -quit 2>/dev/null)" ]; then
+            _err "[$pair] CANNOT-VERIFY: declared core root '${r#"$PROJECT_ROOT"/}' exists but contains"
+            _err "                       no PHP files (empty tree, partial checkout, or unreadable)."
+            _err "                       Scanning nothing and reporting 'no verification code' would"
+            _err "                       be a vacuous pass. Absence of evidence is not a pass."
+            return 1
+        fi
+    done
 
     local exempt
     exempt="$(_crossref_yq "$contract" '.oidc.key_rotation.verification_exempt_paths[]')"

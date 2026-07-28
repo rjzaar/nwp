@@ -313,10 +313,11 @@ assertion where it already sat.
 - `lib/moodle-gate.sh` — posture `local` (validated declarations only)
   retargets the required delegation class before the scan; on the failure path,
   `none-stored` + valid evidence yields `EXEMPT BY EVIDENCE`, ledgered.
-  NOTE a known divergence: `pl moodle gate-status` reports the raw artifact
-  scan and is class-unaware — an exempt site still shows `UNGATED` there while
-  `pl moodle plugin deploy` proceeds. Surfacing `EXEMPT (class)` in gate-status
-  is follow-up work under ops#153.
+  `pl moodle gate-status` is class-aware in its VERDICT only: per-plugin
+  `[UNGATED]` rows are scan facts and stand as printed, and the final verdict
+  is reclassified to `EXEMPT (class)` (exit 0, evidence + expiry shown) via
+  the same `siteclass_art9_exempt` predicate the deploy gate uses — status and
+  deploy cannot disagree.
 - `tests/unit/test-siteclass.bats` — built as sabotage (see the file for the
   live count): every
   obligation of `none-stored` is broken individually and asserted to fail with

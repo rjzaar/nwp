@@ -84,11 +84,11 @@ show_help() {
 ${BOLD}NWP Drush — sanctioned remote/stg drush runner (retires raw ssh drush)${NC}
 
 ${BOLD}USAGE:${NC}
-    pl drush <site> --tier=stg|live [--dry-run|--execute] -- <drush args...>
+    pl drush <site> --tier=dev|stg|live [--dry-run|--execute] -- <drush args...>
 
 ${BOLD}OPTIONS:${NC}
     -h, --help          Show this help
-    --tier=<t>          stg | live   (REQUIRED). Any other tier is REFUSED.
+    --tier=<t>          dev | stg | live   (REQUIRED). Any other tier is REFUSED.
     --dry-run           Print the exact command, run nothing (DEFAULT for live)
     --execute           Actually run the command (required for --tier=live)
     --root <path>       (live only) run drush against a NON-canonical docroot on
@@ -98,6 +98,8 @@ ${BOLD}OPTIONS:${NC}
     --                  Everything after this is passed to drush VERBATIM
 
 ${BOLD}BEHAVIOUR:${NC}
+    --tier=dev          Runs \`ddev drush <args>\` against the local DDEV
+                        development site (sites/<site>/dev). Runs directly.
     --tier=stg          Runs \`ddev drush <args>\` against the local DDEV
                         staging site (sites/<site>/stg). Runs directly.
     --tier=live         DRY-RUN BY DEFAULT — prints the exact remote command
@@ -169,9 +171,9 @@ if [[ -z "$SITE" ]]; then
 fi
 
 case "$TIER" in
-    stg|live) ;;
-    "")  print_error "--tier is required (stg|live)"; exit 1 ;;
-    *)   print_error "Unknown tier: '$TIER' — only stg|live are allowed"; exit 1 ;;
+    dev|stg|live) ;;
+    "")  print_error "--tier is required (dev|stg|live)"; exit 1 ;;
+    *)   print_error "Unknown tier: '$TIER' — only dev|stg|live are allowed"; exit 1 ;;
 esac
 
 if [[ ${#DRUSH_ARGS[@]} -eq 0 ]]; then
@@ -198,6 +200,54 @@ if [[ -n "$ROOT_OVERRIDE" ]]; then
     fi
 fi
 
+# _display_drush_args — DRUSH_ARGS rendered for printing, with the value of any
+# `--token=<v>` / `--token <v>` redacted. The nwc-feedback sync commands accept
+# a --token; without this, the plan-print below would echo it verbatim. Never
+# print a secret value.
+_display_drush_args() {
+    local out="" a redact_next="no"
+    for a in "${DRUSH_ARGS[@]}"; do
+        if [[ "$redact_next" == "yes" ]]; then
+            out+=" <redacted>"; redact_next="no"; continue
+        fi
+        case "$a" in
+            --token=*)      out+=" --token=<redacted>" ;;
+            --token)        out+=" --token"; redact_next="yes" ;;
+            *)              out+=" $a" ;;
+        esac
+    done
+    printf '%s' "${out# }"
+}
+
+################################################################################
+# DEV tier — local DDEV development site. Runs directly (no gate; local only).
+# Mirrors STG; resolves the dev project (sites/<site>/dev) instead of stg. Added
+# so feedback/agent-loop drush verbs (nwc-feedback:*) can be exercised on the
+# nwd demo's dev DDEV through the sanctioned verb rather than a raw ddev drush.
+################################################################################
+
+run_dev() {
+    local dev_dir
+    dev_dir=$(resolve_project "$BASE_NAME" "dev") || {
+        print_error "Cannot resolve dev directory for '$BASE_NAME'"
+        exit 1
+    }
+    if [[ ! -d "$dev_dir" ]]; then
+        print_error "Dev site not found at $dev_dir"
+        exit 1
+    fi
+
+    print_info "Target: local DDEV dev ($dev_dir)"
+    print_info "Command: ddev drush $(_display_drush_args)"
+
+    if [[ "$EXPLICIT_MODE" == "dry-run" ]]; then
+        print_status "OK" "[dry-run] would run: (cd $dev_dir && ddev drush $(_display_drush_args))"
+        return 0
+    fi
+
+    ( cd "$dev_dir" && ddev drush "${DRUSH_ARGS[@]}" )
+}
+
 ################################################################################
 # STG tier — local DDEV staging site. Runs directly (no gate; local only).
 ################################################################################
@@ -213,12 +263,12 @@ run_stg() {
         exit 1
     fi
 
-    # Print the plan (drush args verbatim — never a secret; args are user input).
+    # Print the plan (drush args verbatim except a redacted --token).
     print_info "Target: local DDEV staging ($stg_dir)"
-    print_info "Command: ddev drush ${DRUSH_ARGS[*]}"
+    print_info "Command: ddev drush $(_display_drush_args)"
 
     if [[ "$EXPLICIT_MODE" == "dry-run" ]]; then
-        print_status "OK" "[dry-run] would run: (cd $stg_dir && ddev drush ${DRUSH_ARGS[*]})"
+        print_status "OK" "[dry-run] would run: (cd $stg_dir && ddev drush $(_display_drush_args))"
         return 0
     fi
 
@@ -300,9 +350,13 @@ run_live() {
     local primary="cd ${remote_path} && ${sudo_prefix} -u www-data drush${qargs}"
     local fallback="cd ${remote_path}/${webroot} && ${sudo_prefix} -u www-data ../vendor/bin/drush${qargs}"
 
+    # Redact any --token value in the printed plan (never print a secret value).
+    local primary_disp fallback_disp
+    primary_disp=$(printf '%s' "$primary" | sed -E 's/(--token[= ])[^ ]+/\1<redacted>/g')
+    fallback_disp=$(printf '%s' "$fallback" | sed -E 's/(--token[= ])[^ ]+/\1<redacted>/g')
     print_info "Target: live ${ssh_user}@${server_ip}:${remote_path}"
-    print_info "Remote command: ${primary}"
-    print_info "Fallback:       ${fallback}"
+    print_info "Remote command: ${primary_disp}"
+    print_info "Fallback:       ${fallback_disp}"
 
     if [[ "$mode" != "execute" ]]; then
         print_status "OK" "[dry-run] nothing executed. Re-run with --execute to run this on live."
@@ -328,6 +382,7 @@ run_live() {
 ################################################################################
 
 case "$TIER" in
+    dev)  run_dev ;;
     stg)  run_stg ;;
     live) run_live ;;
 esac

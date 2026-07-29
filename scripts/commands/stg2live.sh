@@ -1691,14 +1691,19 @@ deploy_to_live() {
     # with NWP_ALLOW_NO_DRUSH=1.
     if [ "${DRY_RUN:-false}" != "true" ] && [ "${NWP_ALLOW_NO_DRUSH:-0}" != "1" ]; then
         if ! stg2live_stg_has_drush "$stg_site"; then
-            print_error "Staging tree has no executable drush (checked ${stg_site}/vendor/bin/drush"
-            print_error "and ${stg_site}/web/vendor/bin/drush). §3.6 runs 'drush updatedb' on live"
-            print_error "from the synced vendor — this deploy would abort AFTER enabling"
-            print_error "maintenance mode and strand the live site (ops#157)."
-            print_error "Fix: move drush/drush to \"require\" in the site's composer.json (not"
-            print_error "require-dev — dev2stg's 'composer install --no-dev' strips it), rebuild"
-            print_error "staging with 'pl dev2stg <site>', and re-deploy."
-            print_error "(Override for a deliberately drush-free path: NWP_ALLOW_NO_DRUSH=1.)"
+            # NOTE: describe the missing tool WITHOUT printing a pasteable
+            # command-shape in a print_error — the pl-first lint
+            # (test-doc-truth.bats) forbids a deploy verb prescribing a raw
+            # ssh/drush recovery, and the path detail belongs in print_info.
+            print_error "Staging tree carries no executable drush in its vendor directory."
+            print_error "The post-sync database-update step runs on live from that vendor, so"
+            print_error "this deploy would abort AFTER enabling maintenance mode and strand the"
+            print_error "live site (ops#157)."
+            print_info  "Checked: ${stg_site}/vendor and ${stg_site}/web/vendor."
+            print_info  "Fix: move drush/drush to \"require\" in the site's composer.json (not"
+            print_info  "require-dev — dev2stg's 'composer install --no-dev' strips it), rebuild"
+            print_info  "staging with 'pl dev2stg <site>', and re-deploy."
+            print_info  "(Override for a deliberately drush-free path: NWP_ALLOW_NO_DRUSH=1.)"
             return 1
         fi
         print_status "OK" "Staging carries drush — the live updatedb step can run."

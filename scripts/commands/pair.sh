@@ -382,7 +382,17 @@ cmd_reconcile() {
         print_info  "  deliberately holds no DB credentials and issues no SQL of its own."
         return 1
     fi
-    if pair_contract_couples_tier "$contract" "$tier" && [ "$confirm" != "RECONCILE-APPLY" ]; then
+    local couples_reason couples_rc=0
+    couples_reason="$(pair_contract_couples_tier "$contract" "$tier")" || couples_rc=$?
+    if [ "$couples_rc" -eq 2 ]; then
+        # An illegible coupling clause must not read as "no confirm needed" —
+        # that would skip the typed confirm on exactly the tier it protects.
+        print_error "CANNOT VERIFY whether '$tier' is a coupled tier — the contract's identity"
+        print_error "coupling declaration is illegible: ${couples_reason}"
+        print_info  "  Fix the identity: block in $(basename "$contract"), then re-run."
+        return 1
+    fi
+    if [ "$couples_rc" -eq 0 ] && [ "$confirm" != "RECONCILE-APPLY" ]; then
         print_error "CONFIRM required — '$tier' is a coupled tier carrying real member identities."
         print_info  "  Re-run with --confirm=RECONCILE-APPLY once you have read the classification above."
         return 1

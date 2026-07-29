@@ -188,6 +188,14 @@ _pair_read_decl_awk() {
 _pair_read_decl() {
     local file="$1" site="${2:-}"
     [ -f "$file" ] || return 1
+    if [ ! -r "$file" ]; then
+        # A file that EXISTS but cannot be read is blindness, not absence. The
+        # yq path already reports this (yq fails to open it), but the awk
+        # fallback would exit 1 and read as "not declared" — fail-open on a
+        # no-yq host. Say it explicitly, on both paths.
+        printf "file exists but is not readable — its 'paired_with:' cannot be read\n"
+        return 2
+    fi
     local yq_bin; yq_bin="$(command -v yq || true)"
     if [ -z "$yq_bin" ]; then
         _pair_read_decl_awk "$file" "$site"
@@ -259,8 +267,19 @@ pair_scan() {
     declare -A _p_prov=() _p_file=()
     local f site val rc out="" stem cons prov
 
-    # 0. SOURCE OF TRUTH — the committed pair contracts.
-    for f in "$(pair_contract_dir)"/*.pair-contract.yml; do
+    # 0. SOURCE OF TRUTH — the committed pair contracts. A contract DIRECTORY
+    # that exists but cannot be listed makes every contract in it invisible —
+    # on a bare checkout (CI) the contracts are the ONLY declaration, so a
+    # silent skip here would read as "no pairs anywhere". Blindness, not absence.
+    local cdir; cdir="$(pair_contract_dir)"
+    if [ -d "$cdir" ] && { [ ! -r "$cdir" ] || [ ! -x "$cdir" ]; }; then
+        out+="blind${tab}?${tab}${cdir}${tab}pair contract directory exists but is not readable — any contract in it is invisible${nl}"
+    fi
+    local sdir="${root}/sites"
+    if [ -d "$sdir" ] && { [ ! -r "$sdir" ] || [ ! -x "$sdir" ]; }; then
+        out+="blind${tab}?${tab}${sdir}${tab}sites directory exists but is not readable — any per-site 'paired_with:' in it is invisible${nl}"
+    fi
+    for f in "$cdir"/*.pair-contract.yml; do
         [ -f "$f" ] || continue
         stem="$(basename "$f")"; stem="${stem%.pair-contract.yml}"
         cons="$(_pair_contract_side "$f" consumer || true)"
@@ -499,19 +518,70 @@ pair_schema_verify() {
     return "$rc"
 }
 
-# 0 if the contract declares identity coupling at <tier> (uid_lock true AND
-# tier listed in identity.coupled_tiers).
+# pair_contract_couples_tier <file> <tier> — does the contract declare identity
+# coupling at <tier>? TRI-STATE, same vocabulary as pair_membership_of:
+#   rc 0  couples       (uid_lock is boolean true AND <tier> is listed in a
+#                        legible identity.coupled_tiers sequence)
+#   rc 1  does not couple — but ONLY via a LEGIBLE statement: no identity
+#         coupling declared at all, an explicit `uid_lock: false`, or a legible
+#         tier list that does not name <tier>. Off-unless-configured.
+#   rc 2  CANNOT VERIFY (echoes a human reason) — coupling is DECLARED but the
+#         declaration is illegible. `uid_lock: yes` (a string in YAML 1.2),
+#         a map where a bool belongs, `coupled_tiers: live` (scalar, not list),
+#         `[Live]` (not a bare lowercase tier key), or uid_lock:true with no
+#         coupled_tiers at all. Every one of those used to collapse into
+#         "not coupled" — the same fail-open shape that made the membership
+#         resolver inert. Never collapse 2 into 1.
 pair_contract_couples_tier() {
     local file="$1"
     local tier="$2"
-    local uid_lock
-    uid_lock="$(pair_contract_get "$file" '.identity.uid_lock' 2>/dev/null || echo false)"
-    [ "$uid_lock" = "true" ] || return 1
     local yq_bin; yq_bin="$(command -v yq || true)"
-    [ -n "$yq_bin" ] || return 1
-    TIER="$tier" "$yq_bin" e -e \
-        '[.identity.coupled_tiers // [] | .[] | select(. == strenv(TIER))] | length > 0' \
-        "$file" >/dev/null 2>&1
+    if [ -z "$yq_bin" ]; then
+        printf "yq unavailable — cannot read identity coupling from %s\n" "$file"
+        return 2
+    fi
+    local tag
+    if ! tag="$("$yq_bin" e '.identity.uid_lock | tag' "$file" 2>/dev/null)"; then
+        printf "%s does not parse, so identity.uid_lock cannot be read\n" "$file"
+        return 2
+    fi
+    case "$tag" in
+        '!!null'|'') return 1 ;;   # no identity coupling declared — legibly off
+        '!!bool')    ;;
+        *)
+            printf "identity.uid_lock is a %s, not the boolean true/false — 'yes'/'on' are strings in YAML 1.2 and would silently read as UNcoupled\n" "${tag#!!}"
+            return 2
+            ;;
+    esac
+    local uid_lock
+    uid_lock="$("$yq_bin" e -r '.identity.uid_lock' "$file" 2>/dev/null)" || uid_lock=""
+    [ "$uid_lock" = "true" ] || return 1   # explicit false — legibly off
+    # uid_lock:true ⇒ the tier list is load-bearing and must be legible.
+    local ttag
+    ttag="$("$yq_bin" e '.identity.coupled_tiers | tag' "$file" 2>/dev/null)" || ttag=""
+    case "$ttag" in
+        '!!seq') ;;
+        '!!null'|'')
+            printf "identity.uid_lock is true but identity.coupled_tiers is not declared — cannot say WHICH tiers are identity-coupled\n"
+            return 2
+            ;;
+        *)
+            printf "identity.coupled_tiers is a %s, not a list of tiers (expected e.g. [live, prod])\n" "${ttag#!!}"
+            return 2
+            ;;
+    esac
+    local bad
+    bad="$("$yq_bin" e -r '[.identity.coupled_tiers[] | select((tag != "!!str") or (test("^[a-z][a-z0-9_-]*$") | not))] | length' "$file" 2>/dev/null)" || bad=""
+    if [ "$bad" != "0" ]; then
+        printf "identity.coupled_tiers contains entries that are not bare lowercase tier keys — a garbled tier name would silently read as UNcoupled\n"
+        return 2
+    fi
+    if TIER="$tier" "$yq_bin" e -e \
+        '[.identity.coupled_tiers[] | select(. == strenv(TIER))] | length > 0' \
+        "$file" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
 }
 
 # pair_provider_sub_shape_guard <contract> <provider_code_root> <target_tier>
@@ -544,7 +614,15 @@ pair_provider_sub_shape_guard() {
     local target="$3"
 
     [ -f "$contract" ] || return 0
-    pair_contract_couples_tier "$contract" "$target" || return 0
+    local _couples_reason _couples_rc=0
+    _couples_reason="$(pair_contract_couples_tier "$contract" "$target")" || _couples_rc=$?
+    if [ "$_couples_rc" -eq 2 ]; then
+        # Declared but illegible coupling is CANNOT VERIFY, not "uncoupled" —
+        # rc 2 is this guard's documented "declared but unverifiable" verdict.
+        _pair_err "pair sub-shape: cannot verify — identity coupling in $(basename "$contract") is illegible: ${_couples_reason}"
+        return 2
+    fi
+    [ "$_couples_rc" -eq 0 ] || return 0
 
     local stability
     stability="$(pair_contract_get "$contract" '.identity.sub_stability' 2>/dev/null || true)"
@@ -781,6 +859,35 @@ pair_guard() {
         return 1
     fi
 
+    # 3b. Identity-coupling legibility. Both D6 branches below hang off "does
+    # this contract couple <target>?", so an ILLEGIBLE answer is CANNOT VERIFY,
+    # not "uncoupled" — the same tri-state discipline as membership itself
+    # (`uid_lock: yes`, a scalar coupled_tiers, or uid_lock:true with no tier
+    # list all used to collapse into ALLOW). Refused even for --code-only,
+    # matching the membership-blind rule: a declaration this decision depends on
+    # is present but unreadable. Escape: NWP_PAIR_GATE_SOFT only (audited);
+    # --override-pair deliberately does NOT cover blindness.
+    local couples_rc=0 couples_reason
+    couples_reason="$(pair_contract_couples_tier "$contract" "$target")" || couples_rc=$?
+    if [ "$couples_rc" -eq 2 ]; then
+        if [ "${NWP_PAIR_GATE_SOFT:-false}" = "true" ]; then
+            _pair_note "pair_guard: CANNOT VERIFY identity coupling for '$pair_id' at $target — NWP_PAIR_GATE_SOFT=true, proceeding as UNcoupled:"
+            _pair_note "  - $couples_reason"
+            pair_ledger_append "$pair_id" "action=coupling-blind-soft-skip cmd=$cmd site=$site target=$target"
+            couples_rc=1
+        else
+            _pair_err "REFUSED: CANNOT VERIFY whether pair '$pair_id' identity-couples tier '$target' —"
+            _pair_err "the contract declares identity coupling but the declaration is illegible:"
+            _pair_err "  - $couples_reason"
+            _pair_info "This is NOT a clean result: treating an unreadable coupling clause as 'uncoupled'"
+            _pair_info "is exactly the fail-open shape that let a full-DB push sever the ssc UID-locks"
+            _pair_info "(ADR-0031 D6). Fix the identity: block in $(basename "$contract")."
+            _pair_info "Escape (audited): NWP_PAIR_GATE_SOFT=true. --override-pair does NOT cover this."
+            pair_ledger_append "$pair_id" "action=coupling-blind-refuse cmd=$cmd site=$site target=$target"
+            return 1
+        fi
+    fi
+
     # 4. Role-specific invariants.
     if [ "$role" = "consumer" ]; then
         # 4a. Provider-first ordering on a contract bump (D5). The consumer may
@@ -803,7 +910,7 @@ pair_guard() {
             fi
         fi
         # 4b. Consumer user-state rule: never full-DB to a paired live consumer.
-        if [ "$code_only" != "true" ] && pair_contract_couples_tier "$contract" "$target"; then
+        if [ "$code_only" != "true" ] && [ "$couples_rc" -eq 0 ]; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED: '$site' is an identity-coupled CONSUMER at $target — a full-DB push would"
                 _pair_err "clobber real users' learning state (minors' records, plane 5b). (ADR-0031 D6)."
@@ -815,7 +922,7 @@ pair_guard() {
     elif [ "$role" = "provider" ]; then
         # 4c. D6 provider invariant: full-DB push to an identity-coupled live/prod
         # provider renumbers uids and severs the consumer's UID-locks.
-        if [ "$code_only" != "true" ] && pair_contract_couples_tier "$contract" "$target"; then
+        if [ "$code_only" != "true" ] && [ "$couples_rc" -eq 0 ]; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED: '$site' is an identity-coupled PROVIDER at $target — a full-DB push would"
                 _pair_err "renumber Drupal uids and sever every '$consumer' SSO identity (ADR-0031 D6)."
@@ -1160,8 +1267,27 @@ pair_guard_restore() {
     consumer="$(pair_contract_get "$contract" '.consumer')"
 
     # 3. Only coupled tiers are gated. An uncoupled tier (dev/stg, or a pair with
-    #    uid_lock:false) cannot orphan a lock ⇒ restore freely.
-    if ! pair_contract_couples_tier "$contract" "$target"; then
+    #    uid_lock:false) cannot orphan a lock ⇒ restore freely. But that answer
+    #    must be LEGIBLE: an illegible coupling clause is CANNOT VERIFY and
+    #    refuses (soft-escapable), it does not fall through to "restore freely".
+    local _r_couples_reason _r_couples_rc=0
+    _r_couples_reason="$(pair_contract_couples_tier "$contract" "$target")" || _r_couples_rc=$?
+    if [ "$_r_couples_rc" -eq 2 ]; then
+        if [ "${NWP_PAIR_GATE_SOFT:-false}" = "true" ]; then
+            _pair_note "pair_guard_restore: CANNOT VERIFY identity coupling for '$pair_id' at $target — NWP_PAIR_GATE_SOFT=true, proceeding as UNcoupled:"
+            _pair_note "  - $_r_couples_reason"
+            pair_ledger_append "$pair_id" "action=restore-coupling-blind-soft-skip cmd=$cmd site=$site target=$target"
+            return 0
+        fi
+        _pair_err "REFUSED restore: CANNOT VERIFY whether pair '$pair_id' identity-couples tier '$target' —"
+        _pair_err "the contract declares identity coupling but the declaration is illegible:"
+        _pair_err "  - $_r_couples_reason"
+        _pair_info "An unreadable coupling clause must not read as 'restore freely' (ADR-0031 D9)."
+        _pair_info "Escape (audited): NWP_PAIR_GATE_SOFT=true. --override-pair does NOT cover this."
+        pair_ledger_append "$pair_id" "action=restore-coupling-blind-refuse cmd=$cmd site=$site target=$target"
+        return 1
+    fi
+    if [ "$_r_couples_rc" -ne 0 ]; then
         return 0
     fi
 

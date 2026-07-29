@@ -183,3 +183,38 @@ teardown() {
   [ "$status" -ne 0 ]
   [ "$(pair_anchor_get cons consumer live)" = "10" ]
 }
+
+# --- coupling-clause legibility (fail-closed, same class as membership) ------
+
+@test "illegible coupling clause REFUSES the restore, it does not 'restore freely'" {
+  # uid_lock:true with no coupled_tiers — declared coupling, unreadable extent.
+  cat > "${NWP_PAIR_CONTRACT_DIR}/cons.pair-contract.yml" <<'YML'
+pair: cons-prov
+contract_version: 2
+provider: prov
+consumer: cons
+identity:
+  uid_lock: true
+YML
+  run pair_guard_restore cons live restore 5 false
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  grep -q "action=restore-coupling-blind-refuse" "${NWP_PAIR_STATE_DIR}/cons.log"
+}
+
+@test "illegible coupling clause on restore is escapable only by NWP_PAIR_GATE_SOFT (ledgered)" {
+  cat > "${NWP_PAIR_CONTRACT_DIR}/cons.pair-contract.yml" <<'YML'
+pair: cons-prov
+contract_version: 2
+provider: prov
+consumer: cons
+identity:
+  uid_lock: true
+YML
+  # --override-pair must NOT buy a pass past a clause that cannot be read.
+  run pair_guard_restore cons live restore 5 true RESTORE-OVERRIDE
+  [ "$status" -ne 0 ]
+  NWP_PAIR_GATE_SOFT=true run pair_guard_restore cons live restore 5 false
+  [ "$status" -eq 0 ]
+  grep -q "action=restore-coupling-blind-soft-skip" "${NWP_PAIR_STATE_DIR}/cons.log"
+}

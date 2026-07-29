@@ -505,6 +505,12 @@ settings:
       # An alert path nobody has exercised is not an alert path. `pl notify
       # health` stamps private/.notify-last-ok; this ages that stamp.
       notify_health_warn_days: 7
+      # Forge patch cadence (ops#80): the forge holds the trust root, and its
+      # apt key once expired silently. `pl server forge status <name>` stamps
+      # private/forge/<name>.last-check; this ages that stamp. Never re-probes
+      # the box (it OOMs) — cadence is nagged from the recorded timestamp.
+      forge_warn_days: 30
+      forge_alert_days: 45
     # Item 2 (oversight-honesty) checks. All default to enabled; set false to
     # silence — but note that silencing a check is NOT the same as it passing,
     # which is the whole failure mode these were added to close.

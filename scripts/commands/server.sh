@@ -253,6 +253,20 @@ cmd_forge() {
     printf '  apt key    expiry=%s\n' "${key_expiry:-unknown}"
     printf '  upgradable %s package(s)\n' "${upgradable:-unknown}"
 
+    # D33/ops#80: record that a forge check ran, so `pl todo`'s cadence check
+    # (check_forge_freshness) can nag when nobody has looked in a while — WITHOUT
+    # doing this remote probe on every `pl todo` (it must stay cheap and never
+    # touch the OOM-prone box unprompted). One line per server: ISO date +
+    # version + upgradable count + key expiry epoch, so the check reads truth
+    # without re-probing. Best-effort: a failure to write never fails the verb.
+    if [ -n "${target:-}" ]; then
+        local _fdir="${PROJECT_ROOT:-$HOME/nwp}/private/forge"
+        mkdir -p "$_fdir" 2>/dev/null && \
+            printf '%s version=%s upgradable=%s key_expiry=%s\n' \
+                "$(date -u +%FT%TZ)" "${version:-unknown}" "${upgradable:-unknown}" "${key_expiry:-unknown}" \
+                > "${_fdir}/${target}.last-check" 2>/dev/null || true
+    fi
+
     # An expired repo signing key silently stops security updates — it happened
     # here on 2026-07-11 and nothing noticed.
     if [[ -n "$key_expiry" && "$key_expiry" =~ ^[0-9]+$ ]]; then

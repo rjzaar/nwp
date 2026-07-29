@@ -332,3 +332,69 @@ YML
   [[ "$output" == *"servers/s1"* ]]
   [[ "$output" != *"vendor/pkg"* ]]
 }
+
+################################################################################
+# check_forge_freshness (D33 / ops#80) — cadence from the recorded stamp,
+# never a live probe. Uses discover_servers when present; falls back to a
+# servers/ listing.
+################################################################################
+
+_mkserver() {  # $1 = server name
+  mkdir -p "$FIX/servers/$1"
+  printf 'server: %s\n' "$1" > "$FIX/servers/$1/.nwp-server.yml"
+}
+
+@test "FORGE: a server never checked through pl produces a medium item" {
+  _mkfixture
+  _mkserver box1
+  run _run_check check_forge_freshness
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"never been checked"* ]]
+  [[ "$output" == *"box1"* ]]
+  [[ "$output" == *"pl server forge status box1"* ]]
+}
+
+@test "FORGE: a fresh stamp produces NO item (can go green honestly)" {
+  _mkfixture
+  _mkserver box1
+  mkdir -p "$FIX/private/forge"
+  printf '%s version=18.7.7 upgradable=0 key_expiry=9999999999\n' "$(date -u +%FT%TZ)" \
+    > "$FIX/private/forge/box1.last-check"
+  run _run_check check_forge_freshness
+  [ "$status" -eq 0 ]
+  [ -z "$(printf '%s' "$output" | tr -d '[:space:]')" ]
+}
+
+@test "FORGE: a stamp older than the alert threshold is high" {
+  _mkfixture
+  _mkserver box1
+  mkdir -p "$FIX/private/forge"
+  # 60 days ago, well past the default 45-day alert.
+  local old; old=$(date -u -d '60 days ago' +%FT%TZ)
+  printf '%s version=18.7.7 upgradable=3 key_expiry=9999999999\n' "$old" \
+    > "$FIX/private/forge/box1.last-check"
+  run _run_check check_forge_freshness
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not checked in"* ]]
+  [[ "$output" == *'"priority":"high"'* ]]
+}
+
+@test "FORGE: an expired apt key in the stamp is HIGH regardless of age" {
+  _mkfixture
+  _mkserver box1
+  mkdir -p "$FIX/private/forge"
+  # checked today, but the recorded key expiry is in the past.
+  printf '%s version=18.7.7 upgradable=0 key_expiry=1000000000\n' "$(date -u +%FT%TZ)" \
+    > "$FIX/private/forge/box1.last-check"
+  run _run_check check_forge_freshness
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"EXPIRED"* ]]
+  [[ "$output" == *'"priority":"high"'* ]]
+}
+
+@test "FORGE: no servers configured → no items, no crash" {
+  _mkfixture
+  run _run_check check_forge_freshness
+  [ "$status" -eq 0 ]
+  [ -z "$(printf '%s' "$output" | tr -d '[:space:]')" ]
+}

@@ -93,10 +93,42 @@ get_live_config() {
         domain)      yq_path='.live.domain' ;;
         type)        yq_path='.live.type' ;;
         server)      yq_path='.live.server' ;;
-        remote_path) yq_path='.live.remote_path' ;;
+        remote_path)
+            # D18 (ops#157): honour `remote_dir` as scripts/commands/site.sh
+            # already does — some sites declare only remote_dir (the /var/www
+            # subdir) and no explicit remote_path. Reading only remote_path
+            # would resolve empty and the caller would fall back to
+            # /var/www/<base>, which for a remote_dir site is the WRONG (often
+            # nonexistent) tree. Explicit remote_path always wins; otherwise
+            # derive it from remote_dir; the caller's /var/www/<base> default
+            # remains the last resort.
+            local rp rd
+            rp="$(get_site_config_value "$base" '.live.remote_path' "")"
+            if [ -n "$rp" ]; then echo "$rp"; return; fi
+            rd="$(get_site_config_value "$base" '.live.remote_dir' "")"
+            if [ -n "$rd" ]; then echo "/var/www/${rd}"; return; fi
+            echo ""; return
+            ;;
         *)           yq_path=".live.$field" ;;
     esac
     get_site_config_value "$base" "$yq_path" ""
+}
+
+# stg2live_stg_has_drush <stg_dir> — 0 iff the staging tree carries an
+# executable drush in its vendor. D17 (ops#157): dev2stg builds staging with
+# `composer install --no-dev`, so a site with drush in require-dev ships a
+# drush-less vendor; stg2live §3.6 then runs `drush updatedb` ON LIVE from that
+# synced vendor and aborts — but only AFTER maintenance mode is enabled, which
+# is where the 2026-07-29 incident's ~25-minute outage came from. This lets the
+# caller refuse BEFORE the destructive path, while recovery is still free.
+stg2live_stg_has_drush() {
+    local stg_dir="${1:-}"
+    [ -n "$stg_dir" ] || return 1
+    local d
+    for d in "$stg_dir/vendor/bin/drush" "$stg_dir/web/vendor/bin/drush"; do
+        [ -x "$d" ] && return 0
+    done
+    return 1
 }
 
 # Check if live security is enabled (reads global nwp.yml settings)
@@ -1647,6 +1679,35 @@ deploy_to_live() {
         return 1
     fi
     print_status "OK" "SSH connection successful (user: $ssh_user)"
+
+    # D17 (ops#157): REFUSE now — before maintenance mode, before the
+    # destructive rsync — if the staging tree has no drush. §3.6 runs
+    # `drush updatedb` on live from the SYNCED vendor for BOTH full and
+    # --code-only deploys; a drush-less staging vendor (drush was in
+    # require-dev, stripped by dev2stg's `composer install --no-dev`) makes
+    # that step abort AFTER maintenance is enabled, stranding the live site
+    # (the 2026-07-29 incident: ~25 min down). Skipped on dry-run (no live
+    # mutation to protect). Override for a genuinely drush-free deploy path
+    # with NWP_ALLOW_NO_DRUSH=1.
+    if [ "${DRY_RUN:-false}" != "true" ] && [ "${NWP_ALLOW_NO_DRUSH:-0}" != "1" ]; then
+        if ! stg2live_stg_has_drush "$stg_site"; then
+            # NOTE: describe the missing tool WITHOUT printing a pasteable
+            # command-shape in a print_error — the pl-first lint
+            # (test-doc-truth.bats) forbids a deploy verb prescribing a raw
+            # ssh/drush recovery, and the path detail belongs in print_info.
+            print_error "Staging tree carries no executable drush in its vendor directory."
+            print_error "The post-sync database-update step runs on live from that vendor, so"
+            print_error "this deploy would abort AFTER enabling maintenance mode and strand the"
+            print_error "live site (ops#157)."
+            print_info  "Checked: ${stg_site}/vendor and ${stg_site}/web/vendor."
+            print_info  "Fix: move drush/drush to \"require\" in the site's composer.json (not"
+            print_info  "require-dev — dev2stg's 'composer install --no-dev' strips it), rebuild"
+            print_info  "staging with 'pl dev2stg <site>', and re-deploy."
+            print_info  "(Override for a deliberately drush-free path: NWP_ALLOW_NO_DRUSH=1.)"
+            return 1
+        fi
+        print_status "OK" "Staging carries drush — the live updatedb step can run."
+    fi
 
     # Get webroot from staging site. Hoisted ABOVE the pre-deploy snapshot
     # (F2/P0-2) so the webroot tar and the rsync --delete share one resolution

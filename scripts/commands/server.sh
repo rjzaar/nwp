@@ -301,6 +301,36 @@ cmd_forge() {
 #   3  CANNOT-VERIFY — blindness. Transport dead, config unreadable, no nginx
 #      master, or zero roots enumerated. NEVER conflated with 0.
 ################################################################################
+# pl server conf-drift <server> — flag nginx vhost files on the box that are
+# not in the tracked server repo (strays, armed by the next reload), and tracked
+# ones absent on the box (undeployed). ops#157/#92/#106, register D19.
+cmd_conf_drift() {
+    local target="" arg
+    PROBE_CMD=""
+    for arg in "$@"; do
+        case "$arg" in
+            --probe-cmd=*) PROBE_CMD="${arg#--probe-cmd=}" ;;
+            -*)            echo "Unknown option: $arg" >&2; return 2 ;;
+            *)             target="$arg" ;;
+        esac
+    done
+    if [[ -z "$target" ]]; then
+        echo "Usage: pl server conf-drift <name>" >&2
+        return 2
+    fi
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/host-capture.sh"
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/nginx-conf-parity.sh"
+
+    local prefix
+    prefix=$(_resolve_probe_prefix "$target") || {
+        echo "CANNOT-VERIFY: cannot resolve a destination for '${target}'" >&2; return 3; }
+
+    echo "nginx conf.d parity — ${target}"
+    nginx_parity_check "$target" "$PROJECT_ROOT" "$prefix"
+}
+
 cmd_roots() {
     local raw_out=0 target="" arg
     PROBE_CMD=""
@@ -576,6 +606,7 @@ case "$sub" in
     health)  cmd_health "$@" ;;
     forge)   cmd_forge "$@" ;;
     roots)   cmd_roots "$@" ;;
+    conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
     schema)  cmd_schema "$@" ;;
     migrate) cmd_migrate "$@" ;;

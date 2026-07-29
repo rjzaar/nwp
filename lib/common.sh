@@ -179,32 +179,42 @@ get_secret() {
         return
     fi
 
-    # Use consolidated YAML function
-    local value=""
-    if command -v yaml_get_secret &>/dev/null; then
-        value=$(yaml_get_secret "$path" "$secrets_file" 2>/dev/null || true)
-    else
-        # Fallback to inline AWK if yaml-write.sh not available
-        local section="${path%%.*}"
-        local key="${path#*.}"
-
+    # Resolve the dotted path robustly, the same way get_data_secret already
+    # does (ops#70): yq with each segment quoted, then an ARBITRARY-DEPTH awk
+    # fallback. The old inline awk here was hardcoded to exactly TWO levels
+    # (`section:` then `  key:`), so a legitimately nested key like
+    # `gitlab.server.ip` silently returned the default — automation then made
+    # empty-token API calls. yq quoting also fixes keys containing '-' or
+    # leading digits.
+    local value="" yq_bin
+    if yq_bin="$(_nwp_yq_bin 2>/dev/null)"; then
+        local expr="" seg
+        local IFS_SAVE="$IFS"; IFS='.'
+        for seg in $path; do expr="${expr}[\"${seg}\"]"; done
+        IFS="$IFS_SAVE"
+        value="$("$yq_bin" eval ".${expr}" "$secrets_file" 2>/dev/null || true)"
+        [ "$value" = "null" ] && value=""
+    fi
+    if [ -z "$value" ] && declare -F _nwp_yaml_deep_awk >/dev/null 2>&1; then
+        value="$(_nwp_yaml_deep_awk "$secrets_file" "$path")"
+    fi
+    # Last-resort compatibility with the historical 2-level shape if the deep
+    # helpers are somehow unavailable (kept so a partial source can't regress
+    # the common gitlab.<key> case to empty).
+    if [ -z "$value" ]; then
+        local section="${path%%.*}" key="${path#*.}"
         value=$(awk -v section="$section" -v key="$key" '
             $0 ~ "^" section ":" { in_section = 1; next }
             in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
             in_section && $0 ~ "^  " key ":" {
-                sub("^  " key ": *", "")
-                gsub(/["'"'"']/, "")
-                # Remove inline comments
-                sub(/ *#.*$/, "")
-                # Trim whitespace
-                gsub(/^[ \t]+|[ \t]+$/, "")
-                print
-                exit
+                sub("^  " key ": *", ""); gsub(/["'"'"']/, "")
+                sub(/ *#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "")
+                print; exit
             }
         ' "$secrets_file")
     fi
 
-    if [ -n "$value" ] && [ "$value" != "" ]; then
+    if [ -n "$value" ]; then
         echo "$value"
     else
         echo "$default"

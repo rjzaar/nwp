@@ -126,7 +126,14 @@ p=sys.argv[1]; d=json.load(open(p))
 d["properties"]["sub"]["type"]="integer"     # narrow string -> integer
 json.dump(d,open(p,"w"))
 PY
-  run env NWP_CONTRACTS_FILES="contracts/oauth_sso.claims.schema.json" \
+  # PROJECT_ROOT="$work" is explicit: the tree being INSPECTED is the throwaway
+  # copy, not the checkout the script physically lives in. ops#107 made
+  # contracts.sh resolve the inspected tree from the operator's cwd (git
+  # toplevel) rather than the script's own location, so a bare invocation now
+  # inspects THIS bats run's worktree — set the target explicitly, which is
+  # also how any caller aims contracts at a specific tree.
+  run env PROJECT_ROOT="$work" \
+          NWP_CONTRACTS_FILES="contracts/oauth_sso.claims.schema.json" \
           NWP_CONTRACTS_BASE_DIR="$base" \
           bash "$work/scripts/commands/contracts.sh" compat
   [ "$status" -eq 1 ]

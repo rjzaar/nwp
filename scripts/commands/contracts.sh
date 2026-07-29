@@ -102,6 +102,20 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # the tree being INSPECTED and is honoured when pre-set, so the bats fixtures
 # can point contracts/ + pairs/ + sites/ at a scratch dir.
 NWP_REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# ops#107: when invoked from inside a git worktree, inspect THAT worktree's
+# contracts/ — not the checkout this script physically ships in. Deriving the
+# inspected tree from the script location signed the wrong file during the
+# 2026-07-17 nwc/ssc session (a worktree's contract got signed against ~/nwp).
+# Order: an explicit PROJECT_ROOT always wins (fixtures rely on it); else the
+# git toplevel of the current directory (the worktree the operator is in); else
+# the shipping checkout as the last resort.
+if [ -z "${PROJECT_ROOT:-}" ]; then
+    _contracts_toplevel="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ -n "$_contracts_toplevel" ] && [ -d "$_contracts_toplevel/contracts" ]; then
+        PROJECT_ROOT="$_contracts_toplevel"
+    fi
+    unset _contracts_toplevel
+fi
 PROJECT_ROOT="${PROJECT_ROOT:-$NWP_REPO_ROOT}"
 export PROJECT_ROOT
 NWP_ROOT="$PROJECT_ROOT"

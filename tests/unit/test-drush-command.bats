@@ -152,7 +152,7 @@ EOF
 @test "pl drush --help prints usage and exits 0" {
   run bash "$DRUSH" --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"pl drush <site> --tier=stg|live"* ]]
+  [[ "$output" == *"pl drush <site> --tier=dev|stg|live"* ]]
 }
 
 # ── --root override (fresh-build side docroot for pl cutover) ────────────────

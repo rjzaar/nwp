@@ -175,6 +175,25 @@ Numbering is stable: `D<n>` never gets reused. Phases match ops#158's ladder.
   version-bump via D7's verb.
 - **Done when:** #119 and #150 closed with the ratified wording live.
 
+> **UPDATE 2026-07-29.** D6 cleared — the operator confirmed the `privacy@`
+> test mail reached the inbox, so the mailbox works. The D8 wording was then
+> reworked in an iterative session with the founder and now lives in full at
+> `~/central/gdpr/draft-2026-07-29-member-formation-data-agreement.md` (private
+> pack). Key operator decisions folded in: **founder / growing-community**
+> framing (not "controller's systems"); **"managed"** not "controlled";
+> **open-list boundary** ("such as but not limited to", anchored to
+> community-managed, closed at "never beyond the community"); **member-initiated
+> mentor-sharing** (the surfacing firewall bends only when the member opens it);
+> **full erasure** on withdrawal (earned levels + seals go too, no anonymised
+> remainder); **blanket acceptance for future formation + collaboration**
+> features. Legal-basis reality recorded: **there is no not-for-profit body
+> yet**, so 9(2)(d) is the *destination*, not today's basis — interim leans on
+> explicit consent, and the two invariants (no disclosure beyond the community;
+> the firewall) carry the individual→body handoff (ties to D9/ops#142). The
+> distilled **consent checkbox (v3) is deployed LIVE on the nwd demo** for
+> tester review (`nwc_privacy.settings`, `consent_version: 3`); the fuller
+> agreement + the other documents still need the D7 serving/deploy path.
+
 ### D9 — Applicable regime: adopt the drafted Option C unless counsel says otherwise
 - **Status:** DEFERRED by the operator, 2026-07-29 (re-present when D6/D8
   complete, or if the admission-gate tripwire fires) · **Issues:** #142

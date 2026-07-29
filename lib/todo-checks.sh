@@ -1302,6 +1302,78 @@ check_agent_host_auth() {
 # backup check ever ran for them — all three have zero backups, ever), while
 # nwp.yml carries 6 phantom entries (dev, hidden, rgs, ssc1, avc-stg,
 # verify-test) with no directory. Each list independently reported "clean".
+# SEC/INFRA: forge patch-check cadence (D33 / ops#80).
+#
+# The forge holds the entire trust root, yet nothing nagged when nobody had
+# looked at its package state in a while — cadence by memory is cadence by luck
+# (its apt signing key silently expired on 2026-07-11 and nothing noticed).
+#
+# This check is CHEAP by construction: it reads the timestamp `pl server forge
+# status` records under private/forge/<server>.last-check and nags on staleness.
+# It NEVER probes the box itself — the forge is 3.8 GB and a heavy op OOM-killed
+# it (2026-07-25), so the remote probe stays an explicit operator/cron action.
+# A configured server with no recording at all is itself the finding: it means
+# the forge has never been checked through the tool.
+check_forge_freshness() {
+    is_category_enabled "forge_freshness" || return 0
+
+    local rt="${NWP_ROOT:-$TODO_CHECKS_PROJECT_ROOT}"
+    local warn_days alert_days
+    warn_days=$(get_todo_setting "thresholds.forge_warn_days" "30")
+    alert_days=$(get_todo_setting "thresholds.forge_alert_days" "45")
+
+    # Which servers should be checked. Discover if we can; a bare directory
+    # listing of servers/ is the fallback. No hardcoded names.
+    local servers="" s
+    if command -v discover_servers &>/dev/null; then
+        servers="$(discover_servers 2>/dev/null)"
+    fi
+    if [ -z "$servers" ] && [ -d "$rt/servers" ]; then
+        servers="$(for d in "$rt"/servers/*/; do [ -d "$d" ] && basename "$d"; done)"
+    fi
+    [ -z "$servers" ] && return 0
+
+    local now_epoch; now_epoch=$(date +%s)
+    while read -r s; do
+        [ -z "$s" ] && continue
+        local stamp="$rt/private/forge/${s}.last-check"
+        if [ ! -f "$stamp" ]; then
+            todo_add_item "SEC" "forge-$s" "medium" \
+                "forge '$s' has never been checked through pl" \
+                "No private/forge/${s}.last-check — run: pl server forge status $s" \
+                "" "pl server forge status $s"
+            continue
+        fi
+        local last_iso last_epoch age_days
+        last_iso=$(awk 'NR==1{print $1}' "$stamp" 2>/dev/null)
+        last_epoch=$(date -d "$last_iso" +%s 2>/dev/null || echo 0)
+        [ "$last_epoch" = "0" ] && continue
+        age_days=$(( (now_epoch - last_epoch) / 86400 ))
+
+        # An expired key recorded in the stamp is high regardless of age.
+        local key_expiry; key_expiry=$(grep -oE 'key_expiry=[0-9]+' "$stamp" 2>/dev/null | cut -d= -f2)
+        if [ -n "$key_expiry" ] && [ "$key_expiry" -lt "$now_epoch" ] 2>/dev/null; then
+            todo_add_item "SEC" "forge-$s" "high" \
+                "forge '$s' apt signing key is EXPIRED (last check ${age_days}d ago)" \
+                "An expired repo key silently stops security updates. Refresh it, then: pl server forge status $s" \
+                "" "pl server forge status $s"
+            continue
+        fi
+
+        if [ "$age_days" -ge "$alert_days" ]; then
+            todo_add_item "SEC" "forge-$s" "high" \
+                "forge '$s' not checked in ${age_days}d (threshold ${alert_days}d)" \
+                "Last checked $last_iso. The forge holds the trust root; run: pl server forge status $s" \
+                "" "pl server forge status $s"
+        elif [ "$age_days" -ge "$warn_days" ]; then
+            todo_add_item "SEC" "forge-$s" "medium" \
+                "forge '$s' not checked in ${age_days}d (threshold ${warn_days}d)" \
+                "Last checked $last_iso. Run: pl server forge status $s" \
+                "" "pl server forge status $s"
+        fi
+    done <<< "$servers"
+}
+
 check_site_registry_drift() {
     is_category_enabled "site_registry_drift" || return 0
 
@@ -1731,6 +1803,7 @@ TODO_CHECK_LIST=(
     "check_rag_sync_freshness:rag-sync freshness"
     "check_agent_host_auth:Agent host auth"
     "check_site_registry_drift:Site registry drift"
+    "check_forge_freshness:Forge patch cadence"
     "check_orphaned_sites:Orphaned sites"
     "check_missing_schedules:Missing schedules"
     "check_verification:Verification"
@@ -1813,6 +1886,7 @@ export -f check_loop_liveness
 export -f check_rag_sync_freshness
 export -f check_agent_host_auth
 export -f check_site_registry_drift
+export -f check_forge_freshness
 export -f check_unpushed_commits
 export -f _gwk_site_of
 export -f check_live_backup_freshness

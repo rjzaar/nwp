@@ -289,3 +289,150 @@ EOF
   run pair_membership_of lone
   [ "$status" -eq 2 ]
 }
+
+# --- CASE 5: the coupling CLAUSE itself must be legible ----------------------
+# The same fail-open shape as membership, one layer down:
+# pair_contract_couples_tier was binary, so every ILLEGIBLE identity block —
+# `uid_lock: yes` (a string in YAML 1.2), a scalar coupled_tiers, uid_lock:true
+# with no tier list at all — collapsed into "not coupled", and the D6 branch
+# never fired. A full-DB push to ssc live went through on a garbled contract.
+
+_case5_contract() {  # overwrite the ssc contract's identity block
+  cat > "${NWP_PAIR_CONTRACT_DIR}/ssc.pair-contract.yml"
+}
+
+@test "CASE 5: uid_lock true with NO coupled_tiers is CANNOT-VERIFY, not uncoupled" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+identity:
+  uid_lock: true
+EOF
+  run pair_guard ssc live stg2live false false
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"coupled_tiers is not declared"* ]]
+  run pair_guard ssc live stg2live true false     # even --code-only is refused
+  [ "$status" -ne 0 ]
+}
+
+@test "CASE 5: coupled_tiers as a scalar (not a list) is CANNOT-VERIFY" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+identity:
+  uid_lock: true
+  coupled_tiers: live
+EOF
+  run pair_guard ssc live stg2live false false
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"not a list of tiers"* ]]
+}
+
+@test "CASE 5: uid_lock 'yes' (a string in YAML 1.2) is CANNOT-VERIFY, not false" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+identity:
+  uid_lock: yes
+  coupled_tiers: [live, prod]
+EOF
+  run pair_guard ssc live stg2live false false
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"not the boolean true/false"* ]]
+}
+
+@test "CASE 5: a garbled tier name in coupled_tiers is CANNOT-VERIFY" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+identity:
+  uid_lock: true
+  coupled_tiers: [Live, prod]
+EOF
+  run pair_guard ssc live stg2live false false
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"not bare lowercase tier keys"* ]]
+}
+
+@test "CASE 5: coupling blindness is escapable ONLY by NWP_PAIR_GATE_SOFT, ledgered" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+identity:
+  uid_lock: true
+EOF
+  # --override-pair is a per-invariant override and must NOT buy a pass here.
+  run pair_guard ssc live stg2live false true
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+
+  NWP_PAIR_GATE_SOFT=true run pair_guard ssc live stg2live true false
+  [ "$status" -eq 0 ]
+  grep -q "action=coupling-blind-refuse"    "${NWP_PAIR_STATE_DIR}/ssc.log"
+  grep -q "action=coupling-blind-soft-skip" "${NWP_PAIR_STATE_DIR}/ssc.log"
+}
+
+@test "CASE 5 (negative control): explicit uid_lock:false + [] still ALLOWS full-DB (the ssd shape)" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+identity:
+  uid_lock: false
+  coupled_tiers: []
+EOF
+  run pair_guard ssc live stg2live false false
+  [ "$status" -eq 0 ]
+}
+
+@test "CASE 5 (negative control): NO identity block at all still ALLOWS full-DB (off-unless-configured)" {
+  _case5_contract <<'EOF'
+pair: ssc-nwc
+contract_version: 2
+provider: nwc
+consumer: ssc
+EOF
+  run pair_guard ssc live stg2live false false
+  [ "$status" -eq 0 ]
+}
+
+# --- CASE 6: unreadable FILESYSTEM objects are blindness, not absence --------
+
+@test "CASE 6: an unreadable per-site declaration file is CANNOT-VERIFY, not unpaired" {
+  [ "$(id -u)" -eq 0 ] && skip "root reads through chmod 000"
+  chmod 000 "${PROJECT_ROOT}/sites/ssc/.nwp.yml"
+  run pair_membership_of ssc
+  chmod 644 "${PROJECT_ROOT}/sites/ssc/.nwp.yml"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not readable"* || "$output" == *"does not parse"* ]]
+}
+
+@test "CASE 6: an unlistable pairs/ directory is CANNOT-VERIFY, not 'no pairs anywhere'" {
+  [ "$(id -u)" -eq 0 ] && skip "root reads through chmod 000"
+  # Leave the contract as the ONLY declaration (the CI/bare-checkout topology).
+  rm -f "${PROJECT_ROOT}/sites/ssc/.nwp.yml"
+  chmod 000 "${NWP_PAIR_CONTRACT_DIR}"
+  run pair_membership_of ssc
+  local mrc=$status mout=$output
+  run pair_guard ssc live stg2live false false
+  local grc=$status
+  chmod 755 "${NWP_PAIR_CONTRACT_DIR}"
+  [ "$mrc" -eq 2 ]
+  [[ "$mout" == *"not readable"* ]]
+  [ "$grc" -ne 0 ]
+}

@@ -197,3 +197,24 @@ _write_snapshot() {
   after="$(find "$NWP_PAIR_STATE_DIR" -type f | LC_ALL=C sort | md5sum)"
   [ "$before" = "$after" ]
 }
+
+@test "pair reconcile --apply: an illegible coupling clause refuses, not 'no confirm needed'" {
+  _write_ledger; _write_snapshot
+  cat > "${NWP_PAIR_CONTRACT_DIR}/cons.pair-contract.yml" <<'YML'
+pair: cons-prov
+contract_version: 2
+provider: prov
+consumer: cons
+identity:
+  uid_lock: true
+  sub_stability: uuid
+  restore:
+    invariant: both-or-forward
+    ledger: provider
+    reconcile: from-ledger
+    pre_check_required: true
+YML
+  run bash "$PAIR_SH" reconcile cons --tier=live --apply --repair-cmd="true"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+}

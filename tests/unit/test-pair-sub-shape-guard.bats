@@ -81,3 +81,15 @@ teardown() { rm -rf "${TEST_TMP}"; }
   run pair_provider_sub_shape_guard "${TEST_TMP}/does-not-exist.yml" "${GOOD}" live
   [ "$status" -eq 0 ]
 }
+
+@test "illegible coupling clause is rc 2 (declared but unverifiable), not a silent pass" {
+  cat > "${TEST_TMP}/garbled.yml" <<'YML'
+identity:
+  uid_lock: true
+  sub_stability: uuid
+  sub_source: 'src/claims.module'
+  sub_assert: 'uuid'
+YML
+  run pair_provider_sub_shape_guard "${TEST_TMP}/garbled.yml" "${BAD}" live
+  [ "$status" -eq 2 ]
+}

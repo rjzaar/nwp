@@ -1017,3 +1017,163 @@ STUB
   run git --git-dir="$remote" show 'refs/heads/agent/issue-99:scripts/agent-loop/agent-loop.sh'
   [ "$output" = "original" ]
 }
+
+# ==========================================================================
+# ops#160 item 1 — CI SCRIPTS ARE BRANCH-EXECUTED, SO THEY ARE SENSITIVE.
+#
+# `.gitlab-ci.yml` was already gated, but the config only NAMES scripts; it
+# EXECUTES them from the branch. On a branch-push / MR-event pipeline the runner
+# runs `./scripts/ci/*.sh` (verify-signature, lint-bash, lint-yq-first,
+# lint-conflict-markers, lint-rollback-registry-ids, ensure-bats, run-bats,
+# security-meta, review-marker-gate, lint-secrets, test-console, …) straight out
+# of the pushed tree, BEFORE any human review. Gating the YAML while leaving the
+# scripts it invokes open was a paper gate: an agent branch that edited
+# scripts/ci/<anything>.sh got arbitrary code execution on the CI runner. The
+# loop is now ARMED, so this is live surface.
+#
+# `scripts/ci/` is denied as a DIRECTORY rule (same fail-closed reasoning as the
+# console app/ rule): the directory's entire purpose is CI execution, so a new
+# script added there is branch-executed by definition and an enumeration would
+# lapse the moment a job invokes a new one.
+#
+# ALSO gated: the handful of `scripts/commands/*.sh` verbs and the one
+# `contracts/*.py` file that `.gitlab-ci.yml` executes from the branch on an
+# ordinary (non-composer, non-schedule) pipeline:
+#   * scripts/commands/snapshot.sh   — `snapshot.sh audit`  (lint:snapshot-bundles, push+MR)
+#   * scripts/commands/doc-truth.sh  — (lint:doc-truth, MR/main when any **/*.md changes)
+#   * scripts/commands/impact.sh     — (boundary:classify, MR)
+#   * scripts/commands/contracts.sh  — `contracts compat` (contracts:compat, contracts/** changes)
+#   * scripts/commands/verify.sh     — `verify.sh ci`     (test:verification, MR/main)
+#   * contracts/validate.py          — `python3 contracts/validate.py` (contracts:compat)
+# These are precise entries, NOT the whole scripts/commands/ tree — the loop's
+# legitimate work is fixing ordinary verbs, and gating the directory would break
+# that. Only the CI-branch-executed verbs are named.
+#
+# DELIBERATELY NOT gated (accepted residuals, consistent with the existing
+# scripts/console/tests/ decision above): tests/unit/*.bats and
+# tests/integration/*.bats are executed by run-bats.sh on the runner, but the
+# loop's red-green prompt DEMANDS test authoring, agent MRs never auto-merge, and
+# reviewers must read test changes as a red flag. contracts/*.schema.json stay
+# allowed — they are DATA that validate.py reads, not code the runner executes.
+# ==========================================================================
+
+# scripts/ci/ — the primary hole. Directory rule, so an as-yet-nonexistent
+# script is caught the same as today's.
+@test "ops#160: gate REFUSES a script under scripts/ci/ (branch-executed on CI, arbitrary code)" {
+  run gate_verdict scripts/ci/lint-bash.sh
+  [ "$status" -eq 1 ]
+  [[ "$output" == REFUSED* ]]
+}
+
+@test "ops#160: gate REFUSES a scripts/ci/ script that does not exist yet (fail-closed on new CI scripts)" {
+  run gate_verdict scripts/ci/invented-tomorrow.sh
+  [ "$status" -eq 1 ]
+  run gate_verdict scripts/ci/subdir/nested-runner.sh
+  [ "$status" -eq 1 ]
+}
+
+# The five scripts/commands verbs `.gitlab-ci.yml` execs from the branch.
+@test "ops#160: gate REFUSES the CI-branch-executed scripts/commands verbs" {
+  local p
+  for p in scripts/commands/snapshot.sh scripts/commands/doc-truth.sh \
+           scripts/commands/impact.sh scripts/commands/contracts.sh \
+           scripts/commands/verify.sh; do
+    ( cd "$BATS_TEST_TMPDIR" && rm -rf rc && mkdir rc && cd rc \
+      && git init -q . && git config user.email a@b.c && git config user.name t \
+      && git commit -q --allow-empty -m base \
+      && mkdir -p "$(dirname "$p")" && echo x >"$p" && git add -A && git commit -q -m c \
+      && git diff --name-only HEAD~1 HEAD | grep -Eq "$SENSITIVE_PATH_RE" ) \
+      || { echo "GAP: gate does not block CI-executed verb $p"; return 1; }
+  done
+}
+
+@test "ops#160: gate REFUSES contracts/validate.py (python3 contracts/validate.py runs on CI)" {
+  run gate_verdict contracts/validate.py
+  [ "$status" -eq 1 ]
+  [[ "$output" == REFUSED* ]]
+}
+
+# NEGATIVE CONTROL — the widening must not swallow the whole scripts/commands/
+# tree (the loop's day job) or ordinary lib/site code, and must leave the
+# contracts SCHEMAS (data, not executed) alone. If it did, every deny test above
+# would 'pass' on a gate that refuses everything.
+@test "ops#160 NEGATIVE CONTROL: ordinary verbs, libs, site code and contract SCHEMAS stay ALLOWED" {
+  run gate_verdict scripts/commands/status.sh
+  [ "$status" -eq 0 ]
+  [[ "$output" == ALLOWED* ]]
+  run gate_verdict scripts/commands/install.sh
+  [ "$status" -eq 0 ]
+  run gate_verdict lib/project-resolver.sh
+  [ "$status" -eq 0 ]
+  run gate_verdict web/modules/custom/nwc/nwc.module
+  [ "$status" -eq 0 ]
+  run gate_verdict contracts/erasure.command.schema.json
+  [ "$status" -eq 0 ]
+}
+
+# PATH NORMALISATION (inherits the F1/F4 anchor robustness). The rule is
+# `(^|/)scripts/ci/`, so it fires at start-of-record OR after any slash — a
+# leading `./` or a nested occurrence must not slip past the anchor. Exercised
+# against the live regex directly, the way F1's premise checks do.
+@test "ops#160: scripts/ci/ rule matches leading-./ and nested forms (anchor robustness)" {
+  printf './scripts/ci/foo.sh\n'        | grep -Eq "$SENSITIVE_PATH_RE"
+  printf 'scripts/ci/foo.sh\n'          | grep -Eq "$SENSITIVE_PATH_RE"
+  printf 'a/b/scripts/ci/foo.sh\n'      | grep -Eq "$SENSITIVE_PATH_RE"
+  # and a benign look-alike that is NOT under scripts/ci/ must stay unmatched,
+  # so the anchor is a path rule and not a substring free-for-all.
+  refute_str "$(printf 'docs/scripts-ci-notes.md\n' | grep -En "$SENSITIVE_PATH_RE" || true)" 'scripts-ci-notes'
+}
+
+# BEHAVIOURAL, --no-renames (F4-class): a rename that DELETES a scripts/ci
+# script hides the source under plain `--name-only`; the real gate uses
+# `--no-renames`, so the sensitive source path is back in the stream. This
+# proves the new directory rule inherits F4 robustness.
+@test "ops#160 F4-class: gate REFUSES a rename that DELETES a scripts/ci script" {
+  local harness="$BATS_TEST_TMPDIR/h160a.sh" calls="$BATS_TEST_TMPDIR/c160a.log"
+  _gate_harness "$harness"
+
+  mkdir -p scripts/ci
+  printf 'echo lint\n' >scripts/ci/lint-x.sh
+  git add -A && git commit -q -m 'baseline with a ci script'
+  local base160
+  base160="$(git rev-parse HEAD)"
+
+  mkdir -p docs
+  git mv scripts/ci/lint-x.sh docs/benign.md
+  git commit -q -m 'agent renamed a ci script out of the way'
+
+  # Premise: --name-only hides the source; --no-renames exposes it.
+  run command git diff --name-only "$base160" HEAD
+  [[ "$output" != *'scripts/ci/lint-x.sh'* ]]
+  run command git diff --no-renames --name-only "$base160" HEAD
+  [[ "$output" == *'scripts/ci/lint-x.sh'* ]]
+
+  CALLS="$calls" work_dir="$FIXTURE" head_main="$base160" gate_base="$base160" \
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
+
+  refute_in "$calls" REACHED_PUSH
+  grep -q 'REFUSING PUSH' "$calls"
+  grep -q 'API PUT .*issues/99.*remove_labels' "$calls"
+}
+
+# BEHAVIOURAL: a rename INTO scripts/ci (destination sensitive) is refused too.
+@test "ops#160: gate REFUSES a rename that CREATES a scripts/ci script from a benign file" {
+  local harness="$BATS_TEST_TMPDIR/h160b.sh" calls="$BATS_TEST_TMPDIR/c160b.log"
+  _gate_harness "$harness"
+
+  mkdir -p docs
+  printf 'echo hi\n' >docs/harmless.txt
+  git add -A && git commit -q -m 'baseline with a benign file'
+  local base160b
+  base160b="$(git rev-parse HEAD)"
+
+  mkdir -p scripts/ci
+  git mv docs/harmless.txt scripts/ci/evil.sh
+  git commit -q -m 'agent smuggled a file into scripts/ci'
+
+  CALLS="$calls" work_dir="$FIXTURE" head_main="$base160b" gate_base="$base160b" \
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
+
+  refute_in "$calls" REACHED_PUSH
+  grep -q 'REFUSING PUSH' "$calls"
+}

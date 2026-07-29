@@ -308,7 +308,11 @@ refute_str() {
   # The refusal block runs BEFORE the push...
   local refuse_line push_line
   refuse_line="$(grep -n 'REFUSING PUSH' "$LOOP_SH" | head -1 | cut -d: -f1)"
-  push_line="$(grep -n 'git push -u origin' "$LOOP_SH" | head -1 | cut -d: -f1)"
+  # Anchored at the start of a (indented) line so a COMMENT that merely
+  # describes the push cannot be mistaken for the push itself — the gate's
+  # rationale comments discuss it, and matching prose would make this
+  # ordering assertion depend on where the documentation sits.
+  push_line="$(grep -n '^ *git push -u origin' "$LOOP_SH" | head -1 | cut -d: -f1)"
   [ -n "$refuse_line" ] && [ -n "$push_line" ]
   [ "$refuse_line" -lt "$push_line" ]
 
@@ -356,7 +360,7 @@ STUB
   git add -A && git commit -q -m 'agent rewrote authz'
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" gate_base="$BASE" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   # 1. never pushed
   refute_in "$calls" REACHED_PUSH
@@ -395,7 +399,7 @@ STUB
   git add -A && git commit -q -m 'agent fixed a label'
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" gate_base="$BASE" \
-    bash "$harness"
+    push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   grep -q REACHED_PUSH "$calls"
   refute_in "$calls" 'REFUSING PUSH'
@@ -481,7 +485,7 @@ SH
   git add -A && git commit -q -m 'agent edited a doc'
 
   CALLS="$calls" GIT_STUB="$stub" work_dir="$FIXTURE" head_main="$BASE" \
-    gate_base="$BASE" branch=agent-99 bash "$harness"
+    gate_base="$BASE" branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   # The push must NOT be reached when the gate could not see the diff.
   refute_in "$calls" REACHED_PUSH
@@ -511,7 +515,7 @@ SH
   git add -A && git commit -q -m 'agent edited a doc'
 
   CALLS="$calls" GIT_STUB="$stub" work_dir="$FIXTURE" head_main="$BASE" \
-    gate_base="$BASE" branch=agent-99 bash "$harness"
+    gate_base="$BASE" branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
@@ -529,7 +533,7 @@ SH
   git add -A && git commit -q -m 'agent edited a doc'
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" gate_base="$BASE" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   grep -q REACHED_PUSH "$calls"
   refute_in "$calls" 'REFUSING PUSH'
@@ -576,7 +580,7 @@ SH
   [[ "$output" == '"scripts/console/app/authz'* ]]
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" gate_base="$BASE" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
@@ -600,7 +604,7 @@ SH
   [[ "$output" == *'"scripts/console/app/a\nb.py"'* ]]
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" gate_base="$BASE" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
@@ -616,7 +620,7 @@ SH
   git add -A && git commit -q -m 'agent added a doc with an accent'
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$BASE" gate_base="$BASE" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   grep -q REACHED_PUSH "$calls"
   refute_in "$calls" 'REFUSING PUSH'
@@ -690,8 +694,11 @@ _stage_refmove_attack() {
   # gate_base is the sha the driver pinned at worktree-creation time. Both are
   # exported so this same test runs against either version of the script — and
   # only the pinned-base version can refuse.
+  # push_sha is the tip of the branch the driver would push, read from the
+  # ATTACK worktree (not the fixture this test's cwd sits in).
   CALLS="$calls" work_dir="$wt" head_main="$moved" gate_base="$pinned" \
-    branch=agent-99 bash "$harness"
+    branch=agent/issue-99 push_sha="$(git -C "$wt" rev-parse HEAD)" \
+    bash "$harness"
 
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
@@ -714,8 +721,11 @@ _stage_refmove_attack() {
   # The worktree starts at the pinned sha, not at whatever `main` is.
   grep -q 'git worktree add "\$work_dir" -b "\$branch" "\$gate_base"' "$LOOP_SH"
 
-  # And the gate diffs against it (with --no-renames, ops#151 F4).
-  grep -q 'diff --no-renames --name-only -z "\${gate_base}" HEAD' "$LOOP_SH"
+  # And the gate diffs against it (with --no-renames, ops#151 F4). The RIGHT
+  # side is "${push_sha}" and no longer HEAD — see ops#151 F5, which is why
+  # this assertion names both ends: a change to either one is a change to what
+  # the gate is shown.
+  grep -q 'diff --no-renames --name-only -z "\${gate_base}" "\${push_sha}"' "$LOOP_SH"
 
   # gate_base is assigned exactly once in anger (plus its "" initialiser) and
   # never re-derived after the worktree exists — a second assignment later
@@ -744,7 +754,7 @@ _stage_refmove_attack() {
   git add -A && git commit -q -m 'agent edited a doc'
 
   CALLS="$calls" GREP_STUB_RC=2 work_dir="$FIXTURE" head_main="$BASE" \
-    gate_base="$BASE" branch=agent-99 bash "$harness"
+    gate_base="$BASE" branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
@@ -764,7 +774,7 @@ _stage_refmove_attack() {
   git add -A && git commit -q -m 'agent edited a doc'
 
   CALLS="$calls" GREP_STUB_RC=1 work_dir="$FIXTURE" head_main="$BASE" \
-    gate_base="$BASE" branch=agent-99 bash "$harness"
+    gate_base="$BASE" branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   grep -q REACHED_PUSH "$calls"
   refute_in "$calls" 'REFUSING PUSH'
@@ -825,7 +835,7 @@ _stage_refmove_attack() {
   [[ "$output" != *'lib/auth.sh'* ]]
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$base4" gate_base="$base4" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
@@ -847,7 +857,7 @@ _stage_refmove_attack() {
   git commit -q -m 'agent renamed a doc'
 
   CALLS="$calls" work_dir="$FIXTURE" head_main="$base4b" gate_base="$base4b" \
-    branch=agent-99 bash "$harness"
+    branch=agent-99 push_sha="$(git rev-parse HEAD)" bash "$harness"
 
   grep -q REACHED_PUSH "$calls"
   refute_in "$calls" 'REFUSING PUSH'
@@ -856,4 +866,154 @@ _stage_refmove_attack() {
 @test "ops#151 F4: the gate diff disables rename detection (--no-renames)" {
   # Structural backstop: dropping --no-renames re-opens the source-hiding hole.
   grep -q 'diff --no-renames --name-only -z' "$LOOP_SH"
+}
+
+# --------------------------------------------------------------------------
+# F5 — the gate inspected HEAD, the driver pushed the BRANCH REF.
+#
+# Those are the same object only while HEAD is attached to that branch. The
+# agent runs inside the worktree with --dangerously-skip-permissions, so:
+#     commit the sensitive change            -> branch tip = malicious
+#     git checkout --detach <base>
+#     commit a benign change                 -> HEAD = benign
+#     git update-ref refs/heads/<branch> <malicious sha>
+# `git diff <base> HEAD` shows one innocuous doc edit; `git push origin
+# <branch>` publishes the malicious commit. Same family as F2 (control what
+# the gate is shown) but the pinned base does not close it: F2 fixes the LEFT
+# side of the diff, F5 fixes the RIGHT side.
+# --------------------------------------------------------------------------
+
+# Stage the divergence in a real parent repo + real linked worktree.
+# Echoes: <pinned base> <benign sha (HEAD)> <malicious sha (branch tip)> <wt>
+_stage_head_detach_attack() {
+  local parent="$BATS_TEST_TMPDIR/parent5" wt="$BATS_TEST_TMPDIR/attack-wt5"
+  mkdir -p "$parent"
+  (
+    cd "$parent"
+    git init -q -b main .
+    git config user.email a@b.c
+    git config user.name t
+    mkdir -p scripts/agent-loop docs
+    echo original >scripts/agent-loop/agent-loop.sh
+    echo hi >docs/readme.md
+    git add -A
+    git commit -q -m base
+  ) >/dev/null
+
+  local pinned
+  pinned="$(cd "$parent" && git rev-parse --verify 'main^{commit}')"
+  (cd "$parent" && git worktree add -q "$wt" -b agent/issue-99 "$pinned") >/dev/null
+
+  local malicious benign
+  (
+    cd "$wt"
+    git config user.email a@b.c
+    git config user.name t
+    echo 'BACKDOOR' >>scripts/agent-loop/agent-loop.sh
+    git add -A
+    git commit -q -m 'sensitive change on the branch'
+  ) >/dev/null
+  malicious="$(git -C "$wt" rev-parse HEAD)"
+  (
+    cd "$wt"
+    git checkout -q --detach "$pinned"
+    echo benign >>docs/readme.md
+    git add -A
+    git commit -q -m 'benign change on a detached HEAD'
+    git update-ref "refs/heads/agent/issue-99" "$malicious"
+  ) >/dev/null
+  benign="$(git -C "$wt" rev-parse HEAD)"
+
+  # The attack is only interesting if HEAD and the branch really diverged and
+  # the branch really carries the sensitive file.
+  [ "$benign" != "$malicious" ] || return 1
+  [ "$(git -C "$wt" rev-parse 'refs/heads/agent/issue-99')" = "$malicious" ] || return 1
+  printf '%s %s %s %s\n' "$pinned" "$benign" "$malicious" "$wt"
+}
+
+@test "ops#151 F5: gate REFUSES when HEAD is detached and the BRANCH the push names carries the sensitive commit" {
+  local harness="$BATS_TEST_TMPDIR/h14.sh" calls="$BATS_TEST_TMPDIR/c14.log"
+  _gate_harness "$harness"
+
+  local pinned benign malicious wt
+  read -r pinned benign malicious wt < <(_stage_head_detach_attack)
+  [ -n "$wt" ]
+
+  # Prove the premise: the OLD right-hand side (HEAD) hides the sensitive
+  # path, while the ref the push names carries it.
+  run command git -C "$wt" diff --no-renames --name-only "$pinned" HEAD
+  [[ "$output" != *'agent-loop.sh'* ]]
+  run command git -C "$wt" diff --no-renames --name-only "$pinned" "refs/heads/agent/issue-99"
+  [[ "$output" == *'agent-loop.sh'* ]]
+
+  CALLS="$calls" work_dir="$wt" head_main="$pinned" gate_base="$pinned" \
+    branch=agent/issue-99 push_sha="$malicious" bash "$harness"
+
+  refute_in "$calls" REACHED_PUSH
+  grep -q 'REFUSING PUSH' "$calls"
+  grep -q 'agent-loop.sh' "$calls"
+  grep -q 'API PUT .*issues/99.*remove_labels' "$calls"
+  refute_in "$calls" 'worktree remove'
+}
+
+@test "ops#151 F5: the driver resolves the pushed object from the BRANCH ref, not from HEAD" {
+  # The behavioural test above can only prove the gate honours \$push_sha.
+  # This proves the driver sets it to the object the push will actually send.
+  grep -q 'push_sha="\$(cd "\$work_dir" && git rev-parse --verify "refs/heads/\${branch}\^{commit}"' "$LOOP_SH"
+
+  # …that the gate's right-hand side IS that object…
+  grep -q 'diff --no-renames --name-only -z "\${gate_base}" "\${push_sha}"' "$LOOP_SH"
+
+  # …that the liveness check compares the pinned base to it…
+  grep -q '\[\[ "\$gate_base" == "\$push_sha" \]\]' "$LOOP_SH"
+
+  # …and that no read of the worktree's HEAD is left anywhere in the driver to
+  # stand in for it (that read IS the bypass).
+  refute_in "$LOOP_SH" 'git rev-parse HEAD)"'
+  refute_in "$LOOP_SH" 'head_branch'
+}
+
+@test "ops#151 F5: the push publishes the GATED object, by sha — not whatever the branch ref says at push time" {
+  # Slice the driver's real push block and run it against a local bare remote
+  # with the ref pointing somewhere else than the gated object. Pushing by
+  # NAME would publish the sensitive commit; pushing by SHA publishes what the
+  # gate scanned. No network: `origin` is a path on this disk.
+  local pinned benign malicious wt
+  read -r pinned benign malicious wt < <(_stage_head_detach_attack)
+  [ -n "$wt" ]
+
+  local remote="$BATS_TEST_TMPDIR/remote5.git"
+  git init -q --bare "$remote"
+  git -C "$wt" remote add origin "$remote"
+
+  local harness="$BATS_TEST_TMPDIR/h16.sh"
+  {
+    echo 'set -uo pipefail'
+    cat <<'STUB'
+LOG_FILE=/dev/null
+issue_key=x; processed=0
+log() { :; }
+state_bump_retry() { :; }
+for _once in 1; do
+STUB
+    sed -n '/^    log "    pushing gated object/,/^    fi$/p' "$LOOP_SH"
+    cat <<'STUB'
+done
+printf '%s\n' "$push_rc" >"$RC_OUT"
+STUB
+  } >"$harness"
+
+  # The gate scanned $benign; refs/heads/agent/issue-99 points at $malicious.
+  RC_OUT="$BATS_TEST_TMPDIR/rc16" work_dir="$wt" branch=agent/issue-99 \
+    push_sha="$benign" bash "$harness"
+  [ "$(cat "$BATS_TEST_TMPDIR/rc16")" = "0" ]
+
+  # The remote received the GATED object…
+  [ "$(git --git-dir="$remote" rev-parse 'refs/heads/agent/issue-99')" = "$benign" ]
+  # …and the sensitive commit is not there at all.
+  run git --git-dir="$remote" cat-file -e "${malicious}^{commit}"
+  [ "$status" -ne 0 ]
+  # …and the file the malicious commit backdoors is unchanged on the remote.
+  run git --git-dir="$remote" show 'refs/heads/agent/issue-99:scripts/agent-loop/agent-loop.sh'
+  [ "$output" = "original" ]
 }

@@ -883,12 +883,50 @@ EOF
       continue
     fi
 
-    # Check if claude actually committed anything.
-    # Compared against the PINNED $gate_base (ops#151 F2), not a live read of
-    # refs/heads/main — the agent shares this ref store and can move main.
-    head_branch="$(cd "$work_dir" && git rev-parse HEAD)"
-    if [[ "$gate_base" == "$head_branch" ]]; then
-      log "    claude produced no commits (HEAD==main) — leaving worktree for inspection"
+    # ops#151 F5 — GATE THE OBJECT THE PUSH WILL ACTUALLY SEND.
+    #
+    # The gate used to read `git rev-parse HEAD` in the worktree while the
+    # driver pushed `refs/heads/$branch`. Those are the same object only while
+    # HEAD is ATTACHED to that branch — and the agent runs inside this worktree
+    # as `claude -p --dangerously-skip-permissions`, so it can detach it:
+    #     commit the sensitive change            -> branch tip = malicious
+    #     git checkout --detach <base>
+    #     commit a benign change                 -> HEAD = benign
+    #     git update-ref refs/heads/<branch> <malicious sha>
+    # The gate then diffs base..HEAD and sees one innocuous doc edit, while the
+    # push (which names refs/heads/<branch>) publishes the malicious commit.
+    # Reproduced
+    # end-to-end 2026-07-29 on git 2.43.0 against the F1-F4 fixes: the gate
+    # ALLOWED a branch whose tip appended a backdoor to
+    # scripts/agent-loop/agent-loop.sh.
+    #
+    # Same family as F2 — control what the gate is SHOWN — but the pinned base
+    # does not close it: F2 fixes the LEFT side of the diff, this fixes the
+    # RIGHT side. `refs/heads/$branch` is read because that is the ref the push
+    # names, and the push then sends `$push_sha` BY SHA, so the object that was
+    # scanned and the object that is published are the same object by
+    # construction rather than two reads of a ref the agent shares.
+    #
+    # Fail closed when the ref cannot be resolved: an unresolvable branch means
+    # the gate cannot say what would be published, which is the same
+    # "I could not look" the blindness check already refuses on.
+    push_sha="$(cd "$work_dir" && git rev-parse --verify "refs/heads/${branch}^{commit}" 2>/dev/null)" || push_sha=""
+    if [[ -z "$push_sha" ]]; then
+      log "    REFUSING PUSH — cannot resolve refs/heads/${branch} in the worktree, so the gate cannot identify what would be published (ops#151 F5 fail-closed)"
+      gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
+        '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
+      gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
+        '{"body":"🚫 Agent-loop **refused to push**: the branch the push would publish could not be resolved, so the sensitive-path gate could not confirm what would be sent. A gate that cannot see refuses. The worktree was left for inspection and `agent-eligible` was removed."}' \
+        >>"$LOG_FILE" 2>&1 || true
+      processed=$((processed + 1))
+      continue
+    fi
+
+    # Check if claude actually committed anything. Compared against the PINNED
+    # $gate_base (ops#151 F2), not a live read of refs/heads/main — the agent
+    # shares this ref store and can move main.
+    if [[ "$gate_base" == "$push_sha" ]]; then
+      log "    claude produced no commits (branch tip == pinned base) — leaving worktree for inspection"
       gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
         '{"body":"Agent-loop ran but produced no commits. See AGENT-NOTE.md on the agent host if present. No MR opened."}' \
         >>"$LOG_FILE" 2>&1 || true
@@ -961,7 +999,7 @@ EOF
     gate_diff="${gate_tmp}/changed.z"
     gate_hits="${gate_tmp}/hits.z"
     diff_rc=0
-    ( cd "$work_dir" && git -c core.quotePath=false diff --no-renames --name-only -z "${gate_base}" HEAD ) \
+    ( cd "$work_dir" && git -c core.quotePath=false diff --no-renames --name-only -z "${gate_base}" "${push_sha}" ) \
       >"$gate_diff" 2>/dev/null || diff_rc=$?
     changed_paths=()
     if (( diff_rc == 0 )); then
@@ -1013,12 +1051,16 @@ EOF
       processed=$((processed + 1))
       continue
     fi
-    log "    pushing branch $branch"
+    # Push the EXACT object the gate scanned (ops#151 F5), by sha rather than
+    # by ref name: `<push_sha>:refs/heads/<branch>` publishes that commit and
+    # only that commit, so nothing that touches refs/heads/<branch> after the
+    # scan can widen what lands on the remote beyond what was inspected.
+    log "    pushing gated object ${push_sha} as branch $branch"
     push_rc=0
     (
       cd "$work_dir"
       GIT_SSH_COMMAND="ssh -i ~/.ssh/nwp -o IdentitiesOnly=yes" \
-        git push -u origin "$branch"
+        git push -u origin "${push_sha}:refs/heads/${branch}"
     ) >>"$LOG_FILE" 2>&1 || push_rc=$?
     if (( push_rc != 0 )); then
       log "    push failed rc=$push_rc"
@@ -1030,12 +1072,17 @@ EOF
     # Compose a structured MR description with the 9 sections required by
     # docs/onboarding/pr-review-checklist.md. The deploy-on-merge.sh script
     # parses "Tier: T<n>" out of this body to decide auto-vs-manual live.
-    diff_stat="$(cd "$work_dir" && git diff --stat HEAD~1 2>/dev/null | head -20 || true)"
-    diff_files="$(cd "$work_dir" && git diff --name-only HEAD~1 2>/dev/null | head -20 || true)"
+    # Described from the GATED object, not from HEAD (ops#151 F5): the MR body
+    # is the human reviewer's view of what was published, so it must describe
+    # the same commit the gate scanned and the push sent. `gate_base..push_sha`
+    # rather than `HEAD~1` also stops a multi-commit branch from advertising
+    # only its last commit.
+    diff_stat="$(cd "$work_dir" && git diff --stat "$gate_base" "$push_sha" 2>/dev/null | head -20 || true)"
+    diff_files="$(cd "$work_dir" && git diff --name-only "$gate_base" "$push_sha" 2>/dev/null | head -20 || true)"
     # Full commit message — earlier we used `head -5` which clipped paragraphs
     # mid-sentence in the MR body. Capture the whole body; the MR description
     # tolerates length better than truncation.
-    commit_msg="$(cd "$work_dir" && git log -1 --format='%B' 2>/dev/null || true)"
+    commit_msg="$(cd "$work_dir" && git log -1 --format='%B' "$push_sha" 2>/dev/null || true)"
     mr_payload="$(python3 -c '
 import json, sys, os
 branch, title, iid, tier, web_url, diff_stat, diff_files, commit_msg, issue_ref = sys.argv[1:10]

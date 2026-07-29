@@ -147,8 +147,34 @@ PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 # that has to be remembered is a denylist that lapses. The cost is bounded:
 # `lib/loop-` is a namespace the loop owns, so nothing else is caught (verified
 # by a negative control in tests/unit/test-agent-loop-preflight.bats).
+#
+# CI SCRIPTS ARE BRANCH-EXECUTED (added 2026-07-29, ops#160 item 1). The pattern
+# already denied `.gitlab-ci.yml`, but the config only NAMES scripts — it
+# EXECUTES them from the branch. On a branch-push / MR-event pipeline the runner
+# runs `./scripts/ci/*.sh` (verify-signature, lint-bash, lint-yq-first,
+# lint-conflict-markers, lint-rollback-registry-ids, ensure-bats, run-bats,
+# security-meta, review-marker-gate, lint-secrets, test-console, …) straight out
+# of the PUSHED TREE, BEFORE any human review. Denying the YAML while leaving the
+# scripts it invokes open was a paper gate: an agent branch editing
+# scripts/ci/<anything>.sh got arbitrary code execution on the CI runner, and the
+# loop is now ARMED. `scripts/ci/` is a DIRECTORY rule for the console-app/
+# reason — the directory's sole purpose is CI execution, so a new script added
+# there is branch-executed by definition and an enumeration would lapse the
+# moment a job invoked a new one.
+#   Also gated: the `scripts/commands/*` verbs and the one `contracts/*.py` that
+#   `.gitlab-ci.yml` executes from the branch on an ordinary (non-composer,
+#   non-schedule) pipeline — snapshot (lint:snapshot-bundles), doc-truth
+#   (lint:doc-truth), impact (boundary:classify), contracts (contracts:compat),
+#   verify (test:verification), and contracts/validate.py (contracts:compat).
+#   These are PRECISE entries, not the whole scripts/commands/ tree: the loop's
+#   legitimate work is fixing ordinary verbs, so only the CI-branch-executed ones
+#   are named. Accepted residuals (consistent with scripts/console/tests/ above):
+#   tests/**/*.bats are executed by run-bats.sh but are the loop's demanded
+#   test-authoring surface, and contracts/*.schema.json are DATA validate.py
+#   reads, not code the runner executes. Pinned by the ops#160 block in
+#   tests/unit/test-agent-loop-sensitive-gate.bats.
 # shellcheck disable=SC2016
-SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-|loop-)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
+SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-|loop-)|(^|/)scripts/agent-loop/|(^|/)scripts/ci/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console|snapshot|doc-truth|impact|contracts|verify)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(^|/)contracts/validate\.py$|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
 
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 

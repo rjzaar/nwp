@@ -37,7 +37,7 @@ the same `authorized_keys` — different payload.
 
 | Where | What | Owner/mode |
 |---|---|---|
-| box `/usr/local/bin/nwd-demo-reset-restricted` | the wrapper (versioned at `servers/nwpcode/demo/nwd-demo-reset-restricted`) | `root:root 0755` |
+| box `/usr/local/bin/nwd-demo-reset-restricted` | the wrapper (versioned at `servers/live/demo/nwd-demo-reset-restricted`) | `root:root 0755` |
 | box `/var/lib/nwp-demo/nwd/golden/` | golden DB + files + sha256 sidecars + manifest | `root:root 0644` |
 | box `/var/lib/nwp-demo/nwd/codes-payload.json` | **hashed** invite codes (never plaintext) | `root:root 0644` |
 | box `/var/lib/nwp-demo/nwd/last-reset` | idempotence stamp (Melbourne date + epoch) | `gitlab` |
@@ -149,14 +149,14 @@ ssh nwd-demo-reset status
 When met is back:
 
 ```bash
-bash servers/nwpcode/demo/install-on-met.sh
+bash servers/live/demo/install-on-met.sh
 ```
 
 That single command does all six steps and **stops before removing the laptop
 cron if any check fails**, so the nightly is never left unowned. Dry variant:
 
 ```bash
-bash servers/nwpcode/demo/install-on-met.sh --check     # verifies, changes nothing
+bash servers/live/demo/install-on-met.sh --check     # verifies, changes nothing
 ```
 
 If you would rather do it by hand, it is four commands:
@@ -189,9 +189,9 @@ ssh nwd-demo-reset status                # box-side log, from either machine
 
 | When | Do |
 |---|---|
-| after `pl demo golden nwd --tier=live` | `bash servers/nwpcode/demo/install-box.sh --stage-golden` — the box holds its **own** copy of the golden; recapturing locally does not update it |
-| after `pl demo codes …` / `pl demo invite` | `bash servers/nwpcode/demo/install-box.sh --stage-codes` — **required**, see the gap below |
-| after editing the wrapper | `bash servers/nwpcode/demo/install-box.sh` (wrapper + dirs only) |
+| after `pl demo golden nwd --tier=live` | `bash servers/live/demo/install-box.sh --stage-golden` — the box holds its **own** copy of the golden; recapturing locally does not update it |
+| after `pl demo codes …` / `pl demo invite` | `bash servers/live/demo/install-box.sh --stage-codes` — **required**, see the gap below |
+| after editing the wrapper | `bash servers/live/demo/install-box.sh` (wrapper + dirs only) |
 | rotating the key | `ssh-keygen -t ed25519 -f ~/.ssh/nwd_demo_reset` then `install-box.sh` then `install-on-met.sh` |
 | revoking the key | delete the `nwd-demo-reset@met` line from the box's `authorized_keys` (backups are alongside it) |
 

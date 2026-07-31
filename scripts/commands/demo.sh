@@ -45,6 +45,8 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/common.sh"
+# shellcheck source=/dev/null
+source "$REPO_ROOT/lib/demo-smoke.sh"
 source "$REPO_ROOT/lib/impact.sh"        # ops#47 impact contract (fate manifest)
 source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"     # paired golden/reset (ops#133 Phase 2)
@@ -96,6 +98,18 @@ ${BOLD}SUBCOMMANDS:${NC}
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
                                   retrying every 30 min until the 04:00
                                   ${DEMO_TZ} floor, then skip + log.
+    harvest-pull <site> --tier=live
+                                  Drain the LIVE box's spooled pre-wipe error
+                                  digests into the local spool. Read-only on the
+                                  box and deduplicated locally, so re-running is
+                                  free. Pair with harvest-post; without this the
+                                  box's digests age out and are lost.
+    smoke <site> --tier=live      Assert the invite email's PROMISES against what
+                                  the site actually serves: every route it sends
+                                  testers to, the SSO button on the partner half,
+                                  and that the site names ITSELF and not its
+                                  partner. Read-only (GET only), so it is safe
+                                  against live and runnable from CI.
     status <site>                 Golden capture info, recent resets/skips,
                                   invite-code summary.
     codes <site> list             List codes (hashes only — never plaintext)
@@ -1965,7 +1979,7 @@ cmd_invite() {
             # then STOPS at the next 01:00 reset unless the box payload is
             # re-staged. Make that explicit rather than let it fail silently.
             print_warning "Code is live NOW, but the nightly reset restores the box's staged payload."
-            print_hint "To survive tonight's reset, re-stage on the box: servers/nwpcode/demo/install-box.sh --stage-codes"
+            print_hint "To survive tonight's reset, re-stage on the box: servers/live/demo/install-box.sh --stage-codes"
         fi
     else
         print_error "Codes were NOT synced to $site ($tier) — recipients would be REJECTED. The draft is saved, but do not send until the sync succeeds:"
@@ -2233,12 +2247,189 @@ main() {
                   fi ;;
         nightly)  cmd_nightly "$site" "$tier" "$use_pair" ;;
         status)   cmd_status "$site" "$tier" ;;
+        smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
+        harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
+}
+
+################################################################################
+# Subcommand: harvest-pull <site> --tier=live
+#
+# DRAIN the box's spooled error digests into the local spool, so
+# `pl demo harvest-post` can turn them into nwp/ops issues.
+#
+# This is the missing half of the feedback loop. The box has always WRITTEN a
+# pre-wipe error digest before each nightly reset — and nothing ever collected
+# it. Digests aged out of the box's 30-file window and every error a live
+# tester hit was lost, silently, which is the pilot's entire purpose going
+# missing. `cmd_harvest_post` read a LOCAL directory that live never wrote to.
+#
+# Idempotent: the box drain is read-only and emits everything it holds, and
+# this deduplicates against both the local spool and what has already been
+# posted. Re-running is free; a half-finished pull loses nothing.
+################################################################################
+cmd_harvest_pull() {
+    local site="$1" tier="${2:-live}" dry_run="${3:-false}"
+
+    if [[ "$tier" != "live" ]]; then
+        print_error "harvest-pull is a LIVE-tier action (the box is the only place these digests exist)."
+        return 1
+    fi
+
+    local hdir; hdir="$(demo_harvest_dir "$site")"
+    mkdir -p "$hdir/posted"
+
+    print_header "Demo harvest ← live box: $site"
+
+    # The restricted forced-command key is the right transport: it can run the
+    # action words and nothing else. Fall back to the ordinary admin path when
+    # the restricted key is not on this machine.
+    local keyfile="$HOME/.ssh/${site}_demo_reset" out
+    if [[ -r "$keyfile" ]]; then
+        if ! demo_live_ctx "$site"; then return 1; fi
+        out=$(ssh -i "$keyfile" -o IdentitiesOnly=yes -o IdentityAgent=none \
+                  -o BatchMode=yes -o StrictHostKeyChecking=accept-new -n \
+                  "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}" harvest 2>/dev/null) || {
+            print_error "Restricted-key drain failed. Is the box wrapper current? (scripts/deploy-demo-reset-wrapper.sh)"
+            return 1
+        }
+    else
+        print_info "No ${keyfile} on this host — draining over the ordinary admin path."
+        if ! demo_live_ctx "$site"; then return 1; fi
+        out=$(demo_rssh "$site" "sudo /usr/local/bin/${site}-demo-reset-restricted harvest" 2>/dev/null) || {
+            print_error "Could not drain the harvest spool from live."
+            return 1
+        }
+    fi
+
+    if [[ -z "$out" || "$out" == *"NWP-HARVEST-EMPTY"* && "$out" != *"NWP-HARVEST-BEGIN"* ]]; then
+        print_info "Box harvest spool is empty — nothing to pull."
+        return 0
+    fi
+
+    # Split the stream on the fixed envelope. Written to a .md so the existing
+    # poster picks it up, with the raw digest fenced so a watchdog table
+    # survives GitLab's markdown intact.
+    local pulled=0 skipped=0 name="" buf="" line
+    while IFS= read -r line; do
+        case "$line" in
+            "NWP-HARVEST-BEGIN "*) name="${line#NWP-HARVEST-BEGIN }"; buf=""; continue ;;
+            "NWP-HARVEST-END "*)
+                local base="${name%.txt}" target
+                target="$hdir/${base}.md"
+                if [[ -f "$target" || -f "$hdir/posted/${base}.md" ]]; then
+                    skipped=$(( skipped + 1 )); name=""; continue
+                fi
+                if [[ "$dry_run" == "true" ]]; then
+                    echo "  would pull: ${base}.md"
+                else
+                    {
+                        echo "harvested_utc: $(printf '%s' "$base" | sed -E 's/^harvest-//')"
+                        echo ""
+                        echo "Pre-wipe error digest drained from the ${site} live box."
+                        echo ""
+                        echo '```'
+                        printf '%s\n' "$buf"
+                        echo '```'
+                    } > "$target"
+                    print_status "OK" "pulled ${base}.md"
+                fi
+                pulled=$(( pulled + 1 )); name=""; continue ;;
+        esac
+        [[ -n "$name" ]] && buf+="${line}"$'\n'
+    done <<< "$out"
+
+    echo ""
+    print_info "Pulled: ${pulled}   Already had: ${skipped}"
+    if (( pulled > 0 )) && [[ "$dry_run" != "true" ]]; then
+        print_info "Post them with: pl demo harvest-post ${site}"
+    fi
+    return 0
+}
+
+################################################################################
+# Subcommand: smoke <site> --tier=live|dev|stg [--ip=A.B.C.D]
+#
+# Assert the invite email's PROMISES against what the site actually serves.
+# Read-only: every probe is a GET, which is what makes it safe against live and
+# runnable from CI. See lib/demo-smoke.sh for why claim-checking and not uptime.
+################################################################################
+cmd_smoke() {
+    local site="$1" tier="${2:-live}" ip="${3:-}"
+
+    # The routes below are the PROVIDER's (Drupal): /demo/join, /user/login,
+    # /nwc/achievements. Pointed at the consumer half they are meaningless —
+    # Moodle redirects unknown paths to its login page, which then returns 200
+    # and every check passes while testing nothing. So resolve to the provider,
+    # the same way `pl demo reset` promotes either half to the paired run.
+    if demo_pair_resolve "$site" 2>/dev/null && [[ -n "${DEMO_PAIR_PROVIDER:-}" ]] \
+       && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
+        print_info "'$site' is the consumer half of ${DEMO_PAIR_LABEL:-the pair} — smoking the provider '${DEMO_PAIR_PROVIDER}' (which checks this half as STEP 2)."
+        site="$DEMO_PAIR_PROVIDER"
+    fi
+
+    local domain partner partner_domain
+    domain="$(get_site_config_value "$site" '.live.domain' "")"
+    if [[ -z "$domain" ]]; then
+        print_error "No .live.domain for '$site' — cannot smoke a site with no address."
+        return 1
+    fi
+    local base="https://${domain}"
+
+    # The partner half (ssd for nwd): STEP 2 of the invite email.
+    partner=""
+    if demo_pair_resolve "$site" 2>/dev/null; then
+        partner="$(demo_pair_partner "$site" "$DEMO_PAIR_CONTRACT" 2>/dev/null || true)"
+    fi
+    [[ -n "$partner" ]] && partner_domain="$(get_site_config_value "$partner" '.live.domain' "")"
+
+    print_header "demo smoke: ${site} @ ${tier}${ip:+  (forced to ${ip})}"
+    smoke_reset_counters
+
+    echo "  -- routes the invite email sends testers to --"
+    smoke_check_status "front door"        "${base}/"                 "200"         "$ip"
+    smoke_check_status "invite redemption" "${base}/demo/join"        "200"         "$ip"
+    smoke_check_status "feedback"          "${base}/feedback/submit"  "200,302,303,307" "$ip"
+    smoke_check_status "achievements"      "${base}/nwc/achievements" "200,302,303,403" "$ip"
+
+    echo "  -- identity / SSO surface --"
+    smoke_check_status "OIDC signing keys" "${base}/.well-known/jwks.json" "200"    "$ip"
+    smoke_check_status "login"             "${base}/user/login"       "200"         "$ip"
+
+    if [[ -n "${partner_domain:-}" ]]; then
+        echo "  -- STEP 2: the partner half (${partner}) --"
+        smoke_check_status   "partner login"      "https://${partner_domain}/login/index.php" "200" "$ip"
+        # The email tells testers to click a button that says this. If the OIDC
+        # issuer is disabled or renamed, the page still 200s and the button is
+        # simply gone — which is invisible to any uptime check.
+        smoke_check_contains "partner SSO button" "https://${partner_domain}/login/index.php" \
+                             "Log in using your account on" "$ip"
+    fi
+
+    echo "  -- claims that are true or false, never merely 'up' --"
+    # A1-2: nwd shipped with system.site.name = "Saint School Demo" — the
+    # PARTNER's name — on every page title while claiming to be the community.
+    # Both halves of this are checked, because either alone is passable: the
+    # page must carry its OWN name AND must not carry the partner's.
+    local own_name partner_name=""
+    own_name="$(get_site_config_value "$site" '.project.title' "")"
+    if [[ -n "$partner" ]]; then
+        partner_name="$(get_site_config_value "$partner" '.project.title' "")"
+        [[ "$partner_name" == "$own_name" ]] && partner_name=""
+    fi
+    if [[ -n "$own_name" ]]; then
+        smoke_check_title "site names ITSELF, not partner" "${base}/" "$own_name" "$partner_name" "$ip"
+    else
+        printf '  [warn] %-34s no .project.title declared — cannot check the name it claims\n' "site name"
+        SMOKE_WARN=$((SMOKE_WARN+1))
+    fi
+
+    smoke_summary
 }
 
 # Sourced by tests (bats) to exercise the manifest builders without

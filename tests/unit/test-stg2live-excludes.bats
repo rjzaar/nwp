@@ -23,11 +23,31 @@ CMD="${BATS_TEST_DIRNAME}/../../scripts/commands/stg2live.sh"
   [ "$output" = "ok" ]
 }
 
-@test "the pre-rsync gitlab chown prunes oauth-keys (F1: never reassign the signing key)" {
+@test "the pre-rsync gitlab chown prunes EVERY simple_oauth key dir (F1: never reassign the signing key)" {
   # The temporary 'chown -R gitlab:www-data' before rsync must NOT recurse into
-  # oauth-keys/, or an aborted deploy leaves private.key unreadable by www-data
-  # and SSO breaks. Enforce the find -path oauth-keys -prune form.
-  run grep -E "find .*-path .*oauth-keys -prune -o -exec chown gitlab:www-data" "$CMD"
+  # the simple_oauth key directory, or an aborted deploy leaves private.key
+  # unreadable by www-data and SSO breaks.
+  #
+  # This used to enforce the literal `-path .../oauth-keys -prune`. That pinned
+  # ONE site's name for the directory: simple_oauth stores the path in config
+  # and the fleet differs — nwc uses oauth-keys/, nwd uses keys/ — so nwd got
+  # none of this protection and its deploy would have handed private.key to the
+  # gitlab user (found 2026-08-01 deploying live nwd). The guarantee is
+  # unchanged; what is asserted is now the general form, which is strictly
+  # stronger: the prune is built from every directory resolved for the site.
+  # Fixed-string matches: these assert exact shell text, and escaping it as a
+  # regex twice over is how a guard ends up testing nothing.
+  run grep -F 'for _kd in "${key_dirs[@]}"' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F '_prune+=" -path ${remote_path}/${_kd} -prune -o"' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F 'find ${remote_path}${_prune} -exec chown gitlab:www-data' "$CMD"
+  [ "$status" -eq 0 ]
+}
+
+@test "the key directory is resolved from simple_oauth, never assumed" {
+  # The root cause of the above: a hardcoded directory name.
+  run grep -E "drush cget simple_oauth.settings private_key" "$CMD"
   [ "$status" -eq 0 ]
 }
 

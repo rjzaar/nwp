@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ################################################################################
-# deploy-demo-reset-wrapper.sh — ship servers/nwpcode/demo/nwd-demo-reset-restricted
+# deploy-demo-reset-wrapper.sh — ship servers/live/demo/nwd-demo-reset-restricted
 #                                to the box, with a backup and a real proof.
 ################################################################################
 #
@@ -36,11 +36,18 @@ set -euo pipefail
 # address is operator infrastructure (the leakage gate rejects it in source, and
 # rightly), and a literal here would silently target the wrong host the day the
 # IP changes. Override with NWP_BOX / NWP_BOX_KEY for a one-off.
-SERVER="${NWP_SERVER:-nwpcode}"
+#
+# The SERVER itself is derived from the demo site's own declaration, not
+# defaulted to a named box. This wrapper installs a root-owned script that
+# WIPES AND REBUILDS the demo site nightly; a stale default sent it to whatever
+# box used to host nwd. After the 2026-07-31 box split that would have shipped
+# the demo-reset script to the GitLab box, which does not host nwd at all.
+DEMO_SITE="${NWP_DEMO_SITE:-nwd}"
+SERVER="${NWP_SERVER:-}"
 BOX="${NWP_BOX:-}"
 KEY="${NWP_BOX_KEY:-}"
 TARGET="/usr/local/bin/nwd-demo-reset-restricted"
-SRC_REL="servers/nwpcode/demo/nwd-demo-reset-restricted"
+SRC_REL="servers/live/demo/nwd-demo-reset-restricted"
 DRY_RUN=false
 
 die()  { printf '\033[0;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -57,10 +64,19 @@ if [[ -z "$BOX" ]]; then
   # shellcheck source=/dev/null
   source "$ROOT/lib/common.sh" 2>/dev/null || die "cannot source lib/common.sh"
   declare -F get_server_ip >/dev/null || die "server resolver unavailable — set NWP_BOX=user@host"
+  if [[ -z "$SERVER" ]]; then
+    declare -F get_site_server >/dev/null \
+      || die "server resolver unavailable — set NWP_SERVER or NWP_BOX=user@host"
+    SERVER="$(get_site_server "$DEMO_SITE" 2>/dev/null || true)"
+    # Fail closed. Guessing a destination for a script whose job is to destroy
+    # and rebuild a site is exactly the wrong place for a fallback.
+    [[ -n "$SERVER" ]] || die "cannot read .live.server for site '$DEMO_SITE' — set NWP_SERVER=<name> or NWP_BOX=user@host"
+  fi
   ip="$(get_server_ip "$SERVER" 2>/dev/null || true)"
   [[ -n "$ip" ]] || die "cannot resolve server '$SERVER' — set NWP_BOX=user@host"
   BOX="${NWP_BOX_USER:-gitlab}@${ip}"
 fi
+step "target box: $SERVER (from ${DEMO_SITE}'s .live.server)"
 [[ -n "$KEY" ]] || KEY="$HOME/.ssh/gitlab_linode"
 [[ -r "$KEY" ]] || die "ssh key not readable: $KEY (set NWP_BOX_KEY)"
 SRC="$ROOT/$SRC_REL"

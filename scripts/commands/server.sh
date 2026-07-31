@@ -31,12 +31,23 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # fixture inventory. Unset in production, this is exactly the old behaviour.
 NWP_DIR="${NWP_DIR:-$PROJECT_ROOT}"
 
+# lib/common.sh's own header says it requires lib/ui.sh to be sourced first
+# (print_error and friends live there). This command got away without it until
+# a subcommand actually used the print_* helpers.
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/ui.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/common.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/impact.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/migrate-schema.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/host-capture.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/server-sync.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/server-handoff.sh"
 
 if [[ -z "${NWP_VERSION:-}" ]]; then
     NWP_VERSION=$(grep -E '^VERSION=' "$PROJECT_ROOT/pl" | head -1 | sed 's/.*="\(.*\)"/\1/')
@@ -67,7 +78,7 @@ cmd_list() {
     printf "%-15s %-10s %-10s %-18s %s\n" "SERVER" "SCHEMA" "STATUS" "IP" "CONFIG"
     printf "%-15s %-10s %-10s %-18s %s\n" "------" "------" "------" "--" "------"
     while IFS= read -r name; do
-        local cfg="$PROJECT_ROOT/servers/$name/.nwp-server.yml"
+        local cfg="${NWP_DIR:-$PROJECT_ROOT}/servers/$name/.nwp-server.yml"
         local schema status ip
         schema=$("$YQ" eval '.schema_version // "?"' "$cfg" 2>/dev/null)
         ip=$("$YQ" eval '.server.ip // "-"' "$cfg" 2>/dev/null)
@@ -89,7 +100,7 @@ cmd_show() {
         echo "Usage: pl server show <name>" >&2
         return 1
     fi
-    local cfg="$PROJECT_ROOT/servers/$name/.nwp-server.yml"
+    local cfg="${NWP_DIR:-$PROJECT_ROOT}/servers/$name/.nwp-server.yml"
     if [[ ! -f "$cfg" ]]; then
         echo "ERROR: No config at $cfg" >&2
         return 1
@@ -102,7 +113,7 @@ cmd_show() {
 ################################################################################
 _status_one() {
     local name="$1"
-    local cfg="$PROJECT_ROOT/servers/$name/.nwp-server.yml"
+    local cfg="${NWP_DIR:-$PROJECT_ROOT}/servers/$name/.nwp-server.yml"
     if [[ ! -f "$cfg" ]]; then
         printf "%-15s %s\n" "$name" "MISSING (.nwp-server.yml not found)"
         return 1
@@ -117,17 +128,24 @@ _status_one() {
 
     if [[ -n "$ip" && -n "$user" ]]; then
         if [[ -f "$key" ]]; then
-            if ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+            # -n is load-bearing: without it ssh slurps the caller's stdin, and
+            # the `--all` loop (which feeds server names on stdin via <<<) lost
+            # every server after the first — a truncated roster that read as a
+            # complete, healthy fleet.
+            if ssh -n -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
                 "${user}@${ip}" "true" 2>/dev/null; then
                 printf "  SSH=ok\n"
             else
                 printf "  SSH=unreachable\n"
+                return 1
             fi
         else
             printf "  SSH=key-missing\n"
+            return 1
         fi
     else
         printf "  SSH=incomplete-config\n"
+        return 1
     fi
 }
 
@@ -140,9 +158,16 @@ cmd_status() {
             echo "No servers configured."
             return 0
         fi
+        # One unreachable/misconfigured server must never hide the rest. Under
+        # `set -e` a bare `_status_one` here aborted the loop mid-roster, so the
+        # output looked like a complete fleet when it was a truncated one.
+        # Report every server, then fail if any did.
+        local worst=0
         while IFS= read -r name; do
-            _status_one "$name"
+            [[ -z "$name" ]] && continue
+            _status_one "$name" || worst=1
         done <<< "$servers"
+        return $worst
     else
         _status_one "$arg"
     fi
@@ -667,6 +692,398 @@ cmd_add() {
 }
 
 ################################################################################
+# Subcommand: sync <from> <to>
+#
+# Move the LIVE data of every site declared on <from> onto <to>. This is the
+# box-split primitive: `pl backup --remote` pulls a snapshot DOWN to the
+# workstation (the DR shape), which is the wrong direction for a migration.
+#
+# Dry-run by default. The source is only ever read.
+################################################################################
+cmd_sync() {
+    local from="" to="" only_sites="" do_db=1 do_files=0 execute=0 auto_yes=0 skip_missing=0 arg
+    for arg in "$@"; do
+        case "$arg" in
+            --sites=*)  only_sites="${arg#--sites=}" ;;
+            --skip-missing) skip_missing=1 ;;
+            --db)       do_db=1 ;;
+            --files)    do_files=1 ;;
+            --files-only) do_files=1; do_db=0 ;;
+            --execute)  execute=1 ;;
+            -y|--yes)   auto_yes=1 ;;
+            -*)         echo "Unknown option: $arg" >&2; return 2 ;;
+            *)          if [[ -z "$from" ]]; then from="$arg"; elif [[ -z "$to" ]]; then to="$arg";
+                        else echo "Unexpected argument: $arg" >&2; return 2; fi ;;
+        esac
+    done
+    if [[ -z "$from" || -z "$to" ]]; then
+        echo "Usage: pl server sync <from-server> <to-server> [--sites=a,b] [--files] [--execute]" >&2
+        return 2
+    fi
+    if [[ "$from" == "$to" ]]; then
+        echo "ERROR: source and target are the same server ('$from')." >&2
+        return 2
+    fi
+
+    local sp dp
+    sp=$(sync_ssh_prefix "$from") || { echo "ERROR: cannot resolve server '$from'" >&2; return 2; }
+    dp=$(sync_ssh_prefix "$to")   || { echo "ERROR: cannot resolve server '$to'" >&2; return 2; }
+
+    # Both endpoints must answer before anything is planned. A migration
+    # half-planned against an unreachable box is worse than no plan.
+    local s_ok t_ok
+    s_ok=$($sp 'echo ok' </dev/null 2>/dev/null || true)
+    t_ok=$($dp 'echo ok' </dev/null 2>/dev/null || true)
+    if [[ "$s_ok" != "ok" ]]; then echo "ERROR: source '$from' unreachable over ssh." >&2; return 3; fi
+    if [[ "$t_ok" != "ok" ]]; then echo "ERROR: target '$to' unreachable over ssh." >&2; return 3; fi
+
+    # Which sites? Declarations and data move at DIFFERENT times during a
+    # migration: the normal order is to repoint sites/<name>/.nwp.yml FIRST
+    # (so deploys go to the new box) and move the data second. Enumerating only
+    # `from` therefore finds nothing exactly when you need it most. Take the
+    # union of both servers' declarations, deduplicated.
+    local sites
+    if [[ -n "$only_sites" ]]; then
+        sites=$(printf '%s' "$only_sites" | tr ',' '\n')
+    else
+        sites=$(printf '%s\n%s\n' "$(get_server_sites "$from")" "$(get_server_sites "$to")" \
+                | sed '/^$/d' | sort -u)
+    fi
+    if [[ -z "$sites" ]]; then
+        echo "No sites declared on '$from'. Nothing to sync."
+        return 0
+    fi
+
+    print_header "server sync: ${from} -> ${to}$( ((execute)) || echo '  (DRY RUN)')"
+
+    # Collect the plan first, so an undeterminable DB name aborts BEFORE any
+    # write rather than halfway through the fleet.
+    # Explicit empty initialisers: under `set -u`, expanding an array that was
+    # declared but never assigned is fatal, which turned "nothing to sync" into
+    # an unbound-variable crash.
+    local -a plan_site=() plan_type=() plan_db=() plan_path=()
+    local -A seen_db=()
+    local failures=0 name type path webroot sdb ddb enabled rc
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        local cfg="${NWP_DIR:-$PROJECT_ROOT}/sites/$name/.nwp.yml"
+        if [[ ! -f "$cfg" ]]; then
+            print_warning "$name: no sites/$name/.nwp.yml — skipped"
+            continue
+        fi
+        enabled=$("$YQ" eval '.live.enabled // ""' "$cfg" 2>/dev/null)
+        if [[ "$enabled" != "true" ]]; then
+            print_info "$name: live.enabled is not true — skipped"
+            continue
+        fi
+        type=$("$YQ" eval '.project.type // ""' "$cfg" 2>/dev/null)
+        path=$("$YQ" eval '.live.remote_path // ""' "$cfg" 2>/dev/null)
+        webroot=$("$YQ" eval '.project.webroot // ""' "$cfg" 2>/dev/null)
+        if [[ -z "$type" || -z "$path" ]]; then
+            print_error "$name: .project.type or .live.remote_path missing — cannot sync"
+            failures=$((failures+1)); continue
+        fi
+
+        # A declared path that does not exist on the source holds no data to
+        # migrate, and is nearly always a stale declaration. Say so out loud
+        # rather than reporting an undeterminable DB name.
+        if ! sync_path_exists "$sp" "$path"; then
+            if (( skip_missing )); then
+                print_warning "$name: declared live path '$path' does not exist on '${from}' — SKIPPED (--skip-missing)"
+                continue
+            fi
+            print_error "$name: declared live path '$path' does not exist on '${from}' — stale declaration"
+            failures=$((failures+1)); continue
+        fi
+
+        # `|| true` is load-bearing under `set -e`: a probe that legitimately
+        # finds nothing (static site, missing config) must not abort the whole
+        # plan and leave the rest of the fleet unexamined.
+        sdb=$(sync_probe_dbname "$sp" "$type" "$path" "$webroot" || true); rc=$?
+        if [[ "$type" == "static" ]]; then
+            print_info "$name: static site (no database) — nothing to sync"
+            continue
+        fi
+        ddb=$(sync_probe_dbname "$dp" "$type" "$path" "$webroot" || true)
+        if [[ -z "$sdb" ]]; then
+            print_error "$name: could not read the live DB name from ${type} config on '${from}' — refusing to guess"
+            failures=$((failures+1)); continue
+        fi
+        if [[ -z "$ddb" ]]; then
+            print_error "$name: could not read the DB name from ${type} config on '${to}' — refusing to guess"
+            failures=$((failures+1)); continue
+        fi
+        if [[ "$sdb" != "$ddb" ]]; then
+            print_error "$name: DB name differs (${from}='${sdb}' ${to}='${ddb}') — refusing to cross-write"
+            failures=$((failures+1)); continue
+        fi
+
+        # Several site records can describe the SAME live install (nw1/nwc both
+        # are /var/www/nwc; ss/ssc share a Moodle). Copying one database twice
+        # is wasted time and a second chance to get it wrong.
+        if [[ -n "${seen_db[$sdb]:-}" ]]; then
+            print_info "$name: database '${sdb}' already planned via '${seen_db[$sdb]}' — deduplicated"
+            continue
+        fi
+        seen_db[$sdb]="$name"
+
+        plan_site+=("$name"); plan_type+=("$type"); plan_db+=("$sdb"); plan_path+=("$path")
+        printf "  %-12s %-7s db=%-14s %s\n" "$name" "$type" "$sdb" "$path"
+    done <<< "$sites"
+
+    if (( failures > 0 )); then
+        print_error "${failures} site(s) could not be planned. Nothing was written."
+        print_info  "Fix the declaration, or re-run with --skip-missing to proceed without them."
+        return 1
+    fi
+    if (( ${#plan_site[@]} == 0 )); then
+        echo "Nothing to do."
+        return 0
+    fi
+
+    if (( ! execute )); then
+        echo
+        print_info "DRY RUN — ${#plan_site[@]} database(s) would be overwritten on '${to}'."
+        print_info "Re-run with --execute to perform the sync."
+        return 0
+    fi
+
+    # Say exactly what is about to be destroyed BEFORE asking. The report is
+    # unconditional; only the prompt is skippable with -y. A verb that
+    # overwrites live databases must never be able to run without first naming
+    # them (lib/impact.sh, the same contract `pl delete` follows).
+    # The manifest and the prompt live with the destructive primitives, in
+    # lib/server-sync.sh, so no other caller can drive them with no manifest.
+    if ! sync_render_and_confirm "$from" "$to" "$do_files" "$auto_yes" plan_site plan_db; then
+        print_info "Aborted."
+        return 1
+    fi
+
+    local i rc_all=0
+    if (( do_db )); then
+    for i in "${!plan_site[@]}"; do
+        local n="${plan_site[$i]}" db="${plan_db[$i]}"
+        print_info "syncing ${n} (${db}) ..."
+
+        if ! sync_db_stream "$sp" "$dp" "$db" "$db"; then
+            print_error "${n}: dump/restore stream FAILED — target DB may be partial"
+            rc_all=1; continue
+        fi
+        # Verify. Table count must match exactly; the row hash is reported but
+        # a difference there is expected on a live source (sessions, logs,
+        # watchdog all move while the dump runs) and is not treated as failure.
+        local sfp tfp scount tcount
+        sfp=$(sync_db_fingerprint "$sp" "$db"); tfp=$(sync_db_fingerprint "$dp" "$db")
+        if [[ "$sfp" == UNKNOWN* || "$tfp" == UNKNOWN* ]]; then
+            print_error "${n}: post-sync verification could not run — NOT treating as verified"
+            rc_all=1; continue
+        fi
+        scount="${sfp%%:*}"; tcount="${tfp%%:*}"
+        if [[ "$scount" != "$tcount" ]]; then
+            print_error "${n}: table count differs after sync (src=${scount} dst=${tcount})"
+            rc_all=1; continue
+        fi
+        if [[ "$sfp" == "$tfp" ]]; then
+            print_status "OK" "${n}: ${scount} tables, row-for-row identical"
+        else
+            print_status "OK" "${n}: ${scount} tables match (row hash differs — live source moved during the dump)"
+        fi
+    done
+    fi
+
+    if (( do_files )); then
+        print_header "file sync (mutable data trees)"
+        local stage_root="${NWP_SYNC_STAGE:-$HOME/.cache/nwp/server-sync/${from}-to-${to}}"
+        mkdir -p "$stage_root"
+        print_info "staging through ${stage_root} (delta on both hops; safe to re-run)"
+        for i in "${!plan_site[@]}"; do
+            local n="${plan_site[$i]}" t="${plan_type[$i]}" p="${plan_path[$i]}"
+            local dirs
+            dirs=$(sync_probe_datadirs "$sp" "$t" "$p" "" || true)
+            if [[ -z "${dirs//[[:space:]]/}" ]]; then
+                print_warning "${n}: could not determine a data directory — NOT silently skipping, check by hand"
+                rc_all=1; continue
+            fi
+            local d
+            while IFS= read -r d; do
+                [[ -z "${d//[[:space:]]/}" ]] && continue
+                if ! sync_path_exists "$sp" "$d"; then
+                    print_info "  ${n}: ${d} does not exist on ${from} — skipped"
+                    continue
+                fi
+                if sync_dir_relay "$from" "$to" "$d" "$stage_root"; then
+                    print_status "OK" "  ${n}: ${d}"
+                else
+                    print_error "  ${n}: ${d} — rsync FAILED"
+                    rc_all=1
+                fi
+            done <<< "$dirs"
+        done
+    fi
+
+    return $rc_all
+}
+
+################################################################################
+# Subcommand: handoff <drain|front|restore|status> <server>
+#
+# Move traffic between boxes WITHOUT waiting for DNS. See lib/server-handoff.sh
+# for why the switch belongs at the old box rather than in the A record.
+################################################################################
+cmd_handoff() {
+    local mode="${1:-}" server="${2:-}"; shift 2 2>/dev/null || true
+    local to_ip="" only="" exclude="" execute=0 auto_yes=0 arg
+    for arg in "$@"; do
+        case "$arg" in
+            --to=*)      to_ip="${arg#--to=}" ;;
+            --names=*)   only="${arg#--names=}" ;;
+            --exclude=*) exclude="${arg#--exclude=}" ;;
+            --execute)   execute=1 ;;
+            -y|--yes)    auto_yes=1 ;;
+            -*)          echo "Unknown option: $arg" >&2; return 2 ;;
+        esac
+    done
+    case "$mode" in drain|front|restore|status) ;; *)
+        echo "Usage: pl server handoff <drain|front|restore|status> <server> [--to=SERVER|IP] [--names=a,b] [--exclude=a,b] [--execute]" >&2
+        return 2 ;;
+    esac
+    [[ -n "$server" ]] || { echo "ERROR: server name required" >&2; return 2; }
+
+    local sp; sp=$(sync_ssh_prefix "$server") || { echo "ERROR: cannot resolve '$server'" >&2; return 2; }
+    [[ "$($sp 'echo ok' </dev/null 2>/dev/null || true)" == "ok" ]] \
+        || { echo "ERROR: '$server' unreachable over ssh." >&2; return 3; }
+
+    # --to may name a server in the registry or be a literal address.
+    local target_ip=""
+    if [[ -n "$to_ip" ]]; then
+        if [[ "$to_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then target_ip="$to_ip"
+        else target_ip=$(get_server_ip "$to_ip" 2>/dev/null || true); fi
+        [[ -n "$target_ip" ]] || { echo "ERROR: cannot resolve --to='$to_ip'" >&2; return 2; }
+    fi
+
+    if [[ "$mode" == "status" ]]; then
+        print_header "handoff status — ${server}"
+        $sp "sudo ls ${HANDOFF_BACKUP_DIR} 2>/dev/null | wc -l" </dev/null \
+            | { read -r n; echo "  original vhosts backed up: ${n:-0} (${HANDOFF_BACKUP_DIR})"; }
+        local d f
+        d=$($sp "sudo grep -rl 'MIGRATION DRAIN' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | wc -l" </dev/null)
+        f=$($sp "sudo grep -rl 'MIGRATION FRONT' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | wc -l" </dev/null)
+        echo "  vhost files in DRAIN mode: ${d:-0}"
+        echo "  vhost files in FRONT mode: ${f:-0}"
+        return 0
+    fi
+
+    if [[ "$mode" == "restore" ]]; then
+        if ! $sp "sudo test -d ${HANDOFF_BACKUP_DIR}" </dev/null; then
+            print_error "no backup at ${HANDOFF_BACKUP_DIR} on '${server}' — nothing to restore"
+            return 1
+        fi
+        if (( ! execute )); then
+            print_info "DRY RUN — would restore the original vhosts on '${server}' from ${HANDOFF_BACKUP_DIR}"
+            return 0
+        fi
+        $sp "sudo cp -a ${HANDOFF_BACKUP_DIR}/. ${HANDOFF_CONF_DIR}/" </dev/null \
+            && handoff_nginx_test "$sp" && handoff_nginx_reload "$sp" \
+            || { print_error "restore failed — nginx config NOT reloaded"; return 1; }
+        print_status "OK" "original vhosts restored on '${server}'"
+        return 0
+    fi
+
+    [[ "$mode" != "front" || -n "$target_ip" ]] || { echo "ERROR: front requires --to=<server|ip>" >&2; return 2; }
+
+    # Which hostnames? Read what nginx actually serves, then subtract the ones
+    # explicitly held back (git/hs and anything whose DNS we do not control).
+    local names
+    if [[ -n "$only" ]]; then names=$(printf '%s' "$only" | tr ',' '\n')
+    else names=$(handoff_server_names "$sp"); fi
+    if [[ -n "$exclude" ]]; then
+        local pat; pat=$(printf '%s' "$exclude" | tr ',' '|')
+        names=$(printf '%s\n' "$names" | grep -vE "^(${pat})$" || true)
+    fi
+    names=$(printf '%s\n' "$names" | sed '/^$/d')
+    [[ -n "$names" ]] || { echo "No hostnames selected." >&2; return 1; }
+
+    # Which names have a certificate on this box? A missing certificate is not
+    # a reason to skip the name — that would leave it serving from the old
+    # box's database while everything else moved — it just means the rewritten
+    # vhost is HTTP-only, as the original was.
+    local n; local -A has_cert=()
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        if $sp "sudo test -f /etc/letsencrypt/live/${n}/fullchain.pem" </dev/null; then
+            has_cert[$n]=1
+        else
+            has_cert[$n]=0
+        fi
+    done <<< "$names"
+
+    print_header "handoff ${mode} on ${server}$( [[ -n "$target_ip" ]] && echo " -> ${target_ip}")$( ((execute)) || echo '  (DRY RUN)')"
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        printf '  %-28s %s\n' "$n" "$( [[ "${has_cert[$n]}" == "1" ]] && echo 'http+https' || echo 'http only (no cert)' )"
+    done <<< "$names"
+    if (( ! execute )); then
+        print_info "DRY RUN — $(printf '%s\n' "$names" | wc -l) hostname(s) would switch to ${mode}."
+        return 0
+    fi
+    impact_reset
+    if [[ "$mode" == "drain" ]]; then
+        impact_overwrite "${server}: nginx vhosts for $(printf '%s\n' "$names" | wc -l) hostname(s)" \
+                         "replaced with a 503 maintenance vhost — these sites STOP SERVING"
+        impact_warn "This is user-visible downtime for every hostname listed above."
+    else
+        impact_overwrite "${server}: nginx vhosts for $(printf '%s\n' "$names" | wc -l) hostname(s)" \
+                         "replaced with a proxy to ${target_ip} — traffic leaves this box"
+    fi
+    impact_keep "The original vhosts, copied to ${HANDOFF_BACKUP_DIR} on the box itself"
+    impact_keep "Every hostname NOT listed above (git/hs and anything --exclude'd)"
+    impact_keep "All site data on ${server} — this changes routing only, never content"
+    impact_render
+
+    if ! impact_confirm standard "switch $(printf '%s\n' "$names" | wc -l) hostname(s) on '${server}' to ${mode}" \
+        "$( ((auto_yes)) && echo true || echo false )"; then
+        print_info "Aborted."; return 1
+    fi
+
+    # Back up the ORIGINAL vhosts exactly once. A second drain/front must not
+    # overwrite the backup with already-rewritten files — that would destroy
+    # the rollback while appearing to succeed.
+    $sp "sudo test -d ${HANDOFF_BACKUP_DIR} || sudo cp -a ${HANDOFF_CONF_DIR} ${HANDOFF_BACKUP_DIR}" </dev/null \
+        || { print_error "could not back up the original vhosts — refusing to change anything"; return 1; }
+
+    local tmp; tmp=$(mktemp -d)
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        if [[ "$mode" == "drain" ]]; then handoff_render_drain "$n" "${has_cert[$n]}" > "$tmp/handoff-${n}.conf"
+        else handoff_render_front "$n" "$target_ip" "${has_cert[$n]}" > "$tmp/handoff-${n}.conf"; fi
+    done <<< "$names"
+
+    # Retire the originals for the selected names, then install the new ones.
+    # Done in one remote shell so nginx is reloaded once, at the end.
+    local ip user key
+    ip=$(get_server_ip "$server"); user=$(get_server_user "$server"); key=$(get_server_ssh_key "$server")
+    scp -q -i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+        "$tmp"/handoff-*.conf "${user}@${ip}:/tmp/" || { rm -rf "$tmp"; print_error "upload failed"; return 1; }
+    rm -rf "$tmp"
+
+    local retire=""
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        retire+="for f in \$(sudo grep -rlE '^[[:space:]]*server_name([[:space:]]|.*[[:space:]])${n}[[:space:]]*;' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | grep -v '/handoff-'); do sudo mv \"\$f\" \"\$f.pre-handoff\"; done; "
+    done <<< "$names"
+
+    if ! { $sp "${retire} sudo mv /tmp/handoff-*.conf ${HANDOFF_CONF_DIR}/" </dev/null && handoff_nginx_test "$sp"; }; then
+        print_error "nginx config test FAILED on '${server}' — rolling back, nothing reloaded"
+        $sp "sudo rm -f ${HANDOFF_CONF_DIR}/handoff-*.conf; for f in ${HANDOFF_CONF_DIR}/*.pre-handoff; do [ -e \"\$f\" ] && sudo mv \"\$f\" \"\${f%.pre-handoff}\"; done" </dev/null || true
+        handoff_nginx_test "$sp" || true
+        return 1
+    fi
+    handoff_nginx_reload "$sp" || { print_error "reload failed"; return 1; }
+    print_status "OK" "${server}: $(printf '%s\n' "$names" | wc -l) hostname(s) now in ${mode} mode"
+    print_info "rollback: pl server handoff restore ${server} --execute"
+}
+
+################################################################################
 # Dispatcher
 ################################################################################
 sub="${1:-}"
@@ -682,10 +1099,14 @@ case "$sub" in
     roots)   cmd_roots "$@" ;;
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
+    sync)    cmd_sync "$@" ;;
+    handoff) cmd_handoff "$@" ;;
     schema)  cmd_schema "$@" ;;
     migrate) cmd_migrate "$@" ;;
     ""|help|--help|-h)
-        cat <<EOF
+        # Quoted delimiter: this block is documentation, not a template. With a
+        # bare EOF a backtick in the help text was executed as a command.
+        cat <<'EOF'
 Usage: pl server <subcommand> [args]
 
 Subcommands:
@@ -706,6 +1127,18 @@ Subcommands:
                         or a declaration no gate can see (the ops#149 shape),
                         3 = CANNOT-VERIFY (never treated as clean).
   sites <name>          List sites configured to deploy to this server
+  sync <from> <to>      Move every declared site's LIVE DATABASE from one
+                        server to another (the box-split primitive; the
+                        opposite direction to 'pl backup --remote'). DB names
+                        are read from each app's own config on BOTH boxes and
+                        never guessed. Dry-run unless --execute.
+                        [--sites=a,b --skip-missing --files --execute -y]
+  handoff <mode> <srv>  Move traffic between boxes without waiting for DNS.
+                        drain = 503 (the only window with downtime, so the DB
+                        copy has a still target); front = proxy to the new box
+                        so stale-DNS clients still reach the live copy;
+                        restore = put the original vhosts back; status.
+                        [--to=SERVER|IP --names=a,b --exclude=a,b --execute -y]
   schema                Print current server schema version
   migrate <name|--all>  Run schema migrations on a server config
 EOF

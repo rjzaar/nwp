@@ -1,13 +1,14 @@
 #!/bin/bash
 ################################################################################
-# servers/nwpcode/demo/install-box.sh — install the restricted demo-reset
-# wrapper + forced-command key on the git.nwpcode.org box (ops#133).
+# servers/live/demo/install-box.sh — install the restricted demo-reset
+# wrapper + forced-command key on the demo box (ops#133). The box is resolved
+# from the demo site's .live.server, so this follows the site when it moves.
 #
 # Run FROM the dev workstation (it needs the admin gitlab_linode key to install
 # root-owned files). Idempotent: safe to re-run after editing the wrapper or
 # recapturing the golden image.
 #
-#   bash servers/nwpcode/demo/install-box.sh [--stage-golden] [--stage-codes]
+#   bash servers/live/demo/install-box.sh [--stage-golden] [--stage-codes]
 #
 #   --stage-golden   also (re)upload sites/nwd/demo-golden-live/* to the box
 #   --stage-codes    also (re)upload the hashed invite-code payload
@@ -23,11 +24,31 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 # sites/ is gitignored, so a git worktree has no sites/nwd/. The golden and the
 # code registry always live in the main checkout — override with NWP_ROOT.
 NWP_ROOT="${NWP_ROOT:-$([[ -d "${REPO_ROOT}/sites/nwd" ]] && echo "$REPO_ROOT" || echo "$HOME/nwp")}"
-BOX_HOST="${BOX_HOST:-git.nwpcode.org}"
+# The demo box is derived from the site's OWN declaration, not hardcoded.
+# It used to be a literal hostname, which was both wrong the moment the demo
+# pair moved to another box (the 2026-07-31 split) and a live internal domain
+# sitting in a tracked file. Override with BOX_HOST for a one-off.
+_resolve_box_host() {
+    local repo ip
+    repo="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+    # shellcheck source=/dev/null
+    source "${repo}/lib/common.sh" 2>/dev/null || return 1
+    declare -F get_site_server >/dev/null || return 1
+    local srv; srv="$(get_site_server "${DEMO_SITE:-nwd}" 2>/dev/null)" || return 1
+    [[ -n "$srv" ]] || return 1
+    ip="$(get_server_ip "$srv" 2>/dev/null)" || return 1
+    [[ -n "$ip" ]] || return 1
+    printf '%s' "$ip"
+}
+BOX_HOST="${BOX_HOST:-$(_resolve_box_host || true)}"
+if [[ -z "$BOX_HOST" ]]; then
+    echo "ERROR: cannot resolve the demo box from ${DEMO_SITE:-nwd}'s .live.server — set BOX_HOST=<host>" >&2
+    exit 1
+fi
 BOX_USER="${BOX_USER:-gitlab}"
 ADMIN_KEY="${ADMIN_KEY:-$HOME/.ssh/gitlab_linode}"
 DEMO_KEY="${DEMO_KEY:-$HOME/.ssh/nwd_demo_reset}"
-WRAPPER_SRC="${REPO_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"
+WRAPPER_SRC="${REPO_ROOT}/servers/live/demo/nwd-demo-reset-restricted"
 WRAPPER_DST="/usr/local/bin/nwd-demo-reset-restricted"
 GOLDEN_SRC="${NWP_ROOT}/sites/nwd/demo-golden-live"
 CODES_SRC="${NWP_ROOT}/sites/nwd/demo-codes.json"

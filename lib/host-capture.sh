@@ -189,12 +189,17 @@ host_resolve_dest() {
 host_run() {
     local prefix="$1"; shift
     local script="$1"
+    # stdin is closed deliberately. The script is passed as an ARGUMENT, never
+    # on stdin, so nothing here needs it — and leaving it open let the remote
+    # ssh slurp the caller's stdin. Callers that loop over hosts with `while
+    # read ... <<< "$list"` then lost every host after the first, reporting a
+    # truncated fleet as a complete one.
     if [ "$prefix" = "LOCAL" ]; then
-        bash -c "$script"
+        bash -c "$script" </dev/null
         return $?
     fi
     # shellcheck disable=SC2086  # prefix is a command built by host_resolve_dest
-    $prefix "$script"
+    $prefix "$script" </dev/null
 }
 
 ################################################################################

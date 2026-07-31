@@ -9,7 +9,7 @@
 #   inherited AWS / GCP / GitHub / GitLab-PAT credential rules from
 #   [extend] useDefault. Until 2026-07-26 this file exempted ^tests/.*,
 #   ^docs/reports/.*, ^docs/archive/.*, ^docs/onboarding/.*, ^templates/.* and
-#   ^servers/(mini|mayo1|nwpcode)/.* globally: a byte-identical file carrying a
+#   ^servers/<any-server>/.* globally: a byte-identical file carrying a
 #   glpat- token was flagged under lib/ and found ZERO times in any of those
 #   trees. The exemptions were only ever meant to silence operator-identifier
 #   false positives; they silently switched off credential detection too.
@@ -83,7 +83,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
@@ -151,7 +156,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
@@ -252,7 +262,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
@@ -337,7 +352,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
@@ -412,7 +432,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
@@ -504,7 +529,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
@@ -613,7 +643,12 @@ paths = [
   # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
-  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Matches ANY server directory, not an enumerated list. The list form was a
+  # snapshot of which servers happened to exist, so adding one (sites1, in the
+  # 2026-07-31 box split) silently dropped it out of the allowlist and turned
+  # unchanged, already-reviewed files into fresh 'leaks'. A rule that has to be
+  # edited every time the estate grows is a rule that will be wrong.
+  '''^servers/[^/]+/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.

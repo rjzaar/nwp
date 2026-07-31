@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ################################################################################
-# deploy-demo-reset-wrapper.sh — ship servers/sites1/demo/nwd-demo-reset-restricted
+# deploy-demo-reset-wrapper.sh — ship servers/live/demo/nwd-demo-reset-restricted
 #                                to the box, with a backup and a real proof.
 ################################################################################
 #
@@ -47,7 +47,7 @@ SERVER="${NWP_SERVER:-}"
 BOX="${NWP_BOX:-}"
 KEY="${NWP_BOX_KEY:-}"
 TARGET="/usr/local/bin/nwd-demo-reset-restricted"
-SRC_REL="servers/sites1/demo/nwd-demo-reset-restricted"
+SRC_REL="servers/live/demo/nwd-demo-reset-restricted"
 DRY_RUN=false
 
 die()  { printf '\033[0;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }

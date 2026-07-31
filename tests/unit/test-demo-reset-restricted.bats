@@ -2,7 +2,7 @@
 # D4 / ops#143 — [G9] of the box-resident nwd demo reset must be a GUARANTEE,
 # not a wish.
 #
-# The header of servers/sites1/demo/nwd-demo-reset-restricted promises:
+# The header of servers/live/demo/nwd-demo-reset-restricted promises:
 #
 #   [G9] FATE MANIFEST … Nothing destructive runs until the manifest below has
 #        been printed AND logged, naming every component and its fate.
@@ -31,7 +31,7 @@
 
 setup() {
     PROJECT_ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
-    SCRIPT="${PROJECT_ROOT}/servers/sites1/demo/nwd-demo-reset-restricted"
+    SCRIPT="${PROJECT_ROOT}/servers/live/demo/nwd-demo-reset-restricted"
     BOX="${BATS_TEST_TMPDIR}/box"
     TRACE="${BATS_TEST_TMPDIR}/trace.txt"
     REHOMED="${BATS_TEST_TMPDIR}/nwd-demo-reset-rehomed"

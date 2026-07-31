@@ -1,6 +1,6 @@
 #!/bin/bash
 ################################################################################
-# servers/sites1/demo/install-box.sh — install the restricted demo-reset
+# servers/live/demo/install-box.sh — install the restricted demo-reset
 # wrapper + forced-command key on the demo box (ops#133). The box is resolved
 # from the demo site's .live.server, so this follows the site when it moves.
 #
@@ -8,7 +8,7 @@
 # root-owned files). Idempotent: safe to re-run after editing the wrapper or
 # recapturing the golden image.
 #
-#   bash servers/sites1/demo/install-box.sh [--stage-golden] [--stage-codes]
+#   bash servers/live/demo/install-box.sh [--stage-golden] [--stage-codes]
 #
 #   --stage-golden   also (re)upload sites/nwd/demo-golden-live/* to the box
 #   --stage-codes    also (re)upload the hashed invite-code payload
@@ -48,7 +48,7 @@ fi
 BOX_USER="${BOX_USER:-gitlab}"
 ADMIN_KEY="${ADMIN_KEY:-$HOME/.ssh/gitlab_linode}"
 DEMO_KEY="${DEMO_KEY:-$HOME/.ssh/nwd_demo_reset}"
-WRAPPER_SRC="${REPO_ROOT}/servers/sites1/demo/nwd-demo-reset-restricted"
+WRAPPER_SRC="${REPO_ROOT}/servers/live/demo/nwd-demo-reset-restricted"
 WRAPPER_DST="/usr/local/bin/nwd-demo-reset-restricted"
 GOLDEN_SRC="${NWP_ROOT}/sites/nwd/demo-golden-live"
 CODES_SRC="${NWP_ROOT}/sites/nwd/demo-codes.json"

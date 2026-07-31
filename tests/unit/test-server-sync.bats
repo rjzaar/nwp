@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # lib/server-sync.sh — the box-to-box migration primitive.
 #
-# These pin two incidents from the 2026-07-31 nwpcode -> sites1 split, both of
+# These pin two incidents from the 2026-07-31 nwpcode -> live split, both of
 # which were SILENT: the command reported success while doing damage.
 #
 # 1. OWNERSHIP LAUNDERING. Data trees were relayed through a staging directory

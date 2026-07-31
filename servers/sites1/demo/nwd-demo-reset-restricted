@@ -156,6 +156,7 @@ resolve_action() {
         reset)      echo "reset" ;;
         dry-run)    echo "dry-run" ;;
         status)     echo "status" ;;
+        harvest)    echo "harvest" ;;
         *)          echo "REFUSED" ;;
     esac
 }
@@ -167,7 +168,7 @@ if [[ "$ACTION" == "REFUSED" ]]; then
     cat >&2 <<EOF
 REFUSED: this key may only run the nwd demo reset.
 The command you sent was logged and NOT executed.
-Allowed action words: (empty)|nightly | reset | dry-run | status
+Allowed action words: (empty)|nightly | reset | dry-run | status | harvest
 EOF
     exit 2
 fi
@@ -189,6 +190,42 @@ if [[ "$ACTION" == "status" ]]; then
     echo "last reset:  $(cat "$STAMP_FILE" 2>/dev/null || echo none)"
     echo "--- last 15 log lines ---"
     tail -n 15 "$LOG_FILE" 2>/dev/null || true
+    exit 0
+fi
+
+################################################################################
+# harvest — DRAIN the spooled error digests to stdout (read-only)
+#
+# The pre-wipe harvest has always WRITTEN digests here, and nothing ever
+# collected them: they aged out of the 30-file window and every error a tester
+# ever hit on live was lost silently. That is the pilot's entire point going
+# missing, so this is the other half of the loop.
+#
+# READ-ONLY ON PURPOSE. It emits and deletes nothing, so a failed or half-read
+# drain loses nothing and can simply be re-run. Marking files "sent" from here
+# would mean this restricted key could destroy evidence, and would put the
+# only record of a bad night one crashed pipe away from gone. The consumer
+# deduplicates by filename against what it has already posted.
+#
+# The envelope is a fixed literal so the consumer can split a stream of digests
+# without guessing where one ends.
+################################################################################
+
+if [[ "$ACTION" == "harvest" ]]; then
+    if [[ ! -d "$HARVEST_DIR" ]]; then
+        echo "NWP-HARVEST-EMPTY"
+        exit 0
+    fi
+    n=0
+    for f in $(ls -1t "${HARVEST_DIR}"/harvest-*.txt 2>/dev/null); do
+        [[ -s "$f" ]] || continue
+        echo "NWP-HARVEST-BEGIN $(basename "$f")"
+        cat "$f"
+        echo "NWP-HARVEST-END $(basename "$f")"
+        n=$(( n + 1 ))
+    done
+    [[ "$n" -eq 0 ]] && echo "NWP-HARVEST-EMPTY"
+    log "harvest-drained" "files=${n} client=${CLIENT%% *}"
     exit 0
 fi
 

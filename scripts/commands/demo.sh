@@ -98,6 +98,12 @@ ${BOLD}SUBCOMMANDS:${NC}
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
                                   retrying every 30 min until the 04:00
                                   ${DEMO_TZ} floor, then skip + log.
+    harvest-pull <site> --tier=live
+                                  Drain the LIVE box's spooled pre-wipe error
+                                  digests into the local spool. Read-only on the
+                                  box and deduplicated locally, so re-running is
+                                  free. Pair with harvest-post; without this the
+                                  box's digests age out and are lost.
     smoke <site> --tier=live      Assert the invite email's PROMISES against what
                                   the site actually serves: every route it sends
                                   testers to, the SSO button on the partner half,
@@ -2246,8 +2252,104 @@ main() {
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
+        harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
+}
+
+################################################################################
+# Subcommand: harvest-pull <site> --tier=live
+#
+# DRAIN the box's spooled error digests into the local spool, so
+# `pl demo harvest-post` can turn them into nwp/ops issues.
+#
+# This is the missing half of the feedback loop. The box has always WRITTEN a
+# pre-wipe error digest before each nightly reset — and nothing ever collected
+# it. Digests aged out of the box's 30-file window and every error a live
+# tester hit was lost, silently, which is the pilot's entire purpose going
+# missing. `cmd_harvest_post` read a LOCAL directory that live never wrote to.
+#
+# Idempotent: the box drain is read-only and emits everything it holds, and
+# this deduplicates against both the local spool and what has already been
+# posted. Re-running is free; a half-finished pull loses nothing.
+################################################################################
+cmd_harvest_pull() {
+    local site="$1" tier="${2:-live}" dry_run="${3:-false}"
+
+    if [[ "$tier" != "live" ]]; then
+        print_error "harvest-pull is a LIVE-tier action (the box is the only place these digests exist)."
+        return 1
+    fi
+
+    local hdir; hdir="$(demo_harvest_dir "$site")"
+    mkdir -p "$hdir/posted"
+
+    print_header "Demo harvest ← live box: $site"
+
+    # The restricted forced-command key is the right transport: it can run the
+    # action words and nothing else. Fall back to the ordinary admin path when
+    # the restricted key is not on this machine.
+    local keyfile="$HOME/.ssh/${site}_demo_reset" out
+    if [[ -r "$keyfile" ]]; then
+        if ! demo_live_ctx "$site"; then return 1; fi
+        out=$(ssh -i "$keyfile" -o IdentitiesOnly=yes -o IdentityAgent=none \
+                  -o BatchMode=yes -o StrictHostKeyChecking=accept-new -n \
+                  "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}" harvest 2>/dev/null) || {
+            print_error "Restricted-key drain failed. Is the box wrapper current? (scripts/deploy-demo-reset-wrapper.sh)"
+            return 1
+        }
+    else
+        print_info "No ${keyfile} on this host — draining over the ordinary admin path."
+        if ! demo_live_ctx "$site"; then return 1; fi
+        out=$(demo_rssh "$site" "sudo /usr/local/bin/${site}-demo-reset-restricted harvest" 2>/dev/null) || {
+            print_error "Could not drain the harvest spool from live."
+            return 1
+        }
+    fi
+
+    if [[ -z "$out" || "$out" == *"NWP-HARVEST-EMPTY"* && "$out" != *"NWP-HARVEST-BEGIN"* ]]; then
+        print_info "Box harvest spool is empty — nothing to pull."
+        return 0
+    fi
+
+    # Split the stream on the fixed envelope. Written to a .md so the existing
+    # poster picks it up, with the raw digest fenced so a watchdog table
+    # survives GitLab's markdown intact.
+    local pulled=0 skipped=0 name="" buf="" line
+    while IFS= read -r line; do
+        case "$line" in
+            "NWP-HARVEST-BEGIN "*) name="${line#NWP-HARVEST-BEGIN }"; buf=""; continue ;;
+            "NWP-HARVEST-END "*)
+                local base="${name%.txt}" target
+                target="$hdir/${base}.md"
+                if [[ -f "$target" || -f "$hdir/posted/${base}.md" ]]; then
+                    skipped=$(( skipped + 1 )); name=""; continue
+                fi
+                if [[ "$dry_run" == "true" ]]; then
+                    echo "  would pull: ${base}.md"
+                else
+                    {
+                        echo "harvested_utc: $(printf '%s' "$base" | sed -E 's/^harvest-//')"
+                        echo ""
+                        echo "Pre-wipe error digest drained from the ${site} live box."
+                        echo ""
+                        echo '```'
+                        printf '%s\n' "$buf"
+                        echo '```'
+                    } > "$target"
+                    print_status "OK" "pulled ${base}.md"
+                fi
+                pulled=$(( pulled + 1 )); name=""; continue ;;
+        esac
+        [[ -n "$name" ]] && buf+="${line}"$'\n'
+    done <<< "$out"
+
+    echo ""
+    print_info "Pulled: ${pulled}   Already had: ${skipped}"
+    if (( pulled > 0 )) && [[ "$dry_run" != "true" ]]; then
+        print_info "Post them with: pl demo harvest-post ${site}"
+    fi
+    return 0
 }
 
 ################################################################################

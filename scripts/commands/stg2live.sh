@@ -1769,6 +1769,37 @@ deploy_to_live() {
         "--exclude=auth.json"
     )
 
+    # ...but "oauth-keys" is only ONE of the names simple_oauth uses. nwc keeps
+    # its keypair in oauth-keys/, nwd keeps it in keys/ — the directory is
+    # whatever simple_oauth.settings points at, and hardcoding one name meant
+    # the other site got NONE of the protection above: rsync --delete would
+    # remove its signing keys and the chown below would hand private.key
+    # (0600) to the gitlab user, after which www-data cannot read it and EVERY
+    # OIDC/SSO login fails. So ask Drupal where its keys actually are.
+    #
+    # Fail SAFE, not silent: if the answer cannot be read, protect every name we
+    # know of rather than assuming the default. An over-broad exclude leaves a
+    # stale directory behind; an under-broad one breaks live SSO.
+    local key_dirs=() key_dir_msg=""
+    local _kd
+    _kd="$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "cd ${remote_path} && ${drush_sudo:-sudo -u www-data} vendor/bin/drush cget simple_oauth.settings private_key --format=string 2>/dev/null" 2>/dev/null | tr -d '\r')"
+    if [[ -n "$_kd" && "$_kd" == /* ]]; then
+        _kd="$(dirname "$_kd")"
+        # Only the basename is useful as an rsync exclude (they are relative to
+        # the transfer root).
+        key_dirs+=("$(basename "$_kd")")
+        key_dir_msg="simple_oauth keys live in ${_kd} — excluded from the sync"
+    else
+        key_dirs+=("oauth-keys" "keys")
+        key_dir_msg="could not read simple_oauth.settings — protecting BOTH 'oauth-keys' and 'keys' (fail-safe)"
+    fi
+    for _kd in "${key_dirs[@]}"; do
+        [[ "$_kd" == "oauth-keys" ]] && continue   # already in the list above
+        excludes+=("--exclude=${_kd}")
+    done
+    print_info "$key_dir_msg"
+
     # Sync files
     print_header "Syncing Files"
     print_info "Source: $stg_site/"
@@ -1791,7 +1822,15 @@ deploy_to_live() {
             # the post-rsync chown restored www-data:www-data, www-data could no
             # longer read private.key and EVERY SSO/OIDC login would break until a
             # manual re-chown. Prune oauth-keys so it stays www-data-owned throughout.
-            ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo find ${remote_path} -path ${remote_path}/oauth-keys -prune -o -exec chown gitlab:www-data {} +" 2>/dev/null || true
+            # Prune EVERY simple_oauth key directory, not just the literal
+            # "oauth-keys" — see the key_dirs resolution above. Missing one here
+            # is what would silently break live SSO.
+            local _prune=""
+            for _kd in "${key_dirs[@]}"; do
+                _prune+=" -path ${remote_path}/${_kd} -prune -o"
+            done
+            ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+                "sudo find ${remote_path}${_prune} -exec chown gitlab:www-data {} +" 2>/dev/null || true
         fi
     else
         print_info "[dry-run] skipping remote mkdir/chown (would write to the live host)"

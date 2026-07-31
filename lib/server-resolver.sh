@@ -176,13 +176,32 @@ get_server_sites() {
 }
 
 # Find which server a site is configured for, by reading its .nwp.yml.
+#
+# The declaration lives at sites/<name>/.nwp.yml — the SITE root. resolve_project
+# returns the working checkout, which for most sites is an environment directory
+# one level below that (sites/nwd/dev). Reading "$site_dir/.nwp.yml" therefore
+# found nothing and this function returned empty for every such site, silently:
+# callers that use it to pick a deployment target were choosing their fallback
+# every single time. Look at the canonical location first (matching
+# get_server_sites), then the resolved dir, then its parent.
 get_site_server() {
     local site="$1"
-    local site_dir
-    site_dir=$(resolve_project "$site" 2>/dev/null) || return 1
-    local cfg="$site_dir/.nwp.yml"
-    [[ -f "$cfg" ]] || return 1
-    local yq_bin
+    local yq_bin cfg
     yq_bin=$(_server_resolver_yq) || return 1
-    "$yq_bin" eval '.live.server // ""' "$cfg" 2>/dev/null
+
+    local root="${NWP_DIR:-${PROJECT_ROOT:-$HOME/nwp}}"
+    local candidates=("$root/sites/$site/.nwp.yml")
+
+    local site_dir
+    if site_dir=$(resolve_project "$site" 2>/dev/null); then
+        candidates+=("$site_dir/.nwp.yml" "$(dirname "$site_dir")/.nwp.yml")
+    fi
+
+    for cfg in "${candidates[@]}"; do
+        [[ -f "$cfg" ]] || continue
+        local out
+        out=$("$yq_bin" eval '.live.server // ""' "$cfg" 2>/dev/null)
+        if [[ -n "$out" ]]; then printf '%s\n' "$out"; return 0; fi
+    done
+    return 1
 }

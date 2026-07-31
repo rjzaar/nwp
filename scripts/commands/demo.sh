@@ -1965,7 +1965,7 @@ cmd_invite() {
             # then STOPS at the next 01:00 reset unless the box payload is
             # re-staged. Make that explicit rather than let it fail silently.
             print_warning "Code is live NOW, but the nightly reset restores the box's staged payload."
-            print_hint "To survive tonight's reset, re-stage on the box: servers/nwpcode/demo/install-box.sh --stage-codes"
+            print_hint "To survive tonight's reset, re-stage on the box: servers/sites1/demo/install-box.sh --stage-codes"
         fi
     else
         print_error "Codes were NOT synced to $site ($tier) — recipients would be REJECTED. The draft is saved, but do not send until the sync succeeds:"

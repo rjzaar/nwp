@@ -1,11 +1,11 @@
 #!/bin/bash
 ################################################################################
-# servers/nwpcode/demo/install-on-met.sh — hand the nwd nightly demo reset over
+# servers/sites1/demo/install-on-met.sh — hand the nwd nightly demo reset over
 # to met (ops#133). Run FROM the dev workstation, once, when met is reachable.
 #
-#   bash servers/nwpcode/demo/install-on-met.sh            # full handover
-#   bash servers/nwpcode/demo/install-on-met.sh --check    # verify only
-#   bash servers/nwpcode/demo/install-on-met.sh --keep-laptop-cron
+#   bash servers/sites1/demo/install-on-met.sh            # full handover
+#   bash servers/sites1/demo/install-on-met.sh --check    # verify only
+#   bash servers/sites1/demo/install-on-met.sh --keep-laptop-cron
 #
 # What it does, in order (each step is verified before the next):
 #   1. reach met

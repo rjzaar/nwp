@@ -1,13 +1,13 @@
 #!/bin/bash
 ################################################################################
-# servers/nwpcode/demo/install-box.sh — install the restricted demo-reset
+# servers/sites1/demo/install-box.sh — install the restricted demo-reset
 # wrapper + forced-command key on the git.nwpcode.org box (ops#133).
 #
 # Run FROM the dev workstation (it needs the admin gitlab_linode key to install
 # root-owned files). Idempotent: safe to re-run after editing the wrapper or
 # recapturing the golden image.
 #
-#   bash servers/nwpcode/demo/install-box.sh [--stage-golden] [--stage-codes]
+#   bash servers/sites1/demo/install-box.sh [--stage-golden] [--stage-codes]
 #
 #   --stage-golden   also (re)upload sites/nwd/demo-golden-live/* to the box
 #   --stage-codes    also (re)upload the hashed invite-code payload
@@ -27,7 +27,7 @@ BOX_HOST="${BOX_HOST:-git.nwpcode.org}"
 BOX_USER="${BOX_USER:-gitlab}"
 ADMIN_KEY="${ADMIN_KEY:-$HOME/.ssh/gitlab_linode}"
 DEMO_KEY="${DEMO_KEY:-$HOME/.ssh/nwd_demo_reset}"
-WRAPPER_SRC="${REPO_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"
+WRAPPER_SRC="${REPO_ROOT}/servers/sites1/demo/nwd-demo-reset-restricted"
 WRAPPER_DST="/usr/local/bin/nwd-demo-reset-restricted"
 GOLDEN_SRC="${NWP_ROOT}/sites/nwd/demo-golden-live"
 CODES_SRC="${NWP_ROOT}/sites/nwd/demo-codes.json"

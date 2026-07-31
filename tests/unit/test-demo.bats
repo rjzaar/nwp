@@ -1186,3 +1186,31 @@ EOF
   # dir demonstrably existed, and it is demonstrably gone again afterwards.
   [ ! -e "$(dirname "$staged")" ]
 }
+
+@test "invite email: courses URL resolves the paired demo consumer's login" {
+  # Regression for the 2026-07 invite bug: the email must name the courses
+  # site (paired Moodle) login, resolved generically from the pair contract.
+  run bash -c '
+    source "'"$PWD"'/lib/common.sh" 2>/dev/null
+    source "'"$PWD"'/lib/demo.sh" 2>/dev/null
+    # fake a repo with a demo pair + global domains
+    r="$(mktemp -d)"; mkdir -p "$r/pairs" "$r/sites/nwd" "$r/sites/ssd"
+    cat > "$r/pairs/ssd.pair-contract.yml" <<YML
+provider: nwd
+consumer: ssd
+demo: { enabled: true }
+YML
+    cat > "$r/nwp.yml" <<YML
+sites:
+  nwd: { live: { domain: nwd.example.test } }
+  ssd: { live: { domain: ssd.example.test } }
+YML
+    export PROJECT_ROOT="$r"
+    echo "COURSES=$(demo_invite_courses_url nwd)"
+    echo "JOIN=$(demo_invite_join_url nwd)"
+    rm -rf "$r"
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"COURSES=https://ssd.example.test/login/index.php"* ]]
+  [[ "$output" == *"JOIN=https://nwd.example.test/demo/join"* ]]
+}

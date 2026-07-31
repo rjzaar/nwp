@@ -45,6 +45,8 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/common.sh"
+# shellcheck source=/dev/null
+source "$REPO_ROOT/lib/demo-smoke.sh"
 source "$REPO_ROOT/lib/impact.sh"        # ops#47 impact contract (fate manifest)
 source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"     # paired golden/reset (ops#133 Phase 2)
@@ -96,6 +98,12 @@ ${BOLD}SUBCOMMANDS:${NC}
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
                                   retrying every 30 min until the 04:00
                                   ${DEMO_TZ} floor, then skip + log.
+    smoke <site> --tier=live      Assert the invite email's PROMISES against what
+                                  the site actually serves: every route it sends
+                                  testers to, the SSO button on the partner half,
+                                  and that the site names ITSELF and not its
+                                  partner. Read-only (GET only), so it is safe
+                                  against live and runnable from CI.
     status <site>                 Golden capture info, recent resets/skips,
                                   invite-code summary.
     codes <site> list             List codes (hashes only — never plaintext)
@@ -2233,12 +2241,93 @@ main() {
                   fi ;;
         nightly)  cmd_nightly "$site" "$tier" "$use_pair" ;;
         status)   cmd_status "$site" "$tier" ;;
+        smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
+}
+
+################################################################################
+# Subcommand: smoke <site> --tier=live|dev|stg [--ip=A.B.C.D]
+#
+# Assert the invite email's PROMISES against what the site actually serves.
+# Read-only: every probe is a GET, which is what makes it safe against live and
+# runnable from CI. See lib/demo-smoke.sh for why claim-checking and not uptime.
+################################################################################
+cmd_smoke() {
+    local site="$1" tier="${2:-live}" ip="${3:-}"
+
+    # The routes below are the PROVIDER's (Drupal): /demo/join, /user/login,
+    # /nwc/achievements. Pointed at the consumer half they are meaningless —
+    # Moodle redirects unknown paths to its login page, which then returns 200
+    # and every check passes while testing nothing. So resolve to the provider,
+    # the same way `pl demo reset` promotes either half to the paired run.
+    if demo_pair_resolve "$site" 2>/dev/null && [[ -n "${DEMO_PAIR_PROVIDER:-}" ]] \
+       && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
+        print_info "'$site' is the consumer half of ${DEMO_PAIR_LABEL:-the pair} — smoking the provider '${DEMO_PAIR_PROVIDER}' (which checks this half as STEP 2)."
+        site="$DEMO_PAIR_PROVIDER"
+    fi
+
+    local domain partner partner_domain
+    domain="$(get_site_config_value "$site" '.live.domain' "")"
+    if [[ -z "$domain" ]]; then
+        print_error "No .live.domain for '$site' — cannot smoke a site with no address."
+        return 1
+    fi
+    local base="https://${domain}"
+
+    # The partner half (ssd for nwd): STEP 2 of the invite email.
+    partner=""
+    if demo_pair_resolve "$site" 2>/dev/null; then
+        partner="$(demo_pair_partner "$site" "$DEMO_PAIR_CONTRACT" 2>/dev/null || true)"
+    fi
+    [[ -n "$partner" ]] && partner_domain="$(get_site_config_value "$partner" '.live.domain' "")"
+
+    print_header "demo smoke: ${site} @ ${tier}${ip:+  (forced to ${ip})}"
+    smoke_reset_counters
+
+    echo "  -- routes the invite email sends testers to --"
+    smoke_check_status "front door"        "${base}/"                 "200"         "$ip"
+    smoke_check_status "invite redemption" "${base}/demo/join"        "200"         "$ip"
+    smoke_check_status "feedback"          "${base}/feedback/submit"  "200,302,303,307" "$ip"
+    smoke_check_status "achievements"      "${base}/nwc/achievements" "200,302,303,403" "$ip"
+
+    echo "  -- identity / SSO surface --"
+    smoke_check_status "OIDC signing keys" "${base}/.well-known/jwks.json" "200"    "$ip"
+    smoke_check_status "login"             "${base}/user/login"       "200"         "$ip"
+
+    if [[ -n "${partner_domain:-}" ]]; then
+        echo "  -- STEP 2: the partner half (${partner}) --"
+        smoke_check_status   "partner login"      "https://${partner_domain}/login/index.php" "200" "$ip"
+        # The email tells testers to click a button that says this. If the OIDC
+        # issuer is disabled or renamed, the page still 200s and the button is
+        # simply gone — which is invisible to any uptime check.
+        smoke_check_contains "partner SSO button" "https://${partner_domain}/login/index.php" \
+                             "Log in using your account on" "$ip"
+    fi
+
+    echo "  -- claims that are true or false, never merely 'up' --"
+    # A1-2: nwd shipped with system.site.name = "Saint School Demo" — the
+    # PARTNER's name — on every page title while claiming to be the community.
+    # Both halves of this are checked, because either alone is passable: the
+    # page must carry its OWN name AND must not carry the partner's.
+    local own_name partner_name=""
+    own_name="$(get_site_config_value "$site" '.project.title' "")"
+    if [[ -n "$partner" ]]; then
+        partner_name="$(get_site_config_value "$partner" '.project.title' "")"
+        [[ "$partner_name" == "$own_name" ]] && partner_name=""
+    fi
+    if [[ -n "$own_name" ]]; then
+        smoke_check_title "site names ITSELF, not partner" "${base}/" "$own_name" "$partner_name" "$ip"
+    else
+        printf '  [warn] %-34s no .project.title declared — cannot check the name it claims\n' "site name"
+        SMOKE_WARN=$((SMOKE_WARN+1))
+    fi
+
+    smoke_summary
 }
 
 # Sourced by tests (bats) to exercise the manifest builders without

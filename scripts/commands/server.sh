@@ -848,14 +848,13 @@ cmd_sync() {
         return 0
     fi
 
-    # Tier "standard", not "typed": this overwrites databases, but the SOURCE is
-    # untouched, so a recovery path survives. impact_confirm takes the literal
-    # string "true" and only knows the tiers standard|typed — an unknown tier or
-    # a bare 1 here silently became "abort".
-    local confirm_auto=false
-    (( auto_yes )) && confirm_auto=true
-    if ! impact_confirm standard \
-        "overwrite ${#plan_site[@]} database(s) on '${to}' with live data from '${from}'" "$confirm_auto"; then
+    # Say exactly what is about to be destroyed BEFORE asking. The report is
+    # unconditional; only the prompt is skippable with -y. A verb that
+    # overwrites live databases must never be able to run without first naming
+    # them (lib/impact.sh, the same contract `pl delete` follows).
+    # The manifest and the prompt live with the destructive primitives, in
+    # lib/server-sync.sh, so no other caller can drive them with no manifest.
+    if ! sync_render_and_confirm "$from" "$to" "$do_files" "$auto_yes" plan_site plan_db; then
         print_info "Aborted."
         return 1
     fi
@@ -1027,6 +1026,20 @@ cmd_handoff() {
         print_info "DRY RUN — $(printf '%s\n' "$names" | wc -l) hostname(s) would switch to ${mode}."
         return 0
     fi
+    impact_reset
+    if [[ "$mode" == "drain" ]]; then
+        impact_overwrite "${server}: nginx vhosts for $(printf '%s\n' "$names" | wc -l) hostname(s)" \
+                         "replaced with a 503 maintenance vhost — these sites STOP SERVING"
+        impact_warn "This is user-visible downtime for every hostname listed above."
+    else
+        impact_overwrite "${server}: nginx vhosts for $(printf '%s\n' "$names" | wc -l) hostname(s)" \
+                         "replaced with a proxy to ${target_ip} — traffic leaves this box"
+    fi
+    impact_keep "The original vhosts, copied to ${HANDOFF_BACKUP_DIR} on the box itself"
+    impact_keep "Every hostname NOT listed above (git/hs and anything --exclude'd)"
+    impact_keep "All site data on ${server} — this changes routing only, never content"
+    impact_render
+
     if ! impact_confirm standard "switch $(printf '%s\n' "$names" | wc -l) hostname(s) on '${server}' to ${mode}" \
         "$( ((auto_yes)) && echo true || echo false )"; then
         print_info "Aborted."; return 1

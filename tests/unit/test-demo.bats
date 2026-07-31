@@ -588,21 +588,21 @@ STUB
 
 # --- Option A: restricted forced-command key (ops#133) ------------------------
 #
-# The wrapper is versioned at servers/nwpcode/demo/nwd-demo-reset-restricted and
+# The wrapper is versioned at servers/sites1/demo/nwd-demo-reset-restricted and
 # installed on the box as /usr/local/bin/nwd-demo-reset-restricted. Its
 # client-input handling is the security boundary, so it is tested by RUNNING it
 # with $SSH_ORIGINAL_COMMAND set. These tests never reach the destructive path:
 # on a machine with no /var/www/nwd the wrapper dies at its precheck, which is
 # itself the assertion that an allowed word got past the allowlist.
 
-wrapper() { echo "${REPO_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"; }
+wrapper() { echo "${REPO_ROOT}/servers/sites1/demo/nwd-demo-reset-restricted"; }
 
 @test "restricted wrapper is bash -n clean, and so are its installers" {
   run bash -n "$(wrapper)"
   [ "$status" -eq 0 ]
-  run bash -n "${REPO_ROOT}/servers/nwpcode/demo/install-box.sh"
+  run bash -n "${REPO_ROOT}/servers/sites1/demo/install-box.sh"
   [ "$status" -eq 0 ]
-  run bash -n "${REPO_ROOT}/servers/nwpcode/demo/install-on-met.sh"
+  run bash -n "${REPO_ROOT}/servers/sites1/demo/install-on-met.sh"
   [ "$status" -eq 0 ]
 }
 
@@ -703,7 +703,7 @@ wrapper() { echo "${REPO_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"; 
 }
 
 @test "authorized_keys restrictions installed are the full hardened set" {
-  local ib="${REPO_ROOT}/servers/nwpcode/demo/install-box.sh"
+  local ib="${REPO_ROOT}/servers/sites1/demo/install-box.sh"
   grep -q 'command="/usr/local/bin/nwd-demo-reset-restricted"' "$ib"
   local o
   for o in no-agent-forwarding no-port-forwarding no-pty no-user-rc no-X11-forwarding; do

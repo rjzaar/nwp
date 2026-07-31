@@ -27,6 +27,15 @@
 [[ -n "${_NWP_SERVER_SYNC_LOADED:-}" ]] && return 0
 _NWP_SERVER_SYNC_LOADED=1
 
+# The destructive act lives HERE, so the fate manifest and the confirmation
+# live here too (lib/impact.sh, the ops#47 contract). Putting the gate in the
+# caller would mean a second caller could drive these primitives with no
+# manifest at all — which is exactly the hole the contract exists to close.
+_nwp_sync_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=impact.sh
+[[ -f "$_nwp_sync_lib_dir/impact.sh" ]] && source "$_nwp_sync_lib_dir/impact.sh"
+unset _nwp_sync_lib_dir
+
 # ---------------------------------------------------------------------------
 # ssh_prefix_for <server-name>
 # Builds the ssh invocation for a server from its record. -n is deliberately
@@ -41,6 +50,46 @@ sync_ssh_prefix() {
     [[ -n "$ip" && -n "$user" ]] || return 1
     printf 'ssh -i %s -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new %s@%s' \
         "$key" "$user" "$ip"
+}
+
+# ---------------------------------------------------------------------------
+# sync_render_and_confirm <from> <to> <do_files> <auto_yes> <site...> — the gate.
+#
+# Names every database about to be replaced BEFORE asking, and refuses to
+# proceed unless confirmed. The report is unconditional; only the prompt is
+# skippable. Arrays are read from the caller's plan via nameref so the manifest
+# lists real targets rather than a count.
+#
+# Tier "standard", not "typed": this overwrites databases, but the SOURCE is
+# only ever read, so a recovery path survives.
+# ---------------------------------------------------------------------------
+sync_render_and_confirm() {
+    local from="$1" to="$2" do_files="$3" auto_yes="$4"
+    local -n _sites="$5"
+    local -n _dbs="$6"
+
+    impact_reset
+    local i
+    for i in "${!_sites[@]}"; do
+        impact_overwrite "${to}: database '${_dbs[$i]}'" \
+                         "replaced wholesale with ${from}'s live copy (site ${_sites[$i]})"
+    done
+    if [[ "$do_files" == "1" ]]; then
+        for i in "${!_sites[@]}"; do
+            impact_overwrite "${to}: ${_sites[$i]} data files" \
+                             "rsync --delete from ${from}; files absent on ${from} are REMOVED on ${to}"
+        done
+    fi
+    impact_warn "Anything written on '${to}' since the last sync is lost — this is a one-way copy."
+    impact_warn "Run this only while '${to}' is not taking live traffic (see: pl server handoff drain)."
+    impact_keep "Source server '${from}' — read-only throughout; dumps only, never modified"
+    impact_keep "Every database on '${to}' NOT listed above"
+    impact_render
+
+    local confirm_auto=false
+    [[ "$auto_yes" == "1" ]] && confirm_auto=true
+    impact_confirm standard \
+        "overwrite ${#_sites[@]} database(s) on '${to}' with live data from '${from}'" "$confirm_auto"
 }
 
 # ---------------------------------------------------------------------------

@@ -69,7 +69,7 @@ _probe() {
     # The pre-item-7 gate saw none of these three roots' contents together.
     [[ "$output" == *"scripts/commands/delete.sh"* ]]
     [[ "$output" == *"lib/moodle-promote.sh"* ]]
-    [[ "$output" == *"servers/nwpcode/demo/nwd-demo-reset-restricted"* ]]
+    [[ "$output" == *"servers/sites1/demo/nwd-demo-reset-restricted"* ]]
 }
 
 @test "the gate has a non-trivial corpus (cannot pass over an empty scan)" {
@@ -286,7 +286,7 @@ BENIGN
 # proves nothing. Extract the render function, stub every external it touches,
 # run it, and assert the text.
 _render_demo_manifest() {
-    local f="${PROJECT_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"
+    local f="${PROJECT_ROOT}/servers/sites1/demo/nwd-demo-reset-restricted"
     local harness="${BATS_TEST_TMPDIR}/render.sh"
     {
         echo '#!/bin/bash'
@@ -328,7 +328,7 @@ _render_demo_manifest() {
 }
 
 @test "ops#143: the demo reset satisfies the contract via the inline pragma" {
-    impact_contract_adopted "${PROJECT_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"
+    impact_contract_adopted "${PROJECT_ROOT}/servers/sites1/demo/nwd-demo-reset-restricted"
 }
 
 # ---------------------------------------------------------------------------

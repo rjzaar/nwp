@@ -87,7 +87,19 @@ except Exception: pass' 2>/dev/null || true)
             ;;
         *) return 1 ;;
     esac
-    printf '%s' "$(printf '%s' "$out" | tr -d '[:space:]')"
+
+    out=$(printf '%s' "$out" | tr -d '[:space:]')
+
+    # Validate the SHAPE before returning. These probes run application code,
+    # and a broken application answers with prose: a Moodle whose dataroot is
+    # unwritable prints "Fatal error: \$CFG->dataroot is not writable..." on
+    # stdout, which was then reported as though it were the database name. A
+    # MySQL identifier is at most 64 characters of word characters, $ and -, so
+    # anything else is an error message and must be treated as "unknown".
+    if [[ ! "$out" =~ ^[A-Za-z0-9_$-]{1,64}$ ]]; then
+        return 1
+    fi
+    printf '%s' "$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -174,13 +186,39 @@ sync_dir_relay() {
 
     local stage="${stage_root}${path}"
     mkdir -p "$stage" || return 1
+
+    # --fake-super is load-bearing on BOTH hops. The staging tree is written by
+    # an unprivileged workstation user, which CANNOT own files as www-data:
+    # without this, `rsync -a` silently downgrades every file to the local user,
+    # and the second hop then faithfully applies that wrong owner on the target.
+    # The observable result is a Moodle that returns HTTP 500 because its
+    # dataroot is no longer writable — after a sync that reported success for
+    # every tree. --fake-super stores the real ownership in extended attributes
+    # on the staging side and restores it on the way out.
+    #
     # Trailing slashes: copy the CONTENTS of the directory, not the directory
     # into itself. --delete so a file removed on the source is removed on the
     # target too; a migration that only ever adds is not a copy.
-    rsync -a --delete --numeric-ids --rsync-path="sudo rsync" \
+    rsync -a --delete --numeric-ids --fake-super --rsync-path="sudo rsync" \
           -e "$sopt" "${suser}@${sip}:${path}/" "${stage}/" || return 1
-    rsync -a --delete --numeric-ids --rsync-path="sudo rsync" \
+    rsync -a --delete --numeric-ids --fake-super --rsync-path="sudo rsync" \
           -e "$dopt" "${stage}/" "${duser}@${dip}:${path}/" || return 1
+
+    # Then PROVE it. The failure above was invisible precisely because nothing
+    # compared the two sides afterwards; a copy nobody checked is not a copy.
+    local sown town
+    sown=$(ssh -i "$skey" -o IdentitiesOnly=yes -o BatchMode=yes -n "${suser}@${sip}" \
+             "sudo stat -c '%U:%G:%a' '${path}'" 2>/dev/null || true)
+    town=$(ssh -i "$dkey" -o IdentitiesOnly=yes -o BatchMode=yes -n "${duser}@${dip}" \
+             "sudo stat -c '%U:%G:%a' '${path}'" 2>/dev/null || true)
+    if [[ -z "$sown" || -z "$town" ]]; then
+        echo "    cannot verify ownership of ${path} — refusing to call this synced" >&2
+        return 1
+    fi
+    if [[ "$sown" != "$town" ]]; then
+        echo "    ownership/mode mismatch on ${path}: source=${sown} target=${town}" >&2
+        return 1
+    fi
 }
 
 # ---------------------------------------------------------------------------

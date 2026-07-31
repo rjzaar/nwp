@@ -342,21 +342,23 @@ demo_invite_level_block() {
 This is the everyday member experience — what most people who join will see.
 
 In the community you start as a SOJOURNER: the open, entry-level formation
-guild. Everyone begins here, and you move up simply by completing courses —
-every honest path reaches the top. (Sojourners sit under the Theology Guild,
-the mature guild you can grow into later.)
+guild everyone begins in. (Sojourners sit under the Theology Guild, the mature
+guild you can grow into later.) The intention is that completing courses will
+carry you upward through the guilds — that link is still being wired, so we'd
+love to hear how you'd expect progression to feel.
 
 Try these in the community — ${cb}
 - Open the guilds index at /all-groups, join one, and look inside.
 - Browse the activity stream at /explore.
 - Open your profile and try the privacy and sharing choices — change them
   and see what it affects.
-- Watch your Sojourner progress build at /nwc/achievements.
+- See your Sojourner membership at /nwc/achievements.
 - Do some of this on your phone — does it still feel easy?
 
 Then try the courses (Step 2 above)
 - Open the Saint School catalogue and start a course.
-- Come back and see whether finishing it moved your progress.
+- Then tell us: would you expect finishing a course to move your community
+  progress? (That connection is still being built — your instinct helps us.)
 BLOCK
             ;;
         tester-guild-leader)

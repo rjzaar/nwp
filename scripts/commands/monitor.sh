@@ -156,11 +156,13 @@ _monitor_server_ips() {
     yq eval '.sites // {} | keys | .[]' "$CONFIG_FILE" 2>/dev/null | while read -r site; do
         [ -n "$site" ] || continue
         local srv ip
-        srv=$(get_site_config_value "$site" '.live.server' "" 2>/dev/null || true)
+        # Read from CONFIG_FILE (the source monitor is given): a named .live.server
+        # resolves through the registry; else the bare .live.server_ip.
+        srv=$(site="$site" yq eval '.sites[env(site)].live.server // ""' "$CONFIG_FILE" 2>/dev/null || true)
         if [ -n "$srv" ] && [ "$srv" != "null" ]; then
             ip=$(get_server_ip "$srv" 2>/dev/null || true)
         else
-            ip=$(get_site_config_value "$site" '.live.server_ip' "" 2>/dev/null || true)
+            ip=$(site="$site" yq eval '.sites[env(site)].live.server_ip // ""' "$CONFIG_FILE" 2>/dev/null || true)
         fi
         [ -n "$ip" ] && [ "$ip" != "null" ] || continue
         _is_placeholder_domain "$ip" && continue
@@ -338,11 +340,11 @@ cmd_mail() {
     # Domain from nwp.yml; server IP resolved per-site via the registry so a
     # named-server site isn't invisible and the IP is never stale (H2).
     domain=$(site="$base" yq eval '.sites[env(site)].live.domain // ""' "$CONFIG_FILE" 2>/dev/null || true)
-    srv=$(get_site_config_value "$base" '.live.server' "" 2>/dev/null || true)
+    srv=$(site="$base" yq eval '.sites[env(site)].live.server // ""' "$CONFIG_FILE" 2>/dev/null || true)
     if [ -n "$srv" ] && [ "$srv" != "null" ]; then
         server_ip=$(get_server_ip "$srv" 2>/dev/null || true)
     else
-        server_ip=$(get_site_config_value "$base" '.live.server_ip' "" 2>/dev/null || true)
+        server_ip=$(site="$base" yq eval '.sites[env(site)].live.server_ip // ""' "$CONFIG_FILE" 2>/dev/null || true)
     fi
     [ "$server_ip" = "null" ] && server_ip=""
     if [ -z "$domain" ] || _is_placeholder_domain "$domain"; then

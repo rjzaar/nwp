@@ -938,7 +938,11 @@ demo_sync_codes_to_site() {
 
     if demo_is_live "$tier"; then
         demo_live_ctx "$site" || return 1
-        if demo_rdrush "$site" state:set nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
+        # --input-format=string is load-bearing: CodeRegistry::liveCodes() fails
+        # closed (rejects EVERY code) unless the stored state value is_string. A
+        # drush default of --input-format=auto would parse this JSON into an
+        # array and silently break all invite codes. Pin it explicitly.
+        if demo_rdrush "$site" state:set --input-format=string nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
             demo_log "$site" codes-synced "tier=$tier"
             return 0
         fi
@@ -948,7 +952,7 @@ demo_sync_codes_to_site() {
     fi
 
     proj="$(demo_project_dir "$site" "$tier")" || return 1
-    if demo_drush "$proj" state:set nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
+    if demo_drush "$proj" state:set --input-format=string nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
         demo_log "$site" codes-synced "tier=$tier"
         return 0
     fi
@@ -1950,9 +1954,23 @@ cmd_invite() {
     fi
     print_hint "Consider deleting the draft file after sending (the registry keeps only hashes)."
 
-    # Push the new hashes into the running site (non-fatal — codes can be
-    # re-synced with `pl demo codes $site sync`).
-    demo_sync_codes_to_site "$site" "$tier" || true
+    # Push the new hashes into the running site. Non-fatal to the DRAFT (which is
+    # already saved), but the operator MUST know if the code never reached the
+    # site — otherwise they hand out a code that rejects every recipient.
+    if demo_sync_codes_to_site "$site" "$tier"; then
+        if demo_is_live "$tier"; then
+            # DUAL SOURCE OF TRUTH (demo-pilot audit A4-B3): the live sync writes
+            # Drupal state NOW, but the nightly box reset overwrites that state
+            # from its own staged payload. A freshly-issued code works today and
+            # then STOPS at the next 01:00 reset unless the box payload is
+            # re-staged. Make that explicit rather than let it fail silently.
+            print_warning "Code is live NOW, but the nightly reset restores the box's staged payload."
+            print_hint "To survive tonight's reset, re-stage on the box: servers/nwpcode/demo/install-box.sh --stage-codes"
+        fi
+    else
+        print_error "Codes were NOT synced to $site ($tier) — recipients would be REJECTED. The draft is saved, but do not send until the sync succeeds:"
+        print_hint "  pl demo codes $site sync --tier=$tier"
+    fi
 }
 
 ################################################################################

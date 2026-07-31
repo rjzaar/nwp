@@ -1214,3 +1214,26 @@ YML
   [[ "$output" == *"COURSES=https://ssd.example.test/login/index.php"* ]]
   [[ "$output" == *"JOIN=https://nwd.example.test/demo/join"* ]]
 }
+
+# --- demo-pilot audit 2026-07-31: live code-sync safety (A4-B3/M2/m2) ----------
+
+@test "live code sync pins drush --input-format=string on BOTH paths (CodeRegistry fails closed on a non-string)" {
+  # A drush default of --input-format=auto would parse the JSON payload into an
+  # array; CodeRegistry::liveCodes() then rejects every invite code. Load-bearing.
+  run grep -c 'state:set --input-format=string nwc_demo_access.codes' "$DEMO_CMD"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 2 ]
+}
+
+@test "invite branches on the code-sync result and warns loudly on failure (not silent success)" {
+  # Regression: cmd_invite used to swallow the sync rc with `|| true` and still
+  # print OK, so an operator could hand out a code that reached no site. It now
+  # branches on the rc and refuses to imply the code is usable when sync failed.
+  grep -qF 'if demo_sync_codes_to_site "$site" "$tier"; then' "$DEMO_CMD"
+  grep -q 'recipients would be REJECTED' "$DEMO_CMD"
+}
+
+@test "invite warns a live code won't survive the nightly box reset until re-staged (A4-B3)" {
+  grep -q 'nightly reset restores the box' "$DEMO_CMD"
+  grep -q 'install-box.sh --stage-codes' "$DEMO_CMD"
+}

@@ -594,6 +594,79 @@ cmd_migrate() {
 }
 
 ################################################################################
+# Subcommand: add — onboard a NEW server by command (create servers/<name>/
+# .nwp-server.yml from flags) instead of hand-authoring it. Future-proofs the
+# estate for N servers (multi-server audit 2026-07-31).
+################################################################################
+cmd_add() {
+    local name="" ip="" ssh_user="gitlab" ssh_key='~/.ssh/nwp' domain="nwpcode.org"
+    local provider="linode" region="" linode_id="" linode_label="" force=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --ip=*)           ip="${1#*=}" ;;
+            --ssh-user=*)     ssh_user="${1#*=}" ;;
+            --ssh-key=*)      ssh_key="${1#*=}" ;;
+            --domain=*)       domain="${1#*=}" ;;
+            --provider=*)     provider="${1#*=}" ;;
+            --region=*)       region="${1#*=}" ;;
+            --linode-id=*)    linode_id="${1#*=}" ;;
+            --linode-label=*) linode_label="${1#*=}" ;;
+            --force)          force=true ;;
+            -h|--help)        echo "Usage: pl server add <name> --ip=<ipv4> [--ssh-user=gitlab] [--ssh-key=~/.ssh/nwp] [--domain=nwpcode.org] [--provider=linode] [--region=] [--linode-id=] [--linode-label=] [--force]"; return 0 ;;
+            -*)               echo "Unknown option: $1" >&2; return 1 ;;
+            *)                if [[ -z "$name" ]]; then name="$1"; else echo "Unexpected argument: $1" >&2; return 1; fi ;;
+        esac
+        shift
+    done
+    [[ -n "$name" ]] || { echo "Usage: pl server add <name> --ip=<ipv4> [...]" >&2; return 1; }
+    [[ "$name" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "Invalid server name '$name' (lowercase letter, then [a-z0-9_-])." >&2; return 1; }
+    [[ -n "$ip" ]] || { echo "--ip=<ipv4> is required." >&2; return 1; }
+    [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "Invalid --ip '$ip' (expected IPv4)." >&2; return 1; }
+    # Servers base is overridable (NWP_SERVERS_DIR) so tests stay isolated while
+    # lib/ still loads from the real repo root.
+    local base="${NWP_SERVERS_DIR:-$PROJECT_ROOT/servers}" dir cfg
+    dir="$base/$name"
+    cfg="$dir/.nwp-server.yml"
+    if [[ -e "$cfg" && "$force" != true ]]; then
+        echo "Refusing to overwrite $cfg (use --force)." >&2
+        return 1
+    fi
+    mkdir -p "$dir"
+    {
+        echo "---"
+        echo "# $name — server identity (created by \`pl server add\`)."
+        echo "# Read by NWP via lib/server-resolver.sh; schema-versioned (lib/migrate-schema.sh)."
+        echo "schema_version: $CURRENT_SERVER_SCHEMA"
+        echo "nwp_version_created: \"$NWP_VERSION\""
+        echo "nwp_version_updated: \"$NWP_VERSION\""
+        echo ""
+        echo "server:"
+        echo "  name: $name"
+        echo "  ip: $ip"
+        echo "  domain: $domain"
+        echo "  ssh_user: $ssh_user"
+        echo "  ssh_key: $ssh_key"
+        [[ -n "$linode_id" ]]    && echo "  linode_id: $linode_id"
+        [[ -n "$linode_label" ]] && echo "  linode_label: $linode_label"
+        echo "  provider: $provider"
+        [[ -n "$region" ]]       && echo "  region: $region"
+        echo ""
+        echo "services:"
+        echo "  nginx: true"
+        echo "  postfix: true"
+        echo "  certbot: true"
+        echo "  fail2ban: true"
+        echo "  ufw: true"
+        echo ""
+        echo "# Authoritative site mapping is derived from sites/*/.nwp.yml (.live.server == $name)."
+        echo "hosted_sites: []"
+    } > "$cfg"
+    echo "Created $cfg"
+    echo "Next: point sites at it — set '.live.server: $name' in each sites/<name>/.nwp.yml"
+    echo "Verify: pl server show $name  &&  pl server status $name"
+}
+
+################################################################################
 # Dispatcher
 ################################################################################
 sub="${1:-}"
@@ -601,6 +674,7 @@ shift || true
 
 case "$sub" in
     list)    cmd_list "$@" ;;
+    add)     cmd_add "$@" ;;
     show)    cmd_show "$@" ;;
     status)  cmd_status "$@" ;;
     health)  cmd_health "$@" ;;
@@ -616,6 +690,9 @@ Usage: pl server <subcommand> [args]
 
 Subcommands:
   list                  List all servers under servers/
+  add <name> --ip=IPV4  Onboard a new server: write servers/<name>/.nwp-server.yml
+                        [--ssh-user= --ssh-key= --domain= --provider= --region=
+                        --linode-id= --linode-label= --force]
   show <name>           Print .nwp-server.yml for a server
   status [name|--all]   Check SSH reachability for one or all servers
   health [name|--all]   Load / memory / disk HEADROOM — the preflight every

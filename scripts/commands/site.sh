@@ -137,11 +137,16 @@ _generate_site_config() {
         fi
     fi
 
-    # Server name (Phase 8 will flesh this out properly; for Phase 1
-    # we just tag nwpcode when the IP matches the known primary).
-    local server_name=""
-    if [[ "$live_server_ip" == "97.107.137.88" || "$live_server_ip" == "YOUR_SERVER_IP" ]]; then
-        server_name="nwpcode"
+    # Server name: resolve from the IP by scanning the server registry, so this
+    # works for ANY configured server (not just the original box) — multi-server
+    # audit H3, 2026-07-31.
+    local server_name="" _s
+    if [[ -n "$live_server_ip" && "$live_server_ip" != "YOUR_SERVER_IP" ]]; then
+        for _s in $(discover_servers 2>/dev/null); do
+            if [[ "$(get_server_ip "$_s" 2>/dev/null)" == "$live_server_ip" ]]; then
+                server_name="$_s"; break
+            fi
+        done
     fi
 
     # Begin writing the file (atomic: tmp then mv)

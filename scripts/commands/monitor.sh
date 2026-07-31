@@ -145,14 +145,26 @@ _monitor_git_host() {
     printf '%s\n' "${url%%[:/]*}"   # host up to the first : or /
 }
 
-# Distinct, non-placeholder live server_ips across all configured sites — probed
-# once each as bare-IP endpoints (covers the shared live server without naming
-# it in source).
+# Distinct, non-placeholder live server IPs across all configured sites — probed
+# once each as bare-IP endpoints. Resolves each site's server the SAME way the
+# deploy path does (.live.server named -> server registry ip, else
+# .live.server_ip) so multi-server estates are covered and the IP is never a
+# stale nwp.yml literal (H2, multi-server audit 2026-07-31).
 _monitor_server_ips() {
     [ -f "$CONFIG_FILE" ] || return 0
     command -v yq >/dev/null 2>&1 || return 0
-    yq eval '.sites // {} | to_entries | .[] | select(.value.live.server_ip) | .value.live.server_ip' \
-        "$CONFIG_FILE" 2>/dev/null | while read -r ip; do
+    yq eval '.sites // {} | keys | .[]' "$CONFIG_FILE" 2>/dev/null | while read -r site; do
+        [ -n "$site" ] || continue
+        local srv ip
+        # Read from CONFIG_FILE (the source monitor is given): a named .live.server
+        # resolves through the registry; else the bare .live.server_ip.
+        srv=$(site="$site" yq eval '.sites[env(site)].live.server // ""' "$CONFIG_FILE" 2>/dev/null || true)
+        if [ -n "$srv" ] && [ "$srv" != "null" ]; then
+            ip=$(get_server_ip "$srv" 2>/dev/null || true)
+        else
+            ip=$(site="$site" yq eval '.sites[env(site)].live.server_ip // ""' "$CONFIG_FILE" 2>/dev/null || true)
+        fi
+        [ -n "$ip" ] && [ "$ip" != "null" ] || continue
         _is_placeholder_domain "$ip" && continue
         printf '%s\n' "$ip"
     done | sort -u
@@ -323,11 +335,18 @@ cmd_mail() {
         return 1
     fi
 
-    local base domain server_ip
+    local base domain server_ip srv
     base=$(get_base_name "$site" 2>/dev/null || echo "$site")
-    # Domain + server_ip come from nwp.yml (root config). Read-only.
+    # Domain from nwp.yml; server IP resolved per-site via the registry so a
+    # named-server site isn't invisible and the IP is never stale (H2).
     domain=$(site="$base" yq eval '.sites[env(site)].live.domain // ""' "$CONFIG_FILE" 2>/dev/null || true)
-    server_ip=$(site="$base" yq eval '.sites[env(site)].live.server_ip // ""' "$CONFIG_FILE" 2>/dev/null || true)
+    srv=$(site="$base" yq eval '.sites[env(site)].live.server // ""' "$CONFIG_FILE" 2>/dev/null || true)
+    if [ -n "$srv" ] && [ "$srv" != "null" ]; then
+        server_ip=$(get_server_ip "$srv" 2>/dev/null || true)
+    else
+        server_ip=$(site="$base" yq eval '.sites[env(site)].live.server_ip // ""' "$CONFIG_FILE" 2>/dev/null || true)
+    fi
+    [ "$server_ip" = "null" ] && server_ip=""
     if [ -z "$domain" ] || _is_placeholder_domain "$domain"; then
         print_error "No live domain configured for '$base' (sites.$base.live.domain in nwp.yml)"
         return 1

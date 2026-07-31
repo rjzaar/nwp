@@ -32,6 +32,47 @@ _NWP_SERVER_HANDOFF_LOADED=1
 HANDOFF_CONF_DIR="${HANDOFF_CONF_DIR:-/etc/nginx/conf.d}"
 HANDOFF_BACKUP_DIR="${HANDOFF_BACKUP_DIR:-/etc/nginx/conf.d-handoff-original}"
 
+# handoff_nginx_test <ssh-prefix>
+# Validate the configuration that is ACTUALLY SERVING, and reload that one.
+#
+# On a GitLab-omnibus box the site vhosts are served by GitLab's BUNDLED nginx
+# (which includes /etc/nginx/conf.d/*.conf), while the distro nginx package is
+# installed but inactive. `sudo nginx -t` there tests the distro config — a
+# different file set, including /etc/nginx/sites-enabled/* that the running
+# server never reads. So the safety check passed on a config nobody was using,
+# and then a bundled-nginx reload shipped changes that had never been tested.
+# It also produced phantom "conflicting server name" warnings from stale
+# sites-enabled entries, which is noise that trains you to ignore the check.
+#
+# Detection is by what is RUNNING, not by what is installed. During a migration
+# BOTH nginxes exist on the same box — the sites box is a clone that still has
+# GitLab's binaries on disk while the distro nginx is the one serving — so
+# "the omnibus binary exists" picks the wrong config exactly when it matters.
+# This must agree with handoff_nginx_reload: the whole point is to test the
+# config that is about to be reloaded.
+handoff_nginx_test() {
+    local prefix="$1"
+    if $prefix "systemctl is-active --quiet nginx" </dev/null 2>/dev/null; then
+        $prefix "sudo nginx -t" </dev/null
+    elif $prefix "test -x /opt/gitlab/embedded/sbin/nginx" </dev/null 2>/dev/null; then
+        $prefix "sudo /opt/gitlab/embedded/sbin/nginx -t -c /var/opt/gitlab/nginx/conf/nginx.conf -p /var/opt/gitlab/nginx" </dev/null
+    else
+        $prefix "sudo nginx -t" </dev/null
+    fi
+}
+
+# handoff_nginx_reload <ssh-prefix>
+handoff_nginx_reload() {
+    local prefix="$1"
+    if $prefix "systemctl is-active --quiet nginx" </dev/null 2>/dev/null; then
+        $prefix "sudo systemctl reload nginx" </dev/null
+    elif $prefix "test -x /usr/bin/gitlab-ctl" </dev/null 2>/dev/null; then
+        $prefix "sudo gitlab-ctl hup nginx" </dev/null
+    else
+        return 1
+    fi
+}
+
 # handoff_server_names <ssh-prefix>
 # Every server_name nginx actually serves on the box, one per line. Read from
 # the running configuration, not from a list someone maintained by hand.

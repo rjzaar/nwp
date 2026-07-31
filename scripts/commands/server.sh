@@ -983,7 +983,8 @@ cmd_handoff() {
             print_info "DRY RUN — would restore the original vhosts on '${server}' from ${HANDOFF_BACKUP_DIR}"
             return 0
         fi
-        $sp "sudo cp -a ${HANDOFF_BACKUP_DIR}/. ${HANDOFF_CONF_DIR}/ && sudo nginx -t && sudo systemctl reload nginx" </dev/null \
+        $sp "sudo cp -a ${HANDOFF_BACKUP_DIR}/. ${HANDOFF_CONF_DIR}/" </dev/null \
+            && handoff_nginx_test "$sp" && handoff_nginx_reload "$sp" \
             || { print_error "restore failed — nginx config NOT reloaded"; return 1; }
         print_status "OK" "original vhosts restored on '${server}'"
         return 0
@@ -1058,13 +1059,13 @@ cmd_handoff() {
         retire+="for f in \$(sudo grep -rlE '^[[:space:]]*server_name([[:space:]]|.*[[:space:]])${n}[[:space:]]*;' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | grep -v '/handoff-'); do sudo mv \"\$f\" \"\$f.pre-handoff\"; done; "
     done <<< "$names"
 
-    if ! $sp "${retire} sudo mv /tmp/handoff-*.conf ${HANDOFF_CONF_DIR}/ && sudo nginx -t" </dev/null; then
+    if ! { $sp "${retire} sudo mv /tmp/handoff-*.conf ${HANDOFF_CONF_DIR}/" </dev/null && handoff_nginx_test "$sp"; }; then
         print_error "nginx config test FAILED on '${server}' — rolling back, nothing reloaded"
-        $sp "sudo rm -f ${HANDOFF_CONF_DIR}/handoff-*.conf; for f in ${HANDOFF_CONF_DIR}/*.pre-handoff; do [ -e \"\$f\" ] && sudo mv \"\$f\" \"\${f%.pre-handoff}\"; done; sudo nginx -t" </dev/null || true
+        $sp "sudo rm -f ${HANDOFF_CONF_DIR}/handoff-*.conf; for f in ${HANDOFF_CONF_DIR}/*.pre-handoff; do [ -e \"\$f\" ] && sudo mv \"\$f\" \"\${f%.pre-handoff}\"; done" </dev/null || true
+        handoff_nginx_test "$sp" || true
         return 1
     fi
-    $sp "sudo systemctl reload nginx || sudo gitlab-ctl hup nginx" </dev/null \
-        || { print_error "reload failed"; return 1; }
+    handoff_nginx_reload "$sp" || { print_error "reload failed"; return 1; }
     print_status "OK" "${server}: $(printf '%s\n' "$names" | wc -l) hostname(s) now in ${mode} mode"
     print_info "rollback: pl server handoff restore ${server} --execute"
 }

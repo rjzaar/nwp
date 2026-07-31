@@ -31,12 +31,21 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # fixture inventory. Unset in production, this is exactly the old behaviour.
 NWP_DIR="${NWP_DIR:-$PROJECT_ROOT}"
 
+# lib/common.sh's own header says it requires lib/ui.sh to be sourced first
+# (print_error and friends live there). This command got away without it until
+# a subcommand actually used the print_* helpers.
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/ui.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/common.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/impact.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/migrate-schema.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/host-capture.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/server-sync.sh"
 
 if [[ -z "${NWP_VERSION:-}" ]]; then
     NWP_VERSION=$(grep -E '^VERSION=' "$PROJECT_ROOT/pl" | head -1 | sed 's/.*="\(.*\)"/\1/')
@@ -67,7 +76,7 @@ cmd_list() {
     printf "%-15s %-10s %-10s %-18s %s\n" "SERVER" "SCHEMA" "STATUS" "IP" "CONFIG"
     printf "%-15s %-10s %-10s %-18s %s\n" "------" "------" "------" "--" "------"
     while IFS= read -r name; do
-        local cfg="$PROJECT_ROOT/servers/$name/.nwp-server.yml"
+        local cfg="${NWP_DIR:-$PROJECT_ROOT}/servers/$name/.nwp-server.yml"
         local schema status ip
         schema=$("$YQ" eval '.schema_version // "?"' "$cfg" 2>/dev/null)
         ip=$("$YQ" eval '.server.ip // "-"' "$cfg" 2>/dev/null)
@@ -89,7 +98,7 @@ cmd_show() {
         echo "Usage: pl server show <name>" >&2
         return 1
     fi
-    local cfg="$PROJECT_ROOT/servers/$name/.nwp-server.yml"
+    local cfg="${NWP_DIR:-$PROJECT_ROOT}/servers/$name/.nwp-server.yml"
     if [[ ! -f "$cfg" ]]; then
         echo "ERROR: No config at $cfg" >&2
         return 1
@@ -102,7 +111,7 @@ cmd_show() {
 ################################################################################
 _status_one() {
     local name="$1"
-    local cfg="$PROJECT_ROOT/servers/$name/.nwp-server.yml"
+    local cfg="${NWP_DIR:-$PROJECT_ROOT}/servers/$name/.nwp-server.yml"
     if [[ ! -f "$cfg" ]]; then
         printf "%-15s %s\n" "$name" "MISSING (.nwp-server.yml not found)"
         return 1
@@ -117,17 +126,24 @@ _status_one() {
 
     if [[ -n "$ip" && -n "$user" ]]; then
         if [[ -f "$key" ]]; then
-            if ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+            # -n is load-bearing: without it ssh slurps the caller's stdin, and
+            # the `--all` loop (which feeds server names on stdin via <<<) lost
+            # every server after the first — a truncated roster that read as a
+            # complete, healthy fleet.
+            if ssh -n -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
                 "${user}@${ip}" "true" 2>/dev/null; then
                 printf "  SSH=ok\n"
             else
                 printf "  SSH=unreachable\n"
+                return 1
             fi
         else
             printf "  SSH=key-missing\n"
+            return 1
         fi
     else
         printf "  SSH=incomplete-config\n"
+        return 1
     fi
 }
 
@@ -140,9 +156,16 @@ cmd_status() {
             echo "No servers configured."
             return 0
         fi
+        # One unreachable/misconfigured server must never hide the rest. Under
+        # `set -e` a bare `_status_one` here aborted the loop mid-roster, so the
+        # output looked like a complete fleet when it was a truncated one.
+        # Report every server, then fail if any did.
+        local worst=0
         while IFS= read -r name; do
-            _status_one "$name"
+            [[ -z "$name" ]] && continue
+            _status_one "$name" || worst=1
         done <<< "$servers"
+        return $worst
     else
         _status_one "$arg"
     fi
@@ -667,6 +690,197 @@ cmd_add() {
 }
 
 ################################################################################
+# Subcommand: sync <from> <to>
+#
+# Move the LIVE data of every site declared on <from> onto <to>. This is the
+# box-split primitive: `pl backup --remote` pulls a snapshot DOWN to the
+# workstation (the DR shape), which is the wrong direction for a migration.
+#
+# Dry-run by default. The source is only ever read.
+################################################################################
+cmd_sync() {
+    local from="" to="" only_sites="" do_db=1 do_files=0 execute=0 auto_yes=0 skip_missing=0 arg
+    for arg in "$@"; do
+        case "$arg" in
+            --sites=*)  only_sites="${arg#--sites=}" ;;
+            --skip-missing) skip_missing=1 ;;
+            --db)       do_db=1 ;;
+            --files)    do_files=1 ;;
+            --execute)  execute=1 ;;
+            -y|--yes)   auto_yes=1 ;;
+            -*)         echo "Unknown option: $arg" >&2; return 2 ;;
+            *)          if [[ -z "$from" ]]; then from="$arg"; elif [[ -z "$to" ]]; then to="$arg";
+                        else echo "Unexpected argument: $arg" >&2; return 2; fi ;;
+        esac
+    done
+    if [[ -z "$from" || -z "$to" ]]; then
+        echo "Usage: pl server sync <from-server> <to-server> [--sites=a,b] [--files] [--execute]" >&2
+        return 2
+    fi
+    if [[ "$from" == "$to" ]]; then
+        echo "ERROR: source and target are the same server ('$from')." >&2
+        return 2
+    fi
+
+    local sp dp
+    sp=$(sync_ssh_prefix "$from") || { echo "ERROR: cannot resolve server '$from'" >&2; return 2; }
+    dp=$(sync_ssh_prefix "$to")   || { echo "ERROR: cannot resolve server '$to'" >&2; return 2; }
+
+    # Both endpoints must answer before anything is planned. A migration
+    # half-planned against an unreachable box is worse than no plan.
+    local s_ok t_ok
+    s_ok=$($sp 'echo ok' </dev/null 2>/dev/null || true)
+    t_ok=$($dp 'echo ok' </dev/null 2>/dev/null || true)
+    if [[ "$s_ok" != "ok" ]]; then echo "ERROR: source '$from' unreachable over ssh." >&2; return 3; fi
+    if [[ "$t_ok" != "ok" ]]; then echo "ERROR: target '$to' unreachable over ssh." >&2; return 3; fi
+
+    local sites
+    if [[ -n "$only_sites" ]]; then
+        sites=$(printf '%s' "$only_sites" | tr ',' '\n')
+    else
+        sites=$(get_server_sites "$from")
+    fi
+    if [[ -z "$sites" ]]; then
+        echo "No sites declared on '$from'. Nothing to sync."
+        return 0
+    fi
+
+    print_header "server sync: ${from} -> ${to}$( ((execute)) || echo '  (DRY RUN)')"
+
+    # Collect the plan first, so an undeterminable DB name aborts BEFORE any
+    # write rather than halfway through the fleet.
+    local -a plan_site plan_type plan_db plan_path
+    local -A seen_db=()
+    local failures=0 name type path webroot sdb ddb enabled rc
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        local cfg="${NWP_DIR:-$PROJECT_ROOT}/sites/$name/.nwp.yml"
+        if [[ ! -f "$cfg" ]]; then
+            print_warning "$name: no sites/$name/.nwp.yml — skipped"
+            continue
+        fi
+        enabled=$("$YQ" eval '.live.enabled // ""' "$cfg" 2>/dev/null)
+        if [[ "$enabled" != "true" ]]; then
+            print_info "$name: live.enabled is not true — skipped"
+            continue
+        fi
+        type=$("$YQ" eval '.project.type // ""' "$cfg" 2>/dev/null)
+        path=$("$YQ" eval '.live.remote_path // ""' "$cfg" 2>/dev/null)
+        webroot=$("$YQ" eval '.project.webroot // ""' "$cfg" 2>/dev/null)
+        if [[ -z "$type" || -z "$path" ]]; then
+            print_error "$name: .project.type or .live.remote_path missing — cannot sync"
+            failures=$((failures+1)); continue
+        fi
+
+        # A declared path that does not exist on the source holds no data to
+        # migrate, and is nearly always a stale declaration. Say so out loud
+        # rather than reporting an undeterminable DB name.
+        if ! sync_path_exists "$sp" "$path"; then
+            if (( skip_missing )); then
+                print_warning "$name: declared live path '$path' does not exist on '${from}' — SKIPPED (--skip-missing)"
+                continue
+            fi
+            print_error "$name: declared live path '$path' does not exist on '${from}' — stale declaration"
+            failures=$((failures+1)); continue
+        fi
+
+        # `|| true` is load-bearing under `set -e`: a probe that legitimately
+        # finds nothing (static site, missing config) must not abort the whole
+        # plan and leave the rest of the fleet unexamined.
+        sdb=$(sync_probe_dbname "$sp" "$type" "$path" "$webroot" || true); rc=$?
+        if [[ "$type" == "static" ]]; then
+            print_info "$name: static site (no database) — nothing to sync"
+            continue
+        fi
+        ddb=$(sync_probe_dbname "$dp" "$type" "$path" "$webroot" || true)
+        if [[ -z "$sdb" ]]; then
+            print_error "$name: could not read the live DB name from ${type} config on '${from}' — refusing to guess"
+            failures=$((failures+1)); continue
+        fi
+        if [[ -z "$ddb" ]]; then
+            print_error "$name: could not read the DB name from ${type} config on '${to}' — refusing to guess"
+            failures=$((failures+1)); continue
+        fi
+        if [[ "$sdb" != "$ddb" ]]; then
+            print_error "$name: DB name differs (${from}='${sdb}' ${to}='${ddb}') — refusing to cross-write"
+            failures=$((failures+1)); continue
+        fi
+
+        # Several site records can describe the SAME live install (nw1/nwc both
+        # are /var/www/nwc; ss/ssc share a Moodle). Copying one database twice
+        # is wasted time and a second chance to get it wrong.
+        if [[ -n "${seen_db[$sdb]:-}" ]]; then
+            print_info "$name: database '${sdb}' already planned via '${seen_db[$sdb]}' — deduplicated"
+            continue
+        fi
+        seen_db[$sdb]="$name"
+
+        plan_site+=("$name"); plan_type+=("$type"); plan_db+=("$sdb"); plan_path+=("$path")
+        printf "  %-12s %-7s db=%-14s %s\n" "$name" "$type" "$sdb" "$path"
+    done <<< "$sites"
+
+    if (( failures > 0 )); then
+        print_error "${failures} site(s) could not be planned. Nothing was written."
+        print_info  "Fix the declaration, or re-run with --skip-missing to proceed without them."
+        return 1
+    fi
+    if (( ${#plan_site[@]} == 0 )); then
+        echo "Nothing to do."
+        return 0
+    fi
+
+    if (( ! execute )); then
+        echo
+        print_info "DRY RUN — ${#plan_site[@]} database(s) would be overwritten on '${to}'."
+        print_info "Re-run with --execute to perform the sync."
+        return 0
+    fi
+
+    if ! impact_confirm destructive \
+        "overwrite ${#plan_site[@]} database(s) on '${to}' with live data from '${from}'" "$auto_yes"; then
+        print_info "Aborted."
+        return 1
+    fi
+
+    local i rc_all=0
+    for i in "${!plan_site[@]}"; do
+        local n="${plan_site[$i]}" db="${plan_db[$i]}"
+        print_info "syncing ${n} (${db}) ..."
+        if ! sync_db_stream "$sp" "$dp" "$db" "$db"; then
+            print_error "${n}: dump/restore stream FAILED — target DB may be partial"
+            rc_all=1; continue
+        fi
+        # Verify. Table count must match exactly; the row hash is reported but
+        # a difference there is expected on a live source (sessions, logs,
+        # watchdog all move while the dump runs) and is not treated as failure.
+        local sfp tfp scount tcount
+        sfp=$(sync_db_fingerprint "$sp" "$db"); tfp=$(sync_db_fingerprint "$dp" "$db")
+        if [[ "$sfp" == UNKNOWN* || "$tfp" == UNKNOWN* ]]; then
+            print_error "${n}: post-sync verification could not run — NOT treating as verified"
+            rc_all=1; continue
+        fi
+        scount="${sfp%%:*}"; tcount="${tfp%%:*}"
+        if [[ "$scount" != "$tcount" ]]; then
+            print_error "${n}: table count differs after sync (src=${scount} dst=${tcount})"
+            rc_all=1; continue
+        fi
+        if [[ "$sfp" == "$tfp" ]]; then
+            print_status "OK" "${n}: ${scount} tables, row-for-row identical"
+        else
+            print_status "OK" "${n}: ${scount} tables match (row hash differs — live source moved during the dump)"
+        fi
+    done
+
+    if (( do_files )); then
+        print_header "file sync"
+        print_warning "--files is not implemented yet; databases only. Use 'pl server sync-files' when it lands."
+        rc_all=1
+    fi
+
+    return $rc_all
+}
+
+################################################################################
 # Dispatcher
 ################################################################################
 sub="${1:-}"
@@ -682,10 +896,13 @@ case "$sub" in
     roots)   cmd_roots "$@" ;;
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
+    sync)    cmd_sync "$@" ;;
     schema)  cmd_schema "$@" ;;
     migrate) cmd_migrate "$@" ;;
     ""|help|--help|-h)
-        cat <<EOF
+        # Quoted delimiter: this block is documentation, not a template. With a
+        # bare EOF a backtick in the help text was executed as a command.
+        cat <<'EOF'
 Usage: pl server <subcommand> [args]
 
 Subcommands:
@@ -706,6 +923,12 @@ Subcommands:
                         or a declaration no gate can see (the ops#149 shape),
                         3 = CANNOT-VERIFY (never treated as clean).
   sites <name>          List sites configured to deploy to this server
+  sync <from> <to>      Move every declared site's LIVE DATABASE from one
+                        server to another (the box-split primitive; the
+                        opposite direction to 'pl backup --remote'). DB names
+                        are read from each app's own config on BOTH boxes and
+                        never guessed. Dry-run unless --execute.
+                        [--sites=a,b --skip-missing --files --execute -y]
   schema                Print current server schema version
   migrate <name|--all>  Run schema migrations on a server config
 EOF

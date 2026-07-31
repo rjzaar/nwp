@@ -413,7 +413,24 @@ cmd_mail() {
         local ptr
         ptr=$(dig -x "$server_ip" +short 2>/dev/null | sed 's/\.$//' | head -1 || true)
         if [ -n "$ptr" ]; then
-            print_status "OK" "PTR: ${server_ip} → ${ptr}"
+            # "A PTR exists" is not the test receivers apply. They apply
+            # forward-confirmed reverse DNS: the PTR name must resolve BACK to
+            # the same address. And a hosting provider's default PTR
+            # (…linodeusercontent.com, …amazonaws.com, …compute.internal) is a
+            # well-known spam signal even when it forward-confirms, because it
+            # does not identify the sender. Reporting a bare OK for either case
+            # made this a check that could not fail.
+            local ptr_fwd
+            ptr_fwd=$(dig +short A "$ptr" 2>/dev/null | head -1 || true)
+            if [ "$ptr_fwd" != "$server_ip" ]; then
+                print_status "WARN" "PTR: ${server_ip} → ${ptr}, but ${ptr} resolves to '${ptr_fwd:-nothing}' — not forward-confirmed (FCrDNS fails)"
+                warns=$((warns+1))
+            elif echo "$ptr" | grep -qiE '(linodeusercontent|amazonaws|compute\.internal|ip[0-9-]*\.|[0-9]+-[0-9]+-[0-9]+-[0-9]+\.)'; then
+                print_status "WARN" "PTR: ${server_ip} → ${ptr} — provider default, not a sender-identifying name; set reverse DNS to the mail host"
+                warns=$((warns+1))
+            else
+                print_status "OK" "PTR: ${server_ip} → ${ptr} (forward-confirmed)"
+            fi
         else
             print_status "FAIL" "PTR: ${server_ip} has NO reverse DNS — receivers will reject/greylist"
             fails=$((fails+1))

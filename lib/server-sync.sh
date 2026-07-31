@@ -100,6 +100,90 @@ sync_path_exists() {
 }
 
 # ---------------------------------------------------------------------------
+# sync_probe_datadirs <ssh-prefix> <type> <remote_path> [webroot]
+# Prints the absolute paths of the site's MUTABLE DATA directories, one per
+# line — the trees that hold uploads and therefore cannot be reconstructed from
+# a code deploy. Same rule as the DB name: ask the application where its data
+# lives, never assume a layout.
+#
+# Code is deliberately NOT included. Code arrives via `pl stg2live`; copying it
+# between boxes during a migration is how two hosts end up with quietly
+# different builds.
+# ---------------------------------------------------------------------------
+sync_probe_datadirs() {
+    local prefix="$1" type="$2" remote_path="$3" webroot="${4:-}"
+    case "$type" in
+        moodle)
+            # $CFG->dataroot is Moodle's own answer and sits OUTSIDE the docroot.
+            $prefix "sudo -u www-data php -d error_reporting=0 -d display_errors=0 -r 'define(\"CLI_SCRIPT\",true);define(\"ABORT_AFTER_CONFIG\",true);require(\$argv[1]);echo isset(\$CFG->dataroot)?\$CFG->dataroot:\"\";' ${remote_path}/config.php" 2>/dev/null </dev/null || true
+            echo
+            ;;
+        drupal)
+            # drush core:status reports 'root' (the docroot) and 'files' (public
+            # files, relative to the site dir). Private files, when configured,
+            # come back as an absolute path.
+            local cand
+            for cand in \
+                "cd ${remote_path} && sudo -u www-data vendor/bin/drush core:status --format=json" \
+                "cd ${remote_path} && sudo -u www-data drush core:status --format=json" \
+                "cd ${remote_path}/${webroot:-web} && sudo -u www-data ../vendor/bin/drush core:status --format=json" \
+                "cd ${remote_path}/html && sudo -u www-data ../vendor/bin/drush core:status --format=json"
+            do
+                local out
+                out=$($prefix "$cand 2>/dev/null" 2>/dev/null </dev/null || true)
+                [[ -z "$out" ]] && continue
+                printf '%s' "$out" | python3 -c '
+import json,sys,os,posixpath
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+root=d.get("root","") or ""
+site=d.get("site","sites/default") or "sites/default"
+for key in ("files","private"):
+    v=d.get(key) or ""
+    if not v: continue
+    # "files" is relative to the docroot; "private" is usually absolute.
+    print(v if posixpath.isabs(v) else posixpath.join(root, v))
+' 2>/dev/null || true
+                return 0
+            done
+            ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# sync_dir_relay <from-server> <to-server> <abs-path> <stage-root>
+# Delta-copies one directory from source to target THROUGH a local staging
+# tree. Two rsync hops instead of one, because a direct box-to-box rsync would
+# require minting a new trust relationship between two production hosts just to
+# run a migration; staging locally keeps the credential surface unchanged and
+# costs only disk. Repeat runs are cheap: both hops are deltas.
+#
+# Takes server NAMES, not ssh prefixes: rsync needs the transport (-e) and the
+# host:path separated, and splitting a pre-built prefix string back apart is
+# the kind of cleverness that breaks the day a record grows another option.
+# ---------------------------------------------------------------------------
+sync_dir_relay() {
+    local from="$1" to="$2" path="$3" stage_root="$4"
+    local sip suser skey dip duser dkey
+    sip=$(get_server_ip "$from");   suser=$(get_server_user "$from");  skey=$(get_server_ssh_key "$from")
+    dip=$(get_server_ip "$to");     duser=$(get_server_user "$to");    dkey=$(get_server_ssh_key "$to")
+    [[ -n "$sip" && -n "$dip" ]] || return 1
+
+    local sopt="ssh -i ${skey} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+    local dopt="ssh -i ${dkey} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
+    local stage="${stage_root}${path}"
+    mkdir -p "$stage" || return 1
+    # Trailing slashes: copy the CONTENTS of the directory, not the directory
+    # into itself. --delete so a file removed on the source is removed on the
+    # target too; a migration that only ever adds is not a copy.
+    rsync -a --delete --numeric-ids --rsync-path="sudo rsync" \
+          -e "$sopt" "${suser}@${sip}:${path}/" "${stage}/" || return 1
+    rsync -a --delete --numeric-ids --rsync-path="sudo rsync" \
+          -e "$dopt" "${stage}/" "${duser}@${dip}:${path}/" || return 1
+}
+
+# ---------------------------------------------------------------------------
 # sync_db_fingerprint <ssh-prefix> <dbname>
 # A cheap, order-stable summary of a schema+size: "<table_count>:<total_rows>".
 # Row counts come from a real COUNT(*) per table, not information_schema's

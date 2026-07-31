@@ -706,6 +706,7 @@ cmd_sync() {
             --skip-missing) skip_missing=1 ;;
             --db)       do_db=1 ;;
             --files)    do_files=1 ;;
+            --files-only) do_files=1; do_db=0 ;;
             --execute)  execute=1 ;;
             -y|--yes)   auto_yes=1 ;;
             -*)         echo "Unknown option: $arg" >&2; return 2 ;;
@@ -734,11 +735,17 @@ cmd_sync() {
     if [[ "$s_ok" != "ok" ]]; then echo "ERROR: source '$from' unreachable over ssh." >&2; return 3; fi
     if [[ "$t_ok" != "ok" ]]; then echo "ERROR: target '$to' unreachable over ssh." >&2; return 3; fi
 
+    # Which sites? Declarations and data move at DIFFERENT times during a
+    # migration: the normal order is to repoint sites/<name>/.nwp.yml FIRST
+    # (so deploys go to the new box) and move the data second. Enumerating only
+    # `from` therefore finds nothing exactly when you need it most. Take the
+    # union of both servers' declarations, deduplicated.
     local sites
     if [[ -n "$only_sites" ]]; then
         sites=$(printf '%s' "$only_sites" | tr ',' '\n')
     else
-        sites=$(get_server_sites "$from")
+        sites=$(printf '%s\n%s\n' "$(get_server_sites "$from")" "$(get_server_sites "$to")" \
+                | sed '/^$/d' | sort -u)
     fi
     if [[ -z "$sites" ]]; then
         echo "No sites declared on '$from'. Nothing to sync."
@@ -749,7 +756,10 @@ cmd_sync() {
 
     # Collect the plan first, so an undeterminable DB name aborts BEFORE any
     # write rather than halfway through the fleet.
-    local -a plan_site plan_type plan_db plan_path
+    # Explicit empty initialisers: under `set -u`, expanding an array that was
+    # declared but never assigned is fatal, which turned "nothing to sync" into
+    # an unbound-variable crash.
+    local -a plan_site=() plan_type=() plan_db=() plan_path=()
     local -A seen_db=()
     local failures=0 name type path webroot sdb ddb enabled rc
     while IFS= read -r name; do
@@ -836,16 +846,24 @@ cmd_sync() {
         return 0
     fi
 
-    if ! impact_confirm destructive \
-        "overwrite ${#plan_site[@]} database(s) on '${to}' with live data from '${from}'" "$auto_yes"; then
+    # Tier "standard", not "typed": this overwrites databases, but the SOURCE is
+    # untouched, so a recovery path survives. impact_confirm takes the literal
+    # string "true" and only knows the tiers standard|typed — an unknown tier or
+    # a bare 1 here silently became "abort".
+    local confirm_auto=false
+    (( auto_yes )) && confirm_auto=true
+    if ! impact_confirm standard \
+        "overwrite ${#plan_site[@]} database(s) on '${to}' with live data from '${from}'" "$confirm_auto"; then
         print_info "Aborted."
         return 1
     fi
 
     local i rc_all=0
+    if (( do_db )); then
     for i in "${!plan_site[@]}"; do
         local n="${plan_site[$i]}" db="${plan_db[$i]}"
         print_info "syncing ${n} (${db}) ..."
+
         if ! sync_db_stream "$sp" "$dp" "$db" "$db"; then
             print_error "${n}: dump/restore stream FAILED — target DB may be partial"
             rc_all=1; continue
@@ -870,11 +888,36 @@ cmd_sync() {
             print_status "OK" "${n}: ${scount} tables match (row hash differs — live source moved during the dump)"
         fi
     done
+    fi
 
     if (( do_files )); then
-        print_header "file sync"
-        print_warning "--files is not implemented yet; databases only. Use 'pl server sync-files' when it lands."
-        rc_all=1
+        print_header "file sync (mutable data trees)"
+        local stage_root="${NWP_SYNC_STAGE:-$HOME/.cache/nwp/server-sync/${from}-to-${to}}"
+        mkdir -p "$stage_root"
+        print_info "staging through ${stage_root} (delta on both hops; safe to re-run)"
+        for i in "${!plan_site[@]}"; do
+            local n="${plan_site[$i]}" t="${plan_type[$i]}" p="${plan_path[$i]}"
+            local dirs
+            dirs=$(sync_probe_datadirs "$sp" "$t" "$p" "" || true)
+            if [[ -z "${dirs//[[:space:]]/}" ]]; then
+                print_warning "${n}: could not determine a data directory — NOT silently skipping, check by hand"
+                rc_all=1; continue
+            fi
+            local d
+            while IFS= read -r d; do
+                [[ -z "${d//[[:space:]]/}" ]] && continue
+                if ! sync_path_exists "$sp" "$d"; then
+                    print_info "  ${n}: ${d} does not exist on ${from} — skipped"
+                    continue
+                fi
+                if sync_dir_relay "$from" "$to" "$d" "$stage_root"; then
+                    print_status "OK" "  ${n}: ${d}"
+                else
+                    print_error "  ${n}: ${d} — rsync FAILED"
+                    rc_all=1
+                fi
+            done <<< "$dirs"
+        done
     fi
 
     return $rc_all

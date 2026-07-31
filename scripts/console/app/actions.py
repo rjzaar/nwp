@@ -99,7 +99,11 @@ ACTIONS: dict = {
         "label": "Demo reset (idle-guarded)",
         # --if-idle stays even on the console's "force" button: never
         # green-light a wipe while a tester session is active.
-        "build": lambda p, ds: ["demo", "reset", _valid_site(p.get("site", ""), ds), "--if-idle", "30m", "--yes"],
+        # --tier=live is a fixed literal: the console only ever acts on the
+        # PUBLIC demo site (config.DEMO_SITES = the live demo); the demo verbs
+        # refuse without an explicit tier, and the console host has no local
+        # dev instance to act on.
+        "build": lambda p, ds: ["demo", "reset", _valid_site(p.get("site", ""), ds), "--tier=live", "--if-idle", "30m", "--yes"],
     },
     "demo_code_issue": {
         "min_role": "operator",
@@ -108,7 +112,7 @@ ACTIONS: dict = {
         "label": "Issue demo invite code",
         "build": lambda p, ds: [
             "demo", "codes", _valid_site(p.get("site", ""), ds), "issue",
-            _valid_bundle(p.get("bundle", "")), "--expires=14d",
+            _valid_bundle(p.get("bundle", "")), "--expires=14d", "--tier=live",
         ],
     },
     "demo_invite": {
@@ -121,7 +125,7 @@ ACTIONS: dict = {
         # hashes). Args are fixed literals except the validated site and the
         # boolean --all toggle — no free-text ever reaches the argv.
         "build": lambda p, ds: (
-            ["demo", "invite", _valid_site(p.get("site", ""), ds)]
+            ["demo", "invite", _valid_site(p.get("site", ""), ds), "--tier=live"]
             + (["--all"] if _valid_flag(p.get("all", "")) else [])
         ),
     },
@@ -132,7 +136,7 @@ ACTIONS: dict = {
         "label": "Revoke demo invite code",
         "build": lambda p, ds: [
             "demo", "codes", _valid_site(p.get("site", ""), ds), "revoke",
-            _valid_code_id(p.get("code_id", "")),
+            _valid_code_id(p.get("code_id", "")), "--tier=live",
         ],
     },
 }

@@ -42,7 +42,7 @@ def test_demo_reset_rejects_non_demo_site():
 
 def test_code_issue_bundle_allowlist():
     argv, _ = build_action("demo_code_issue", {"site": "nwd", "bundle": "tester-member"}, DEMO)
-    assert argv == ["demo", "codes", "nwd", "issue", "tester-member", "--expires=14d"]
+    assert argv == ["demo", "codes", "nwd", "issue", "tester-member", "--expires=14d", "--tier=live"]
     for bad in ("sitemanager", "tester-sitemanager", "admin", "", "tester-member --force"):
         with pytest.raises(ActionError):
             build_action("demo_code_issue", {"site": "nwd", "bundle": bad}, DEMO)
@@ -50,7 +50,7 @@ def test_code_issue_bundle_allowlist():
 
 def test_code_revoke_id_validation():
     argv, _ = build_action("demo_code_revoke", {"site": "nwd", "code_id": "abc123_X-"}, DEMO)
-    assert argv[-1] == "abc123_X-"
+    assert argv[-2] == "abc123_X-" and argv[-1] == "--tier=live"
     for bad in ("", "a b", "x;y", "$(id)", "a" * 41, "café"):
         with pytest.raises(ActionError):
             build_action("demo_code_revoke", {"site": "nwd", "code_id": bad}, DEMO)
@@ -97,12 +97,12 @@ def test_metacharacter_guard_is_backstop():
 
 def test_demo_invite_action():
     argv, spec = build_action("demo_invite", {"site": "nwd"}, DEMO)
-    assert argv == ["demo", "invite", "nwd"]
+    assert argv == ["demo", "invite", "nwd", "--tier=live"]
     assert spec["min_role"] == "operator"
     argv, _ = build_action("demo_invite", {"site": "nwd", "all": "1"}, DEMO)
-    assert argv == ["demo", "invite", "nwd", "--all"]
+    assert argv == ["demo", "invite", "nwd", "--tier=live", "--all"]
     argv, _ = build_action("demo_invite", {"site": "nwd", "all": ""}, DEMO)
-    assert argv == ["demo", "invite", "nwd"]
+    assert argv == ["demo", "invite", "nwd", "--tier=live"]
 
 
 def test_demo_invite_strict_validation():
@@ -146,5 +146,21 @@ def test_a_console_demo_site_outside_the_scope_is_still_refused():
     with pytest.raises(ActionError):
         build_action("demo_reset", {"site": "avc"}, ["nwd"])
     argv, spec = build_action("demo_reset", {"site": "nwd"}, ["nwd"])
-    assert argv == ["demo", "reset", "nwd", "--if-idle", "30m", "--yes"]
+    assert argv == ["demo", "reset", "nwd", "--tier=live", "--if-idle", "30m", "--yes"]
     assert spec["scope"] == "site"
+
+
+def test_all_demo_actions_name_tier_live():
+    """Regression: the console manages the PUBLIC (live) demo, and the demo
+    verbs refuse without an explicit tier. Every demo action MUST carry
+    --tier=live, or the console button silently errors 'Re-run naming the tier'
+    (the 2026-07 invite-button bug). No demo action may default to dev."""
+    cases = [
+        ("demo_reset", {"site": "nwd"}),
+        ("demo_code_issue", {"site": "nwd", "bundle": "tester-member"}),
+        ("demo_invite", {"site": "nwd"}),
+        ("demo_code_revoke", {"site": "nwd", "code_id": "abc123_X-"}),
+    ]
+    for action, params in cases:
+        argv, _ = build_action(action, params, DEMO)
+        assert "--tier=live" in argv, f"{action} is missing --tier=live: {argv}"

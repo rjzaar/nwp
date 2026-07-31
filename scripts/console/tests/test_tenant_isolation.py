@@ -287,7 +287,7 @@ def test_action_on_my_own_demo_site_builds_the_exact_argv(dana, mod, monkeypatch
     monkeypatch.setattr(mod, "run_pl", fake_run)
     r = dana.post("/actions/run", data={"action": "demo_reset", "site": "nwd"})
     assert r.status_code == 200, r.text[:300]
-    assert seen["argv"] == ["demo", "reset", "nwd", "--if-idle", "30m", "--yes"]
+    assert seen["argv"] == ["demo", "reset", "nwd", "--tier=live", "--if-idle", "30m", "--yes"]
 
 
 def test_fleet_wide_action_is_refused_to_a_scoped_operator(dana):

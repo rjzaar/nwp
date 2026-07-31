@@ -46,6 +46,8 @@ source "$PROJECT_ROOT/lib/migrate-schema.sh"
 source "$PROJECT_ROOT/lib/host-capture.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/server-sync.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/server-handoff.sh"
 
 if [[ -z "${NWP_VERSION:-}" ]]; then
     NWP_VERSION=$(grep -E '^VERSION=' "$PROJECT_ROOT/pl" | head -1 | sed 's/.*="\(.*\)"/\1/')
@@ -924,6 +926,150 @@ cmd_sync() {
 }
 
 ################################################################################
+# Subcommand: handoff <drain|front|restore|status> <server>
+#
+# Move traffic between boxes WITHOUT waiting for DNS. See lib/server-handoff.sh
+# for why the switch belongs at the old box rather than in the A record.
+################################################################################
+cmd_handoff() {
+    local mode="${1:-}" server="${2:-}"; shift 2 2>/dev/null || true
+    local to_ip="" only="" exclude="" execute=0 auto_yes=0 arg
+    for arg in "$@"; do
+        case "$arg" in
+            --to=*)      to_ip="${arg#--to=}" ;;
+            --names=*)   only="${arg#--names=}" ;;
+            --exclude=*) exclude="${arg#--exclude=}" ;;
+            --execute)   execute=1 ;;
+            -y|--yes)    auto_yes=1 ;;
+            -*)          echo "Unknown option: $arg" >&2; return 2 ;;
+        esac
+    done
+    case "$mode" in drain|front|restore|status) ;; *)
+        echo "Usage: pl server handoff <drain|front|restore|status> <server> [--to=SERVER|IP] [--names=a,b] [--exclude=a,b] [--execute]" >&2
+        return 2 ;;
+    esac
+    [[ -n "$server" ]] || { echo "ERROR: server name required" >&2; return 2; }
+
+    local sp; sp=$(sync_ssh_prefix "$server") || { echo "ERROR: cannot resolve '$server'" >&2; return 2; }
+    [[ "$($sp 'echo ok' </dev/null 2>/dev/null || true)" == "ok" ]] \
+        || { echo "ERROR: '$server' unreachable over ssh." >&2; return 3; }
+
+    # --to may name a server in the registry or be a literal address.
+    local target_ip=""
+    if [[ -n "$to_ip" ]]; then
+        if [[ "$to_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then target_ip="$to_ip"
+        else target_ip=$(get_server_ip "$to_ip" 2>/dev/null || true); fi
+        [[ -n "$target_ip" ]] || { echo "ERROR: cannot resolve --to='$to_ip'" >&2; return 2; }
+    fi
+
+    if [[ "$mode" == "status" ]]; then
+        print_header "handoff status — ${server}"
+        $sp "sudo ls ${HANDOFF_BACKUP_DIR} 2>/dev/null | wc -l" </dev/null \
+            | { read -r n; echo "  original vhosts backed up: ${n:-0} (${HANDOFF_BACKUP_DIR})"; }
+        local d f
+        d=$($sp "sudo grep -rl 'MIGRATION DRAIN' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | wc -l" </dev/null)
+        f=$($sp "sudo grep -rl 'MIGRATION FRONT' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | wc -l" </dev/null)
+        echo "  vhost files in DRAIN mode: ${d:-0}"
+        echo "  vhost files in FRONT mode: ${f:-0}"
+        return 0
+    fi
+
+    if [[ "$mode" == "restore" ]]; then
+        if ! $sp "sudo test -d ${HANDOFF_BACKUP_DIR}" </dev/null; then
+            print_error "no backup at ${HANDOFF_BACKUP_DIR} on '${server}' — nothing to restore"
+            return 1
+        fi
+        if (( ! execute )); then
+            print_info "DRY RUN — would restore the original vhosts on '${server}' from ${HANDOFF_BACKUP_DIR}"
+            return 0
+        fi
+        $sp "sudo cp -a ${HANDOFF_BACKUP_DIR}/. ${HANDOFF_CONF_DIR}/ && sudo nginx -t && sudo systemctl reload nginx" </dev/null \
+            || { print_error "restore failed — nginx config NOT reloaded"; return 1; }
+        print_status "OK" "original vhosts restored on '${server}'"
+        return 0
+    fi
+
+    [[ "$mode" != "front" || -n "$target_ip" ]] || { echo "ERROR: front requires --to=<server|ip>" >&2; return 2; }
+
+    # Which hostnames? Read what nginx actually serves, then subtract the ones
+    # explicitly held back (git/hs and anything whose DNS we do not control).
+    local names
+    if [[ -n "$only" ]]; then names=$(printf '%s' "$only" | tr ',' '\n')
+    else names=$(handoff_server_names "$sp"); fi
+    if [[ -n "$exclude" ]]; then
+        local pat; pat=$(printf '%s' "$exclude" | tr ',' '|')
+        names=$(printf '%s\n' "$names" | grep -vE "^(${pat})$" || true)
+    fi
+    names=$(printf '%s\n' "$names" | sed '/^$/d')
+    [[ -n "$names" ]] || { echo "No hostnames selected." >&2; return 1; }
+
+    # Which names have a certificate on this box? A missing certificate is not
+    # a reason to skip the name — that would leave it serving from the old
+    # box's database while everything else moved — it just means the rewritten
+    # vhost is HTTP-only, as the original was.
+    local n; local -A has_cert=()
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        if $sp "sudo test -f /etc/letsencrypt/live/${n}/fullchain.pem" </dev/null; then
+            has_cert[$n]=1
+        else
+            has_cert[$n]=0
+        fi
+    done <<< "$names"
+
+    print_header "handoff ${mode} on ${server}$( [[ -n "$target_ip" ]] && echo " -> ${target_ip}")$( ((execute)) || echo '  (DRY RUN)')"
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        printf '  %-28s %s\n' "$n" "$( [[ "${has_cert[$n]}" == "1" ]] && echo 'http+https' || echo 'http only (no cert)' )"
+    done <<< "$names"
+    if (( ! execute )); then
+        print_info "DRY RUN — $(printf '%s\n' "$names" | wc -l) hostname(s) would switch to ${mode}."
+        return 0
+    fi
+    if ! impact_confirm standard "switch $(printf '%s\n' "$names" | wc -l) hostname(s) on '${server}' to ${mode}" \
+        "$( ((auto_yes)) && echo true || echo false )"; then
+        print_info "Aborted."; return 1
+    fi
+
+    # Back up the ORIGINAL vhosts exactly once. A second drain/front must not
+    # overwrite the backup with already-rewritten files — that would destroy
+    # the rollback while appearing to succeed.
+    $sp "sudo test -d ${HANDOFF_BACKUP_DIR} || sudo cp -a ${HANDOFF_CONF_DIR} ${HANDOFF_BACKUP_DIR}" </dev/null \
+        || { print_error "could not back up the original vhosts — refusing to change anything"; return 1; }
+
+    local tmp; tmp=$(mktemp -d)
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        if [[ "$mode" == "drain" ]]; then handoff_render_drain "$n" "${has_cert[$n]}" > "$tmp/handoff-${n}.conf"
+        else handoff_render_front "$n" "$target_ip" "${has_cert[$n]}" > "$tmp/handoff-${n}.conf"; fi
+    done <<< "$names"
+
+    # Retire the originals for the selected names, then install the new ones.
+    # Done in one remote shell so nginx is reloaded once, at the end.
+    local ip user key
+    ip=$(get_server_ip "$server"); user=$(get_server_user "$server"); key=$(get_server_ssh_key "$server")
+    scp -q -i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+        "$tmp"/handoff-*.conf "${user}@${ip}:/tmp/" || { rm -rf "$tmp"; print_error "upload failed"; return 1; }
+    rm -rf "$tmp"
+
+    local retire=""
+    while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        retire+="for f in \$(sudo grep -rlE '^[[:space:]]*server_name([[:space:]]|.*[[:space:]])${n}[[:space:]]*;' ${HANDOFF_CONF_DIR}/*.conf 2>/dev/null | grep -v '/handoff-'); do sudo mv \"\$f\" \"\$f.pre-handoff\"; done; "
+    done <<< "$names"
+
+    if ! $sp "${retire} sudo mv /tmp/handoff-*.conf ${HANDOFF_CONF_DIR}/ && sudo nginx -t" </dev/null; then
+        print_error "nginx config test FAILED on '${server}' — rolling back, nothing reloaded"
+        $sp "sudo rm -f ${HANDOFF_CONF_DIR}/handoff-*.conf; for f in ${HANDOFF_CONF_DIR}/*.pre-handoff; do [ -e \"\$f\" ] && sudo mv \"\$f\" \"\${f%.pre-handoff}\"; done; sudo nginx -t" </dev/null || true
+        return 1
+    fi
+    $sp "sudo systemctl reload nginx || sudo gitlab-ctl hup nginx" </dev/null \
+        || { print_error "reload failed"; return 1; }
+    print_status "OK" "${server}: $(printf '%s\n' "$names" | wc -l) hostname(s) now in ${mode} mode"
+    print_info "rollback: pl server handoff restore ${server} --execute"
+}
+
+################################################################################
 # Dispatcher
 ################################################################################
 sub="${1:-}"
@@ -940,6 +1086,7 @@ case "$sub" in
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
     sync)    cmd_sync "$@" ;;
+    handoff) cmd_handoff "$@" ;;
     schema)  cmd_schema "$@" ;;
     migrate) cmd_migrate "$@" ;;
     ""|help|--help|-h)
@@ -972,6 +1119,12 @@ Subcommands:
                         are read from each app's own config on BOTH boxes and
                         never guessed. Dry-run unless --execute.
                         [--sites=a,b --skip-missing --files --execute -y]
+  handoff <mode> <srv>  Move traffic between boxes without waiting for DNS.
+                        drain = 503 (the only window with downtime, so the DB
+                        copy has a still target); front = proxy to the new box
+                        so stale-DNS clients still reach the live copy;
+                        restore = put the original vhosts back; status.
+                        [--to=SERVER|IP --names=a,b --exclude=a,b --execute -y]
   schema                Print current server schema version
   migrate <name|--all>  Run schema migrations on a server config
 EOF

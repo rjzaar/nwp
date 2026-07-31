@@ -261,11 +261,59 @@ demo_invite_join_url() {
         domain="$(yq eval '.live.domain' "$yml" 2>/dev/null || true)"
         [[ "$domain" == "null" ]] && domain=""
     fi
+    # Fall back to the global nwp.yml. The per-site sites/<site>/.nwp.yml does
+    # not exist on a host that carries no sites tree — notably the console
+    # host, which is exactly where `pl demo invite` runs when the operator
+    # clicks the button. Without this the invite email showed the
+    # <YOUR-SITE-URL> placeholder instead of the real join link.
+    if [[ -z "$domain" ]] && command -v yq >/dev/null 2>&1; then
+        local gcfg="${PROJECT_ROOT:-$HOME/nwp}/nwp.yml"
+        if [[ -f "$gcfg" ]]; then
+            domain="$(SITE="$site" yq eval '.sites[strenv(SITE)].live.domain // ""' "$gcfg" 2>/dev/null || true)"
+            [[ "$domain" == "null" ]] && domain=""
+        fi
+    fi
     if [[ -n "$domain" ]]; then
         echo "https://${domain}/demo/join"
     else
         echo "<YOUR-SITE-URL>/demo/join"
     fi
+}
+
+# demo_invite_community_base <site> — the https base of the community site
+# (the join URL minus /demo/join), or "" if it could not be resolved.
+demo_invite_community_base() {
+    local ju; ju="$(demo_invite_join_url "$1")"
+    [[ "$ju" == https://* ]] || { echo ""; return 0; }
+    echo "${ju%/demo/join}"
+}
+
+# demo_invite_courses_url <community-site> — the login page of the paired demo
+# COURSES site (Moodle), where the tester clicks "Log in using your account on:
+# <community>". Resolved generically from the demo pair contract (provider ==
+# this site, demo.enabled). Empty when there is no demo pair or the consumer's
+# domain is unresolvable — the email then simply omits the courses section.
+demo_invite_courses_url() {
+    local site="$1" consumer="" domain="" yml gcfg f prov demo
+    command -v yq >/dev/null 2>&1 || { echo ""; return 0; }
+    local pairs_dir="${NWP_PAIR_CONTRACT_DIR:-${PROJECT_ROOT:-$HOME/nwp}/pairs}"
+    for f in "$pairs_dir"/*.pair-contract.yml; do
+        [[ -f "$f" ]] || continue
+        prov="$(yq eval '.provider // ""' "$f" 2>/dev/null)"
+        demo="$(yq eval '.demo.enabled // false' "$f" 2>/dev/null)"
+        if [[ "$prov" == "$site" && "$demo" == "true" ]]; then
+            consumer="$(yq eval '.consumer // ""' "$f" 2>/dev/null)"
+            break
+        fi
+    done
+    [[ -n "$consumer" && "$consumer" != "null" ]] || { echo ""; return 0; }
+    yml="$(demo_site_dir "$consumer")/.nwp.yml"
+    [[ -f "$yml" ]] && { domain="$(yq eval '.live.domain // ""' "$yml" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
+    if [[ -z "$domain" ]]; then
+        gcfg="${PROJECT_ROOT:-$HOME/nwp}/nwp.yml"
+        [[ -f "$gcfg" ]] && { domain="$(CONS="$consumer" yq eval '.sites[strenv(CONS)].live.domain // ""' "$gcfg" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
+    fi
+    [[ -n "$domain" ]] && echo "https://${domain}/login/index.php" || echo ""
 }
 
 # demo_invite_level_label <bundle> → the plain-language block heading.
@@ -284,43 +332,54 @@ demo_invite_level_label() {
 # One self-contained, deletable block: heading, code, what this level is,
 # 3-5 concrete things to try. Plain text / markdown-safe, no jargon.
 demo_invite_level_block() {
-    local bundle="$1" code="$2"
+    local bundle="$1" code="$2" cb="${3:-<COMMUNITY-SITE>}"
     local label; label="$(demo_invite_level_label "$bundle")"
     printf '──────── %s ────────\n\n' "$label"
     printf 'Your code:  %s\n\n' "$code"
     case "$bundle" in
         tester-member)
-            cat <<'BLOCK'
+            cat <<BLOCK
 This is the everyday member experience — what most people who join will see.
 
-Things to try:
-- Join a guild (a small community group) and look around inside it.
-- Browse the courses, pick one that looks interesting, and start it.
-- Open your profile and try the privacy and sharing choices — change
-  them and see what it affects.
-- Write a short reflection or comment somewhere.
+In the community you start as a SOJOURNER: the open, entry-level formation
+guild. Everyone begins here, and you move up simply by completing courses —
+every honest path reaches the top. (Sojourners sit under the Theology Guild,
+the mature guild you can grow into later.)
+
+Try these in the community — ${cb}
+- Open the guilds index at /all-groups, join one, and look inside.
+- Browse the activity stream at /explore.
+- Open your profile and try the privacy and sharing choices — change them
+  and see what it affects.
+- Watch your Sojourner progress build at /nwc/achievements.
 - Do some of this on your phone — does it still feel easy?
+
+Then try the courses (Step 2 above)
+- Open the Saint School catalogue and start a course.
+- Come back and see whether finishing it moved your progress.
 BLOCK
             ;;
         tester-guild-leader)
-            cat <<'BLOCK'
-This is everything a member can do, plus the tools for someone who leads
-a small community group.
+            cat <<BLOCK
+Everything a member can do, plus the tools for someone who LEADS a guild.
+You lead within the Tester's Guild — the guild every tester belongs to, whose
+job is a careful editorial eye on the Saint School courses.
 
-Things to try:
-- Open the leader views for your guild — do they make sense at a glance?
-- Look at member progress (you only see what members chose to share —
-  check that boundary feels right).
+Try these in the community — ${cb}
+- From /all-groups, enter your guild, then open its leader views: the guild
+  dashboard, the leaderboard, and the verification / ratification queues.
+- Look at member progress — you only see what members chose to share; check
+  that boundary feels right.
 - Post a welcome or announcement to the guild.
 - Try managing who is in the guild.
 BLOCK
             ;;
         tester-content-manager)
-            cat <<'BLOCK'
-This is the perspective of someone who writes and arranges the teaching
-material on the site.
+            cat <<BLOCK
+The perspective of someone who writes and arranges the teaching material —
+the craft side the Writers and Pedagogy guilds care for.
 
-Things to try:
+Try these in the community — ${cb}
 - Edit an existing page or course item and save it.
 - Create a brand-new piece of content.
 - Rearrange the structure — move things around, change the order.
@@ -328,26 +387,33 @@ Things to try:
 BLOCK
             ;;
         tester-copyright-reviewer)
-            cat <<'BLOCK'
-This is the perspective of someone who checks that material used on the
-site is properly cleared for use.
+            cat <<BLOCK
+The perspective of the Copyright Guild — checking that material used on the
+site is properly cleared: licences, attribution, permissions. This is one
+gate in the editorial pipeline; the Shepherds Guild gives the final sign-off.
 
-Things to try:
-- Open the copyright review queue and look through what is waiting.
+Try these in the community — ${cb}
+- Open the copyright clearance queue and look through what is waiting.
 - Approve or decline an item and leave a note explaining why.
 - Check what happens to the content after your decision.
 BLOCK
             ;;
         tester-safeguarding-reviewer)
-            cat <<'BLOCK'
-This is the perspective of someone who helps keep the community safe —
-reviewing reports and flagged items.
+            cat <<BLOCK
+IMPORTANT — this level only matters for the YOUTH side of Saint School.
+Saint School is used by young people, and where a site serves minors the
+community carries real child-safety duties: background checks, parental
+consent, and handling any concern that gets reported. This does NOT apply to
+the general community — it is specific to the youth-serving courses. You are
+the person who works that review queue.
 
-Things to try:
-- Open the safeguarding review queue and work through an item.
-- Leave a review note and complete the item.
-- Notice what is visible to you and what is kept private — does the
-  boundary feel right?
+Try these in the community — ${cb}
+- Work through the safeguarding items in the editorial review flow.
+- Open the safeguarding check records at /admin/nwc/safeguarding/checks.
+- Leave a review note and complete an item.
+- Notice what is visible to you and what is kept private — does the boundary
+  feel right? (You have the reviewer's view, not the full safeguarding admin
+  console — that is a separate, higher role.)
 BLOCK
             ;;
         *)
@@ -363,53 +429,78 @@ BLOCK
 # text / markdown-safe; warm, non-technical tone; no jargon.
 demo_invite_email() {
     local join_url="$1" expiry_days="$2"; shift 2
-    local pair bundle code
+    local pair bundle code site_arg="${DEMO_INVITE_PROVIDER_SITE:-nwd}"
+    local community_base courses_url
+    community_base="$(demo_invite_community_base "$site_arg")"
+    courses_url="$(demo_invite_courses_url "$site_arg")"
 
     cat <<INTRO
 Subject: Would you help us test ${DEMO_INVITE_SITE_NAME}?
 
 Hi!
 
-Thank you so much for being willing to help. Here's everything you need —
-it takes about a minute to get in.
+Thank you so much for being willing to help. It takes about a minute to get
+started, and you'll be trying two connected sites.
 
-WHAT IS ${DEMO_INVITE_SITE_NAME^^}?
+THE TWO SITES
 
-${DEMO_INVITE_SITE_NAME} is a Catholic faith-formation community site we
-are building — courses to grow in the faith, guilds (small communities to
-walk with), and tools for prayer and spiritual practice. We're getting it
-ready for real members, and before we open the doors we need friendly
-humans to try to break it.
+${DEMO_INVITE_SITE_NAME} is a Catholic faith-formation project with two
+halves that work together, joined by a single sign-in:
+
+  1. THE COMMUNITY — Narrow Way Commons. Guilds (small communities to walk
+     with), your profile and privacy choices, the activity stream, and the
+     place to report anything that feels off. This is where you join.
+
+  2. THE COURSES — Saint School itself, where the actual formation courses
+     live. You reach it from the community with the SAME sign-in — no second
+     account and no second password.
+
+We're getting both ready for real members, and before we open the doors we
+need friendly humans to try to break them.
 
 WHAT WE'RE ASKING
 
-Click around for 20-60 minutes as if you were a real member. Try the
-things your level unlocks (details below). And whenever anything is
-broken, confusing, or just feels wrong — even slightly — press the
-"Report a problem" button and tell us in a sentence or two. Every report
-goes straight into our fix queue. There are no silly reports; "this
-confused me" is exactly what we need to hear.
+Spend 20-60 minutes clicking around as if you were a real member — on BOTH
+halves. Try the things your level unlocks (below). And whenever anything is
+broken, confusing, or just feels wrong — even slightly — use the "Report a
+problem" link and tell us in a sentence or two. Every report goes straight
+into our fix queue. There are no silly reports; "this confused me" is
+exactly what we need to hear.
 
 COMPLETELY SAFE, COMPLETELY PRIVATE
 
-This is a practice copy of the site. The WHOLE SITE IS ERASED EVERY
-NIGHT at 1am Melbourne time — everything anyone did that day is wiped.
-You never enter your email or your real name; the site gives you a
-saint's name to use instead. Nothing about you is kept. So please: poke
-at everything, break anything you like — that is genuinely the point.
+Both sites are practice copies. The whole thing is ERASED EVERY NIGHT
+at 1am Melbourne time — everything anyone did that day is wiped. You never
+enter your email or your real name; the site gives you a saint's name to use
+instead. Nothing about you is kept. So please: poke at everything, break
+anything you like — that is genuinely the point.
 
-HOW TO JOIN (3 steps)
+HOW TO GET IN
 
-1. Open:  ${join_url}
-2. Paste YOUR code (from your section below).
-3. You're in.
+STEP 1 — Join the community:
+  1. Open:  ${join_url}
+  2. Paste YOUR code (from your section below).
+  3. You're in — you'll land on the community home.
+
+STEP 2 — Walk into the courses (whenever you like):
+  1. Open:  ${courses_url:-<COURSES-SITE>/login}
+  2. Click the button "Log in using your account on: nwd".
+  3. You're now in Saint School with the same identity — browse the courses
+     and start one. (There's no code box on the courses site; it uses your
+     community sign-in, not a code.)
+
+WHERE TO REPORT PROBLEMS
+
+On the community site: ${community_base:-<COMMUNITY-SITE>}/feedback/submit —
+or the "Report a problem" link you'll see around both sites. One sentence is
+plenty.
 
 INTRO
 
     for pair in "$@"; do
         bundle="${pair%%=*}"
         code="${pair#*=}"
-        demo_invite_level_block "$bundle" "$code"
+        demo_invite_level_block "$bundle" "$code" "$community_base"
     done
 
     cat <<CLOSING
@@ -426,7 +517,7 @@ site forgets everyone nightly, but your code keeps working until it
 expires — so if you come back tomorrow, just join again with the same
 code.
 
-With gratitude,
+God bless,
 CLOSING
 }
 

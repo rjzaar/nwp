@@ -22,6 +22,19 @@
 # Distinct exit code for "someone is active — retry later" (NOT an error).
 DEMO_EXIT_ACTIVE=3
 
+# Distinct exit code for "the data WAS restored, but the site did not pass its
+# post-restore smoke check" (nwp/ops#170).
+#
+# WHY IT HAS TO BE ITS OWN CODE. In the PAIRED path the two situations below
+# demand opposite reactions, and a single `return 1` cannot tell them apart:
+#   * the restore FAILED       ⇒ stop; the other half must not be touched;
+#   * the restore SUCCEEDED but the site smoked red ⇒ CARRY ON to the other
+#     half, because stopping now is what leaves nwd at one cut and ssd at
+#     another — the exact mismatch the pair exists to prevent.
+# The caller still surfaces a degraded half as an overall FAILURE; it just does
+# so after both halves are on the same cut.
+DEMO_EXIT_DEGRADED=4
+
 # Role bundles (decisions §4.4). Must stay in sync with
 # Drupal\nwc_demo_access\Service\DemoAccountFactory::BUNDLES in the nwc
 # profile repo (modules/nwc_features/nwc_demo_access).
@@ -156,11 +169,19 @@ demo_harvest_dir() { echo "$(demo_site_dir "$1")/demo-harvest"; }
 # demo_log <site> <event> [detail...]
 # Events: golden-captured reset-ok reset-failed skip-active skip-floor
 #         codes-issued codes-revoked codes-rotated codes-synced
+# DEMO_LOG_EXTRA — appended to EVERY line this process writes, when set.
+# The paired live reset (nwp/ops#170) sets it to `pair=1 cut=<cut_id>` for the
+# whole run, so a reader of sites/<site>/demo-reset.log can tell a half that was
+# wiped as part of a bound pair from one wiped alone — including the lines the
+# per-half code writes and knows nothing about the pair (harvest, skip-active,
+# reset-manifest). Attribution by construction beats remembering to pass a flag.
 demo_log() {
     local site="$1" event="$2"; shift 2 || true
     local file; file="$(demo_log_file "$site")"
     mkdir -p "$(dirname "$file")"
-    printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$event" "$*" >> "$file"
+    local detail="$*"
+    [[ -n "${DEMO_LOG_EXTRA:-}" ]] && detail="${detail:+${detail} }${DEMO_LOG_EXTRA}"
+    printf '%s %s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$event" "$detail" >> "$file"
 }
 
 ################################################################################

@@ -334,14 +334,21 @@ EOF
 }
 
 # demo_pair_cut_verify <cut_file> <provider_site> <provider_golden_dir> \
-#                      <consumer_site> <consumer_golden_dir>
+#                      <consumer_site> <consumer_golden_dir> [expect_tier]
 #
 # 0 iff the cut exists, names THESE two sites, and both halves' CURRENT golden
 # manifests still carry exactly the sha256s the cut recorded. Any drift means
 # one half was re-captured alone — the pair is no longer one logical cut and a
 # paired restore would produce mismatched identities.
+#
+# expect_tier (nwp/ops#170, optional): also require the cut to declare THAT
+# tier. The golden dirs are already tier-scoped (demo-golden vs
+# demo-golden-live), so a dev cut cannot normally be read at live — but a
+# hand-copied or restored-from-backup golden dir can carry one across, and a
+# dev cut is a licence to wipe two LIVE sites if nothing checks. Fail-closed:
+# an untiered cut refuses when a tier is demanded.
 demo_pair_cut_verify() {
-    local cut="$1" psite="$2" pdir="$3" csite="$4" cdir="$5"
+    local cut="$1" psite="$2" pdir="$3" csite="$4" cdir="$5" expect_tier="${6:-}"
     command -v jq >/dev/null 2>&1 || { _dp_err "jq required for pair-cut verification"; return 1; }
     [[ -s "$cut" ]] || {
         _dp_err "No pair cut manifest at $cut — run 'pl demo golden $psite --with-pair' first."
@@ -356,6 +363,15 @@ demo_pair_cut_verify() {
         _dp_err "Pair cut is for ${got_p}↔${got_c}, not ${psite}↔${csite} — refusing."
         return 1
     }
+
+    if [[ -n "$expect_tier" ]]; then
+        local got_t; got_t="$(jq -r '.tier // empty' "$cut")"
+        [[ "$got_t" == "$expect_tier" ]] || {
+            _dp_err "Pair cut was captured at tier '${got_t:-<none>}', not '${expect_tier}' — refusing."
+            _dp_warn "Re-capture at this tier: 'pl demo golden ${psite} --with-pair --tier=${expect_tier}'."
+            return 1
+        }
+    fi
 
     local half site dir key cur want
     for half in provider consumer; do
@@ -378,4 +394,139 @@ demo_pair_cut_verify() {
 demo_pair_cut_id_of() {
     command -v jq >/dev/null 2>&1 || return 1
     jq -r '.cut_id // empty' "$1" 2>/dev/null
+}
+
+################################################################################
+# LIVE PAIRED RESET: serialisation and the half-applied failure mode (ops#170)
+#
+# Two coupled LIVE sites, two databases, two file trees, one box, and NO shared
+# transaction. Nothing here pretends to make the restore atomic — it cannot be.
+# What it does is bound the window and make the one bad state RECOVERABLE and
+# VISIBLE instead of silent:
+#
+#   1. ONE WRITER  — a local flock, fail-closed, so two sessions (or an operator
+#      and a cron) cannot interleave two paired restores of the same pair.
+#   2. THE BOX'S OWN PAIR LOCK — the two box-resident wrappers
+#      (servers/live/demo/{nwd,ssd}-demo-reset-restricted) already serialise
+#      themselves on /var/lock/<site>-demo-reset.lock, and the ssd wrapper takes
+#      nwd's as an advisory pair lock. A workstation-driven paired reset goes to
+#      the box over a DIFFERENT ssh route (the admin key, not the forced-command
+#      key), so it does not pass through those wrappers and would otherwise be
+#      invisible to them. It therefore takes BOTH locks for the duration.
+#   3. TTL-BOUNDED HOLDER — the holder is `sleep <ttl>` with the two lock fds
+#      open, so if this workstation crashes mid-run the locks are released by
+#      themselves. This matters more than it looks: a lock leaked forever on
+#      /var/lock/nwd-demo-reset.lock would SILENTLY stop the nightly for ever,
+#      which is exactly the failure mode the ssd wrapper's [G6] comment refuses
+#      to invent. A bounded lock cannot do that.
+#   4. INCONSISTENCY BREADCRUMB — if the second half fails after the first was
+#      restored, the pair is on two different cuts. That is recorded in a file
+#      (and in both halves' logs), printed with the exact repair command, and
+#      surfaced by `pl demo status`. Re-running the same paired reset repairs it,
+#      because provider-first (ADR-0031 D5) makes the operation idempotent.
+################################################################################
+
+# The box-side lock file for a site — the SAME path the box wrapper opens.
+# tests/unit/test-demo-pair.bats asserts this equals the constant in the shipped
+# wrapper, so a rename on either side goes red instead of silently unlocking.
+demo_pair_box_lock_file() { echo "/var/lock/${1:?site required}-demo-reset.lock"; }
+
+# How long the box-side holder may live if nobody releases it. The nightly
+# retries every 30 min, so a stuck holder costs at most one slot.
+DEMO_PAIR_BOX_LOCK_TTL="${DEMO_PAIR_BOX_LOCK_TTL:-1800}"
+
+# demo_pair_box_lock_cmd <lock_a> <lock_b> <ttl> — the remote command, as a
+# STRING, that takes both box locks and leaves a TTL-bounded holder behind.
+#
+# PURE: no ssh, no globals, so the exact shell that runs on a live box is
+# assertable in a unit test instead of only observable by running it there.
+#
+# Prints, on the far side:
+#   BUSY <lock>    one of the wrappers is mid-reset  → the caller must REFUSE
+#   NOTHELD <lock> the holder failed to take a lock  → the caller must REFUSE
+#   HOLDER <pid>   both locks held; release with demo_pair_box_unlock_cmd <pid>
+#
+# The `exec 8>` / `exec 9>` + `exec sleep` shape is load-bearing: the locks live
+# on the OPEN FILE DESCRIPTIONS, and `exec sleep` keeps that one process (and so
+# one killable pid) holding both. `flock -n` throughout — a paired reset never
+# waits on a lock, it refuses and says so.
+#
+# The POSITIVE CONTROL is the second probe loop: after starting the holder we
+# re-probe and expect the locks to be BUSY. A probe that still succeeds means the
+# holder never took them, and we refuse rather than believing a lock we do not
+# hold. (Never trust a negative from a probe you have not seen return positive.)
+demo_pair_box_lock_cmd() {
+    local a="$1" b="$2" ttl="$3"
+    printf '%s' "set -u; A=$(printf '%q' "$a"); B=$(printf '%q' "$b"); T=$(printf '%q' "$ttl"); \
+for L in \"\$A\" \"\$B\"; do flock -n \"\$L\" -c true 2>/dev/null || { echo \"BUSY \$L\"; exit 3; }; done; \
+nohup sh -c 'exec 8>\"\$1\"; exec 9>\"\$2\"; flock -n 8 || exit 1; flock -n 9 || exit 1; exec sleep \"\$3\"' sh \"\$A\" \"\$B\" \"\$T\" >/dev/null 2>&1 & \
+P=\$!; sleep 1; \
+for L in \"\$A\" \"\$B\"; do if flock -n \"\$L\" -c true 2>/dev/null; then kill \"\$P\" 2>/dev/null; echo \"NOTHELD \$L\"; exit 4; fi; done; \
+echo \"HOLDER \$P\""
+}
+
+# demo_pair_box_unlock_cmd <pid> — release the holder started above. Killing the
+# one process closes both fds, which is the whole reason the holder is one
+# process. Idempotent and silent about a pid that is already gone.
+demo_pair_box_unlock_cmd() {
+    local pid="$1"
+    printf 'kill %s 2>/dev/null; exit 0' "$(printf '%q' "$pid")"
+}
+
+# demo_pair_box_lock_probe_cmd <lock_a> <lock_b> — read-only "is either half
+# mid-reset?", for --dry-run and for status. Takes nothing, leaves nothing.
+demo_pair_box_lock_probe_cmd() {
+    local a="$1" b="$2"
+    printf '%s' "set -u; for L in $(printf '%q' "$a") $(printf '%q' "$b"); do \
+flock -n \"\$L\" -c true 2>/dev/null || { echo \"BUSY \$L\"; exit 3; }; done; echo FREE"
+}
+
+# --- the local one-writer lock ------------------------------------------------
+
+# Local, because the thing being serialised is THIS repo's paired verb. Lives
+# beside the provider's golden, which is where every other artifact of a cut is.
+demo_pair_local_lock_file() {
+    echo "${PROJECT_ROOT:-$HOME/nwp}/sites/${1:?provider required}/.demo-pair.lock"
+}
+
+# --- the half-applied breadcrumb ---------------------------------------------
+
+demo_pair_inconsistent_file() {
+    echo "${PROJECT_ROOT:-$HOME/nwp}/sites/${1:?provider required}/demo-pair-INCONSISTENT.json"
+}
+
+# demo_pair_mark_inconsistent <provider> <consumer> <cut_id> <failed_half> <detail>
+# One half is at the cut and the other is not. Recorded as a FILE because the
+# session that caused it is the session that is about to exit, and the next
+# reader (a person, or `pl demo status`) has to be able to find out without it.
+demo_pair_mark_inconsistent() {
+    local prov="$1" cons="$2" cut_id="$3" half="$4" detail="${5:-}"
+    local f; f="$(demo_pair_inconsistent_file "$prov")"
+    mkdir -p "$(dirname "$f")"
+    cat > "$f" <<EOF
+{
+  "type": "demo-pair-inconsistent",
+  "provider": "${prov}",
+  "consumer": "${cons}",
+  "cut_id": "${cut_id}",
+  "failed_half": "${half}",
+  "detail": "${detail//\"/\'}",
+  "recorded_utc": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "repair": "pl demo reset ${prov} --with-pair --tier=live"
+}
+EOF
+}
+
+# Cleared ONLY by a paired reset in which BOTH halves reached the same cut.
+demo_pair_clear_inconsistent() {
+    rm -f "$(demo_pair_inconsistent_file "${1:?provider required}")" 2>/dev/null || true
+}
+
+# demo_pair_inconsistent_summary <provider> — one line, or nothing at all.
+demo_pair_inconsistent_summary() {
+    local f; f="$(demo_pair_inconsistent_file "${1:?provider required}")"
+    [[ -s "$f" ]] || return 1
+    command -v jq >/dev/null 2>&1 || { echo "pair inconsistent (see $f)"; return 0; }
+    jq -r '"PAIR INCONSISTENT since \(.recorded_utc): \(.failed_half) half failed at cut \(.cut_id) — repair with: \(.repair)"' \
+        "$f" 2>/dev/null || echo "pair inconsistent (see $f)"
 }

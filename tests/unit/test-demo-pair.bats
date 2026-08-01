@@ -267,9 +267,39 @@ _fake_golden() {
   [[ "$output" == *"no instance at tier"* ]]
 }
 
-@test "paired capture REFUSES --tier=live (not implemented in Phase 2)" {
+@test "ops#170: paired capture REFUSES --tier=live when a half has no live HOST" {
+  # The Phase-2 refusal ("not implemented … the consumer half has no live host
+  # yet") is replaced by the thing it was standing in for: an actual check that
+  # both halves have a live host. With no live: block in either .nwp.yml, this
+  # still refuses — and now says which half and why.
   run bash "$DEMO_CMD" golden prov --with-pair --tier=live
   [ "$status" -ne 0 ]
+  [[ "$output" == *"no live host configured"* || "$output" == *"no instance at tier"* ]]
+}
+
+@test "ops#170: the 'not implemented at live' refusals are GONE from both paired verbs" {
+  # The refusal TEXT survives in the header comment that explains what it was
+  # and why replacing it is not the same as deleting a guard. What must not
+  # survive is an executable refusal, so only non-comment lines are searched.
+  code=$(grep -vE '^[[:space:]]*#' "$DEMO_CMD")
+  ! printf '%s\n' "$code" | grep -q 'paired capture on --tier=live is not implemented'
+  ! printf '%s\n' "$code" | grep -q 'paired reset on --tier=live is not implemented'
+}
+
+@test "ops#170: BOTH paired verbs refuse --tier=prod even when called directly" {
+  # demo_check_tier only guards main(); a library caller must hit the same wall.
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    cmd_golden_paired prov prod false 2>&1
+    echo "GOLDEN_RC=$?"
+    cmd_reset_paired prov prod "" true false false 2>&1
+    echo "RESET_RC=$?"
+  '
+  [[ "$output" == *"REFUSED: --tier=prod"* ]]
+  [[ "$output" == *"GOLDEN_RC=1"* ]]
+  [[ "$output" == *"RESET_RC=1"* ]]
 }
 
 # --- static ORDERING guarantees ----------------------------------------------
@@ -308,17 +338,38 @@ _fake_golden() {
   printf '%s\n' "$body" | grep -q 'return "\$DEMO_EXIT_ACTIVE"'
 }
 
-@test "naming EITHER half from the CLI runs the paired reset (auto-upgrade)" {
+@test "naming EITHER half from the CLI runs the paired reset (auto-upgrade at dev/stg)" {
   body=$(awk '/^main\(\)/,/^}/' "$DEMO_CMD")
   printf '%s\n' "$body" | grep -q 'running the PAIRED reset'
 }
 
 @test "--no-pair is a loud, logged override, not a silent single-site reset" {
-  body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  # The guard moved OUT of cmd_reset into its own function (ops#170) so that it
+  # runs above the dev/live tier split instead of below it — same rules, one
+  # place, and now reachable at --tier=live.
+  body=$(awk '/^demo_reset_pair_guard\(\)/,/^}/' "$DEMO_CMD")
   printf '%s\n' "$body" | grep -q 'reset-unpaired-override'
   printf '%s\n' "$body" | grep -q 'keeps SSO locks against accounts this wipe destroys'
   # and the refusal backstop still exists for direct/library callers
   printf '%s\n' "$body" | grep -q 'reset-refused'
+}
+
+@test "ops#170: the paired-half guard runs BEFORE the live dispatch, not after it" {
+  # It used to sit below `if demo_is_live … cmd_reset_live … return`, which made
+  # it dead code at the one tier where wiping half a coupled pair is worst.
+  body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  g=$(printf '%s\n' "$body" | grep -n 'demo_reset_pair_guard' | head -1 | cut -d: -f1)
+  l=$(printf '%s\n' "$body" | grep -n 'cmd_reset_live'        | head -1 | cut -d: -f1)
+  [ -n "$g" ] && [ -n "$l" ] && [ "$g" -lt "$l" ]
+}
+
+@test "ops#170: the pair guard asks demo_instance_exists, not demo_project_dir" {
+  # At live there is no .ddev directory for either half, so the old question
+  # ("is there a local DDEV project") answered NO and the pair vanished.
+  body=$(awk '/^demo_reset_pair_guard\(\)/,/^}/' "$DEMO_CMD")
+  printf '%s\n' "$body" | grep -q 'demo_instance_exists'
+  ! printf '%s\n' "$body" | grep -q 'demo_project_dir'
+  awk '/^main\(\)/,0' "$DEMO_CMD" | grep -q 'demo_instance_exists "\$_partner" "\$tier"'
 }
 
 @test "Moodle files restore CLEARS CONTENTS, never rm -rf the bind-mount dir" {
@@ -793,4 +844,565 @@ STUB
   '
   [[ "$output" != *"unbound variable"* ]]
   [ "$status" -eq 0 ]
+}
+
+################################################################################
+# nwp/ops#170 — PAIRED CAPTURE AND RESET AT --tier=live
+#
+# The refusals these replace were NOT-BUILT markers ("the consumer half has no
+# live host yet"), not safety judgements. So the tests below are about the
+# guards that had to be built to make the live path safe, and each one is
+# written so that DELETING the guard turns it red:
+#
+#   * one cut, tier-bound          — a dev cut cannot authorise a live restore
+#   * one writer + the box's lock  — a workstation run cannot race the nightly
+#   * pre-flight BOTH, then destroy — an unreachable half destroys nothing
+#   * stage BOTH, then destroy     — a failed transfer destroys nothing
+#   * provider-first, and the split state is RECORDED and REPAIRABLE
+#   * the live context is per-SITE — both halves live on ONE box
+################################################################################
+
+# Give the fixture pair two live hosts. Deliberately real config rather than a
+# stub, because demo_instance_exists reads exactly this.
+_live_fixture_config() {
+  cat > "${PROJECT_ROOT}/sites/prov/.nwp.yml" <<'YML'
+project:
+  name: prov
+  type: drupal
+live:
+  enabled: true
+  domain: prov.example.test
+  server_ip: 203.0.113.10
+  remote_path: /var/www/prov
+YML
+  cat > "${PROJECT_ROOT}/sites/cons/.nwp.yml" <<'YML'
+project:
+  name: cons
+  type: moodle
+moodle:
+  dataroot_host: sites/cons_moodledata
+live:
+  enabled: true
+  domain: cons.example.test
+  server_ip: 203.0.113.10
+  remote_path: /var/www/cons
+YML
+}
+
+# Two LIVE goldens bound into one live cut.
+_live_goldens() {
+  _fake_golden "$(demo_golden_dir prov live)" prov L1
+  _fake_golden "$(demo_golden_dir cons live)" cons L1
+  demo_pair_cut_write "$(demo_pair_cut_file "$(demo_golden_dir prov live)")" \
+    cons-prov "${PROJECT_ROOT}/pairs/cons.pair-contract.yml" live cut-live-1 \
+    prov "$(demo_golden_dir prov live)" cons "$(demo_golden_dir cons live)"
+}
+
+# Run the PAIRED LIVE reset against a stubbed box and echo a TRACE, one event
+# per line. Env knobs: LOCK_MODE=held|busy, STAGE_RC, PROV_RC, CONS_RC,
+# PREFLIGHT_FAIL=<site>, AUTO_YES, DRY_RUN.
+_live_trace() {
+  local run="${TEST_TMP}/livrun.sh"
+  cat > "$run" <<'RUN'
+set -uo pipefail
+source "$REPO_ROOT/scripts/commands/demo.sh"
+set +e
+
+# --- the box, stubbed --------------------------------------------------------
+demo_live_ctx() {
+  local s="$1"
+  DEMO_LIVE_SITE="$s"; DEMO_LIVE_IP="203.0.113.10"; DEMO_LIVE_USER="gitlab"
+  DEMO_LIVE_PATH="/var/www/$s"; DEMO_LIVE_DOMAIN="${s}.example.test"
+  DEMO_LIVE_WEBROOT="web"; DEMO_LIVE_SUDO="sudo"; DEMO_LIVE_DRUSHSUDO="sudo -u www-data"
+  echo "CTX $s" >> "$TRACE"
+  return 0
+}
+demo_rssh() {
+  local site="$1"; shift
+  local cmd="$*"
+  case "$cmd" in
+    *nohup*)                                     # the lock ACQUIRE
+      echo "LOCK-ACQUIRE $site" >> "$TRACE"
+      [ "${LOCK_MODE:-held}" = "busy" ] && { echo "BUSY /var/lock/prov-demo-reset.lock"; return 0; }
+      echo "HOLDER 4242"; return 0 ;;
+    *"echo FREE"*)                               # the read-only probe
+      echo "LOCK-PROBE $site" >> "$TRACE"; echo FREE; return 0 ;;
+    kill*)
+      echo "LOCK-RELEASE $site" >> "$TRACE"; return 0 ;;
+    *"rm -f"*) echo "CLEANUP $site" >> "$TRACE"; return 0 ;;
+  esac
+  echo "RSSH $site $cmd" >> "$TRACE"; return 0
+}
+demo_live_require_demo_mode() {
+  echo "DEMOMODE $1" >> "$TRACE"
+  [ "${PREFLIGHT_FAIL:-}" = "$1" ] && return 1
+  return 0
+}
+demo_live_newest_session()      { echo 1; }
+demo_measure_live()             { DEMO_M_DB=10; DEMO_M_FILES=2M; DEMO_M_ACCTS=1; }
+demo_live_manifest_files_path() { echo "/var/www/$1-data"; }
+demo_live_files_parent()        { echo "/var/www/${DEMO_LIVE_SITE}/web/sites/default"; }
+demo_push_verified() {
+  echo "STAGE $1 $3" >> "$TRACE"
+  return "${STAGE_RC:-0}"
+}
+cmd_reset_live() {
+  echo "RESTORE $1 cut=$6 db=$7 files=$8 idle=[$2] yes=$3" >> "$TRACE"
+  case "$1" in
+    prov) return "${PROV_RC:-0}" ;;
+    *)    return "${CONS_RC:-0}" ;;
+  esac
+}
+demo_consumer_checks() { echo "CONSUMER-CHECKS $1 $2" >> "$TRACE"; return 0; }
+
+# --- spies on the REAL impact functions --------------------------------------
+eval "_real_impact_render() $(declare -f impact_render | tail -n +2)"
+impact_render()  { echo "RENDER" >> "$TRACE"; _real_impact_render "$@" >/dev/null; }
+eval "_real_impact_confirm() $(declare -f impact_confirm | tail -n +2)"
+impact_confirm() {
+  local rc=0; _real_impact_confirm "$@" >/dev/null 2>&1 || rc=$?
+  echo "CONFIRM tier=$1 subject=$2 rc=$rc" >> "$TRACE"
+  return "$rc"
+}
+print_status() { [[ "${2:-}" == *"[dry-run]"* ]] && echo "DRYRUN" >> "$TRACE"; return 0; }
+
+cmd_reset_paired prov live "" "$AUTO_YES" false "$DRY_RUN" >/dev/null 2>&1
+echo "EXIT $?" >> "$TRACE"
+RUN
+  TRACE="${TEST_TMP}/livetrace"; : > "$TRACE"
+  TRACE="$TRACE" REPO_ROOT="$REPO_ROOT" TEST_TMP="$TEST_TMP" PROJECT_ROOT="$PROJECT_ROOT" \
+    AUTO_YES="${AUTO_YES:-true}" DRY_RUN="${DRY_RUN:-false}" \
+    LOCK_MODE="${LOCK_MODE:-held}" STAGE_RC="${STAGE_RC:-0}" \
+    PROV_RC="${PROV_RC:-0}" CONS_RC="${CONS_RC:-0}" PREFLIGHT_FAIL="${PREFLIGHT_FAIL:-}" \
+    bash "$run" </dev/null >/dev/null 2>&1 || true
+  cat "$TRACE"
+}
+
+_line_of() { printf '%s\n' "$1" | grep -n "^$2" | head -1 | cut -d: -f1; }
+
+@test "ops#170 GREEN: the paired LIVE reset now RUNS — both halves, one cut, one confirmation" {
+  _live_fixture_config; _live_goldens
+  trace="$(_live_trace)"
+  # It gets all the way to the destructive step (the negative control: a guard
+  # that refuses everything would also produce no RESTORE lines).
+  [[ "$trace" == *"RESTORE prov cut=cut-live-1"* ]]
+  [[ "$trace" == *"RESTORE cons cut=cut-live-1"* ]]
+  [[ "$trace" == *"EXIT 0"* ]]
+  # exactly ONE report and ONE confirmation cover both halves
+  [ "$(printf '%s\n' "$trace" | grep -c '^RENDER')"  -eq 1 ]
+  [ "$(printf '%s\n' "$trace" | grep -c '^CONFIRM')" -eq 1 ]
+}
+
+@test "ops#170: the live confirmation is the TYPED tier and names the pair" {
+  _live_fixture_config; _live_goldens
+  trace="$(_live_trace)"
+  line="$(printf '%s\n' "$trace" | grep '^CONFIRM' | head -1)"
+  [[ "$line" == *"tier=typed"* ]]
+  [[ "$line" == *"cons-prov"* ]]
+}
+
+@test "ops#170: PROVIDER FIRST on live (ADR-0031 D5)" {
+  _live_fixture_config; _live_goldens
+  trace="$(_live_trace)"
+  p=$(_line_of "$trace" "RESTORE prov"); c=$(_line_of "$trace" "RESTORE cons")
+  [ -n "$p" ] && [ -n "$c" ] && [ "$p" -lt "$c" ]
+}
+
+@test "ops#170: NOTHING is destroyed before the lock, the report and the confirmation" {
+  _live_fixture_config; _live_goldens
+  trace="$(_live_trace)"
+  lock=$(_line_of "$trace" "LOCK-ACQUIRE")
+  render=$(_line_of "$trace" "RENDER")
+  confirm=$(_line_of "$trace" "CONFIRM")
+  restore=$(_line_of "$trace" "RESTORE prov")
+  [ -n "$lock" ] && [ -n "$render" ] && [ -n "$confirm" ] && [ -n "$restore" ]
+  [ "$lock" -lt "$render" ]
+  [ "$render" -lt "$confirm" ]
+  [ "$confirm" -lt "$restore" ]
+}
+
+@test "ops#170: BOTH halves are staged on the box BEFORE either is destroyed" {
+  # The likeliest way a two-host restore splits a pair is a transfer failure
+  # halfway through. Staging both first moves that entirely in front of the wipe.
+  _live_fixture_config; _live_goldens
+  trace="$(_live_trace)"
+  sp=$(_line_of "$trace" "STAGE prov"); sc=$(_line_of "$trace" "STAGE cons")
+  r=$(_line_of "$trace" "RESTORE prov")
+  [ -n "$sp" ] && [ -n "$sc" ] && [ -n "$r" ]
+  [ "$sp" -lt "$r" ] && [ "$sc" -lt "$r" ]
+}
+
+@test "ops#170: a staging failure destroys NOTHING and cleans up after itself" {
+  _live_fixture_config; _live_goldens
+  STAGE_RC=1 trace="$(STAGE_RC=1 _live_trace)"
+  ! [[ "$trace" == *"RESTORE"* ]]
+  [[ "$trace" == *"CLEANUP"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+}
+
+@test "ops#170: a BUSY box pair lock REFUSES — the workstation never races the nightly" {
+  _live_fixture_config; _live_goldens
+  trace="$(LOCK_MODE=busy _live_trace)"
+  ! [[ "$trace" == *"RESTORE"* ]]
+  ! [[ "$trace" == *"RENDER"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+}
+
+@test "ops#170: an unreachable/unpostured half is caught in PRE-FLIGHT — the other half is untouched" {
+  _live_fixture_config; _live_goldens
+  trace="$(PREFLIGHT_FAIL=cons _live_trace)"
+  # the provider was checked first and is fine, but nothing is destroyed
+  [[ "$trace" == *"DEMOMODE prov"* ]]
+  [[ "$trace" == *"DEMOMODE cons"* ]]
+  ! [[ "$trace" == *"RESTORE"* ]]
+  ! [[ "$trace" == *"CONFIRM"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+}
+
+@test "ops#170: --dry-run on the live pair reports and stops, and takes no box lock" {
+  _live_fixture_config; _live_goldens
+  trace="$(DRY_RUN=true AUTO_YES=false _live_trace)"
+  [[ "$trace" == *"RENDER"* ]]
+  [[ "$trace" == *"DRYRUN"* ]]
+  [[ "$trace" == *"LOCK-PROBE"* ]]        # it LOOKS…
+  ! [[ "$trace" == *"LOCK-ACQUIRE"* ]]    # …but takes nothing
+  ! [[ "$trace" == *"CONFIRM"* ]]
+  ! [[ "$trace" == *"RESTORE"* ]]
+  [[ "$trace" == *"EXIT 0"* ]]
+}
+
+@test "ops#170: a refused confirmation destroys nothing (no TTY, no -y)" {
+  _live_fixture_config; _live_goldens
+  trace="$(AUTO_YES=false _live_trace)"
+  [[ "$trace" == *"RENDER"* ]]
+  [[ "$trace" == *"rc=1"* ]]
+  ! [[ "$trace" == *"RESTORE"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+}
+
+@test "ops#170 HALF-FAILURE: provider fails ⇒ consumer NEVER touched, no split recorded" {
+  _live_fixture_config; _live_goldens
+  trace="$(PROV_RC=1 _live_trace)"
+  [[ "$trace" == *"RESTORE prov"* ]]
+  ! [[ "$trace" == *"RESTORE cons"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+  # the pair was not split BY US, so no breadcrumb
+  [ ! -f "$(demo_pair_inconsistent_file prov)" ]
+  grep -q 'reason=provider-restore' "${PROJECT_ROOT}/sites/prov/demo-reset.log"
+  ! grep -q 'reset-ok' "${PROJECT_ROOT}/sites/prov/demo-reset.log"
+}
+
+@test "ops#170 HALF-FAILURE: consumer fails AFTER the provider ⇒ split RECORDED, logged, repairable, non-zero" {
+  _live_fixture_config; _live_goldens
+  trace="$(CONS_RC=1 _live_trace)"
+  [[ "$trace" == *"RESTORE prov"* ]]
+  [[ "$trace" == *"RESTORE cons"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+  f="$(demo_pair_inconsistent_file prov)"
+  [ -s "$f" ]
+  [ "$(jq -r .failed_half "$f")" = "consumer" ]
+  [ "$(jq -r .cut_id "$f")" = "cut-live-1" ]
+  [[ "$(jq -r .repair "$f")" == *"--with-pair --tier=live"* ]]
+  grep -q 'pair-inconsistent' "${PROJECT_ROOT}/sites/prov/demo-reset.log"
+  grep -q 'pair-inconsistent' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+  # and it did NOT claim success
+  ! grep -q 'reset-ok ' "${PROJECT_ROOT}/sites/prov/demo-reset.log"
+}
+
+@test "ops#170 HALF-FAILURE: a successful paired run CLEARS a previous split" {
+  _live_fixture_config; _live_goldens
+  demo_pair_mark_inconsistent prov cons old-cut consumer "earlier failure"
+  [ -s "$(demo_pair_inconsistent_file prov)" ]
+  trace="$(_live_trace)"
+  [[ "$trace" == *"EXIT 0"* ]]
+  [ ! -f "$(demo_pair_inconsistent_file prov)" ]
+}
+
+@test "ops#170 DEGRADED: a half that restores but smokes red does NOT strand the other half" {
+  # Stopping here would trade a cosmetic failure for a data-consistency one.
+  _live_fixture_config; _live_goldens
+  trace="$(PROV_RC=4 _live_trace)"
+  [[ "$trace" == *"RESTORE cons"* ]]      # the pair is still brought to one cut
+  [[ "$trace" == *"EXIT 1"* ]]            # …and the run still reports FAILED
+  [ ! -f "$(demo_pair_inconsistent_file prov)" ]
+}
+
+@test "ops#170: every log line of a paired live run is tagged with the cut" {
+  _live_fixture_config; _live_goldens
+  trace="$(_live_trace)"
+  grep -q 'pair=1 cut=cut-live-1' "${PROJECT_ROOT}/sites/prov/demo-reset.log"
+  grep -q 'pair=1 cut=cut-live-1' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+  # including the per-site manifest line, which knows nothing about the pair
+  grep -q 'reset-manifest .*pair=1 cut=cut-live-1' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+}
+
+@test "ops#170: pl demo status reports a split pair until it is repaired" {
+  _live_fixture_config; _live_goldens
+  demo_pair_mark_inconsistent prov cons cut-live-1 consumer "cmd_reset_live rc=1"
+  run bash "$DEMO_CMD" status prov --tier=live
+  [[ "$output" == *"PAIR INCONSISTENT"* ]]
+  [[ "$output" == *"--with-pair --tier=live"* ]]
+  demo_pair_clear_inconsistent prov
+  run bash "$DEMO_CMD" status prov --tier=live
+  ! [[ "$output" == *"PAIR INCONSISTENT"* ]]
+}
+
+# --- the cut is bound to its TIER --------------------------------------------
+
+@test "ops#170: a DEV cut cannot authorise a LIVE restore" {
+  _fake_golden "$(demo_golden_dir prov dev)" prov s1
+  _fake_golden "$(demo_golden_dir cons dev)" cons s1
+  cut="$(demo_pair_cut_file "$(demo_golden_dir prov dev)")"
+  demo_pair_cut_write "$cut" cons-prov "${PROJECT_ROOT}/pairs/cons.pair-contract.yml" \
+    dev cut-dev-1 prov "$(demo_golden_dir prov dev)" cons "$(demo_golden_dir cons dev)"
+  # verifies as a dev cut…
+  run demo_pair_cut_verify "$cut" prov "$(demo_golden_dir prov dev)" cons "$(demo_golden_dir cons dev)" dev
+  [ "$status" -eq 0 ]
+  # …and REFUSES when a live restore asks
+  run demo_pair_cut_verify "$cut" prov "$(demo_golden_dir prov dev)" cons "$(demo_golden_dir cons dev)" live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"tier"* ]]
+}
+
+@test "ops#170: a live capture whose SECOND half fails leaves no usable cut" {
+  # The realistic partial capture: provider re-captured, consumer failed. The
+  # OLD cut must stop verifying rather than silently binding a stale half.
+  _live_goldens
+  pdir="$(demo_golden_dir prov live)"; cdir="$(demo_golden_dir cons live)"
+  cut="$(demo_pair_cut_file "$pdir")"
+  run demo_pair_cut_verify "$cut" prov "$pdir" cons "$cdir" live
+  [ "$status" -eq 0 ]
+  _fake_golden "$pdir" prov L2          # provider re-captured alone
+  run demo_pair_cut_verify "$cut" prov "$pdir" cons "$cdir" live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"PAIR CUT BROKEN"* ]]
+}
+
+# --- the live context is per-SITE (both halves are on ONE box) ---------------
+
+@test "ops#170 REGRESSION: resolving the second half does not inherit the first half's host" {
+  # Before this, demo_live_ctx memoised for the life of the PROCESS. nwd and ssd
+  # are on the same box, so the second half would have been dumped from — and
+  # restored onto — the FIRST half's path and database, sha-verified all the way.
+  _live_fixture_config
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    get_ssh_user() { echo gitlab; }
+    demo_rssh() { return 0; }
+    demo_live_ctx prov >/dev/null 2>&1
+    echo "FIRST=$DEMO_LIVE_PATH:$DEMO_LIVE_DOMAIN"
+    demo_live_ctx cons >/dev/null 2>&1
+    echo "SECOND=$DEMO_LIVE_PATH:$DEMO_LIVE_DOMAIN"
+  '
+  [[ "$output" == *"FIRST=/var/www/prov:prov.example.test"* ]]
+  [[ "$output" == *"SECOND=/var/www/cons:cons.example.test"* ]]
+}
+
+@test "ops#170: every remote helper asserts the context belongs to the site it was handed" {
+  for fn in demo_rssh demo_push_verified demo_pull_verified; do
+    body=$(awk "/^${fn}\(\)/,/^}/" "$DEMO_CMD")
+    printf '%s\n' "$body" | grep -q 'DEMO_LIVE_SITE" == "\$site"'
+  done
+  # and the memo itself is keyed, not a bare "have I resolved anything"
+  awk '/^demo_live_ctx\(\)/,/^}/' "$DEMO_CMD" | grep -q 'DEMO_LIVE_SITE" == "\$site"'
+}
+
+@test "ops#170: the paired live path resets the context between the halves" {
+  body=$(awk '/^_cmd_reset_paired_live_body\(\)/,/^}/' "$DEMO_CMD")
+  [ "$(printf '%s\n' "$body" | grep -c 'demo_live_ctx_reset')" -ge 4 ]
+  body=$(awk '/^cmd_golden_paired\(\)/,/^}/' "$DEMO_CMD")
+  [ "$(printf '%s\n' "$body" | grep -c 'demo_live_ctx_reset')" -ge 2 ]
+}
+
+# --- the box lock, as a string ------------------------------------------------
+
+@test "ops#170: the derived box lock paths are the ones the SHIPPED wrappers use" {
+  # Read off the target, not from memory: if either wrapper renames its lock,
+  # this goes red instead of the pair silently losing its serialisation.
+  nwd_lock=$(grep -E '^LOCK_FILE=' "${REPO_ROOT}/servers/live/demo/nwd-demo-reset-restricted" | head -1 | cut -d'"' -f2)
+  ssd_lock=$(grep -E '^LOCK_FILE=' "${REPO_ROOT}/servers/live/demo/ssd-demo-reset-restricted" | head -1 | cut -d'"' -f2)
+  [ "$(demo_pair_box_lock_file nwd)" = "$nwd_lock" ]
+  [ "$(demo_pair_box_lock_file ssd)" = "$ssd_lock" ]
+  # and the ssd wrapper's advisory PAIR lock is the nwd one
+  pair_lock=$(grep -E '^PAIR_LOCK_FILE=' "${REPO_ROOT}/servers/live/demo/ssd-demo-reset-restricted" | head -1 | cut -d'"' -f2)
+  [ "$(demo_pair_box_lock_file nwd)" = "$pair_lock" ]
+}
+
+@test "ops#170: the box lock command is non-blocking, TTL-bounded, and PROVES it holds the locks" {
+  cmd="$(demo_pair_box_lock_cmd /var/lock/a.lock /var/lock/b.lock 900)"
+  [[ "$cmd" == *"flock -n"* ]]
+  ! [[ "$cmd" == *"flock -w"* ]]
+  [[ "$cmd" == *"sleep \"\$3\""* ]]     # the holder self-releases
+  [[ "$cmd" == *900* ]]
+  [[ "$cmd" == *"BUSY"* ]]
+  [[ "$cmd" == *"NOTHELD"* ]]           # the positive control
+  [[ "$cmd" == *"HOLDER"* ]]
+  # ONE process holds BOTH fds, so ONE kill releases both
+  [[ "$cmd" == *'exec 8>'* ]] && [[ "$cmd" == *'exec 9>'* ]]
+  [[ "$(demo_pair_box_unlock_cmd 1234)" == "kill 1234"* ]]
+}
+
+@test "ops#170: the box lock command actually works when run (locks, then blocks a second taker)" {
+  # Positive control for the control: prove the emitted shell does what the
+  # refusal path assumes it does, on this machine, before believing any BUSY.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"
+  a="${TEST_TMP}/a.lock"; b="${TEST_TMP}/b.lock"
+  out="$(sh -c "$(demo_pair_box_lock_cmd "$a" "$b" 5)" || true)"
+  [[ "$out" == HOLDER* ]]
+  pid="${out#HOLDER }"
+  # a second attempt must now be refused
+  out2="$(sh -c "$(demo_pair_box_lock_cmd "$a" "$b" 5)" || true)"
+  [[ "$out2" == BUSY* ]]
+  sh -c "$(demo_pair_box_unlock_cmd "$pid")"
+  sleep 0.3
+  out3="$(sh -c "$(demo_pair_box_lock_probe_cmd "$a" "$b")")"
+  [ "$out3" = "FREE" ]
+  pkill -f "sleep 5" 2>/dev/null || true
+}
+
+@test "ops#170: the local one-writer lock is fail-CLOSED" {
+  body=$(awk '/^demo_pair_live_lock\(\)/,/^}/' "$DEMO_CMD")
+  printf '%s\n' "$body" | grep -q 'flock -n 201'
+  printf '%s\n' "$body" | grep -q 'already running'
+  # an unopenable lock file refuses too — it never proceeds unlocked
+  printf '%s\n' "$body" | grep -q 'Cannot open the pair lock'
+}
+
+# --- what must NOT have changed ----------------------------------------------
+
+@test "ops#170: the live paired capture DELEGATES to cmd_golden — no second dump idiom" {
+  # The structure-only exclusions (Drupal watchdog/sessions/flood; Moodle's
+  # regenerable dataroot trees) live in the single-site live capture. A paired
+  # path with its own mysqldump would quietly lose them.
+  body=$(awk '/^cmd_golden_paired\(\)/,/^}/' "$DEMO_CMD")
+  printf '%s\n' "$body" | grep -q 'cmd_golden "\$prov"'
+  printf '%s\n' "$body" | grep -q 'cmd_golden "\$cons"'
+  ! printf '%s\n' "$body" | grep -qE 'mysqldump|sql:dump|tar czf'
+}
+
+@test "ops#170: the REAL ssc<->nwc pair stays invisible at live too" {
+  # The opt-in is the only thing between a production pair and a nightly wipe.
+  run bash "$DEMO_CMD" reset realprov --with-pair --tier=live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not in a demo-enabled pair"* ]]
+  run bash "$DEMO_CMD" golden real --with-pair --tier=live
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#170: --tier=prod is still refused by the CLI at every paired verb" {
+  for verb in golden reset nightly; do
+    run bash "$DEMO_CMD" "$verb" prov --with-pair --tier=prod
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"prod"* ]]
+  done
+}
+
+################################################################################
+# ops#170, operator decision 2026-08-02 — AT LIVE THE PAIRED PATH IS OPT-IN
+#
+# dev/stg auto-upgrade: naming either half runs the pair. Live does NOT, and the
+# asymmetry is the point. The paired live path is destructive across two hosts
+# and has never been exercised against the estate; making a never-run
+# destructive path the new default of an existing live verb is precisely the
+# move that the context-bleed bug found while writing it argues against.
+#
+# The pair does not stop being enforced, though: without --with-pair, a live
+# reset of a coupled half REFUSES and names the flag. Refusing is a fine
+# default. Silently doing a new thing is not.
+################################################################################
+
+@test "ops#170 OPT-IN: a bare live reset of a coupled half REFUSES and names --with-pair" {
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset cons --tier=live --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"half of the demo pair"* ]]
+  [[ "$output" == *"--with-pair --tier=live"* ]]
+  # …and it did NOT quietly reset one host instead
+  ! [[ "$output" == *"Golden image verified"* ]]
+  grep -q 'reset-refused' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+}
+
+@test "ops#170 OPT-IN: the refusal also names the single-host escape and the capture step" {
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset prov --tier=live --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--no-pair --tier=live"* ]]
+  [[ "$output" == *"golden prov --with-pair --tier=live"* ]]
+}
+
+@test "ops#170 OPT-IN: --with-pair at live DOES opt in (negative control — the gate is not a blanket refusal)" {
+  # It must get PAST the unpaired-half refusal. It then fails for an honest
+  # later reason (no golden / no cut / no reachable box), which is what we assert
+  # — the point is that the pair gate is no longer what stops it.
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset prov --with-pair --tier=live --force
+  [ "$status" -ne 0 ]
+  ! [[ "$output" == *"half of the demo pair"* ]]
+  [[ "$output" == *"Paired demo reset"* || "$output" == *"pair lock"* || "$output" == *"golden"* ]]
+}
+
+@test "ops#170 OPT-IN: --no-pair at live is still the loud, logged single-host override" {
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset cons --no-pair --tier=live --force
+  [[ "$output" == *"--no-pair: resetting ONLY 'cons'"* ]]
+  grep -q 'reset-unpaired-override' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+}
+
+@test "ops#170 OPT-IN is LIVE-ONLY: dev still auto-upgrades to the pair" {
+  # The negative control for the inversion: it must not have disabled pairing
+  # everywhere. dev has DDEV projects for both halves, so the pair applies.
+  mkdir -p "${TEST_TMP}/proj-prov/.ddev" "${TEST_TMP}/proj-cons/.ddev"
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    demo_project_dir() { case "$1" in prov) echo "$TEST_TMP/proj-prov";; *) echo "$TEST_TMP/proj-cons";; esac; }
+    cmd_reset_paired() { echo "PAIRED-PATH tier=$2"; return 0; }
+    cmd_reset()        { echo "SINGLE-PATH tier=$2"; return 0; }
+    main reset cons --tier=dev --force
+  '
+  [[ "$output" == *"PAIRED-PATH tier=dev"* ]]
+  ! [[ "$output" == *"SINGLE-PATH"* ]]
+}
+
+@test "ops#170 OPT-IN: at live, main() routes a bare reset to the SINGLE path (where the guard refuses)" {
+  _live_fixture_config
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    cmd_reset_paired() { echo "PAIRED-PATH tier=$2"; return 0; }
+    cmd_reset()        { echo "SINGLE-PATH tier=$2 pairflag=[${7:-}]"; return 0; }
+    main reset cons --tier=live --force
+    main reset cons --tier=live --with-pair --force
+  '
+  [[ "$output" == *"SINGLE-PATH tier=live pairflag=[]"* ]]   # bare: single path, guard refuses inside
+  [[ "$output" == *"PAIRED-PATH tier=live"* ]]               # --with-pair: opted in
+}
+
+@test "ops#170 OPT-IN: a bare live CAPTURE is unchanged (single-site, non-destructive)" {
+  # The other half of not surprising anyone: `pl demo golden <site> --tier=live`
+  # must keep doing exactly what it did, because capture destroys nothing and a
+  # session may be mid-flight relying on it.
+  _live_fixture_config
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    cmd_golden_paired() { echo "PAIRED-CAPTURE"; return 0; }
+    cmd_golden()        { echo "SINGLE-CAPTURE $1 tier=$2"; return 0; }
+    main golden cons --tier=live
+    main golden cons --tier=live --with-pair
+  '
+  [[ "$output" == *"SINGLE-CAPTURE cons tier=live"* ]]
+  [[ "$output" == *"PAIRED-CAPTURE"* ]]
+}
+
+@test "ops#170 OPT-IN: the live opt-in is stated in main(), not inferred" {
+  body=$(awk '/^main\(\)/,/^}/' "$DEMO_CMD")
+  printf '%s\n' "$body" | grep -q 'demo_is_live "\$tier" && \[\[ "\$with_pair" != "yes" \]\]'
+  printf '%s\n' "$body" | grep -q 'opt-IN only at live'
 }

@@ -75,16 +75,50 @@ demo_moodle_is_demo() {
 
 # ---------------------------------------------------------------------------
 # demo_moodle_last_session <ssh-prefix> <dbname>
-# Newest Moodle session timestamp, for the idle guard. Prints an integer.
+# Newest AUTHENTICATED Moodle session timestamp, for the idle guard. Prints an
+# integer.
 #
 # Fails (returns 1) when the answer is missing or not a number. The caller MUST
 # treat that as ACTIVE — the nwd wrapper's [G4] learnt this the hard way: a
 # failed or garbled sessions query has to count as "someone is here", never as
 # "nobody is here", or a database hiccup becomes a licence to wipe.
+#
+# `userid <> 0` IS LOAD-BEARING, and it is the one place this diverges from the
+# Drupal half on purpose. Moodle writes an mdl_sessions row for EVERY anonymous
+# request — crawlers, uptime probes, a stray curl. On ssd that is essentially
+# all of the traffic: 3931 anonymous rows against 1 authenticated one when this
+# was measured (2026-08-01). A guard keyed on MAX(timemodified) over the whole
+# table therefore asks "has any robot touched the site in 30 minutes?", and any
+# crawler on a sub-30-minute cadence silently vetoes the nightly for ever —
+# every run exiting 3 "ACTIVE, retry", nothing ever erased, and the site's own
+# banner ("everything here is erased nightly") quietly false. That is the exact
+# failure this guard exists to prevent, arrived at from the other direction.
+#
+# What [G4] is actually protecting is a TESTER mid-flow, and a tester on ssd is
+# signed in — they arrive by SSO from nwd. An anonymous page view is not a
+# person to be protected; at worst a visitor mid-redirect starts again, which is
+# what a nightly reset does to everyone anyway. So the guard counts people.
+#
+# The Drupal half needs no matching change: its `sessions` table is not written
+# on plain anonymous requests, which is why nwd's nightly has been passing this
+# guard and firing (27–29 July, reset-ok each night) while ssd's would not have.
 # ---------------------------------------------------------------------------
 demo_moodle_last_session() {
     local prefix="$1" db="$2" val
-    val=$($prefix "sudo mysql ${db} -N -e \"SELECT COALESCE(MAX(timemodified),0) FROM mdl_sessions;\" 2>/dev/null" </dev/null 2>/dev/null | tr -d '[:space:]' || true)
+    val=$($prefix "sudo mysql ${db} -N -e \"SELECT COALESCE(MAX(timemodified),0) FROM mdl_sessions WHERE userid <> 0;\" 2>/dev/null" </dev/null 2>/dev/null | tr -d '[:space:]' || true)
+    [[ "$val" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$val"
+}
+
+# ---------------------------------------------------------------------------
+# demo_moodle_anon_sessions <ssh-prefix> <dbname>
+# Newest ANONYMOUS session timestamp. Never gates anything — it exists so the
+# idle decision can be logged with both figures, and so "quiet" is never
+# reported when the site is merely quiet of humans.
+# ---------------------------------------------------------------------------
+demo_moodle_anon_sessions() {
+    local prefix="$1" db="$2" val
+    val=$($prefix "sudo mysql ${db} -N -e \"SELECT COALESCE(MAX(timemodified),0) FROM mdl_sessions WHERE userid = 0;\" 2>/dev/null" </dev/null 2>/dev/null | tr -d '[:space:]' || true)
     [[ "$val" =~ ^[0-9]+$ ]] || return 1
     printf '%s\n' "$val"
 }

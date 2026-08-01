@@ -707,12 +707,26 @@ wrapper() { echo "${REPO_ROOT}/servers/live/demo/nwd-demo-reset-restricted"; }
   [ "$harvest_line" -lt "$wipe_line" ]
 }
 
-@test "authorized_keys restrictions installed are the full hardened set" {
+@test "authorized_keys restrictions installed are the full hardened set — for BOTH halves" {
+  # ops#170 made the wrapper name a variable so the Moodle half could have its
+  # own forced command. A grep for the old nwd literal would now pass on a file
+  # that templated the string WRONG for ssd, so this asserts by EVALUATION: pull
+  # the two lines that build the forced command out of the shipped installer and
+  # run them for each site.
   local ib="${REPO_ROOT}/servers/live/demo/install-box.sh"
-  grep -q 'command="/usr/local/bin/nwd-demo-reset-restricted"' "$ib"
-  local o
-  for o in no-agent-forwarding no-port-forwarding no-pty no-user-rc no-X11-forwarding; do
-    grep -q "$o" "$ib"
+  local site rendered
+  for site in nwd ssd; do
+    rendered="$(
+      DEMO_SITE="$site" bash -c '
+        eval "$(grep -E "^WRAPPER_NAME=|^WRAPPER_DST=|^RESTRICTIONS=" "$1")"
+        printf "%s" "$RESTRICTIONS"
+      ' _ "$ib"
+    )"
+    [[ "$rendered" == "command=\"/usr/local/bin/${site}-demo-reset-restricted\","* ]]
+    local o
+    for o in no-agent-forwarding no-port-forwarding no-pty no-user-rc no-X11-forwarding; do
+      [[ "$rendered" == *"$o"* ]]
+    done
   done
 }
 
@@ -751,6 +765,59 @@ YML
   # no repo path and no local pl invocation on the scheduler
   ! grep -q 'pl demo nightly demo1' "$STUB_CRON"
   grep -q 'nwp-daily-audit' "$STUB_CRON"          # neighbour survived
+}
+
+@test "schedule --via-key offsets the CONSUMER half of a demo pair by 15 minutes" {
+  # Both halves live on the same box now. Same-minute firing means two
+  # simultaneous drop-and-reload cycles on a small host, and it maximises the
+  # window in which one half is at its golden and the other is not — the window
+  # in which an SSO idnumber points at an account the provider no longer has.
+  # The offset is DERIVED from the pair contract, never a flag, because a
+  # collision-avoidance measure an operator must remember to pass is one they
+  # will forget.
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"
+  : > "$STUB_CRON"
+
+  mkdir -p "${PROJECT_ROOT}/sites/prov1" "${PROJECT_ROOT}/sites/cons1" "${PROJECT_ROOT}/pairs"
+  for s in prov1 cons1; do
+    cat > "${PROJECT_ROOT}/sites/${s}/.nwp.yml" <<YML
+schema_version: 2
+project:
+  name: ${s}
+live:
+  enabled: true
+  domain: ${s}.example.com
+  server_ip: 203.0.113.9
+YML
+  done
+  cat > "${PROJECT_ROOT}/pairs/cons1.pair-contract.yml" <<'YML'
+pair: cons1-prov1
+provider: prov1
+consumer: cons1
+demo:
+  enabled: true
+  paired_golden: true
+  paired_reset: true
+YML
+
+  # the PROVIDER keeps the base cadence
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule prov1 --tier=live --via-key
+  [ "$status" -eq 0 ]
+  grep -q '^0,30 1-3 \* \* \*' "$STUB_CRON"
+
+  # the CONSUMER is offset — same window, same cadence, never the same minute
+  : > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule cons1 --tier=live --via-key
+  [ "$status" -eq 0 ]
+  grep -q '^15,45 1-3 \* \* \*' "$STUB_CRON"
+  ! grep -q '^0,30 1-3 \* \* \*' "$STUB_CRON"
 }
 
 @test "schedule --remove clears the --via-key block too" {

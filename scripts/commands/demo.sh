@@ -2336,6 +2336,23 @@ cmd_schedule() {
     local log="${PROJECT_ROOT}/logs/demo-nightly-${site}.log"
     local entry
 
+    # WHICH MINUTES. Both halves of a demo pair now live on the SAME box, and a
+    # restore is the heaviest thing that box does. Firing them on the same
+    # minute means two simultaneous drop-and-reload cycles on a 3.8 GB host, and
+    # it maximises the window in which one half is back at its golden while the
+    # other is not — the window in which an SSO identity points at an account
+    # the other side no longer has. So the CONSUMER half is offset by 15
+    # minutes: same 01:00–03:30 window, same 30-minute retry cadence, just never
+    # the same minute. Derived, not flagged, because a collision-avoidance
+    # measure an operator has to remember to pass is one they will forget.
+    local minutes="0,30" pair_note=""
+    if declare -F demo_pair_resolve >/dev/null 2>&1 && demo_pair_resolve "$site" 2>/dev/null; then
+        if [[ "$site" == "$DEMO_PAIR_CONSUMER" ]]; then
+            minutes="15,45"
+            pair_note=" (consumer half of ${DEMO_PAIR_LABEL} — offset 15 min from ${DEMO_PAIR_PROVIDER})"
+        fi
+    fi
+
     if [[ "$via_key" == "true" ]]; then
         # Restricted-key flavour. The retry loop lives in CRON, not in a
         # 3-hour-long ssh session: the box-side wrapper is idempotent (one
@@ -2346,7 +2363,7 @@ cmd_schedule() {
         local sshcmd
         sshcmd="$(demo_schedule_key_cmd "$site")" || return 1
         entry="CRON_TZ=${DEMO_TZ}
-0,30 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
+${minutes} 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
     else
         # CRON_TZ pins the fire time to Melbourne regardless of host TZ (handles
         # DST; supported by ISC/vixie cron on Ubuntu 22.04+). The retry semantics
@@ -2363,7 +2380,7 @@ cmd_schedule() {
     [[ "$via_key" == "true" ]] && marker_line="${marker} (restricted key; see docs/guides/demo-nightly-on-met.md)"
     printf '%s\n%s\n%s\n' "$cleaned" "$marker_line" "$entry" | crontab -
     if [[ "$via_key" == "true" ]]; then
-        print_status "OK" "Installed nightly demo reset for $site via the RESTRICTED key (01:00–03:30 ${DEMO_TZ}, every 30 min, ${DEMO_FLOOR_TIME} floor)"
+        print_status "OK" "Installed nightly demo reset for $site via the RESTRICTED key (01:00–03:30 ${DEMO_TZ}, minutes ${minutes}, ${DEMO_FLOOR_TIME} floor)${pair_note}"
         print_info "This host needs only ~/.ssh/${site}_demo_reset — no repo, no admin key, no root on the box."
     else
         print_status "OK" "Installed nightly demo reset for $site --tier=${tier} (01:00 ${DEMO_TZ}, retries to ${DEMO_FLOOR_TIME})"

@@ -332,6 +332,22 @@ _render_demo_manifest() {
 }
 
 # ---------------------------------------------------------------------------
+# ops#170 — the Moodle half. A SECOND box-resident wrapper is a second chance
+# to ship a recursive delete with no disclosure, so it is held to the same gate
+# by name rather than left to the corpus scan.
+# ---------------------------------------------------------------------------
+
+@test "ops#170: the ssd demo reset is IN the gate's corpus (it clears a moodledata tree)" {
+    run impact_contract_candidates
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"servers/live/demo/ssd-demo-reset-restricted"* ]]
+}
+
+@test "ops#170: the ssd demo reset satisfies the contract via the inline pragma" {
+    impact_contract_adopted "${PROJECT_ROOT}/servers/live/demo/ssd-demo-reset-restricted"
+}
+
+# ---------------------------------------------------------------------------
 # Converted verbs stay converted
 # ---------------------------------------------------------------------------
 

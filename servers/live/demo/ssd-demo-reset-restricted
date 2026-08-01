@@ -1,0 +1,721 @@
+#!/bin/bash
+################################################################################
+# /usr/local/bin/ssd-demo-reset-restricted — forced-command demo reset (ops#170)
+#
+# The Moodle half of the daily-reset demo pair. Installed on the live box as the
+# SSH forced command for the dedicated `ssd-demo-reset@met` key:
+#
+#   command="/usr/local/bin/ssd-demo-reset-restricted",no-agent-forwarding,
+#   no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 AAAA…
+#
+# WHY THIS EXISTS
+#   `pl demo reset ssd --tier=live` works and is proven, but it drives the wipe
+#   over ssh as `gitlab@`, and `gitlab@` on this box has NOPASSWD sudo — i.e.
+#   root on the host that runs every live site. Handing a scheduler a plain
+#   `gitlab@` key would hand it root. Standing rule: never. Its sibling
+#   /usr/local/bin/nwd-demo-reset-restricted solves that for the Drupal half and
+#   hard-wires nwd by design ([G2]), so it cannot be pointed at ssd — hence this
+#   second wrapper rather than a parameter.
+#
+#   Until this existed, ssd's banner ("everything here is erased nightly")
+#   was not true: the reset worked, but nothing unattended could fire it.
+#
+# WHAT IS DIFFERENT FROM THE nwd WRAPPER (and why)
+#   Moodle is not Drupal. There is no drush; the user data lives OUTSIDE the
+#   docroot in $CFG->dataroot; and — the trap that cost a previous session a
+#   wrong conclusion — Moodle keeps its settings in the `mdl_config` TABLE, not
+#   in config.php. Reading config.php with ABORT_AFTER_CONFIG shows
+#   `nwp_demo_mode` UNSET on a site where it is very much set, because that
+#   stops before Moodle loads DB-stored config. So the demo-mode guard here
+#   reads the TABLE, deliberately and only. See lib/demo-live-moodle.sh, whose
+#   contracts this file re-implements locally (the box has no repo checkout).
+#
+#   There is also no reseed step and no invite-code payload: accounts on ssd
+#   arrive by SSO from nwd, which is the provider and is seeded on its own half.
+#   Those steps are absent on purpose, not by omission.
+#
+# GUARANTEES (each enforced below, marked [Gn] — same set as the nwd wrapper)
+#   [G1] The client's command line is NEVER executed. $SSH_ORIGINAL_COMMAND is
+#        logged verbatim and then matched against a fixed literal allowlist of
+#        action words. Anything outside the allowlist is refused (exit 2). No
+#        eval, no `sh -c`, no expansion of client data into any command.
+#   [G2] The target is hard-wired to ssd — SITE/paths/DB name are constants and
+#        there is no way to name another site. Because the one string a
+#        recursive delete is aimed at is $DATAROOT, that constant is checked
+#        THREE further ways before it is used: it must have the shape of a
+#        moodledata directory; the live config.php must AGREE that it is the
+#        dataroot (a disagreement is a refusal, never a redirection — this
+#        script follows its constant, never the file); and the live database
+#        must report nwp_demo_mode = 1 in mdl_config.
+#   [G3] Fail-closed on the golden image: manifest must name ssd and BOTH
+#        artifacts must pass sha256 before a single byte is dropped.
+#   [G4] Idle guard: a SIGNED-IN Moodle session newer than IDLE_WINDOW — or a
+#        failed or garbled mdl_sessions query — counts as ACTIVE and exits 3
+#        (retryable), never wipes. A database hiccup must never read as "nobody
+#        is here". Anonymous sessions are measured and logged but do NOT veto:
+#        Moodle writes a session row for every crawler and uptime probe, so a
+#        guard that counted them would let a robot on a 20-minute cadence
+#        silently disable the nightly for ever. See the [G4] section for the
+#        numbers this was decided on.
+#   [G5] Idempotent: one successful reset per Melbourne day (stamp file), plus a
+#        hard minimum interval between resets — repeat invocations are cheap
+#        no-ops, so met's cron can simply retry every 30 min.
+#   [G6] Single-flight: flock on this site's own lock. It ALSO takes the nwd
+#        wrapper's lock as an advisory PAIR lock — see the [G6] section for why
+#        that is advisory and not a guarantee.
+#   [G7] Every invocation (accepted or refused) appends one line to LOG_FILE.
+#   [G8] Non-zero exit on failure; 3 = "active, retry"; 0 = reset done/no-op.
+#   [G9] FATE MANIFEST (ops#47 impact contract). Nothing destructive runs until
+#        the manifest below has been printed AND logged, naming every component
+#        and its fate with sizes read live off this box. This is ENFORCED, not
+#        attempted: if the manifest cannot be rendered, or cannot be persisted
+#        to LOG_FILE, a real reset ABORTS (exit 1) and destroys nothing —
+#        because a reset with no surviving record of what it destroyed is
+#        exactly the thing this guarantee exists to prevent. Degradation is not
+#        failure: any figure that cannot be read prints "?" and the manifest
+#        still stands, so only a total rendering/logging failure aborts.
+#        `dry-run` prints exactly the same manifest and stops — so a dry run is
+#        a truthful preview, not a different code path — and a dry run whose
+#        manifest fails still exits 0, since nothing destructive follows it and
+#        failing closed there would only take away an operator's ability to
+#        look. There is no prompt here (the caller is met's cron over a forced
+#        command, never a human at a TTY), so the manifest is the whole of the
+#        contract: `-y` skips the PROMPT, never the REPORT, and here there is
+#        only report.
+#
+# impact-contract: inline
+#   This script is DEPLOYED TO A BOX WITH NO REPO CHECKOUT, so it cannot source
+#   lib/impact.sh. It therefore renders the manifest itself; the pragma above is
+#   what tells tests/unit/test-impact-contract.bats to expect an inline
+#   `FATE MANIFEST` block rather than a source of the lib. The pragma ALONE does
+#   not satisfy the gate — the manifest has to actually be there.
+#
+# NOT GUARANTEED (honest gaps)
+#   * The script runs AS `gitlab`, which has NOPASSWD sudo, and it uses sudo for
+#     mysql, for the moodledata restore and for the www-data CLI calls. The
+#     containment is that the scheduler can only *invoke* this script, not
+#     choose what it does — not that the script is itself unprivileged. A
+#     dedicated unix account + a narrow sudoers rule would remove that residue;
+#     recorded as follow-up, same as for the nwd wrapper.
+#   * [G9]'s abort adds a way for the nightly to become a no-op: if LOG_FILE
+#     stops being writable, every run refuses. That is the intended direction
+#     (no record → no destruction), and it is visible — the refusal prints and
+#     exits 1, which met's cron captures in ~/nwp/logs/demo-nightly-ssd.log.
+#     It is NOT self-healing; `status` (which never aborts) is the way to look.
+#   * The two halves of the pair are NOT restored atomically. They cannot be:
+#     they are two databases and two file trees. The [G6] pair lock serialises
+#     them and the 15-minute cron offset keeps them apart, so the window in
+#     which nwd is back at its golden and ssd is not is a couple of minutes on
+#     an idle site — but it is not zero, and this file does not claim it is.
+#
+# Exit codes: 0 ok/no-op · 1 failure (incl. [G9] no-manifest abort) ·
+#             2 refused (bad action word) · 3 active
+################################################################################
+
+set -uo pipefail
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+IFS=$' \t\n'
+umask 022
+
+# ---- Hard-wired target [G2] -------------------------------------------------
+# Every one of these is a CONSTANT. Nothing below derives a path from client
+# input, and nothing derives one from the live config.php either: config.php is
+# read only to CHECK these values, never to supply them.
+SITE="ssd"
+SITE_ROOT="/var/www/ssd"
+DATAROOT="/var/www/ssd_moodledata"
+DATAROOT_PREFIX="/var/www/"
+DB_NAME="ssd"
+DB_PREFIX="mdl_"
+DOMAIN="ssd.nwpcode.org"
+STATE_DIR="/var/lib/nwp-demo/ssd"
+GOLDEN_DIR="${STATE_DIR}/golden"
+GOLDEN_DB="golden.db.sql.gz"
+GOLDEN_FILES="golden.files.tar.gz"
+STAMP_FILE="${STATE_DIR}/last-reset"
+HARVEST_DIR="${STATE_DIR}/harvest"
+LOCK_FILE="/var/lock/ssd-demo-reset.lock"
+PAIR_LOCK_FILE="/var/lock/nwd-demo-reset.lock"
+LOG_FILE="/var/log/nwp-demo/ssd-demo-reset.log"
+
+# Moodle's CLI must run on 8.3 with a raised max_input_vars — the box's default
+# `php` is 8.4 and several admin CLI scripts exceed the stock input-var cap.
+CLI_PHP="php8.3"
+CLI_PHP_ARGS="-d max_input_vars=5000"
+
+WWW_SUDO=(sudo -u www-data)
+ROOT_SUDO=(sudo)
+
+TZ_MEL="Australia/Melbourne"
+IDLE_WINDOW=1800        # 30 min — matches `pl demo reset --if-idle 30m`
+MIN_INTERVAL=600        # 10 min hard floor between two real resets [G5]
+SMOKE_ATTEMPTS=5
+SMOKE_SLEEP=5
+
+# Regenerable Moodle trees. These are excluded from the golden capture (see
+# lib/demo-live-moodle.sh: DEMO_MOODLEDATA_EXCLUDES) and therefore are NOT
+# restored — Moodle recreates them on demand. Named here only so the fate
+# manifest can say so out loud rather than leaving an operator to infer it.
+REGENERABLE="cache localcache temp sessions trashdir muc lock"
+
+################################################################################
+# Logging [G7]
+################################################################################
+
+log() {
+    local event="$1" detail="${2:-}"
+    local line rc=0
+    line="$(date -u '+%Y-%m-%dT%H:%M:%SZ')|${event}|${detail}"
+    mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+    # The redirection itself is what can fail (unwritable log dir), so it is
+    # wrapped — `>> f 2>/dev/null` would still print the shell's own error.
+    { printf '%s\n' "$line" >> "$LOG_FILE"; } 2>/dev/null || rc=1
+    printf '%s\n' "$line"
+    # log() is fail-SOFT for control flow — nothing aborts merely because the
+    # log dir broke, and `status` keeps answering. But it is HONEST: the return
+    # code says whether the line was actually PERSISTED, which is the one thing
+    # [G9] has to be able to ask.
+    return "$rc"
+}
+
+die() { log "$1" "${2:-}"; echo "ERROR: ${1} ${2:-}" >&2; exit "${3:-1}"; }
+
+# Sanitise a string for a single log field: strip newlines/pipes, cap length.
+# The client controls $SSH_ORIGINAL_COMMAND, so it is scrubbed before it is
+# written and is never used for anything else. [G1]
+scrub() {
+    printf '%s' "$1" | tr -d '\000-\037' | tr '|' '/' | cut -c1-200
+}
+
+################################################################################
+# [G1] Action word: fixed literal allowlist, never executed as a command
+################################################################################
+
+RAW_CMD="${SSH_ORIGINAL_COMMAND:-}"
+CLIENT="${SSH_CLIENT:-local}"
+
+resolve_action() {
+    # Only these exact strings are honoured. The case arms are literals —
+    # $RAW_CMD is compared, never expanded into a command position.
+    case "$RAW_CMD" in
+        ""|nightly) echo "nightly" ;;
+        reset)      echo "reset" ;;
+        dry-run)    echo "dry-run" ;;
+        status)     echo "status" ;;
+        harvest)    echo "harvest" ;;
+        *)          echo "REFUSED" ;;
+    esac
+}
+
+ACTION="$(resolve_action)"
+
+if [[ "$ACTION" == "REFUSED" ]]; then
+    log "rejected-command" "client=${CLIENT%% *} requested=$(scrub "$RAW_CMD")"
+    cat >&2 <<EOF
+REFUSED: this key may only run the ssd demo reset.
+The command you sent was logged and NOT executed.
+Allowed action words: (empty)|nightly | reset | dry-run | status | harvest
+EOF
+    exit 2
+fi
+
+log "invoked" "action=${ACTION} client=${CLIENT%% *} original=$(scrub "$RAW_CMD")"
+
+################################################################################
+# Small helpers used by more than one action
+################################################################################
+
+# Run one SQL statement against the demo database and print the raw result.
+# Every caller treats an empty/garbled answer as a failure — never as a zero.
+sqlq() {
+    "${ROOT_SUDO[@]}" mysql "$DB_NAME" -N -e "$1" 2>/dev/null
+}
+
+# Read ONE scalar out of config.php BY TEXT, never by executing it. Executing
+# config.php to learn where the site is would be circular, and a Moodle that is
+# mid-break prints a fatal error on stdout that a naive read carries onward as
+# if it were a value — so the answer is also shape-checked: a Moodle scalar is a
+# single token, and prose means the read failed.
+cfg_scalar() {
+    local name="$1" out
+    out="$("${ROOT_SUDO[@]}" sed -n \
+        "s/.*\$CFG->${name}[[:space:]]*=[[:space:]]*'\([^']*\)'.*/\1/p" \
+        "${SITE_ROOT}/config.php" 2>/dev/null | head -1 | tr -d '\r')"
+    [[ -n "$out" ]]        || return 1
+    [[ "$out" != *" "* ]]  || return 1
+    printf '%s\n' "$out"
+}
+
+################################################################################
+# status — read-only, no guards needed
+################################################################################
+
+if [[ "$ACTION" == "status" ]]; then
+    echo "site:        ${SITE} (${DOMAIN})   [Moodle]"
+    echo "docroot:     ${SITE_ROOT}"
+    echo "dataroot:    ${DATAROOT}"
+    echo "golden dir:  ${GOLDEN_DIR}"
+    if [[ -s "${GOLDEN_DIR}/golden.manifest.json" ]]; then
+        echo "golden:      captured $(jq -r '.captured_utc // "?"' "${GOLDEN_DIR}/golden.manifest.json" 2>/dev/null)"
+    else
+        echo "golden:      MISSING"
+    fi
+    echo "last reset:  $(cat "$STAMP_FILE" 2>/dev/null || echo none)"
+    echo "demo_mode:   $(sqlq "SELECT value FROM ${DB_PREFIX}config WHERE name='nwp_demo_mode';" | tr -d '[:space:]' || true)"
+    echo "--- last 15 log lines ---"
+    tail -n 15 "$LOG_FILE" 2>/dev/null || true
+    exit 0
+fi
+
+################################################################################
+# harvest — DRAIN the spooled error digests to stdout (read-only)
+#
+# Same contract as the nwd wrapper: it emits and deletes NOTHING, so a failed or
+# half-read drain loses nothing and can simply be re-run. Marking files "sent"
+# from here would mean this restricted key could destroy evidence, and would put
+# the only record of a bad night one crashed pipe away from gone. The consumer
+# deduplicates by filename against what it has already posted.
+################################################################################
+
+if [[ "$ACTION" == "harvest" ]]; then
+    if [[ ! -d "$HARVEST_DIR" ]]; then
+        echo "NWP-HARVEST-EMPTY"
+        exit 0
+    fi
+    n=0
+    for f in $(ls -1t "${HARVEST_DIR}"/harvest-*.txt 2>/dev/null); do
+        [[ -s "$f" ]] || continue
+        echo "NWP-HARVEST-BEGIN $(basename "$f")"
+        cat "$f"
+        echo "NWP-HARVEST-END $(basename "$f")"
+        n=$(( n + 1 ))
+    done
+    [[ "$n" -eq 0 ]] && echo "NWP-HARVEST-EMPTY"
+    log "harvest-drained" "files=${n} client=${CLIENT%% *}"
+    exit 0
+fi
+
+################################################################################
+# [G6] Single-flight, plus an ADVISORY pair lock
+#
+# The site lock is a GUARANTEE and is fail-closed exactly like the nwd wrapper:
+# if it cannot be taken, this invocation does nothing.
+#
+# The pair lock is the nwd wrapper's OWN lock, taken here as well so that the
+# two halves of one demo pair never restore simultaneously on a 3.8 GB shared
+# box. It has to be ADVISORY rather than fail-closed, and the difference is not
+# cosmetic: the nwd wrapper knows nothing about this one, so if this half
+# refused whenever the pair lock were unavailable, a permissions change on a
+# file belonging to the OTHER site would silently stop ssd's nightly forever —
+# a new silent-stop mode, invented to protect a property (don't run both at
+# once) that is about box load, not about correctness. So: take it if we can,
+# say so in the log if we cannot, and carry on.
+#
+# `flock -n` throughout, in a fixed order, so two wrappers can never deadlock:
+# the worst case is that one of them skips and cron retries it in 30 minutes.
+################################################################################
+
+PAIR_LOCK="none"
+if exec 8>"$PAIR_LOCK_FILE" 2>/dev/null; then
+    if flock -n 8; then
+        PAIR_LOCK="held"
+    else
+        log "skip-pair-locked" "the nwd half of the pair is mid-reset — retrying next slot"
+        echo "The nwd half of this demo pair is resetting right now — nothing to do."
+        exit 0
+    fi
+else
+    PAIR_LOCK="unavailable"
+fi
+
+exec 9>"$LOCK_FILE" 2>/dev/null || true
+if ! flock -n 9; then
+    log "skip-locked" "another ssd reset is already running"
+    echo "Another ssd demo reset is already running — nothing to do."
+    exit 0
+fi
+
+[[ "$PAIR_LOCK" == "unavailable" ]] && \
+    log "pair-lock-unavailable" "cannot open ${PAIR_LOCK_FILE} — proceeding without pair serialisation"
+
+################################################################################
+# Guards (run for dry-run too — a dry run is exactly "all guards, no wipe")
+################################################################################
+
+# --- shape of the site ------------------------------------------------------
+[[ -d "$SITE_ROOT" && -f "${SITE_ROOT}/config.php" ]] \
+    || die "precheck-failed" "no Moodle config.php at ${SITE_ROOT}"
+[[ -f "${SITE_ROOT}/admin/cli/purge_caches.php" ]] \
+    || die "precheck-failed" "no admin/cli/purge_caches.php at ${SITE_ROOT} — is this a Moodle?"
+[[ -d "$DATAROOT" ]] || die "precheck-failed" "no dataroot at ${DATAROOT}"
+
+# --- [G2a] the shape of the one string a recursive delete is aimed at -------
+# This mirrors lib/demo-live-moodle.sh:demo_moodle_dataroot_is_safe. DATAROOT is
+# a constant here so it cannot have been mistyped at runtime — but a constant
+# edited by hand can be mistyped once, and this is the check that catches that
+# before the edit reaches a live night rather than after.
+dataroot_is_safe() {
+    local d="$1"
+    [[ -n "$d" ]]                             || return 1
+    [[ "$d" == "${DATAROOT_PREFIX}"* ]]       || return 1   # inside the estate's data area
+    [[ "${d%/}" != "${DATAROOT_PREFIX%/}" ]]  || return 1   # and not the area itself
+    [[ "$d" != *".."* ]]                      || return 1
+    [[ "$d" != */ ]]                          || return 1
+    [[ "$d" == *moodledata* ]]                || return 1   # named like what it is
+    return 0
+}
+dataroot_is_safe "$DATAROOT" \
+    || die "reset-failed" "reason=dataroot-shape target='${DATAROOT}' does not look like a moodledata directory"
+echo "OK  dataroot ${DATAROOT} has the shape of a moodledata directory"
+
+# --- [G2b] the LIVE site must agree about where its data is ----------------
+# A disagreement is a REFUSAL, never a redirection. If config.php names some
+# other dataroot then either this constant is stale or the site has been
+# re-pointed; in both cases wiping DATAROOT would destroy a directory the site
+# is not using while the data that matters survives — a reset that reports
+# success and erases nothing is worse than one that stops.
+CFG_DATAROOT="$(cfg_scalar dataroot)" \
+    || die "reset-failed" "reason=cannot-read-dataroot config.php did not yield a \$CFG->dataroot"
+CFG_DBNAME="$(cfg_scalar dbname)" \
+    || die "reset-failed" "reason=cannot-read-dbname config.php did not yield a \$CFG->dbname"
+[[ "${CFG_DATAROOT%/}" == "${DATAROOT%/}" ]] \
+    || die "reset-failed" "reason=dataroot-mismatch config.php says '${CFG_DATAROOT}', this wrapper is wired to '${DATAROOT}'"
+[[ "$CFG_DBNAME" == "$DB_NAME" ]] \
+    || die "reset-failed" "reason=dbname-mismatch config.php says '${CFG_DBNAME}', this wrapper is wired to '${DB_NAME}'"
+echo "OK  live config.php agrees: dataroot=${CFG_DATAROOT} dbname=${CFG_DBNAME}"
+
+# --- [G3] fail-closed golden verification ----------------------------------
+# Manifest names THIS site and both artifacts match their sha256 sidecars.
+# Identical contract to lib/demo.sh:demo_golden_verify, reimplemented here so
+# the box needs no repo.
+golden_verify() {
+    local manifest="${GOLDEN_DIR}/golden.manifest.json"
+    [[ -s "$manifest" ]] || { echo "no golden manifest at $manifest" >&2; return 1; }
+    jq -e . "$manifest" >/dev/null 2>&1 || { echo "golden manifest is not valid JSON" >&2; return 1; }
+    local msite; msite="$(jq -r '.site // empty' "$manifest")"
+    [[ "$msite" == "$SITE" ]] || { echo "golden manifest is for site '$msite', not '$SITE'" >&2; return 1; }
+    local f
+    for f in "$GOLDEN_DB" "$GOLDEN_FILES"; do
+        [[ -f "${GOLDEN_DIR}/${f}" && -f "${GOLDEN_DIR}/${f}.sha256" ]] || {
+            echo "golden artifact or sidecar missing: ${GOLDEN_DIR}/${f}" >&2; return 1; }
+        ( cd "$GOLDEN_DIR" && sha256sum -c "${f}.sha256" >/dev/null 2>&1 ) || {
+            echo "sha256 MISMATCH for ${f} — golden corrupt" >&2; return 1; }
+    done
+    return 0
+}
+golden_verify || die "reset-failed" "reason=golden-verify"
+echo "OK  golden image verified (manifest site=${SITE} + sha256 x2)"
+
+# --- [G2c] the live site must declare itself a demo -------------------------
+# Read from the mdl_config TABLE, which is where Moodle keeps DB-stored config
+# and where scripts/demo/ssd-demo-posture.php writes this flag. Reading
+# config.php for it would ask the wrong place. Anything other than a literal 1
+# is a refusal, including an unreadable database.
+require_demo_mode() {
+    local val
+    val="$(sqlq "SELECT value FROM ${DB_PREFIX}config WHERE name='nwp_demo_mode';" | tr -d '[:space:]')"
+    [[ "$val" == "1" ]] && return 0
+    echo "site does not report nwp_demo_mode=1 in ${DB_PREFIX}config (got '${val:-<none>}')" >&2
+    return 1
+}
+require_demo_mode || die "reset-failed" "reason=not-demo-mode"
+echo "OK  site reports nwp_demo_mode=1"
+
+# --- [G5] idempotence -------------------------------------------------------
+# `nightly` is a no-op once today's reset has succeeded; `reset` overrides the
+# daily stamp but not the minimum interval.
+mel_today() { TZ="$TZ_MEL" date '+%Y-%m-%d'; }
+
+TODAY="$(mel_today)"
+LAST_LINE="$(cat "$STAMP_FILE" 2>/dev/null || true)"
+LAST_DATE="${LAST_LINE%% *}"
+LAST_EPOCH="${LAST_LINE##* }"
+[[ "$LAST_EPOCH" =~ ^[0-9]+$ ]] || LAST_EPOCH=0
+
+if [[ "$ACTION" == "nightly" && "$LAST_DATE" == "$TODAY" ]]; then
+    log "skip-already-reset" "date=${TODAY}"
+    echo "OK  ${SITE} already reset today (${TODAY} ${TZ_MEL}) — nothing to do."
+    exit 0
+fi
+
+SINCE=$(( $(date +%s) - LAST_EPOCH ))
+if [[ "$ACTION" != "dry-run" && "$LAST_EPOCH" -gt 0 && "$SINCE" -lt "$MIN_INTERVAL" ]]; then
+    log "skip-rate-limited" "since=${SINCE}s min=${MIN_INTERVAL}s"
+    echo "OK  last reset was ${SINCE}s ago (minimum ${MIN_INTERVAL}s) — nothing to do."
+    exit 0
+fi
+
+# --- [G4] idle guard --------------------------------------------------------
+# Moodle records session activity in mdl_sessions.timemodified. A failed or
+# garbled query yields a non-numeric answer, and that counts as ACTIVE.
+#
+# `userid <> 0` IS LOAD-BEARING — it is the one place this guard diverges from
+# the Drupal half, and it diverges because Moodle writes an mdl_sessions row for
+# EVERY anonymous request: crawlers, uptime probes, a stray curl. On ssd that is
+# effectively all of the traffic (3931 anonymous rows against 1 authenticated
+# when this was measured, 2026-08-01). Keyed on the whole table, this guard asks
+# "has any robot touched the site in 30 minutes?" — and a crawler on a
+# sub-30-minute cadence then vetoes the nightly for ever, every run exiting 3
+# "ACTIVE, retry", nothing ever erased, and the banner on the site quietly
+# false. That is this guard's own purpose defeated from the other direction.
+#
+# What [G4] protects is a TESTER mid-flow, and a tester on ssd is signed in —
+# they arrive by SSO from nwd. So the guard counts PEOPLE. Anonymous activity is
+# still measured and logged beside the decision, so a wipe is never recorded as
+# happening on a "quiet" site when the site was only quiet of humans.
+newest_session() {
+    sqlq "SELECT COALESCE(MAX(timemodified),0) FROM ${DB_PREFIX}sessions WHERE userid <> 0;" | tr -d '[:space:]'
+}
+
+newest_anon_session() {
+    sqlq "SELECT COALESCE(MAX(timemodified),0) FROM ${DB_PREFIX}sessions WHERE userid = 0;" | tr -d '[:space:]'
+}
+
+idle_ok() {
+    local newest="$1" now age
+    [[ "$newest" =~ ^[0-9]+$ ]] || return 1     # garbled → ACTIVE
+    now="$(date +%s)"
+    [[ "$newest" -eq 0 ]] && return 0           # no sessions at all → idle
+    age=$(( now - newest ))
+    [[ "$age" -ge "$IDLE_WINDOW" ]]
+}
+
+NEWEST="$(newest_session)"
+ANON="$(newest_anon_session)"
+if ! idle_ok "$NEWEST"; then
+    log "skip-active" "window=${IDLE_WINDOW}s newest_user=${NEWEST:-query-failed} newest_anon=${ANON:-?}"
+    echo "ACTIVE  a signed-in session within $(( IDLE_WINDOW / 60 )) min (newest=${NEWEST:-query-failed}) — NOT resetting."
+    exit 3
+fi
+echo "OK  no signed-in session for >= $(( IDLE_WINDOW / 60 )) min (newest_user=${NEWEST}, newest_anon=${ANON:-?})"
+
+################################################################################
+# [G9] FATE MANIFEST — printed and logged BEFORE anything destructive runs.
+#
+# Every figure is read live off this box (du, mysql, jq). Nothing here is
+# assumed: if a size cannot be read the field says "?" rather than a guess, so
+# the manifest can never overstate how much is known.
+#
+# Two different things are deliberately NOT conflated:
+#   * DEGRADED — a figure could not be read. The `|| true` / "?" discipline
+#     throughout means this never fails; a partial manifest is still a manifest
+#     and the reset proceeds.
+#   * FAILED — the manifest could not be produced at all, or could not be
+#     written to LOG_FILE. Then there is no record, and [G9] says a reset
+#     without a record does not happen. The call site below enforces that.
+################################################################################
+
+_size_of() {   # human size of a path, or "?" — never fails
+    "${ROOT_SUDO[@]}" du -sh "$1" 2>/dev/null | awk '{print $1}' || true
+}
+
+render_fate_manifest() {
+    local db_bytes db_size data_size users courses golden_captured
+
+    db_bytes="$(sqlq "SELECT COALESCE(SUM(data_length+index_length),0) FROM information_schema.TABLES WHERE table_schema='${DB_NAME}';" | tr -dc '0-9')"
+    if [[ -n "$db_bytes" ]]; then
+        db_size="$(numfmt --to=iec --suffix=B "$db_bytes" 2>/dev/null || echo "${db_bytes}B")"
+    else
+        db_size="?"
+    fi
+    data_size="$(_size_of "$DATAROOT")"
+    users="$(sqlq "SELECT COUNT(*) FROM ${DB_PREFIX}user;" | tr -dc '0-9')"
+    courses="$(sqlq "SELECT COUNT(*) FROM ${DB_PREFIX}course;" | tr -dc '0-9')"
+    golden_captured="$(jq -r '.captured_utc // "?"' "${GOLDEN_DIR}/golden.manifest.json" 2>/dev/null || echo '?')"
+
+    echo ""
+    echo "FATE MANIFEST — ${SITE} (${DOMAIN}) Moodle demo reset, action=${ACTION}"
+    echo "  source of truth: golden image ${GOLDEN_DIR} (captured ${golden_captured}, sha256 verified)"
+    echo ""
+    echo "WILL BE PERMANENTLY DELETED:"
+    echo "    Moodle data: EVERY entry under ${DATAROOT} (${data_size:-?}) is removed, then"
+    echo "                the golden archive is unpacked in its place. That includes filedir"
+    echo "                — every file any tester uploaded since the last reset — and every"
+    echo "                live session, so everyone signed in is signed out. There is no copy."
+    echo "                Regenerable trees (${REGENERABLE}) are not in the"
+    echo "                golden and are NOT restored; Moodle recreates them on demand."
+    echo "    Course data: any activity, submission, grade, forum post or completion record"
+    echo "                created since the golden — including anything a tester entered"
+    echo "                under the Article 9 consent gate — is destroyed with the database."
+    echo ""
+    echo "WILL BE OVERWRITTEN:"
+    echo "    Database:   ${DB_NAME} (${db_size}) — every table DROPPED, then reloaded from"
+    echo "                ${GOLDEN_DB}. Currently ${users:-?} user(s) and ${courses:-?} course(s);"
+    echo "                after the restore both revert to the golden's counts."
+    echo "    SSO locks:  ${DB_PREFIX}user.idnumber (the UID-lock onto nwd account uuids) reverts"
+    echo "                to the golden's values. This half is restored SEPARATELY from nwd;"
+    echo "                the two are serialised, not atomic."
+    echo ""
+    echo "NOT AFFECTED:"
+    echo "    • the golden image itself (read-only here; a failed restore leaves it intact)"
+    echo "    • the ${DATAROOT} directory ITSELF — its CONTENTS are cleared, the"
+    echo "      directory is never removed, so its ownership and 0700 mode survive"
+    echo "    • every other site on this box — the target is hard-wired to ${SITE_ROOT} [G2]"
+    echo "      and both config.php and ${DB_PREFIX}config were re-checked to agree"
+    echo "    • the database OBJECT and its grants — tables are dropped, the schema is not"
+    echo "    • ${LOG_FILE} and the harvest digests"
+    echo ""
+
+    # Last statement on purpose: "printed AND logged" means this function is
+    # only successful if the line actually landed in LOG_FILE.
+    log "fate-manifest" "action=${ACTION} db=${db_size} data=${data_size:-?} users=${users:-?} courses=${courses:-?} golden=${golden_captured}" \
+        || return 1
+}
+
+# [G9] enforcement. The manifest is the licence to destroy, so a real reset that
+# has not got one stops here rather than proceeding to wipe with the failure
+# merely noted. A dry-run keeps fail-open behaviour: nothing destructive follows
+# it, so aborting would remove an operator's only way to look without protecting
+# anything.
+if ! render_fate_manifest; then
+    if [[ "$ACTION" == "dry-run" ]]; then
+        log "fate-manifest-failed" "dry-run — nothing destructive follows, continuing"
+    else
+        die "fate-manifest-failed" \
+            "refusing to destroy anything without a printed+logged manifest [G9]" 1
+    fi
+fi
+
+if [[ "$ACTION" == "dry-run" ]]; then
+    log "dry-run-ok" "all guards passed; nothing changed"
+    echo "OK  DRY RUN — all guards passed and the manifest above is what a real run would do."
+    echo "OK  Nothing was changed."
+    exit 0
+fi
+
+################################################################################
+# Destructive section
+################################################################################
+
+START="$(date +%s)"
+
+# Pre-wipe error harvest (fail-OPEN — must never block the reset). The restore
+# destroys the log tables, so the digest has to be taken first. Moodle has no
+# watchdog: the equivalents are failed scheduled tasks and the error/denied
+# events in the standard logstore, matching demo_harvest_collect_moodle.
+harvest() {
+    mkdir -p "$HARVEST_DIR" 2>/dev/null || return 0
+    local out since
+    out="${HARVEST_DIR}/harvest-$(date -u '+%Y%m%d-%H%M%S').txt"
+    since=$(( $(date +%s) - 86400 ))
+    {
+        sqlq "SELECT 'FAILED TASK' AS kind, classname, timestart, output
+                FROM ${DB_PREFIX}task_log WHERE result = 1 AND timestart > ${since}
+               ORDER BY timestart DESC LIMIT 50;"
+        sqlq "SELECT 'EVENT' AS kind, eventname, COUNT(*) AS n, MAX(timecreated) AS newest
+                FROM ${DB_PREFIX}logstore_standard_log
+               WHERE timecreated > ${since}
+                 AND (eventname LIKE '%failed%' OR eventname LIKE '%error%' OR eventname LIKE '%denied%')
+               GROUP BY eventname ORDER BY n DESC LIMIT 50;"
+    } > "$out" 2>/dev/null || true
+    if [[ -s "$out" ]]; then
+        log "harvest" "file=$(basename "$out") bytes=$(stat -c%s "$out" 2>/dev/null || echo 0)"
+    else
+        rm -f "$out" 2>/dev/null || true
+    fi
+    # Keep the last 30 digests; the box is small.
+    ls -1t "${HARVEST_DIR}"/harvest-*.txt 2>/dev/null | tail -n +31 | xargs -r rm -f
+    return 0
+}
+harvest || true
+
+# --- database ---------------------------------------------------------------
+# DROP THE TABLES, NOT THE DATABASE. `DROP DATABASE` would also discard the
+# grants that live against that database name, so the restore would leave a site
+# whose credentials no longer work — and it would fail late, at the first page
+# load, not at the point of the mistake. Foreign-key checks are off for the
+# duration because Moodle's schema has ordering constraints a flat DROP list
+# cannot respect. Drop-then-import, never a plain import: a plain import would
+# leave orphan tables the golden no longer has.
+echo "..  dropping every table in ${DB_NAME} and reloading from golden"
+DROP_SQL="SET FOREIGN_KEY_CHECKS=0; SET GROUP_CONCAT_MAX_LEN=1000000;
+SELECT IFNULL(CONCAT('DROP TABLE IF EXISTS ', GROUP_CONCAT(table_name), ';'),'SELECT 1;')
+  FROM information_schema.tables WHERE table_schema='${DB_NAME}';"
+if ! sqlq "$DROP_SQL" | "${ROOT_SUDO[@]}" mysql "$DB_NAME"; then
+    die "reset-failed" "reason=drop-tables (golden intact at ${GOLDEN_DIR} — restore by hand)"
+fi
+if ! gunzip -c "${GOLDEN_DIR}/${GOLDEN_DB}" | "${ROOT_SUDO[@]}" mysql "$DB_NAME"; then
+    die "reset-failed" "reason=import-db (golden intact at ${GOLDEN_DIR} — restore by hand)"
+fi
+
+# --- moodledata -------------------------------------------------------------
+# The destructive line is written HERE, in the file that carries the manifest
+# disclosing it (ops#47), not tucked into a helper a second caller could invoke
+# with no disclosure. $DATAROOT has already passed dataroot_is_safe, the live
+# config.php has agreed with it, and the database has declared itself a demo —
+# this string is the reason all three guards exist.
+#
+# `find … -mindepth 1 -maxdepth 1 -exec rm -rf {} +` clears the CONTENTS and
+# never the directory, so moodledata keeps its own ownership and 0700 mode even
+# if the golden tar were to carry a different one.
+echo "..  clearing ${DATAROOT} and unpacking the golden moodledata"
+if ! "${ROOT_SUDO[@]}" find "$DATAROOT" -mindepth 1 -maxdepth 1 -exec rm -rf {} + ; then
+    die "reset-failed" "reason=dataroot-clear"
+fi
+if ! "${ROOT_SUDO[@]}" tar xzf "${GOLDEN_DIR}/${GOLDEN_FILES}" -C "$DATAROOT"; then
+    die "reset-failed" "reason=files-untar (moodledata is now EMPTY — restore by hand from ${GOLDEN_DIR})"
+fi
+if ! "${ROOT_SUDO[@]}" chown -R www-data:www-data "$DATAROOT"; then
+    die "reset-failed" "reason=dataroot-chown"
+fi
+"${ROOT_SUDO[@]}" chmod 0700 "$DATAROOT" || log "dataroot-chmod-failed" "non-fatal"
+
+# --- caches -----------------------------------------------------------------
+# The restore replaced moodledata wholesale, so Moodle's caches are not merely
+# stale — their directories are GONE. Purging recreates them now rather than
+# leaving the first visitor to do it.
+if ! ( cd "$SITE_ROOT" && "${WWW_SUDO[@]}" $CLI_PHP $CLI_PHP_ARGS admin/cli/purge_caches.php >/dev/null 2>&1 ); then
+    log "purge-caches-failed" "non-fatal"
+fi
+
+# NOTE: there is deliberately no reseed step and no invite-code sync. Accounts
+# on ssd arrive by SSO from nwd (the provider, seeded on its own half), and
+# invite codes are a provider-side concept. Calling for either here would fail
+# on a host that has neither.
+
+# --- smoke ------------------------------------------------------------------
+# Retried on purpose: the first request after a cache purge is a cold full
+# render, and on this small shared host that can 5xx once before the caches
+# warm. A single sample would report a healthy site as broken. Persistent
+# failure is real and degrades the exit status.
+DEGRADED=false
+CODE=""
+for _ in $(seq 1 "$SMOKE_ATTEMPTS"); do
+    CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DOMAIN}/" 2>/dev/null || echo 000)"
+    [[ "$CODE" == "200" ]] && break
+    sleep "$SMOKE_SLEEP"
+done
+if [[ "$CODE" == "200" ]]; then
+    # The route that proves the tester's NEXT step still works. On the Moodle
+    # half that is the login page carrying the SSO button, which is where a
+    # tester actually lands — /demo/join is the provider's route and does not
+    # exist here, so checking it would report every healthy reset as failed.
+    LCODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DOMAIN}/login/index.php" 2>/dev/null || echo 000)"
+    if [[ "$LCODE" == "200" ]]; then
+        echo "OK  https://${DOMAIN}/ and /login/index.php both serve 200"
+    else
+        DEGRADED=true
+        log "reset-degraded" "login_http=${LCODE}"
+        echo "FAIL  /login/index.php returned ${LCODE} — testers cannot sign in."
+    fi
+else
+    DEGRADED=true
+    log "reset-degraded" "http=${CODE} attempts=${SMOKE_ATTEMPTS}"
+    echo "FAIL  https://${DOMAIN}/ still ${CODE} after ${SMOKE_ATTEMPTS} attempts."
+fi
+
+TOOK=$(( $(date +%s) - START ))
+
+if [[ "$DEGRADED" == "true" ]]; then
+    log "reset-ok-degraded" "took=${TOOK}s"
+    echo "WARN  data restored but the site failed its smoke check — treat as FAILED."
+    exit 1
+fi
+
+# Stamp only a fully clean reset [G5].
+mkdir -p "$STATE_DIR" 2>/dev/null || true
+printf '%s %s\n' "$TODAY" "$(date +%s)" > "$STAMP_FILE"
+log "reset-ok" "took=${TOOK}s action=${ACTION}"
+echo "OK  ssd demo reset complete in ${TOOK}s — back at the golden image."
+exit 0

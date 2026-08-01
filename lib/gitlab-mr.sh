@@ -352,12 +352,24 @@ _mr_lift_hold(){
 ################################################################################
 _mr_release_record(){
   local iid="$1" head_sha="$2" author="$3"
-  local notes bodies body approved commit
+  local notes bodies approved commit
   notes=$(_mr_notes "$iid") || return 1
   # Notes come back newest-first; take the first that validates.
-  bodies=$("$YQ" e -p=json -r '.[] | select(.system == false) | .body' - <<<"$notes" 2>/dev/null) || return 1
+  #
+  # The bodies are flattened into one stream with an explicit BOUNDARY between
+  # them, and the boundary resets the parse. Without it, `Approved-By:` in one
+  # note and `Commit:` in a completely different note would combine into a
+  # release record that nobody ever wrote — a forgery assembled by accident out
+  # of two innocent comments. A release must be one note, entire.
+  local BOUNDARY='@@NWP-NOTE-BOUNDARY@@'
+  bodies=$(B="$BOUNDARY" "$YQ" e -p=json -r \
+             '.[] | select(.system == false) | .body + "\n" + strenv(B)' - <<<"$notes" 2>/dev/null) || return 1
   local block=""
   while IFS= read -r line; do
+    if [ "$line" = "$BOUNDARY" ]; then
+      block=""; approved=""; commit=""
+      continue
+    fi
     if [ "$line" = "$MR_RELEASE_MARKER" ]; then
       block="$MR_RELEASE_MARKER"; approved=""; commit=""
       continue

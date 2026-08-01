@@ -222,6 +222,66 @@ _lib() { # run an expression with lib/gitlab-mr.sh sourced
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# The release record: a second pair of eyes, on a specific diff
+#
+# `_mr_notes` is stubbed so these run with no forge. The stub returns the exact
+# JSON shape GitLab's notes endpoint does.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_release() { # $1=notes-json  $2=head_sha  $3=author
+  bash -c "
+    PROJECT_ROOT='$ROOT'; NWP_SECRETS_FILE=/nonexistent
+    source '$ROOT/lib/gitlab-mr.sh' 2>/dev/null
+    _mr_notes(){ printf '%s' '$1'; }
+    _mr_handle_is_bot(){ case \"\$1\" in *_bot*|*-bot) return 0 ;; esac; return 1; }
+    if who=\$(_mr_release_record 1 '$2' '$3'); then echo \"OK:\$who\"; else echo REFUSED; fi
+  "
+}
+
+@test "a well-formed release for the current head is accepted" {
+  n='[{"system":false,"body":"NWP-SENSITIVE-PATH-RELEASE\nApproved-By: rjzaar\nCommit: abc123\nReason: looked at it"}]'
+  run _release "$n" abc123 someone_else
+  [ "$output" = "OK:rjzaar" ]
+}
+
+@test "a release bound to an OLD head is refused (push invalidates approval)" {
+  n='[{"system":false,"body":"NWP-SENSITIVE-PATH-RELEASE\nApproved-By: rjzaar\nCommit: OLDSHA\nReason: x"}]'
+  run _release "$n" abc123 someone_else
+  [ "$output" = "REFUSED" ]
+}
+
+@test "self-approval by the MR author is refused" {
+  n='[{"system":false,"body":"NWP-SENSITIVE-PATH-RELEASE\nApproved-By: rjzaar\nCommit: abc123\nReason: x"}]'
+  run _release "$n" abc123 rjzaar
+  [ "$output" = "REFUSED" ]
+}
+
+@test "approval by a bot is refused" {
+  n='[{"system":false,"body":"NWP-SENSITIVE-PATH-RELEASE\nApproved-By: group_9_bot_ab\nCommit: abc123\nReason: x"}]'
+  run _release "$n" abc123 someone_else
+  [ "$output" = "REFUSED" ]
+}
+
+@test "fields SPLIT ACROSS TWO NOTES do not assemble into a release" {
+  # The forgery-by-accident case: an innocent comment carrying `Commit:` must
+  # not complete a half-written record in a different note.
+  n='[{"system":false,"body":"NWP-SENSITIVE-PATH-RELEASE\nApproved-By: rjzaar\nReason: no commit line here"},{"system":false,"body":"Commit: abc123"}]'
+  run _release "$n" abc123 someone_else
+  [ "$output" = "REFUSED" ]
+}
+
+@test "a note merely QUOTING the marker does not release anything" {
+  n='[{"system":false,"body":"we should add NWP-SENSITIVE-PATH-RELEASE support later"}]'
+  run _release "$n" abc123 someone_else
+  [ "$output" = "REFUSED" ]
+}
+
+@test "no notes at all is a refusal, not a pass" {
+  run _release '[]' abc123 someone_else
+  [ "$output" = "REFUSED" ]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # The guard cannot be silently bypassed — assertions about the wiring itself
 # ─────────────────────────────────────────────────────────────────────────────
 

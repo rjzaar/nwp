@@ -837,6 +837,75 @@ moodle_plugin_version_local() {
 }
 
 # moodle_plugin_version_remote <ssh_target> <ssh_opts> <sudo_prefix> <root> <plugin>
+# ─────────────────────────────────────────────────────────────────────────────
+# BACKUP-SUBPLUGIN CAPABILITY — is the module's FEATURE_BACKUP_MOODLE2 claim true?
+#
+# Moodle never checks. backup_plan_builder does a bare file_exists() on
+# backup/moodle2/backup_<name>_activity_task.class.php and SILENTLY SKIPS the
+# activity when it is missing — no warning, exit 0. mod/depthcontent answered
+# `case FEATURE_BACKUP_MOODLE2: return true;` for its whole life while shipping
+# no backup/ directory, so every course backup dropped every depthcontent
+# activity and every restore looked clean. 55 courses restored with 0 activities.
+#
+# Echoes exactly one of:
+#   ok       advertises backup support and ships the matching task class
+#   blind    advertises backup support and does NOT  — the data-loss posture
+#   n/a      not an activity module, or honestly declines support
+#   unknown  could not look (absent tree / no lib.php) — never conflated with ok
+#
+# `unknown` is deliberately distinct from `n/a`: "I could not look" reported as
+# "nothing to see" is the vacuous pass this programme exists to eliminate.
+# ─────────────────────────────────────────────────────────────────────────────
+moodle_plugin_backup_capable_local() {
+    local root="${1%/}" plugin="$2"
+    local dir="${root}/${plugin}" name="${plugin#*/}"
+
+    # Only activity modules have an activity backup task.
+    case "$plugin" in mod/*) ;; *) echo "n/a"; return 0 ;; esac
+    [ -d "$dir" ] || { echo "unknown"; return 0; }
+
+    local lib="${dir}/lib.php"
+    [ -f "$lib" ] || { echo "unknown"; return 0; }
+
+    # Does it CLAIM Moodle2 backup support? Match the `case ...: return true;`
+    # arm specifically — the constant also appears in comments and in `false`
+    # arms, and treating either as a claim would cry wolf.
+    if ! grep -Eq 'FEATURE_BACKUP_MOODLE2[[:space:]]*:[[:space:]]*return[[:space:]]+true' "$lib"; then
+        echo "n/a"; return 0
+    fi
+
+    # The claim is only true if THIS module's task class is present. A task
+    # class copy-pasted from another module does not implement this one.
+    if [ -f "${dir}/backup/moodle2/backup_${name}_activity_task.class.php" ]; then
+        echo "ok"
+    else
+        echo "blind"
+    fi
+    return 0
+}
+
+# Remote twin of the above. Same four answers; an ssh that cannot answer is
+# `unknown`, never `ok`.
+moodle_plugin_backup_capable_remote() {
+    local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" root="${4%/}" plugin="$5"
+    local name="${plugin#*/}" dir="${root}/${plugin}" remote out
+
+    case "$plugin" in mod/*) ;; *) echo "n/a"; return 0 ;; esac
+
+    remote="if [ ! -f '${dir}/lib.php' ]; then echo unknown;
+            elif ! ${sudo_prefix} grep -Eq 'FEATURE_BACKUP_MOODLE2[[:space:]]*:[[:space:]]*return[[:space:]]+true' '${dir}/lib.php'; then echo n/a;
+            elif ${sudo_prefix} test -f '${dir}/backup/moodle2/backup_${name}_activity_task.class.php'; then echo ok;
+            else echo blind; fi"
+    remote="$(_md_trim "$remote")"
+    out="$(ssh ${ssh_opts} -o BatchMode=yes -o ConnectTimeout=10 "$ssh_target" "$remote" 2>/dev/null || true)"
+    out="$(printf '%s' "$out" | tr -dc 'a-z/')"
+    case "$out" in
+        ok|blind|n/a|unknown) printf '%s' "$out" ;;
+        *)                    printf 'unknown' ;;
+    esac
+    return 0
+}
+
 moodle_plugin_version_remote() {
     local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" root="${4%/}" plugin="$5"
     local remote out

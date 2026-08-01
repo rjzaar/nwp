@@ -1382,6 +1382,393 @@ cmd_handoff() {
 }
 
 ################################################################################
+# Subcommand: backup <name> — BOX-LEVEL disaster recovery (ADR-0025)
+#
+# THE GAP THIS CLOSES. On 2026-08-01 the estate had, for the box serving every
+# live site: per-site logical snapshots (`pl backup <site> --remote`), host
+# CONFIG state in git (`pl server-state capture`), and a nightly cron dumping
+# databases to /var/backups/nwp-pull. It had NO box-level disaster-recovery
+# backup — no files trees, no /etc, no grants, nothing verified, and (because
+# met's stick pull still names the pre-split box) nothing leaving the host.
+#
+# WHAT THIS IS, ARCHITECTURALLY. It is NOT a new backup engine. It is the
+# CONTROL-HOST FRONT DOOR to the ADR-0025 agent: this command never carries the
+# data. It preflights headroom, installs/refreshes the AI-free `nwp-server`
+# artifact, and invokes `nwp-server backup --host` ON the box, which writes a
+# restic repo LOCAL to the box. The custodian (`ver`) later PULLS. Prod holds no
+# credential that can delete the durable copy — the ADR-0025 invariant is
+# preserved because the driver is a caller, not a courier.
+#
+# WHAT IT DELIBERATELY DOES NOT DO. It does not pull the archive to this
+# workstation. This workstation is in the dev/AI tier and the archive is raw
+# member data; ADR-0025 §"the two flows must stay separate" makes that a
+# threat-model violation, not a convenience trade-off.
+################################################################################
+SRVBK_AGENT_DIR="/opt/nwp-server"
+SRVBK_ETC="/etc/nwp-server"
+SRVBK_PASS="/etc/nwp-server/restic.pass"
+
+# _srvbk_repo <server> — the box-scope repo path.
+#
+# Named for the NWP SERVER RECORD, not `hostname -s`. The live box is a clone of
+# the forge box and still answers `git` to `hostname -s`, so the agent's own
+# default would put the live estate's disaster-recovery archive in a directory
+# called `git-system` — one letter away from the box it is not. Every other verb
+# in this file addresses that host as `live`; the archive does too.
+_srvbk_repo() { printf '/var/backups/nwp-server/%s-system\n' "$1"; }
+_srvbk_tag()  { printf '%s/system\n' "$1"; }
+
+# _srvbk_installed <sp> — 0 if the agent + restic + password file are all present.
+_srvbk_installed() {
+    local sp="$1"
+    $sp "test -x ${SRVBK_AGENT_DIR}/scripts/commands/server-backup.sh && command -v restic >/dev/null && sudo -n test -r ${SRVBK_PASS}" </dev/null 2>/dev/null
+}
+
+# _srvbk_install <sp> <server> — idempotent provisioning. Everything it does is
+# listed in the rollback rows of docs/guides/box-level-dr-backup.md; --uninstall
+# reverses all of it.
+_srvbk_install() {
+    local sp="$1" server="$2"
+    local artifact="${PROJECT_ROOT}/build/out/nwp-server"
+
+    print_header "Install · nwp-server agent on '${server}'"
+    print_info "building the AI-free artifact (fail-closed deny-scan)"
+    bash "${PROJECT_ROOT}/scripts/build-nwp-server.sh" --out "$artifact" >/dev/null \
+        || { print_error "nwp-server artifact build failed — nothing was sent to the box"; return 1; }
+    print_status "OK" "artifact built + deny-scan passed"
+
+    # Host-side prerequisites. Written as a heredoc the box executes under sudo:
+    # readable in full in any transcript, which a packed one-liner is not.
+    local rc=0
+    $sp "bash -s" <<'PREP' || rc=$?
+set -eu
+cat > /tmp/nwp-server-prep.sh <<'NWPPREP'
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+if ! command -v restic >/dev/null 2>&1; then
+  # Only refresh the index when the cached one cannot satisfy us. `apt-get
+  # update` on a live box with third-party PPAs is not free: the ondrej/php PPA
+  # changed its Label and a blind refresh fails the whole install on a repo
+  # metadata change that has nothing to do with restic. Never auto-accept a
+  # release-info change on a box serving sites — that is an operator decision.
+  if ! apt-cache policy restic 2>/dev/null | grep -qE 'Candidate: [0-9]'; then
+    apt-get update -qq || { echo "apt-get update failed; not auto-accepting repo changes" >&2; exit 1; }
+  fi
+  apt-get install -y -qq --no-install-recommends restic
+fi
+install -d -m 700 /etc/nwp-server
+install -d -m 700 /var/backups/nwp-server
+if [ ! -f /etc/nwp-server/restic.pass ]; then
+  umask 077
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > /etc/nwp-server/restic.pass
+  chmod 600 /etc/nwp-server/restic.pass
+  echo "generated /etc/nwp-server/restic.pass"
+else
+  echo "kept existing /etc/nwp-server/restic.pass"
+fi
+install -d -m 755 /opt/nwp-server
+restic version
+NWPPREP
+sudo -n bash /tmp/nwp-server-prep.sh
+prep_rc=$?
+rm -f /tmp/nwp-server-prep.sh
+exit $prep_rc
+PREP
+    [[ $rc -eq 0 ]] || { print_error "host prerequisites failed on '${server}'"; return 1; }
+    print_status "OK" "restic + /etc/nwp-server + repo directory present"
+
+    # Ship the artifact. The tar stream goes through the SAME resolved prefix as
+    # every other call here, so there is one ssh route to audit, not two.
+    if ! tar -C "$artifact" -czf - . | $sp "sudo -n tar -xzf - -C ${SRVBK_AGENT_DIR}"; then
+        print_error "artifact push to '${server}' failed"; return 1
+    fi
+    print_status "OK" "nwp-server artifact → ${server}:${SRVBK_AGENT_DIR}"
+    return 0
+}
+
+# _srvbk_agent <sp> <args...> — invoke the on-host backup verb.
+_srvbk_agent() {
+    local sp="$1"; shift
+    $sp "sudo -n ${SRVBK_AGENT_DIR}/scripts/commands/server-backup.sh --host $*" </dev/null
+}
+
+cmd_backup() {
+    local server="" action="plan" arg
+    local scope="config,db,web" keep_last=3 min_free=2048 force_disk=0
+    local check_subset="5%" sample=12 auto_yes=0 purge_repo=0
+    # 04:20 box-local: after the legacy 01:30 nwp-box-backup and clear of the
+    # 01:00-03:00 demo-reset window, so two heavy jobs never share the box.
+    local cron_expr="20 4 * * *"
+    local -a extra=()
+
+    for arg in "$@"; do
+        case "$arg" in
+            --install)       action="install" ;;
+            --execute)       action="execute" ;;
+            --status)        action="status" ;;
+            --verify)        action="verify" ;;
+            --restore-test)  action="restore-test" ;;
+            --schedule)      action="schedule" ;;
+            --schedule=*)    action="schedule"; cron_expr="${arg#--schedule=}" ;;
+            --unschedule)    action="unschedule" ;;
+            --uninstall)     action="uninstall" ;;
+            --scope=*)       scope="${arg#--scope=}" ;;
+            --extra-path=*)  extra+=("${arg#--extra-path=}") ;;
+            --keep-last=*)   keep_last="${arg#--keep-last=}" ;;
+            --min-free-mb=*) min_free="${arg#--min-free-mb=}" ;;
+            --check-subset=*) check_subset="${arg#--check-subset=}" ;;
+            --sample=*)      sample="${arg#--sample=}" ;;
+            --force-disk)    force_disk=1 ;;
+            --purge-repo)    purge_repo=1 ;;
+            -y|--yes)        auto_yes=1 ;;
+            -*)              echo "Unknown option: $arg" >&2; return 2 ;;
+            *)               server="$arg" ;;
+        esac
+    done
+    [[ -n "$server" ]] || { echo "Usage: pl server backup <name> [--install|--execute|--status|--verify|--restore-test|--uninstall]" >&2; return 2; }
+
+    local sp
+    sp=$(sync_ssh_prefix "$server") || { echo "ERROR: cannot resolve server '$server'" >&2; return 2; }
+    [[ "$($sp 'echo ok' </dev/null 2>/dev/null || true)" == "ok" ]] \
+        || { echo "ERROR: '$server' unreachable over ssh." >&2; return 3; }
+
+    # THE PREFLIGHT. Every action here either writes several GB or reads several
+    # GB back off disk. `pl server health` exists because a heavy op OOM-killed
+    # the 3.8 GB forge box on 2026-07-25; a backup verb that skips it is exactly
+    # the shape of op that caused that outage. UNKNOWN is a refusal, not a pass.
+    local prefix
+    prefix=$(_resolve_probe_prefix "$server") || {
+        echo "UNKNOWN: cannot resolve a health probe destination for '$server'" >&2; return 3; }
+    # Capture the code BEFORE testing it. `if ! cmd; then return $?; fi` returns
+    # the status of the `!`, which is always 0 — the preflight ran, refused, and
+    # the verb carried on reporting success. Caught by the bats case
+    # "a box with no memory headroom is refused before any work starts".
+    local hrc=0
+    host_health_require "$prefix" 512 "a box-level backup of '${server}'" || hrc=$?
+    [[ $hrc -eq 0 ]] || return "$hrc"
+
+    case "$action" in
+      install)
+        _srvbk_install "$sp" "$server" || return 1
+        print_success "'${server}' is provisioned for box-level DR."
+        print_hint "next:  pl server backup ${server}            # dry-run plan"
+        print_hint "then:  pl server backup ${server} --execute"
+        return 0
+        ;;
+
+      plan|execute)
+        if ! _srvbk_installed "$sp"; then
+            print_error "the nwp-server agent is not installed on '${server}'."
+            print_hint "install it:  pl server backup ${server} --install"
+            return 1
+        fi
+        local -a agent_args=(--repo "$(_srvbk_repo "$server")" --tag "$(_srvbk_tag "$server")"
+                             --scope "$scope" --keep-last "$keep_last"
+                             --min-free-mb "$min_free" --restic-provenance apt)
+        local e; for e in ${extra[@]+"${extra[@]}"}; do agent_args+=(--extra-path "$e"); done
+        (( force_disk )) && agent_args+=(--force-disk)
+
+        if [[ "$action" == "plan" ]]; then
+            print_header "Box-level DR plan · ${server}  (DRY RUN)"
+            _srvbk_agent "$sp" "${agent_args[@]}" --dry-run
+            echo
+            print_info "This was a plan. Add --execute to take the backup."
+            return 0
+        fi
+
+        # A backup writes; the fate manifest says what it touches even though
+        # nothing user-visible is destroyed. `forget --keep-last` DOES delete
+        # older staging snapshots, and an operator is entitled to see that
+        # before it happens rather than in the output afterwards.
+        impact_reset
+        impact_archive "${server}: box-level restic snapshot" \
+            "scope '${scope}' → $(_srvbk_repo "$server") ON THE BOX (encrypted, raw)"
+        impact_delete "${server}: staging snapshots older than the newest ${keep_last}" \
+            "restic forget --keep-last ${keep_last} --prune, inside that repo only"
+        impact_keep "Every site, database and file on ${server} — this reads, it never modifies"
+        impact_keep "The per-site repos under /var/backups/nwp-server/<site> (different repos)"
+        impact_warn "The archive lands ON THE HOST IT BACKS UP. Until a pull tier drains it, it does not survive loss of that host."
+        impact_render
+        if ! impact_confirm standard "take a box-level backup of '${server}'" \
+             "$( ((auto_yes)) && echo true || echo false )"; then
+            print_info "Aborted."; return 1
+        fi
+        _srvbk_agent "$sp" "${agent_args[@]}" --execute || return 1
+        print_hint "verify it:  pl server backup ${server} --verify && pl server backup ${server} --restore-test"
+        return 0
+        ;;
+
+      status)
+        local repo; repo=$(_srvbk_repo "$server")
+        print_header "Box-level DR status · ${server}"
+        print_info "repo: ${repo}"
+        $sp "sudo -n test -d ${repo}" </dev/null 2>/dev/null || {
+            print_warning "no box-level repo on '${server}' yet — run: pl server backup ${server} --install --execute"
+            return 1; }
+        $sp "sudo -n du -sh ${repo} 2>/dev/null; sudo -n restic -r ${repo} --password-file ${SRVBK_PASS} snapshots --compact" </dev/null
+        return $?
+        ;;
+
+      verify)
+        local repo; repo=$(_srvbk_repo "$server")
+        print_header "Verify · ${server} (restic check --read-data-subset=${check_subset})"
+        # `restic check` proves the repo's structure and re-reads a sample of the
+        # actual pack files. It is the "0" in 3-2-1-1-0 for integrity — but NOT
+        # for recoverability. That is what --restore-test is for.
+        if $sp "sudo -n restic -r ${repo} --password-file ${SRVBK_PASS} check --read-data-subset=${check_subset}" </dev/null; then
+            print_success "repo integrity verified (${check_subset} of pack data re-read)"
+            return 0
+        fi
+        print_error "restic check FAILED on ${server}:${repo} — treat this repo as NOT a backup"
+        return 1
+        ;;
+
+      restore-test)
+        local repo; repo=$(_srvbk_repo "$server")
+        print_header "Restore drill · ${server}"
+        print_info "A backup that has not been test-restored is not a backup (ADR-0025)."
+        # Restore a random SAMPLE of real files out of the newest box snapshot
+        # into a scratch directory, then compare each one byte-for-byte with the
+        # file still on disk. Sampling is deliberate: a full 7 GB restore on a
+        # 46 GB box every run is how a verification step gets switched off.
+        local rc=0
+        $sp "sudo -n bash -s" <<RESTORETEST || rc=$?
+set -u
+REPO='${repo}'; PASS='${SRVBK_PASS}'; N='${sample}'
+R() { restic -r "\$REPO" --password-file "\$PASS" "\$@"; }
+TMP=\$(mktemp -d /var/tmp/nwp-restore-drill.XXXXXX) || exit 1
+trap 'rm -rf "\$TMP"' EXIT
+
+SNAP=\$(R snapshots --tag box --json 2>/dev/null | tr ',' '\n' | grep -o '"short_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
+[ -n "\$SNAP" ] || { echo "FAIL: no snapshot tagged 'box' in \$REPO"; exit 1; }
+echo "snapshot: \$SNAP"
+
+# Sample regular files from the snapshot's own listing (never from the live
+# filesystem — the point is to prove the ARCHIVE holds them).
+R ls -l "\$SNAP" 2>/dev/null | awk '\$1 ~ /^-/ && \$NF ~ /^\// {print \$NF}' > "\$TMP/all.txt"
+TOTAL=\$(wc -l < "\$TMP/all.txt")
+[ "\$TOTAL" -gt 0 ] || { echo "FAIL: snapshot \$SNAP lists no regular files"; exit 1; }
+
+# STRATIFIED sample, not a uniform one. 96% of the files in this archive are
+# /var/www/<site>/vendor, so a uniform draw of 8 proves the vendor directories
+# restore and proves nothing about /etc, /root, or the moodledata trees — the
+# parts a rebuild actually needs. Bucket by the second path component, pick one
+# file from each of N randomly chosen distinct buckets, so every drill covers N
+# different AREAS of the box and successive drills sweep the rest.
+awk -F/ 'NF>=4 {print "/"\$2"/"\$3"\t"\$0; next} {print "/"\$2"\t"\$0}' "\$TMP/all.txt" \
+  | sort -R 2>/dev/null | awk -F'\t' '!seen[\$1]++ {print \$2}' | head -n "\$N" > "\$TMP/sample.txt"
+[ -s "\$TMP/sample.txt" ] || shuf -n "\$N" "\$TMP/all.txt" > "\$TMP/sample.txt"
+echo "files in snapshot: \$TOTAL; sampling \$(wc -l < "\$TMP/sample.txt") from distinct areas"
+
+INC=""
+while IFS= read -r f; do INC="\$INC --include \$(printf '%q' "\$f")"; done < "\$TMP/sample.txt"
+eval R restore "\$SNAP" --target "\$TMP/out" \$INC >/dev/null 2>&1 || { echo "FAIL: restic restore errored"; exit 1; }
+
+PASSN=0; FAILN=0
+while IFS= read -r f; do
+  got="\$TMP/out\$f"
+  if [ ! -f "\$got" ]; then echo "  MISS  \$f"; FAILN=\$((FAILN+1)); continue; fi
+  a=\$(sha256sum "\$got" 2>/dev/null | awk '{print \$1}')
+  b=\$(sha256sum "\$f"   2>/dev/null | awk '{print \$1}')
+  if [ -z "\$b" ]; then echo "  GONE  \$f (restored ok; no longer on the box to compare)"; PASSN=\$((PASSN+1)); continue; fi
+  if [ "\$a" = "\$b" ]; then echo "  OK    \$f"; PASSN=\$((PASSN+1));
+  else echo "  DIFF  \$f (archive \$a != live \$b)"; FAILN=\$((FAILN+1)); fi
+done < "\$TMP/sample.txt"
+
+# The databases are the half a file-sample can miss entirely. Restore ONE dump
+# out of the state snapshot and prove it is a complete mysqldump, not a
+# truncated gzip stream that happens to decompress.
+SSNAP=\$(R snapshots --tag state --json 2>/dev/null | tr ',' '\n' | grep -o '"short_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
+if [ -n "\$SSNAP" ]; then
+  DB=\$(R ls -l "\$SSNAP" 2>/dev/null | awk '\$NF ~ /\.sql\.gz\$/ {print \$NF}' | head -1)
+  if [ -n "\$DB" ]; then
+    R restore "\$SSNAP" --target "\$TMP/state" --include "\$DB" >/dev/null 2>&1
+    if gzip -t "\$TMP/state\$DB" 2>/dev/null && zcat "\$TMP/state\$DB" | tail -5 | grep -q 'Dump completed'; then
+      echo "  OK    \$(basename "\$DB") — restored, gzip-valid, complete mysqldump"
+      PASSN=\$((PASSN+1))
+    else
+      echo "  BAD   \$(basename "\$DB") — restored dump is truncated or corrupt"
+      FAILN=\$((FAILN+1))
+    fi
+  else
+    echo "  WARN  state snapshot holds no .sql.gz to test"
+  fi
+else
+  echo "  WARN  no snapshot tagged 'state' — database coverage NOT proven"
+fi
+
+echo "restore drill: \$PASSN passed, \$FAILN failed"
+[ "\$FAILN" -eq 0 ]
+RESTORETEST
+        if [[ $rc -eq 0 ]]; then
+            print_success "restore drill PASSED on '${server}' — the archive gives back what it took"
+            return 0
+        fi
+        print_error "restore drill FAILED on '${server}' — this repo has NOT been shown to restore"
+        return 1
+        ;;
+
+      schedule|unschedule)
+        # Delegates to `pl host schedule`, which owns remote cron. The point of
+        # putting it behind this verb is that the ENTRY is derived, not typed: a
+        # hand-written cron line is where the repo path, the tag, the retention
+        # and the provenance flag silently drift away from what the verb does.
+        local cron_id="server-backup-${server}"
+        local cron_cmd="${SRVBK_AGENT_DIR}/scripts/commands/server-backup.sh --host"
+        cron_cmd+=" --repo $(_srvbk_repo "$server") --tag $(_srvbk_tag "$server")"
+        cron_cmd+=" --scope ${scope} --keep-last ${keep_last} --min-free-mb ${min_free}"
+        cron_cmd+=" --restic-provenance apt --execute"
+        cron_cmd+=" >> /var/log/nwp-server-backup.log 2>&1"
+        if [[ "$action" == "unschedule" ]]; then
+            "${PROJECT_ROOT}/scripts/commands/host.sh" schedule "$server" remove \
+                --name="$cron_id" $( ((auto_yes)) && echo --execute )
+            return $?
+        fi
+        if ! _srvbk_installed "$sp"; then
+            print_error "refusing to schedule a backup on '${server}': the agent is not installed."
+            print_hint "install it first:  pl server backup ${server} --install"
+            return 1
+        fi
+        print_header "Schedule · box-level DR on '${server}'"
+        print_info "A scheduled on-box archive protects against deletion, a bad deploy and"
+        print_info "corruption. It does NOT protect against loss of the host — nothing does"
+        print_info "until a pull tier drains this repo off the box (ADR-0025)."
+        "${PROJECT_ROOT}/scripts/commands/host.sh" schedule "$server" install \
+            --name="$cron_id" --schedule="$cron_expr" --command="$cron_cmd" \
+            $( ((auto_yes)) && echo --execute )
+        return $?
+        ;;
+
+      uninstall)
+        print_header "Uninstall · nwp-server agent on '${server}'"
+        impact_reset
+        impact_delete "${server}:${SRVBK_AGENT_DIR}" "the AI-free nwp-server artifact"
+        if (( purge_repo )); then
+            impact_delete "${server}:/var/backups/nwp-server" "EVERY restic repo on the box, box-level AND per-site"
+            impact_delete "${server}:${SRVBK_ETC}" "including restic.pass — WITHOUT IT NO EXISTING SNAPSHOT CAN EVER BE READ"
+            impact_warn "Purging the password makes every snapshot in those repos permanently unreadable. There is no recovery."
+        else
+            impact_keep "/var/backups/nwp-server (the repos) and ${SRVBK_ETC}/restic.pass — pass --purge-repo to remove them too"
+        fi
+        impact_keep "restic itself (apt package) — remove with: apt-get remove restic"
+        impact_keep "Every site, database and file on ${server}"
+        impact_render
+        local level="standard"; (( purge_repo )) && level="typed"
+        if ! impact_confirm "$level" "uninstall the DR agent from '${server}'" \
+             "$( ((auto_yes)) && echo true || echo false )"; then
+            print_info "Aborted."; return 1
+        fi
+        $sp "sudo -n rm -rf ${SRVBK_AGENT_DIR}" </dev/null || return 1
+        if (( purge_repo )); then
+            $sp "sudo -n rm -rf /var/backups/nwp-server ${SRVBK_ETC}" </dev/null || return 1
+        fi
+        print_success "DR agent removed from '${server}'."
+        return 0
+        ;;
+    esac
+}
+
+################################################################################
 # Dispatcher
 ################################################################################
 sub="${1:-}"
@@ -1395,6 +1782,7 @@ case "$sub" in
     health)  cmd_health "$@" ;;
     forge)   cmd_forge "$@" ;;
     roots)   cmd_roots "$@" ;;
+    backup)  cmd_backup "$@" ;;
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
     sync)    cmd_sync "$@" ;;
@@ -1425,6 +1813,25 @@ Subcommands:
                         against what NWP declares. Exit 1 = an undeclared root
                         or a declaration no gate can see (the ops#149 shape),
                         3 = CANNOT-VERIFY (never treated as clean).
+  backup <name>         BOX-LEVEL disaster recovery (ADR-0025). Drives the
+                        AI-free nwp-server agent ON the box to write an
+                        encrypted restic archive of /etc, /usr/local, /root,
+                        /opt, every webroot and moodledata, every database, and
+                        a generated manifest (packages, enabled units, crontabs,
+                        `nginx -T`, replayable MySQL grants). The archive never
+                        comes to this workstation: it is raw member data and
+                        this is the dev/AI tier. Dry-run unless --execute.
+                          --install       provision restic + the agent on the box
+                          --execute       take the backup
+                          --status        repo size + snapshot list
+                          --verify        restic check --read-data-subset
+                          --restore-test  restore a sample and byte-compare it
+                          --schedule[=CRON] install the nightly on-box cron
+                          --unschedule    remove it
+                          --uninstall     remove the agent [--purge-repo]
+                        [--scope=config,db,web --extra-path=P --keep-last=N
+                         --min-free-mb=N --force-disk --check-subset=5%
+                         --sample=N -y]
   sites <name>          List sites configured to deploy to this server
   sync <from> <to>      Move every declared site's LIVE DATABASE from one
                         server to another (the box-split primitive; the

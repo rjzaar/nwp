@@ -310,6 +310,22 @@ EOF
                     print_error "install needs --schedule and --command"; return 2; }
                 [[ "$cmd" == /* ]] || {
                     print_error "--command must be an ABSOLUTE path (cron has no useful PATH)"; return 2; }
+                # Validate BEFORE writing. A malformed /etc/cron.d entry is not
+                # rejected loudly by cron — it is skipped, silently, and the
+                # schedule you believe you installed never runs. Five or six
+                # fields, and nothing outside cron's own vocabulary.
+                local nfields; nfields="$(printf '%s\n' "$expr" | awk '{print NF}')"
+                [[ "$nfields" == "5" || "$nfields" == "6" ]] || {
+                    print_error "--schedule must have 5 (or 6, with year) fields (got ${nfields}: '${expr}')"; return 2; }
+                [[ "$expr" =~ ^[0-9A-Za-z*/,\ -]+$ ]] || {
+                    print_error "--schedule contains characters cron does not accept: '${expr}'"; return 2; }
+                # The command is written into a quoted heredoc so the remote
+                # shell never expands it, but a newline would forge a second
+                # crontab line, and the delimiter would end the heredoc early.
+                case "$cmd" in
+                    *$'\n'*)      print_error "--command must be a single line"; return 2 ;;
+                    *NWPCRONEOF*) print_error "--command may not contain the heredoc delimiter"; return 2 ;;
+                esac
             fi
             local file="/etc/cron.d/nwp-${id}"
             echo "  target : $name"
@@ -322,11 +338,76 @@ EOF
             if [ "$execute" -eq 0 ]; then
                 echo ""
                 print_warning "DRY RUN — nothing was written to $name. Re-run with --execute."
+                print_hint "Re-run with --execute to write it."
                 return 0
             fi
-            print_error "pl host schedule --execute is not enabled in this release."
-            print_hint "The declared entry is above; an operator installs it and records it."
-            return 1
+
+            # ── --execute ─────────────────────────────────────────────────────
+            # Enabled 2026-08-02. It was previously a deliberate stub that told
+            # the operator to install the entry by hand. That made every verb
+            # needing a remote schedule un-completable through `pl`, which is how
+            # box-level DR ended up with a nightly cron nobody could reinstall
+            # from the repo. The write is a single managed file, idempotent,
+            # read back and re-verified, with the cron DAEMON state reported
+            # (ops#164: a cron file on a stopped daemon is not a schedule).
+            local script rc=0
+            if [ "$action" = "install" ]; then
+                script="$(cat <<REMOTE
+set -eu
+umask 022
+cat > /tmp/nwp-cron-${id}.tmp <<'NWPCRONEOF'
+# Managed by NWP — pl host schedule install --name=${id}
+# Edits here are overwritten on the next install. Remove with:
+#   pl host schedule <target> remove --name=${id} --execute
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+${expr} root ${cmd}
+NWPCRONEOF
+sudo -n install -m 644 -o root -g root /tmp/nwp-cron-${id}.tmp ${file}
+rm -f /tmp/nwp-cron-${id}.tmp
+echo "--- installed ---"
+sudo -n cat ${file}
+REMOTE
+)"
+            else
+                script="$(cat <<REMOTE
+set -eu
+if sudo -n test -f ${file}; then sudo -n rm -f ${file}; echo "--- removed ${file} ---";
+else echo "--- ${file} was not present ---"; fi
+REMOTE
+)"
+            fi
+            local out
+            out="$(host_run "$prefix" "$script")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+                print_error "could not ${action} ${file} on ${name} (rc=${rc}) — nothing is confirmed"
+                [ -n "$out" ] && printf '%s\n' "$out"
+                return 1
+            fi
+            printf '%s\n' "$out" | sed 's/^/    /'
+
+            # Verify by READING BACK, not by trusting the write's exit status.
+            local check
+            check="$(host_run "$prefix" "sudo -n test -f ${file} && echo PRESENT || echo ABSENT")" || check=""
+            if [ "$action" = "install" ] && [ "$check" != "PRESENT" ]; then
+                print_error "${file} is not present on ${name} after install — the schedule does NOT exist"; return 1
+            fi
+            if [ "$action" = "remove" ] && [ "$check" = "PRESENT" ]; then
+                print_error "${file} is still present on ${name} after remove"; return 1
+            fi
+
+            if [ "$action" = "install" ]; then
+                local daemon
+                daemon="$(host_run "$prefix" 'systemctl is-active cron 2>/dev/null || systemctl is-active crond 2>/dev/null || echo unknown')" || daemon="unknown"
+                case "$daemon" in
+                    active) print_status "OK" "${name}: ${file} installed; cron daemon is active" ;;
+                    unknown) print_warning "${name}: ${file} installed, but the cron daemon state could not be read — do NOT record this as scheduled until it can" ;;
+                    *) print_error "${name}: ${file} installed but the cron daemon is '${daemon}' — this entry will NOT run"; return 1 ;;
+                esac
+            else
+                print_status "OK" "${name}: ${file} removed"
+            fi
+            return 0
             ;;
         *)
             print_error "unknown action: $action (list|install|remove)"; return 2 ;;

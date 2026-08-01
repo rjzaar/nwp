@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# F33 §4.2 — locate the operator's private instance overlay (`nwp-instances/`).
+# Locate the directory holding per-site configuration.
+#
+# `sites/` inside the repo is the PRIMARY per-site location (the F17/F23
+# nested layout documented in CLAUDE.md). `~/nwp-instances` is an OPTIONAL
+# private operator overlay (role manifest, _global config, _servers); when it
+# exists it takes precedence so overlay users keep their current behaviour.
+# (F33, which planned to deprecate sites/ in favour of the overlay, was
+# SUPERSEDED, and ADR-0021 was rejected — sites/ is not deprecated.)
 #
 # Resolution order:
 #   1. $NWP_INSTANCES_DIR if set
-#   2. $HOME/nwp-instances if it exists
-#   3. ./sites/ (the legacy in-repo location), with a DEPRECATION warning
+#   2. $HOME/nwp-instances if it exists (operator overlay)
+#   3. ./sites/ (the primary in-repo location)
 #
 # Returns: prints the resolved directory path on stdout.
 #          Returns 0 always (an empty stdout means "no instance dir found",
 #          which is normal for a fresh contributor clone).
 #
-# Designed to be sourced or invoked. Idempotent. No side effects beyond
-# the optional deprecation warning on stderr.
+# Designed to be sourced or invoked. Idempotent. No side effects.
 #
 # Usage:
 #   instance_dir=$(find_instance_dir)
@@ -33,17 +39,16 @@ find_instance_dir() {
   fi
   # SCRIPT_DIR is set by the caller (typically pl itself).
   local script_dir="${SCRIPT_DIR:-$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../..}"
-  local legacy="${script_dir}/sites"
-  if [[ -d "${legacy}" ]]; then
-    # Only fall back if the legacy dir contains real per-site content,
+  local sites_dir="${script_dir}/sites"
+  if [[ -d "${sites_dir}" ]]; then
+    # Only resolve here if the dir contains real per-site content,
     # not just templates + README. Filter out *.example.* and README.
     local has_real_content
-    has_real_content=$(ls -A "${legacy}" 2>/dev/null \
+    has_real_content=$(ls -A "${sites_dir}" 2>/dev/null \
       | grep -v -E '^(README\.md|\.gitkeep|.+\.example\..*)$' \
       | head -1)
     if [[ -n "${has_real_content}" ]]; then
-      printf '%s\n' "${legacy}"
-      printf 'DEPRECATION: per-site config in sites/ is deprecated; move to %s/nwp-instances/ (see F33). This fallback will be removed in v1.0.0.\n' "${HOME}" >&2
+      printf '%s\n' "${sites_dir}"
       return 0
     fi
   fi

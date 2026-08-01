@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# F33 §4.2 — high-level helpers for resolving per-site paths through the
-# instance overlay.
+# High-level helpers for resolving per-site paths (sites/ primary, with
+# optional ~/nwp-instances operator overlay — see find-instance-dir.sh).
 #
 # Source this from any `pl` subcommand that needs to read per-site
 # configuration. It in turn sources find-instance-dir.sh and exposes:
@@ -12,8 +12,8 @@
 #   instance_global_path <name>   — absolute path to <instance>/_global/<name>
 #   instance_server_path <host>   — absolute path to <instance>/_servers/<host>/
 #
-# All return values are stable across the cutover between sites/<name>/
-# and nwp-instances/<name>/.
+# All return values are stable whichever location (sites/<name>/ or an
+# operator's nwp-instances/<name>/ overlay) is in use.
 
 # Resolve SCRIPT_DIR to find this dir; tolerant of being sourced from
 # pl or from a test fixture.
@@ -25,8 +25,9 @@ instance_dir_or_die() {
   local dir
   dir=$(find_instance_dir)
   if [[ -z "${dir}" ]]; then
-    echo "Error: no NWP instance directory found." >&2
-    echo "       Set NWP_INSTANCES_DIR or create ~/nwp-instances (see F33)." >&2
+    echo "Error: no NWP per-site directory found." >&2
+    echo "       Create sites/ in the repo (primary), or set NWP_INSTANCES_DIR," >&2
+    echo "       or create the optional ~/nwp-instances operator overlay." >&2
     return 1
   fi
   printf '%s\n' "${dir}"

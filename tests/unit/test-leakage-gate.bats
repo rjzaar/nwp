@@ -265,6 +265,47 @@ PY
   [ "$status" -eq 0 ] || { echo "$output" >&2; return 1; }
 }
 
+@test "doc-leaked-bearer-token fires on a high-entropy inline-code token next to leak-shaped prose (ops#182)" {
+  # The real incident: a 23-char prefix of a live bearer token printed in a
+  # doc as an inline code span, in prose saying "the live value is ...".
+  # Synthetic stand-in only — high entropy (4.50 bits), never a real value.
+  # Safe as a literal here: the rule is path-scoped to prose/doc files, so it
+  # never scans .bats sources.
+  mkdir -p "$FIXROOT/lib"
+  {
+    printf 'The gateway expects a bearer credential in the auth header.\n'
+    printf 'the live value is `ydS23kQ9mZx7Wr4LpJ8Tn2Vb` — rotate it quarterly.\n'
+  } > "$FIXROOT/lib/leaky-doc.md"
+  run _scan
+  [ "$status" -eq 0 ]
+  _assert_hit "$output" "lib/leaky-doc.md" "doc-leaked-bearer-token"
+}
+
+@test "doc-leaked-bearer-token stays quiet on ordinary code spans" {
+  # Three shapes that must NOT fire: two low-entropy identifiers adjacent to
+  # the word "token" (measured 3.20 / 3.64 bits, under the 4.0 floor), and a
+  # high-entropy span with no leak-announcing prose near it.
+  mkdir -p "$FIXROOT/lib"
+  {
+    printf 'rotate the token with `pl_secrets_rotate_all` when it expires.\n'
+    printf 'the token is `composer_registry_token` in .secrets.yml.\n'
+    printf 'checksum `ydS23kQ9mZx7Wr4LpJ8Tn2Vb` for the tarball.\n'
+  } > "$FIXROOT/lib/ordinary-doc.md"
+  run _scan
+  [ "$status" -eq 0 ]
+  _assert_no_hit "$output" "lib/ordinary-doc.md" "doc-leaked-bearer-token"
+}
+
+@test "operator-public-ip covers the sites1 live box IP from the 2026-07-31 split" {
+  # 45.33.76.180 read off DNS (sites1/nwc/ssc.nwpcode.org) 2026-08-02.
+  # Safe as a literal here: tests/ is in SHARED-EXEMPTIONS for identity rules.
+  mkdir -p "$FIXROOT/lib"
+  printf 'host: 45.33.76.180\n' > "$FIXROOT/lib/new-box-ip.md"
+  run _scan
+  [ "$status" -eq 0 ]
+  _assert_hit "$output" "lib/new-box-ip.md" "operator-public-ip"
+}
+
 @test "the repo config parses cleanly on the resolved gitleaks" {
   mkdir -p "$FIXROOT/lib"
   printf 'nothing to see here\n' > "$FIXROOT/lib/clean.md"

@@ -25,15 +25,39 @@ ssh_user: gitlab
 # php8.2-fpm.sock and Moodle cron runs /usr/bin/php8.2, so the SAPI that
 # actually serves Moodle stayed at the default 1000. A check asking "is 5000
 # set on this box" passed the whole time. These floors name the SAPI.
+#
+# `declared_ini` names the REMEDY, so the floor is applicable by verb:
+#   pl host apply nwpcode --kind=php              dry-run — the exact diff, per SAPI
+#   pl host apply nwpcode --kind=php --execute    backup + write + reload + RE-MEASURE
+#
+# ⚠ STILL NOT APPLIED HERE, deliberately — and the reason CHANGED on 2026-07-31.
+#
+# CP22 reserved it as an operator action because this is the 3.8 GB forge (a
+# heavy op OOM-killed it for 5-8 minutes on 2026-07-25; measured 577 MB free on
+# 2026-08-02, i.e. barely over the verb's own 512 MB refusal floor).
+#
+# But the stronger reason now is that THESE FLOORS MAY NO LONGER PROTECT
+# ANYTHING HERE. The 2026-07-31 box split moved every site to `live`.
+# Measured 2026-08-02 with `pl server roots nwpcode`: the only served roots on
+# this box are headscale (hs) and pray.rosaryforge — no Moodle, no vhost with a
+# php8.2-fpm.sock at all. The floors' own `why:` clauses below cite `ss.conf`,
+# which lives on the `live` box now (and IS in force there since 2026-08-02).
+#
+# So do NOT reflexively run `--execute` here to make a red go green. Decide
+# first, as a separate reviewed change: retire these two floors, or re-scope
+# them to whatever this box actually serves. Applying them would be a live-box
+# fpm reload bought for no measured benefit.
 # ---------------------------------------------------------------------------
 php_floors:
   - sapi: "8.2/fpm"
     setting: max_input_vars
     min: 5000
+    declared_ini: php/conf.d/90-nwp-moodle.ini
     why: "Moodle course/section edit forms POST >1000 vars; ss.conf -> php8.2-fpm.sock. Below this the form silently truncates and the save 500s."
   - sapi: "8.2/cli"
     setting: max_input_vars
     min: 5000
+    declared_ini: php/conf.d/90-nwp-moodle.ini
     why: "Moodle cron + admin/cli/upgrade.php run under /usr/bin/php8.2. An upgrade that trips this leaves the site in maintenance mode."
 
 artifacts:

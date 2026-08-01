@@ -24,7 +24,8 @@
 #   pl host --aliases           print the short-alias map
 #   pl host capture <target> [--kind=K|--all]   read host state into servers/<h>/system/
 #   pl host diff    <target> [--kind=K|--all]   non-zero on drift / blindness
-#   pl host apply   <target> [--kind=K] [--execute]   dry-run by default
+#   pl host apply   <target> [--kind=K] [--execute]   dry-run by default;
+#                                                     --kind=php IS executable
 #   pl host schedule <target> <install|remove|list> ...  remote cron, idempotent
 #   pl host -h|--help
 #
@@ -41,6 +42,8 @@ NWP_DIR="${NWP_DIR:-$PROJECT_ROOT}"
 source "$PROJECT_ROOT/lib/server-resolver.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/host-capture.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/php-floor.sh"
 
 MANIFEST="${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"
 YQ="$(command -v yq || true)"
@@ -79,7 +82,9 @@ ${BOLD}USAGE:${NC}
 ${BOLD}HOST STATE:${NC}
   pl host capture <target> [--kind=K|--all]   read real state into servers/<h>/system/
   pl host diff    <target> [--kind=K|--all]   non-zero on drift, blindness or incompleteness
-  pl host apply   <target> [--kind=K]         dry-run by default; prints the exact change
+  pl host apply   <target> --kind=php [--execute]  put a DECLARED php setting floor
+                                                   in force, then re-measure it
+  pl host apply   <target> [--kind=K]         other kinds: dry-run / declare-only
   pl host schedule <target> list|install|remove   remote cron, idempotent, absolute PATH
 
   pl host -h|--help
@@ -207,10 +212,30 @@ cmd_diff() {
     return $rc
 }
 
-# pl host apply — dry-run DEFAULT. Writing declared state back to a box that
-# serves live sites is operator work (CLAUDE.md: server configuration is
-# high-risk). This verb's job is to produce the exact diff and fate manifest an
-# operator executes, and to refuse to do it silently.
+# pl host apply — dry-run DEFAULT.
+#
+# `--kind=php` IS EXECUTABLE; every other kind is still declare-only.
+#
+# That asymmetry is deliberate and is the whole of this verb's 2026-08-02
+# change. Item 6 shipped `apply` with `--execute` disabled across the board
+# (rollback-registry CP-I6), which was the right call for `cron`/`nginx`/`ssh`
+# — pushing a whole captured tree back at a box that serves every live site is
+# operator work, and the capture is identity-redacted, so it is a faithful
+# RECORD and not a byte-restorable backup.
+#
+# A php SETTING FLOOR is a different shape of thing, and the difference is what
+# makes it safe to automate:
+#   * it is DECLARED, not captured — `servers/<h>/php/conf.d/*.ini` is authored
+#     and reviewed, so there is no redaction round-trip to lose;
+#   * it is ADDITIVE and single-purpose — one conf.d file containing one floor;
+#   * it is MEASURABLE after the fact — the verb asks the target SAPI what it
+#     now believes, so "applied" is a reading, not an assumption;
+#   * and leaving it un-automated has a proven cost: the declared remedy sat
+#     "NOT YET APPLIED" from 2026-07-26, and on 2026-08-01 it reached the live
+#     box by `scp` + `sudo cp` instead — with no backup, no verification and no
+#     rollback row. A gap you route around stays a gap forever.
+#
+# See lib/php-floor.sh for the engine and its seven guarantees.
 cmd_apply() {
     local target="${1:-}"; shift || true
     [ -n "$target" ] || { print_error "usage: pl host apply <target> [--kind=K] [--execute]"; return 2; }
@@ -219,6 +244,23 @@ cmd_apply() {
     local kinds; mapfile -t kinds < <(_parse_kinds "$@") || return 1
 
     local name; name="$(host_resolve_name "$target")"
+
+    # --- php floors: the one kind this verb can actually put in force -------
+    local php_selected=0 rest=() k
+    for k in "${kinds[@]}"; do
+        if [ "$k" = "php" ]; then php_selected=1; else rest+=("$k"); fi
+    done
+
+    local php_rc=0
+    if [ "$php_selected" -eq 1 ]; then
+        php_floor_run "$target" "$@" || php_rc=$?
+        # An explicit --kind=php run is the floor run and nothing else.
+        [ "${#rest[@]}" -eq 0 ] && return "$php_rc"
+        echo ""
+    fi
+
+    # --- every other kind: declare-only, exactly as before ------------------
+    kinds=("${rest[@]}")
     print_header "pl host apply — $name"
     local rc=0
     host_diff "$target" "${kinds[@]}" || rc=$?
@@ -229,7 +271,7 @@ cmd_apply() {
     fi
     if [ "$rc" -eq 0 ]; then
         print_success "nothing to apply — host already matches the repo"
-        return 0
+        return "$php_rc"
     fi
 
     if [ "$execute" -eq 0 ]; then
@@ -239,7 +281,8 @@ cmd_apply() {
         echo "  Re-run with --execute to apply (you will be asked to type the host name)."
         echo ""
         print_hint "On a box that serves live sites, hand this diff to the operator instead."
-        return 0
+        print_hint "--kind=php IS executable: pl host apply $name --kind=php --execute"
+        return "$php_rc"
     fi
 
     # --execute: typed confirmation, pre-state snapshot, rollback registry row.
@@ -250,7 +293,8 @@ cmd_apply() {
         print_error "confirmation did not match — nothing applied"
         return 1
     fi
-    print_error "pl host apply --execute is not enabled in this release."
+    print_error "pl host apply --execute is not enabled for kind(s): ${kinds[*]}"
+    print_hint "Only --kind=php is executable (lib/php-floor.sh); the rest are declare-only."
     print_hint "The declared state and its diff are above; an operator applies it."
     print_hint "Record the change with: pl rollback register"
     return 1

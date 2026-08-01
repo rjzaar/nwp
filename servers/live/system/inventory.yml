@@ -36,10 +36,12 @@ php_floors:
   - sapi: "8.2/fpm"
     setting: max_input_vars
     min: 5000
+    declared_ini: php/conf.d/90-nwp-moodle.ini
     why: "Moodle course/section edit forms POST >1000 vars; ss.conf and ssd.conf -> php8.2-fpm.sock. Below this the form silently truncates and the save 500s. Measured 1000 (PHP default) on 2026-08-01."
   - sapi: "8.2/cli"
     setting: max_input_vars
     min: 5000
+    declared_ini: php/conf.d/90-nwp-moodle.ini
     why: "ssc Moodle cron (www-data crontab) and admin/cli/upgrade.php run under /usr/bin/php8.2. An upgrade that trips this leaves the site in maintenance mode. Measured 1000 on 2026-08-01."
 
 artifacts:

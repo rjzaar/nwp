@@ -109,17 +109,27 @@ impact_render() {
     fi
 }
 
-# impact_confirm <tier> <subject> [auto_confirm]
+# impact_confirm <tier> <subject> [auto_confirm] [warning_override]
 #   tier "standard": y/N prompt — for actions where a recovery path survives
 #                    (subject is the question text, e.g. "delete site 'avc'").
 #   tier "typed":    the operator must type <subject> exactly — for actions
 #                    that destroy the last recovery path (purge tier).
 #   auto_confirm "true": skip the prompt (the report was already printed).
+#   warning_override: replaces the tier's stock warning line.
+#
+#   WHY THE OVERRIDE EXISTS. The `typed` tier's stock line asserts "this
+#   destroys the LAST recovery path — no undo, no restore". That is true of
+#   `pl delete --purge` and false of `pl host apply --kind=php --execute`,
+#   which preserves the byte it replaces on the box and prints the path. A
+#   confirmation prompt that overstates the stakes is a prompt operators learn
+#   to click through, so the ceremony (type the host name) is kept and only the
+#   claim is made accurate. Omit it and nothing changes for existing callers.
 # Returns 0 = proceed, 1 = abort.
 impact_confirm() {
     local tier="$1"
     local subject="$2"
     local auto="${3:-false}"
+    local warn_override="${4:-}"
 
     if [ "$auto" = "true" ]; then
         return 0
@@ -142,7 +152,11 @@ impact_confirm() {
             esac
             ;;
         typed)
-            echo -e "${RED}${BOLD}WARNING: This destroys the LAST recovery path — no undo, no restore.${NC}"
+            if [ -n "$warn_override" ]; then
+                echo -e "${YELLOW}${BOLD}${warn_override}${NC}"
+            else
+                echo -e "${RED}${BOLD}WARNING: This destroys the LAST recovery path — no undo, no restore.${NC}"
+            fi
             local typed
             read -r -p "Type the name '${subject}' to confirm: " typed
             if [ "$typed" = "$subject" ]; then

@@ -70,8 +70,30 @@ provider: provider1
 consumer: paired
 EOF
 
+  # --- fixture: a demo site with the DEMO-SHAPED none-stored evidence --------
+  # (ops#162: a demo is synthetic BY DESIGN — the demo_mode assertion REPLACES
+  # the member cap, and there is NO expires: a demo is a standing class
+  # property, not an expiring exemption. ssd/nwd/nwt's intended shape.)
+  cat > "${NWP_SITECLASS_DIR}/demosite.class.yml" <<EOF
+site: demosite
+class: demo
+art9:
+  posture: none-stored
+  evidence:
+    probe_cmd: "pl moodle cli demosite --tier=live --execute -- admin/cli/probe_art9_rows.php"
+    demo_mode_probe_cmd: "pl drush demosite --tier=live -- config:get nwc_demo_access.settings demo_mode"
+    max_age_days: 30
+    attestation:
+      at: "${TODAY}"
+      by: "tester@bats"
+      formation_rows: 0
+      demo_mode: true
+EOF
+
   # A helper to rewrite one field of the standalone declaration.
   sabotage() { yq eval -i "$1" "${NWP_SITECLASS_DIR}/standalone.class.yml"; }
+  # Same, for the demo declaration.
+  sabotage_demo() { yq eval -i "$1" "${NWP_SITECLASS_DIR}/demosite.class.yml"; }
 }
 
 teardown() { rm -rf "${TEST_TMP}"; }
@@ -271,6 +293,94 @@ EOF
   run siteclass_art9_check standalone
   [ "$status" -eq 2 ]
   [[ "$output" == *CANNOT-VERIFY* ]]
+}
+
+# =============================================================================
+# DEMO-SHAPED none-stored (ops#162) — a demo is synthetic BY DESIGN. Its honest
+# checkable assertion is "demo_mode is ON and formation_rows == 0", not
+# "member_count <= cap": seeded accounts are not capped real members, and
+# forcing the rgs-shaped evidence onto ssd/nwd/nwt either misrepresents them
+# or guts the cap. So for class=demo the demo-mode probe REPLACES the member
+# cap, and no expiry is required — demo is a standing class property, not an
+# expiring exemption. The rgs shape (member-standalone) is pinned UNCHANGED by
+# the SABOTAGE tests above ("member count over cap" -> MEMBER-CAP-EXCEEDED,
+# "expiry removed entirely" -> EXEMPTION-EXPIRED); those are the regression
+# guard for this section.
+# =============================================================================
+
+@test "DEMO: full demo-shaped evidence PASSES — no member cap, no expiry (ops#162)" {
+  run siteclass_art9_check demosite
+  [ "$status" -eq 0 ]
+  # and the quiet predicate the deploy gate uses agrees
+  run siteclass_art9_exempt demosite
+  [ "$status" -eq 0 ]
+}
+
+@test "DEMO: absent expires is NOT EXEMPTION-EXPIRED (the delta from the rgs shape)" {
+  # prove the fixture really carries no expires, then prove that is not a failure
+  run yq eval '.art9.expires // "absent"' "${NWP_SITECLASS_DIR}/demosite.class.yml"
+  [ "$output" = "absent" ]
+  run siteclass_art9_check demosite
+  [ "$status" -eq 0 ]
+  [[ "$output" != *EXEMPTION-EXPIRED* ]]
+}
+
+@test "DEMO SABOTAGE demo_mode_probe_cmd removed -> NO-DEMO-PROBE" {
+  sabotage_demo 'del(.art9.evidence.demo_mode_probe_cmd)'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *NO-DEMO-PROBE* ]]
+}
+
+@test "DEMO SABOTAGE attestation.demo_mode false -> DEMO-MODE-OFF (a demo whose demo_mode is off is NOT a demo)" {
+  sabotage_demo '.art9.evidence.attestation.demo_mode = false'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *DEMO-MODE-OFF* ]]
+}
+
+@test "DEMO SABOTAGE attestation.demo_mode absent -> DEMO-MODE-OFF (fail closed, not a silent pass)" {
+  sabotage_demo 'del(.art9.evidence.attestation.demo_mode)'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *DEMO-MODE-OFF* ]]
+}
+
+@test "DEMO SABOTAGE formation rows present -> EVIDENCE-CONTRADICTS (synthetic does not mean unchecked)" {
+  sabotage_demo '.art9.evidence.attestation.formation_rows = 7'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *EVIDENCE-CONTRADICTS* ]]
+}
+
+@test "DEMO SABOTAGE probe_cmd removed -> NO-PROBE (anti-vacuity stands for demos too)" {
+  sabotage_demo 'del(.art9.evidence.probe_cmd)'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *NO-PROBE* ]]
+}
+
+@test "DEMO SABOTAGE stale attestation -> STALE-ATTESTATION (the staleness clock still applies)" {
+  sabotage_demo '.art9.evidence.attestation.at = "2020-01-01"'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *STALE-ATTESTATION* ]]
+}
+
+@test "DEMO: an expires that IS declared is still honoured (a declared bound may not rot)" {
+  sabotage_demo '.art9.expires = "2020-01-01"'
+  run siteclass_art9_check demosite
+  [ "$status" -eq 1 ]
+  [[ "$output" == *EXEMPTION-EXPIRED* ]]
+}
+
+@test "REGRESSION: the demo shape does NOT leak into member-standalone — missing member_count is still NO-ATTESTATION" {
+  # rgs behaviour unchanged: cap + expiry pinned by the SABOTAGE tests above;
+  # additionally a standalone site cannot borrow the demo evidence shape.
+  sabotage 'del(.art9.evidence.attestation.member_count)'
+  run siteclass_art9_check standalone
+  [ "$status" -eq 1 ]
+  [[ "$output" == *NO-ATTESTATION* ]]
 }
 
 # =============================================================================

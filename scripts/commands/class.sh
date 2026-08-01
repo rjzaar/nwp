@@ -50,7 +50,9 @@ ${BOLD}CLASSES:${NC}
     member-standalone   real members; NO paired provider, no consent source
                         → Art.9 satisfied locally, or exempted BY EVIDENCE
     demo                synthetic/seeded data only; resettable; never real members
-                        → Art.9 N/A, asserted via a zero-real-member claim
+                        → Art.9 N/A, asserted via demo_mode=on + zero formation
+                          rows (ops#162 — the demo-mode probe replaces the
+                          member cap; no expiry, it is a standing property)
     service             no non-operator accounts at all
                         → Art.9 N/A, asserted via a zero-account claim
 
@@ -257,8 +259,16 @@ cmd_evidence() {
         return 0
     fi
     echo "  probe   : $(_sc_yq "$decl" '.art9.evidence.probe_cmd')"
-    echo "  cap     : max_members=$(_sc_yq "$decl" '.art9.evidence.max_members') max_age_days=$(_sc_yq "$decl" '.art9.evidence.max_age_days')"
-    echo "  expires : $(_sc_yq "$decl" '.art9.expires')"
+    local cls; cls="$(siteclass_of "$site" 2>/dev/null || true)"
+    if [ "$cls" = "demo" ]; then
+        # ops#162 demo shape: demo-mode assertion replaces the member cap;
+        # no expiry — a demo is a standing class property.
+        echo "  demo    : $(_sc_yq "$decl" '.art9.evidence.demo_mode_probe_cmd')"
+        echo "  age     : max_age_days=$(_sc_yq "$decl" '.art9.evidence.max_age_days')   (demo shape: no member cap, no expiry)"
+    else
+        echo "  cap     : max_members=$(_sc_yq "$decl" '.art9.evidence.max_members') max_age_days=$(_sc_yq "$decl" '.art9.evidence.max_age_days')"
+        echo "  expires : $(_sc_yq "$decl" '.art9.expires')"
+    fi
     echo ""
     echo "  attestation:"
     yq eval '.art9.evidence.attestation' "$decl" 2>/dev/null | sed 's/^/    /'
@@ -299,6 +309,47 @@ cmd_set() {
         yq eval -i ".class = \"$new\"" "$decl"
         yq eval -i ".classified_by = \"$who\"" "$decl"
         yq eval -i ".classified_at = \"$at\"" "$decl"
+    elif [ "$new" = "demo" ]; then
+        # Demo gets the DEMO-SHAPED none-stored skeleton (ops#162): the
+        # registry permits exactly one posture for this class, so it is
+        # prefilled; the demo-mode assertion replaces the member cap and no
+        # expires is required. The placeholders keep 'pl class check' failing
+        # (NO-PROBE / NO-DEMO-PROBE / DEMO-MODE-OFF) until an operator runs
+        # the probes and records real readings — scaffolding is not attestation.
+        cat > "$decl" <<EOF
+# classes/${site}.class.yml — site class declaration (ADR-0036 / ops#162)
+# TRACKED on purpose: nwp.yml is never committed and sites/* is gitignored, so
+# neither can carry a claim a reviewer needs to see.
+site: ${site}
+class: demo
+classified_by: "${who}"
+classified_at: "${at}"
+
+art9:
+  # class demo permits exactly this posture (classes/registry.yml).
+  posture: none-stored
+
+  # DEMO-SHAPED evidence (ops#162): a demo is synthetic BY DESIGN, so the
+  # demo-mode assertion REPLACES the member cap, and no expires: is required —
+  # a demo is a standing class property, not an expiring exemption.
+  # Until every placeholder below carries a real probe command and a real
+  # reading, 'pl class check ${site}' FAILS and this site is exempt from
+  # nothing.
+  evidence:
+    # The command that counts Art.9 formation rows on the site (must read 0).
+    probe_cmd: ""
+    # The command that POSITIVELY checks the site is in demo mode, e.g.
+    #   Drupal: pl drush ${site} --tier=live -- config:get nwc_demo_access.settings demo_mode
+    #   Moodle: the equivalent admin/cli probe on the demo instance
+    demo_mode_probe_cmd: ""
+    max_age_days: 30
+    attestation:
+      at: ""             # YYYY-MM-DD the probes were ACTUALLY run
+      by: ""             # role label, never user@hostname (tracked file)
+      formation_rows:    # must be 0, as read by probe_cmd
+      demo_mode:         # must be true, as read by demo_mode_probe_cmd
+EOF
+        print_status "OK" "wrote $decl (demo-shaped Art.9 evidence skeleton)"
     else
         cat > "$decl" <<EOF
 # classes/${site}.class.yml — site class declaration (ADR-0036)

@@ -340,3 +340,72 @@ EOF
   [[ "$output" == *"user keys"* ]]
   [[ "$output" == *"user rmkey"* ]]
 }
+
+################################################################################
+# nwp/ops#173 item 4 — PATH in the console's env file.
+#
+# The console shells out to `pl`, and several pl helpers guard on the presence
+# of yq. On the console host yq is at ~/.local/bin/yq, which systemd does NOT
+# put on a user service's PATH — so the guards fell through and every invitation
+# the operator sent from the console rendered with <YOUR-SITE-URL>,
+# <COMMUNITY-SITE> and <COURSES-SITE> placeholders instead of links. Nothing
+# errored: those placeholders exist so a draft always renders.
+#
+# Fixing the host by hand (which is how it was unblocked on 2026-08-01) is
+# exactly the repair that regresses the next time the host is rebuilt, so the
+# deploy path has to write it.
+################################################################################
+
+# A sourceable copy of console.sh: main "$@" at the bottom is neutralised, and
+# it is placed at <root>/scripts/commands/ with lib/ linked alongside so the
+# script's own REPO_ROOT resolution still finds the real libraries.
+_console_sourceable() {   # $1 = a scratch root; echoes the path to source
+  mkdir -p "$1/scripts/commands"
+  ln -sfn "$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/lib" "$1/lib"
+  sed 's|^main "$@"$|:|' "$CONSOLE_SH" > "$1/scripts/commands/console.sh"
+  echo "$1/scripts/commands/console.sh"
+}
+
+@test "ops#173.4 deploy adds a PATH to an env file that has none, idempotently" {
+  T="$BATS_TEST_TMPDIR/pathfix"; mkdir -p "$T/home/.config/nwp-console"
+  SRC=$(_console_sourceable "$T/repo")
+  printf 'NWP_CONSOLE_PORT=8443\n' > "$T/home/.config/nwp-console/env"
+
+  run env HOME="$T/home" SRC="$SRC" bash -c '
+    source "$SRC" >/dev/null 2>&1
+    _ssh() { bash -c "$*"; }
+    _ensure_env_path
+    _ensure_env_path          # twice: a deploy runs on every push
+  '
+  [ "$status" -eq 0 ]
+  # exactly ONE PATH line, and it puts ~/.local/bin first
+  [ "$(grep -c '^PATH=' "$T/home/.config/nwp-console/env")" -eq 1 ]
+  grep -q "^PATH=$T/home/.local/bin:" "$T/home/.config/nwp-console/env"
+  # the operator's own settings are untouched
+  grep -q '^NWP_CONSOLE_PORT=8443$' "$T/home/.config/nwp-console/env"
+}
+
+@test "ops#173.4 an operator's existing PATH is never overwritten" {
+  T="$BATS_TEST_TMPDIR/pathkeep"; mkdir -p "$T/home/.config/nwp-console"
+  SRC=$(_console_sourceable "$T/repo")
+  printf 'PATH=/opt/mine/bin:/usr/bin\n' > "$T/home/.config/nwp-console/env"
+  run env HOME="$T/home" SRC="$SRC" bash -c '
+    source "$SRC" >/dev/null 2>&1
+    _ssh() { bash -c "$*"; }
+    _ensure_env_path
+  '
+  [ "$status" -eq 0 ]
+  [ "$(cat "$T/home/.config/nwp-console/env")" = "PATH=/opt/mine/bin:/usr/bin" ]
+}
+
+@test "ops#173.4 a first deploy writes the PATH into the default env template" {
+  # The template branch and the repair branch must agree; if only the repair
+  # branch had it, a freshly built console would still ship without a PATH.
+  grep -q 'CONSOLE_ENV_PATH_BLOCK' "$CONSOLE_SH"
+  block=$(sed -n '/^CONSOLE_ENV_PATH_BLOCK=/,/^PATH=/p' "$CONSOLE_SH")
+  [[ "$block" == *'PATH=%h/.local/bin:'* ]]
+  # …and _write_default_env always calls the repair step, not only on first run
+  fn="$(sed -n '/^_write_default_env() {/,/^}/p' "$CONSOLE_SH")"
+  [[ "$fn" == *'${CONSOLE_ENV_PATH_BLOCK}'* ]]
+  [[ "$fn" == *'_ensure_env_path'* ]]
+}

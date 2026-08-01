@@ -219,6 +219,7 @@ _write_default_env() {
     fi
     _ssh 'umask 077 && mkdir -p ~/.config/nwp-console && [ -f ~/.config/nwp-console/env ] || cat > ~/.config/nwp-console/env' <<EOF
 # NWP Console runtime config (created by pl console deploy; edit + restart)
+${CONSOLE_ENV_PATH_BLOCK}
 NWP_CONSOLE_BIND=${CONSOLE_TAILNET_IP}
 NWP_CONSOLE_PORT=${CONSOLE_PORT}
 NWP_CONSOLE_RP_ID=${CONSOLE_FQDN}
@@ -252,6 +253,50 @@ NWP_CONSOLE_FLEET_MAX_AGE=7200
 EOF
     # systemd EnvironmentFile doesn't expand %h — replace with the real home dir.
     _ssh 'sed -i "s|%h|$HOME|g" ~/.config/nwp-console/env'
+    _ensure_env_path
+}
+
+################################################################################
+# PATH in the console's env file — LOAD-BEARING, and it was missing (ops#173.4)
+#
+# The console shells out to `pl`, and several pl helpers guard on
+# `command -v yq`. On the console host yq is installed at ~/.local/bin/yq, which
+# systemd does NOT put on a user service's PATH: the unit gets the bare
+# /usr/local/bin:/usr/bin:/bin default, the guards fell through, and every
+# invitation the operator sent from the console rendered with <YOUR-SITE-URL>,
+# <COMMUNITY-SITE> and <COURSES-SITE> where the links belonged. It failed
+# silently by construction — those placeholders exist precisely so the draft
+# always renders rather than erroring.
+#
+# The block above only writes the env file when it does not already exist ("edit
+# + restart" is the operator's file, not ours to clobber), so a host deployed
+# before this fix would never get the line. Hence this second, idempotent step:
+# it runs on EVERY deploy, adds the PATH only when absent, and never touches
+# anything else in the file. Fixing the host by hand — which is how this was
+# unblocked on 2026-08-01 — is exactly the kind of repair that silently regresses
+# the next time the host is rebuilt.
+################################################################################
+CONSOLE_ENV_PATH_BLOCK='# PATH — LOAD-BEARING. The console shells out to `pl`, and several pl helpers
+# guard on `command -v yq`. yq lives in ~/.local/bin, which systemd does NOT
+# put on a user service PATH. Without this the guards fall through silently and
+# `pl demo invite` renders the invitation with <YOUR-SITE-URL> placeholders.
+PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+_ensure_env_path() {
+    _ssh 'f=$HOME/.config/nwp-console/env
+          [ -f "$f" ] || exit 0
+          grep -qE "^PATH=" "$f" && exit 0
+          umask 077
+          {
+            printf "\n%s\n" "# PATH - LOAD-BEARING (nwp/ops#173). pl helpers guard on the presence of yq,"
+            printf "%s\n"   "# which lives in ~/.local/bin - not on a systemd user service default PATH."
+            printf "PATH=%s/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n" "$HOME"
+          } >> "$f"
+          echo "added PATH to $f"' || {
+        print_warning "could not ensure PATH in ~/.config/nwp-console/env on ${CONSOLE_HOST}"
+        print_hint    "without it, pl helpers that guard on 'command -v yq' fall through silently (ops#173)"
+        return 0
+    }
 }
 
 # -- gate 1: divergence guard (the 2026-07-25 near miss) ---------------------

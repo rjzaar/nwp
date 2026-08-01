@@ -128,6 +128,42 @@ already.
 If codes ever stop working after a reset, the re-push failed:
 `pl demo codes nwd sync --tier=live`.
 
+### 4. Issue codes on a machine that can reach the box
+
+The registry has **one writable home per tier: the host that can deliver to it.**
+Anywhere else it is a read-only copy, and every code verb refuses:
+
+```
+REFUSED: 'invite' would issue a code this host cannot deliver to nwd (live).
+```
+
+That refusal is deliberate. Before it existed, the console host — where the
+operator actually clicks "issue" — could not ssh to the box at all, so it minted
+codes, rendered a beautiful invitation naming them, printed OK, and delivered
+nothing. Five real testers got codes the live site had never heard of
+(nwp/ops#173). If you see the refusal, run the same command on the workstation.
+
+### 5. Check the three numbers when something feels wrong
+
+```bash
+pl demo codes nwd drift --tier=live
+```
+
+Read-only. It prints the three numbers that have to be the same:
+
+| Number | Where it lives | What it decides |
+|---|---|---|
+| registry-active | `sites/nwd/demo-codes.json` | what you think you handed out |
+| site-live | the site's `nwc_demo_access.codes` state | whether a code works **today** |
+| staged-payload | `/var/lib/nwp-demo/nwd/codes-payload.json` on the box | whether it works **tomorrow** — the 01:00 reset restores this over the top |
+
+If `staged-payload` is behind, tonight's reset will silently erase the codes you
+just issued. Fix with `bash servers/live/demo/install-box.sh nwd --stage-codes`.
+
+`pl todo` and `pl rag` grade this AMBER whenever the numbers disagree, or when a
+host holding a registry has never checked it — so you should hear about it before
+a tester does.
+
 ---
 
 ## Distribution rules
@@ -170,6 +206,8 @@ If codes ever stop working after a reset, the re-push failed:
 | Kill a leaked code | `pl demo codes nwd revoke <id> --tier=live` |
 | Start over | `pl demo codes nwd rotate --tier=live` |
 | Codes stopped working | `pl demo codes nwd sync --tier=live` |
+| Are the codes actually reaching the site? | `pl demo codes nwd drift --tier=live` |
+| Make tonight's reset keep them | `bash servers/live/demo/install-box.sh nwd --stage-codes` |
 
 ## See also
 

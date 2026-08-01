@@ -355,12 +355,43 @@ make_golden() {
 
 # --- invite: copy-ready email with per-level codes ----------------------------
 
-# The invite subcommand end-to-end (minus the site sync, which is non-fatal
-# and fails cleanly here — no ddev in the fixture).
-# --tier is REQUIRED for invite (demo_require_explicit_tier); these cases are
-# about the draft and the registry, so they name the local tier explicitly.
-# The refusal itself is covered further down.
+# GIVE THE FIXTURE A WORKING DELIVERY PATH (nwp/ops#173).
+#
+# Every code verb now refuses on a host that cannot deliver to the named tier,
+# so a test about invite RENDERING has to be run on a host that can. This builds
+# a real one — a .ddev dir plus a stub `ddev` that answers drush state:get and
+# state:set — rather than switching the guard off with the env escape. The
+# difference matters: this way the rendering tests keep exercising the actual
+# probe (demo_project_dir → `ddev drush state:get`), so if the probe ever stops
+# working these fail too instead of quietly passing around it.
+demo_enable_delivery() {
+  mkdir -p "${PROJECT_ROOT}/sites/demo1/.ddev" "${TEST_TMP}/bin"
+  printf 'docroot: web\n' > "${PROJECT_ROOT}/sites/demo1/.ddev/config.yaml"
+  cat > "${TEST_TMP}/bin/ddev" <<'STUB'
+#!/bin/bash
+# Stand-in for the DDEV project. Answers only what the code path uses.
+[ "$1" = "drush" ] || exit 1
+shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    state:get) echo '{"version":1,"codes":[]}'; exit 0 ;;
+    state:set) exit 0 ;;
+  esac
+  shift
+done
+exit 1
+STUB
+  chmod +x "${TEST_TMP}/bin/ddev"
+  export PATH="${TEST_TMP}/bin:$PATH"
+}
+
+# The invite subcommand end-to-end.
+# --tier is REQUIRED for invite (demo_require_explicit_tier) AND this host must
+# be able to reach it (demo_require_delivery); these cases are about the draft
+# and the registry, so they name the local tier and stand up a local path to it.
+# Both refusals are covered further down.
 run_invite() {
+  demo_enable_delivery
   run bash "$DEMO_CMD" invite demo1 --tier=dev "$@"
 }
 
@@ -1166,6 +1197,7 @@ TOTAL_VENDOR 53'" >/dev/null 2>&1 || true
 # NEGATIVE CONTROL — the guard must not be "refuse everything". Read-only and
 # non-code verbs still work with no --tier, and an explicit dev still works.
 @test "the tier guard is targeted: read-only verbs and an explicit tier still pass" {
+  demo_enable_delivery
   run bash "$DEMO_CMD" status demo1
   [ "$status" -eq 0 ]
   run bash "$DEMO_CMD" codes demo1 list
@@ -1178,18 +1210,85 @@ TOTAL_VENDOR 53'" >/dev/null 2>&1 || true
   jq -e '.codes | length == 4' "$(demo_codes_file demo1)"
 }
 
-@test "an explicit --tier=live routes the sync at the LIVE tier, not the local project" {
+# --- H: ops#173 — a host that cannot DELIVER must not MINT --------------------
+#
+# Naming the tier (guard G above) was necessary and not sufficient. The console
+# host named --tier=live correctly every single time and still could not reach
+# the box: `ssh gitlab@<box>` → Host key verification failed. It minted five
+# codes, rendered a warm invitation naming them, printed OK, and delivered
+# nothing. The operator mailed those codes to real testers and the live site —
+# holding zero codes, because the nightly had restored an empty staged payload
+# over the top — rejected every one.
+
+@test "ops#173 invite REFUSES on a host with no delivery path, and mints nothing" {
+  # A live site this host cannot reach: live.enabled, a domain, no server_ip.
   cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'EOF'
 live:
   enabled: true
   domain: demo1.example.org
 EOF
   run bash "$DEMO_CMD" invite demo1 --tier=live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"cannot deliver"* ]]
+  # The refusal explains the model and names the way out, because the operator
+  # in front of it is the one who cannot see the problem.
+  [[ "$output" == *"ONE writable home"* ]]
+  [[ "$output" == *"install-box.sh"* ]]
+  # And it happens BEFORE anything is minted: no registry, no draft, no code
+  # printed. A refusal that had already burned an id — or shown a plaintext the
+  # operator might act on — would be worse than the bug.
+  [ ! -e "$(demo_codes_file demo1)" ]
+  [ ! -e "${PROJECT_ROOT}/sites/demo1/demo-invites" ]
+  if [[ "$output" =~ [A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5} ]]; then
+    echo "a refused invite printed something that looks like a code" >&2
+    return 1
+  fi
+}
+
+@test "ops#173 every code-WRITING verb is guarded, not just invite" {
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'EOF'
+live:
+  enabled: true
+  domain: demo1.example.org
+EOF
+  # revoke is the sharpest: revoking where you cannot deliver leaves the code
+  # live on the site while the local registry says it is gone.
+  for action in issue revoke rotate sync; do
+    run bash "$DEMO_CMD" codes demo1 "$action" tester-member --tier=live
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"cannot deliver"* ]]
+  done
+  [ ! -e "$(demo_codes_file demo1)" ]
+}
+
+@test "ops#173 the guard is a real probe of the real path, not a host allowlist" {
+  # NEGATIVE CONTROL. The same command that refuses above must SUCCEED the
+  # moment a genuine delivery path exists — otherwise "refuse everything" would
+  # pass every assertion in this section.
+  demo_enable_delivery
+  run bash "$DEMO_CMD" invite demo1 --tier=dev
   [ "$status" -eq 0 ]
-  # The live path is taken: it resolves a live context (and here fails on the
-  # fixture's missing server_ip) instead of reaching for a DDEV project.
-  [[ "$output" == *"live server"* || "$output" == *"live host"* ]]
-  [[ "$output" != *"No DDEV project"* ]]
+  [[ "$output" != *"cannot deliver"* ]]
+  jq -e '.codes | length == 3' "$(demo_codes_file demo1)"
+}
+
+@test "ops#173 the live delivery probe runs the real transport (ssh + remote drush)" {
+  # A cheaper proxy — a ping, a config lookup — that succeeds where the real
+  # write path fails would reproduce the bug with extra steps. Pin the probe to
+  # the same two calls the sync itself makes.
+  fn="$(sed -n '/^demo_codes_delivery_probe() {/,/^}/p' "$DEMO_CMD")"
+  [ -n "$fn" ]
+  [[ "$fn" == *"demo_live_ctx"* ]]
+  [[ "$fn" == *"demo_rdrush"* ]]
+  [[ "$fn" == *"nwc_demo_access.codes"* ]]
+  # …and inside cmd_invite it is consulted BEFORE a code can exist.
+  body="$(sed -n '/^cmd_invite() {/,/^}/p' "$DEMO_CMD")"
+  [ -n "$body" ]
+  guard=$(printf '%s\n' "$body" | grep -n 'demo_require_delivery' | head -1 | cut -d: -f1)
+  mint=$(printf '%s\n'  "$body" | grep -n 'demo_generate_code'    | head -1 | cut -d: -f1)
+  [ -n "$guard" ] && [ -n "$mint" ]
+  [ "$guard" -lt "$mint" ]
 }
 
 # --- D2: the live config-parity probe is staged unpredictably ------------------
@@ -1652,4 +1751,286 @@ YML
   [ "$status" -eq 0 ]
   [[ "$output" == *"--print-only"* ]]
   [[ "$output" == *"NWP_DEMO_BOX_HOST"* ]]
+}
+
+################################################################################
+# nwp/ops#173 — THE THREE NUMBERS THAT MUST AGREE.
+#
+# A code only works if it is in all three places at once: the registry (what the
+# operator believes they handed out), the site's state (what a tester's code is
+# checked against today) and the box's staged payload (what the 01:00 reset
+# restores over the top, so what works tomorrow). On 2026-08-01 they were 3, 25
+# and 0 — across two hosts holding disjoint registries — and every one of them
+# was one command away the whole time. Nothing compared them.
+################################################################################
+
+@test "ops#173 drift: three agreeing numbers are OK; any disagreement is DRIFT" {
+  run demo_drift_state 25 25 25
+  [ "$status" -eq 0 ]
+  [[ "$output" == ok\|* ]]
+  # the actual 2026-08-01 shape: registry 3, site 25, box staged 0
+  run demo_drift_state 3 25 0
+  [[ "$output" == drift\|* ]]
+  [[ "$output" == *"registry=3"* ]]
+  [[ "$output" == *"site=25"* ]]
+  [[ "$output" == *"staged=0"* ]]
+  # the one that matters most is the quiet one: today's site is right and the
+  # box will erase it at 01:00.
+  run demo_drift_state 25 25 0
+  [[ "$output" == drift\|* ]]
+}
+
+@test "ops#173 drift: 'could not read' is NEVER 'zero'" {
+  # This distinction is the whole issue. An empty staged payload means every
+  # invite code is about to be cleared; an unreadable one means we do not know.
+  # They lead to opposite actions, so they must never render the same.
+  run demo_drift_state 25 25 ""
+  [[ "$output" == unknown\|* ]]
+  [[ "$output" == *"staged=?"* ]]
+  run demo_drift_state 25 25 0
+  [[ "$output" == drift\|* ]]
+  # and a proven disagreement outranks a missing reading — we already know
+  # something is wrong, so say so rather than shrugging.
+  run demo_drift_state 3 25 ""
+  [[ "$output" == drift\|* ]]
+}
+
+@test "ops#173 drift: 'not applicable' is a third thing again (dev has no box)" {
+  run demo_drift_state 4 4 -
+  [[ "$output" == ok\|* ]]
+  [[ "$output" != *"staged"* ]]     # not reported at all, not reported as zero
+}
+
+@test "ops#173 payload counting: empty is 0, absent is unknown" {
+  run demo_payload_count '{"version":1,"codes":[]}'
+  [ "$output" = "0" ]
+  run demo_payload_count '{"version":1,"codes":[{"bundle":"tester-member","hash":"x","expires":1}]}'
+  [ "$output" = "1" ]
+  run demo_payload_count ''
+  [ "$output" = "" ]
+  run demo_payload_count 'not json at all'
+  [ "$output" = "" ]
+}
+
+@test "ops#173 registry counting honours revoked + expired (that is what 'active' means)" {
+  cfile="$(demo_codes_file demo1)"
+  now=$(date +%s)
+  demo_code_add "$cfile" c1 tester-member "$(printf a | sha256sum | awk '{print $1}')" "$((now + 600))"
+  demo_code_add "$cfile" c2 tester-member "$(printf b | sha256sum | awk '{print $1}')" "$((now + 600))"
+  demo_code_add "$cfile" c3 tester-member "$(printf c | sha256sum | awk '{print $1}')" "$((now - 600))"
+  demo_code_revoke "$cfile" c2
+  run demo_codes_active_count "$cfile"
+  [ "$output" = "1" ]
+  # a registry that does not exist really does hold no codes
+  run demo_codes_active_count "${TEST_TMP}/nope.json"
+  [ "$output" = "0" ]
+}
+
+@test "ops#173 a record nobody has ever written is a FINDING, not a pass" {
+  # The console host held a code registry it had never once compared against
+  # the site, for the whole pilot. Silence there is what let ops#173 run.
+  run demo_drift_report "${TEST_TMP}/absent.json"
+  [[ "$output" == missing\|* ]]
+
+  rec="${TEST_TMP}/rec.json"
+  demo_drift_record demo1 live 25 25 25 testhost > "$rec"
+  jq -e '.registry_active == 25 and .site_live == 25 and .staged_payload == 25' "$rec"
+  jq -e '.verdict == "ok"' "$rec"
+  run demo_drift_report "$rec"
+  [[ "$output" == ok\|* ]]
+  [[ "$output" == *"tier=live"* ]]
+
+  # …and it ages out: yesterday's agreement is not today's evidence.
+  now=$(date +%s)
+  run demo_drift_report "$rec" 3600 "$((now + 7200))"
+  [[ "$output" == stale\|* ]]
+}
+
+@test "ops#173 the record keeps unknown as null and n/a as a string (not 0)" {
+  rec="${TEST_TMP}/rec2.json"
+  demo_drift_record demo1 dev 4 "" - testhost > "$rec"
+  jq -e '.registry_active == 4' "$rec"
+  jq -e '.site_live == null' "$rec"
+  jq -e '.staged_payload == "n/a"' "$rec"
+  jq -e '.verdict == "unknown"' "$rec"
+}
+
+@test "ops#173 'pl demo codes <site> drift' reports all three and records them" {
+  demo_enable_delivery                 # dev path answers; no box at this tier
+  run bash "$DEMO_CMD" codes demo1 drift --tier=dev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"registry-active"* ]]
+  [[ "$output" == *"site-live"* ]]
+  [[ "$output" == *"staged-payload"* ]]
+  [ -s "$(demo_drift_file demo1)" ]
+  jq -e '.site == "demo1" and .tier == "dev"' "$(demo_drift_file demo1)"
+}
+
+@test "ops#173 drift is READ-ONLY — it needs no tier guard and writes to no site" {
+  # It must be safe to run at any moment, including from a host that is about
+  # to be told it may not write. So it is deliberately outside both guards.
+  fn="$(sed -n '/^cmd_codes() {/,/^}/p' "$DEMO_CMD")"
+  # both guards list exactly the four WRITING verbs…
+  [ "$(printf '%s\n' "$fn" | grep -c 'issue|revoke|rotate|sync)')" -eq 2 ]
+  # …and drift appears only as its own case arm, never inside a guard list
+  [ "$(printf '%s\n' "$fn" | grep -cE '^ *drift\)')" -eq 1 ]
+  run bash "$DEMO_CMD" codes demo1 drift          # …and needs no --tier
+  [ "$status" -eq 0 ]
+}
+
+@test "ops#173 status surfaces the delivery state without probing anything" {
+  # `pl demo status` runs often and must stay fast and read-only, so it reads
+  # the record rather than opening two ssh connections to re-derive it.
+  demo_codes_init "$(demo_codes_file demo1)"
+  run bash "$DEMO_CMD" status demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NEVER checked"* ]]
+
+  mkdir -p "$(demo_drift_dir)"
+  demo_drift_record demo1 live 25 25 0 testhost > "$(demo_drift_file demo1)"
+  run bash "$DEMO_CMD" status demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CODE DRIFT"* ]]
+  [[ "$output" == *"staged=0"* ]]
+}
+
+@test "ops#173 a successful LIVE sync records what it saw, so nothing has to remember to look" {
+  fn="$(sed -n '/^demo_sync_codes_to_site() {/,/^}/p' "$DEMO_CMD")"
+  [[ "$fn" == *"demo_drift_record_save"* ]]
+}
+
+@test "ops#173 the staged-payload path matches what install-box.sh actually writes" {
+  # The box path is asserted in two files; if they drift, the drift check reads
+  # a file that does not exist and reports 'could not tell' for ever.
+  run demo_box_codes_payload nwd
+  [ "$output" = "/var/lib/nwp-demo/nwd/codes-payload.json" ]
+  ib="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/servers/live/demo/install-box.sh"
+  grep -q 'STATE_DIR="/var/lib/nwp-demo/${DEMO_SITE}"' "$ib"
+  grep -q "codes-payload.json" "$ib"
+}
+
+@test "ops#173.4 yq is found in ~/.local/bin, not just on PATH" {
+  # On the console host yq lives in ~/.local/bin, which systemd does not put on
+  # a user service's PATH. `command -v yq` therefore failed, live.domain never
+  # resolved, and EVERY invitation went out with <YOUR-SITE-URL> placeholders —
+  # silently, because the placeholder exists so the draft always renders.
+  # yq is a declared required tool for this suite (NWP_BATS_REQUIRED_TOOLS), so
+  # this is an assertion, not a skip — the CI skip budget is an equality
+  # contract and a conditional skip here would move it.
+  real_yq="$(command -v yq)"
+  [ -n "$real_yq" ]
+  home="${TEST_TMP}/fakehome"
+  mkdir -p "${home}/.local/bin"
+  ln -s "$real_yq" "${home}/.local/bin/yq"
+
+  mkdir -p "${PROJECT_ROOT}/sites/demo1"
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'EOF'
+live:
+  domain: demo1.example.org
+EOF
+  # A PATH with NO yq on it at all — exactly the systemd user-service case.
+  run env -i HOME="$home" PATH="/usr/bin:/bin" PROJECT_ROOT="$PROJECT_ROOT" \
+      bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
+  [ "$status" -eq 0 ]
+  [[ "$output" == "https://demo1.example.org/demo/join" ]]
+  [[ "$output" != *"<YOUR-SITE-URL>"* ]]
+
+  # NEGATIVE CONTROL: with no yq anywhere the placeholder still renders, because
+  # a draft that fails to render is worse than one with a visible gap.
+  run env -i HOME="${TEST_TMP}/emptyhome" PATH="/usr/bin:/bin" PROJECT_ROOT="$PROJECT_ROOT" \
+      bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
+  [ "$status" -eq 0 ]
+  [[ "$output" == "<YOUR-SITE-URL>/demo/join" ]]
+}
+
+################################################################################
+# nwp/ops#173 item 3 — the drift check has to reach `pl rag`.
+#
+# The requirement was explicitly "wire it into the existing RAG machinery rather
+# than inventing a parallel one". So the comparison is a `pl todo` check
+# (check_demo_code_drift), which is the input `pl rag` already grades and
+# `pl rag --sync-issues` already turns into a tracked nwp/ops issue. A bespoke
+# demo-monitor script would have been a second thing nobody looks at, which is
+# the failure mode this issue is about.
+################################################################################
+
+# Run check_demo_code_drift against a throwaway tree and print the items it made.
+_run_dcd() {   # $1 = fixture root
+  TODO_CHECKS_PROJECT_ROOT="$1" TODO_CONFIG_FILE="$1/nwp.yml" \
+  bash -c '
+    source "'"$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"'/lib/todo-checks.sh"
+    todo_clear_items
+    check_demo_code_drift
+    todo_output_items
+  '
+}
+
+_dcd_fixture() {  # $1 = root; creates a site with a registry
+  mkdir -p "$1/sites/nwd" "$1/private/demo-codes" "$1/lib"
+  cp "$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/lib/demo.sh" "$1/lib/demo.sh"
+  printf '{"version":1,"codes":[]}\n' > "$1/sites/nwd/demo-codes.json"
+  printf 'sites: {}\n' > "$1/nwp.yml"
+}
+
+@test "ops#173 pl todo reports DRIFT for a demo site whose three numbers disagree" {
+  root="${TEST_TMP}/dcd1"; _dcd_fixture "$root"
+  PROJECT_ROOT="$root" demo_drift_record nwd live 25 25 0 h > "$root/private/demo-codes/nwd.json"
+  run _run_dcd "$root"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"category":"DCD"'* ]]
+  [[ "$output" == *'"site":"nwd"'* ]]
+  [[ "$output" == *"DISAGREE"* ]]
+  # AMBER, not RED: rag-render reserves RED for SEC/TOK. This must show up as
+  # "needs attention", which is what the issue asked for.
+  [[ "$output" != *'"category":"SEC"'* ]]
+  [[ "$output" != *'"category":"TOK"'* ]]
+}
+
+@test "ops#173 pl todo stays quiet when all three agree (the check is not a nag)" {
+  root="${TEST_TMP}/dcd2"; _dcd_fixture "$root"
+  PROJECT_ROOT="$root" demo_drift_record nwd live 25 25 25 h > "$root/private/demo-codes/nwd.json"
+  run _run_dcd "$root"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"DCD"* ]]
+}
+
+@test "ops#173 pl todo reports a host that has NEVER looked, and one whose look is stale" {
+  root="${TEST_TMP}/dcd3"; _dcd_fixture "$root"
+  run _run_dcd "$root"                       # no record at all
+  [[ "$output" == *"DCD-nwd-unchecked"* ]]
+  [[ "$output" == *"NEVER checked"* ]]
+
+  # a record from four days ago, with the default 48h window
+  PROJECT_ROOT="$root" demo_drift_record nwd live 25 25 25 h \
+    | python3 -c 'import json,sys,time; d=json.load(sys.stdin); d["checked_epoch"]=int(time.time())-4*86400; print(json.dumps(d))' \
+    > "$root/private/demo-codes/nwd.json"
+  run _run_dcd "$root"
+  [[ "$output" == *"DCD-nwd-stale"* ]]
+  [[ "$output" == *"unverified"* ]]
+}
+
+@test "ops#173 the check does nothing on a host that holds no demo registry" {
+  root="${TEST_TMP}/dcd4"
+  mkdir -p "$root/sites/other" "$root/lib"
+  cp "$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/lib/demo.sh" "$root/lib/demo.sh"
+  printf 'sites: {}\n' > "$root/nwp.yml"
+  run _run_dcd "$root"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"DCD"* ]]
+}
+
+@test "ops#173 check_demo_code_drift is actually WIRED into the todo run, not just defined" {
+  # A check that exists and is never called is the same as no check. It has to
+  # be in the registry `run_all_checks` iterates and exported like its peers.
+  lib="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/lib/todo-checks.sh"
+  grep -q '"check_demo_code_drift:Demo invite-code drift"' "$lib"
+  grep -q '^export -f check_demo_code_drift' "$lib"
+  # and rag-render must grade it AMBER: DCD is deliberately not a security cat
+  run grep -n 'SEC_CATS=' "$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/lib/rag-render.py"
+  [[ "$output" != *"DCD"* ]]
+}
+
+@test "ops#173 pl todo lists DCD in its category legend (an unexplained code is noise)" {
+  run bash "$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/scripts/commands/todo.sh" --help
+  [[ "$output" == *"DCD"* ]]
 }

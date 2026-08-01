@@ -1732,6 +1732,96 @@ check_rag_sync_freshness() {
     fi
 }
 
+# DCD: demo invite-code drift (nwp/ops#173).
+#
+# WHY THIS EXISTS: on 2026-08-01 the live demo site held ZERO invite codes while
+# the operator held five valid ones and an invitation in the post telling testers
+# to use them. Three numbers had to agree and none of them did — the registry
+# said 3 active on one host and 25 on another, the site said 25, and the box's
+# staged payload (which the 01:00 reset restores over the top, authoritatively)
+# said 0. Every one of those numbers was one command away the whole time. The
+# defect was not that they were hard to read; it was that nothing read them.
+#
+# This is that reader. It does NOT probe: probing means ssh + remote drush per
+# site, and `pl todo check` runs inside a 45s budget that `pl rag` will call
+# UNKNOWN if it blows. It ages the record `pl demo codes <site> drift` and every
+# successful live code-sync leave behind — the same shape as `pl audit` writing
+# private/update-awareness/<site>.json for `pl rag` to grade.
+#
+# NO RECORD IS A FINDING, not a pass. A host that holds a code registry it has
+# never once checked against the site is the precise state that produced ops#173,
+# and it is the state the console host was in for the whole of the pilot.
+check_demo_code_drift() {
+    is_category_enabled "demo_codes" || return 0
+
+    local root="$TODO_CHECKS_PROJECT_ROOT"
+    local lib="$root/lib/demo.sh"
+    [ -f "$lib" ] || return 0
+
+    # Only sites that actually carry a code registry on this host.
+    local found=false f site
+    for f in "$root"/sites/*/demo-codes.json; do
+        [ -e "$f" ] || continue
+        found=true
+        break
+    done
+    [ "$found" = true ] || return 0
+
+    # lib/demo.sh is pure and side-effect-free at source time; PROJECT_ROOT is
+    # what its path helpers read. Saved and restored rather than set as a
+    # command prefix: an assignment in front of `source` is a special-builtin
+    # assignment and PERSISTS, so the prefix form would silently redefine
+    # PROJECT_ROOT for every check that runs after this one.
+    local _saved_root="${PROJECT_ROOT:-}"
+    PROJECT_ROOT="$root"
+    # shellcheck source=/dev/null
+    if ! source "$lib" 2>/dev/null; then
+        PROJECT_ROOT="$_saved_root"
+        todo_add_unknown "demo_codes" "could not load lib/demo.sh — invite-code drift is unmeasured" "" "pl demo codes <site> drift --tier=live"
+        return 0
+    fi
+
+    local warn_hours report state detail rec
+    warn_hours=$(get_todo_setting "thresholds.demo_code_drift_warn_hours" "48")
+    case "$warn_hours" in ''|*[!0-9]*) warn_hours=48 ;; esac
+
+    for f in "$root"/sites/*/demo-codes.json; do
+        [ -e "$f" ] || continue
+        site=$(basename "$(dirname "$f")")
+        rec=$(demo_drift_file "$site")
+        report=$(demo_drift_report "$rec" "$(( warn_hours * 3600 ))" 2>/dev/null) || report="unknown|drift report failed"
+        state="${report%%|*}"; detail="${report#*|}"
+        case "$state" in
+            ok) : ;;
+            drift)
+                todo_add_item "DCD" "$site" "high" \
+                    "Demo invite codes DISAGREE for $site ($detail)" \
+                    "registry-active / site-live / staged-payload must be the same number. They are not, so either testers are being rejected now, or they will be after the 01:00 reset restores the box's staged payload over the top. Record: $rec" \
+                    "$site" "pl demo codes $site drift --tier=live"
+                ;;
+            missing)
+                todo_add_item "DCD" "${site}-unchecked" "medium" \
+                    "This host has NEVER checked that ${site}'s invite codes reach the site" \
+                    "It holds sites/${site}/demo-codes.json but no observation record. A registry nobody has compared against the live site is exactly the state that let ops#173 run unnoticed — the numbers were readable the whole time." \
+                    "$site" "pl demo codes $site drift --tier=live"
+                ;;
+            stale)
+                todo_add_item "DCD" "${site}-stale" "medium" \
+                    "Demo invite-code delivery for $site is unverified ($detail)" \
+                    "Threshold: ${warn_hours}h. Record: $rec" \
+                    "$site" "pl demo codes $site drift --tier=live"
+                ;;
+            *)
+                todo_add_unknown "demo_codes_${site}" \
+                    "could not tell whether ${site}'s invite codes reach the site: $detail" \
+                    "$site" "pl demo codes $site drift --tier=live"
+                ;;
+        esac
+    done
+
+    PROJECT_ROOT="$_saved_root"
+}
+
 # NTF: can this machine actually notify the operator?
 #
 # The guide's own conclusion about the old arrangement was "the notification
@@ -1904,6 +1994,7 @@ TODO_CHECK_LIST=(
     "check_rag_sync_freshness:RAG-sync freshness"
     "check_notify_health:Notification path health"
     "check_demo_golden_hygiene:Demo golden identity hygiene"
+    "check_demo_code_drift:Demo invite-code drift"
 )
 
 # Get check count
@@ -1986,6 +2077,7 @@ export -f check_paused_automation
 export -f check_rag_sync_freshness
 export -f check_notify_health
 export -f check_demo_golden_hygiene
+export -f check_demo_code_drift
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

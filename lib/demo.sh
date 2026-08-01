@@ -13,6 +13,7 @@
 #     registry sites/<site>/demo-codes.json is the source of truth (it
 #     survives the nightly DB wipe); it is synced into the site's state
 #     entry `nwc_demo_access.codes` after every change and every reset.
+#     ONE WRITABLE HOME — see "Registry home" below (nwp/ops#173).
 #   * --if-idle     = sessions-table last-activity check; "active" is a
 #     DISTINCT exit code (3) so the nightly wrapper can retry.
 #
@@ -38,6 +39,79 @@ DEMO_TZ="Australia/Melbourne"
 DEMO_RESET_TIME="01:00"
 DEMO_FLOOR_TIME="04:00"
 DEMO_RETRY_SECONDS=1800
+
+################################################################################
+# REGISTRY HOME — one writable copy, and it is the host that can deliver
+# (nwp/ops#173)
+#
+# WHAT WENT WRONG. `sites/<site>/demo-codes.json` was per-host local state and
+# nothing reconciled the copies. On 2026-08-01 the workstation held 24 entries /
+# 3 active and the console host held 29 / 25 — a COMPLETELY DISJOINT set. Every
+# code in the invitation the operator had actually sent hashed to an entry the
+# workstation had never heard of. Worse, the console host could not ssh to the
+# box at all (`Host key verification failed`), so the machine where codes were
+# actually issued had no path by which a code could ever reach the site: it
+# minted, rendered a beautiful invitation, reported success, and delivered
+# nothing. The nightly then restored the box's staged payload — `{"codes":[]}`,
+# staged long ago from the other host — over the top, so the live site held ZERO
+# invite codes while the operator held five valid ones.
+#
+# THE MODEL NOW. Delivery capability IS write capability:
+#
+#   * The registry file stays where it is. Its ONE WRITABLE HOME, per tier, is
+#     whichever host can prove it can deliver to that tier. On any other host
+#     the same file is a READ-ONLY REPLICA: `list`/`status` read it, and every
+#     mutating verb REFUSES before it mints anything (demo_require_delivery in
+#     scripts/commands/demo.sh).
+#   * A replica that cannot be written cannot diverge by accretion. That is the
+#     whole fix for fault 1 — not a merge tool, not a sync daemon: remove the
+#     second writer and there is nothing left to reconcile.
+#   * This is deliberately NOT "give the console host a key to the box". The
+#     console runs where no prod credentials live and that property is worth
+#     more than the convenience of issuing from it. A host with no prod key is
+#     simply not the registry's home, and now it says so out loud instead of
+#     pretending.
+#   * The THREE numbers that must agree — registry-active, site-live,
+#     staged-payload — are recorded per host in private/demo-codes/<site>.json
+#     and graded AMBER by `pl todo`/`pl rag` when they disagree (fault 3: all
+#     three were readable the whole time; nothing was looking).
+################################################################################
+
+# The box's state dir, where install-box.sh --stage-codes puts the payload the
+# nightly wrapper treats as authoritative. MUST match STATE_DIR in
+# servers/live/demo/install-box.sh and the wrapper's own STATE_DIR.
+demo_box_state_dir() { echo "/var/lib/nwp-demo/${1:?site required}"; }
+demo_box_codes_payload() { echo "$(demo_box_state_dir "$1")/codes-payload.json"; }
+
+# Where this host records what it last observed about a demo site's codes.
+# Under private/ (gitignored) because it is an observation made BY THIS HOST —
+# a record copied between hosts would be exactly the lie ops#173 is about.
+demo_drift_dir()  { echo "${PROJECT_ROOT:?PROJECT_ROOT not set}/private/demo-codes"; }
+demo_drift_file() { echo "$(demo_drift_dir)/${1:?site required}.json"; }
+
+################################################################################
+# yq resolution (nwp/ops#173 item 4)
+#
+# `command -v yq` was the guard on every domain lookup below. On the console
+# host yq is at ~/.local/bin/yq, which systemd does not put on a user service's
+# PATH — so the guard fell through, `live.domain` never resolved, and EVERY
+# invitation the operator sent went out with <YOUR-SITE-URL>, <COMMUNITY-SITE>
+# and <COURSES-SITE> placeholders where the links should have been. Nothing
+# failed; the fallbacks exist precisely so the draft always renders.
+#
+# Two halves to the fix: `pl console deploy` now writes a PATH into
+# ~/.config/nwp-console/env (so the service has one), and these helpers look in
+# the usual user-local spots themselves (so they do not depend on it).
+################################################################################
+demo_yq() {
+    if [[ -n "${DEMO_YQ_BIN:-}" && -x "${DEMO_YQ_BIN}" ]]; then echo "$DEMO_YQ_BIN"; return 0; fi
+    if command -v yq >/dev/null 2>&1; then echo yq; return 0; fi
+    local c
+    for c in "$HOME/.local/bin/yq" /usr/local/bin/yq /snap/bin/yq; do
+        [[ -x "$c" ]] && { echo "$c"; return 0; }
+    done
+    return 1
+}
 
 ################################################################################
 # Paths
@@ -244,6 +318,170 @@ demo_codes_payload() {
 }
 
 ################################################################################
+# Code DRIFT — the three numbers that must agree (nwp/ops#173 item 3)
+#
+# A code only works if it is present in all three places at once:
+#
+#   registry-active  sites/<site>/demo-codes.json, non-revoked + non-expired.
+#                    What the operator believes they have handed out.
+#   site-live        the running site's state entry nwc_demo_access.codes.
+#                    What a tester's code is actually checked against TODAY.
+#   staged-payload   /var/lib/nwp-demo/<site>/codes-payload.json on the box.
+#                    What the nightly reset restores over the top at 01:00 —
+#                    authoritative by design, so it decides what works TOMORROW.
+#
+# On 2026-08-01 those were 3, 25 and 0 across two hosts. Every one of them was a
+# single command away the whole time and nothing compared them, so the live site
+# served zero invite codes for an unknown number of nights while the operator
+# was mailing out five. These helpers are pure so the comparison can be unit
+# tested and then wired straight into `pl todo`/`pl rag` (check_demo_code_drift)
+# rather than living in a parallel monitoring script.
+#
+# VOCABULARY for a count, and the distinction is load-bearing:
+#   <n>  measured.
+#   ""   COULD NOT TELL (host unreachable, drush silent). Never the same as 0 —
+#        collapsing unknown into zero is the exact failure this issue is about.
+#   "-"  NOT APPLICABLE at this tier (dev|stg have no box, so no staged payload).
+################################################################################
+
+# demo_codes_active_count <file> → live (non-revoked, non-expired) code count.
+# A missing registry is 0 — the file genuinely holds no codes. A registry that
+# exists but cannot be parsed is "" (unknown), not 0.
+demo_codes_active_count() {
+    local file="$1" now
+    now="$(date +%s)"
+    if [[ ! -f "$file" ]]; then echo 0; return 0; fi
+    demo_require_jq >/dev/null 2>&1 || { echo ""; return 0; }
+    local n
+    n="$(jq -r --argjson now "$now" \
+        '[.codes[] | select(.revoked == false and .expires > $now)] | length' \
+        "$file" 2>/dev/null)" || n=""
+    [[ "$n" =~ ^[0-9]+$ ]] || n=""
+    echo "$n"
+}
+
+# demo_payload_count <json-text> → number of codes in a payload document.
+# "" when the text is empty or not a payload. An EMPTY payload ({"codes":[]})
+# is 0 and must read as 0: that is precisely what was on the box, and it is a
+# finding, not a missing measurement.
+demo_payload_count() {
+    local doc="${1:-}"
+    [[ -n "${doc//[[:space:]]/}" ]] || { echo ""; return 0; }
+    demo_require_jq >/dev/null 2>&1 || { echo ""; return 0; }
+    local n
+    n="$(printf '%s' "$doc" | jq -r 'if (.codes | type) == "array" then (.codes | length) else empty end' 2>/dev/null)" || n=""
+    [[ "$n" =~ ^[0-9]+$ ]] || n=""
+    echo "$n"
+}
+
+# demo_drift_state <registry> <site_live> <staged> → "<state>|<detail>"
+#
+# states: ok | drift | unknown  (drift beats unknown — a proven disagreement is
+# more actionable than a missing reading, and we already know something is wrong)
+demo_drift_state() {
+    local reg="${1:-}" live="${2:-}" staged="${3:-}"
+    local -a nums=() names=() unknowns=()
+    local i v n
+    local pairs=("registry:$reg" "site:$live" "staged:$staged")
+    for i in "${pairs[@]}"; do
+        n="${i%%:*}"; v="${i#*:}"
+        [[ "$v" == "-" ]] && continue                     # not applicable here
+        if [[ "$v" =~ ^[0-9]+$ ]]; then
+            nums+=("$v"); names+=("$n")
+        else
+            unknowns+=("$n")
+        fi
+    done
+
+    # Disagreement first.
+    local base="" mismatch=""
+    for ((i=0; i<${#nums[@]}; i++)); do
+        if [[ -z "$base" ]]; then base="${nums[$i]}"; continue; fi
+        [[ "${nums[$i]}" != "$base" ]] && mismatch="yes"
+    done
+    local shown=""
+    for ((i=0; i<${#names[@]}; i++)); do shown+="${names[$i]}=${nums[$i]} "; done
+    for ((i=0; i<${#unknowns[@]}; i++)); do shown+="${unknowns[$i]}=? "; done
+    shown="${shown% }"
+
+    if [[ -n "$mismatch" ]]; then
+        echo "drift|${shown}"
+        return 0
+    fi
+    if (( ${#unknowns[@]} > 0 )); then
+        echo "unknown|${shown}"
+        return 0
+    fi
+    if (( ${#nums[@]} == 0 )); then
+        echo "unknown|nothing measurable"
+        return 0
+    fi
+    echo "ok|${shown}"
+}
+
+# demo_drift_record <site> <tier> <registry> <site_live> <staged> [host]
+# Renders the observation record on stdout (the caller places it). Unknown
+# counts are JSON null, "-" is the string "n/a" — the reader must be able to
+# tell "I could not look" from "there is nothing here to look at".
+demo_drift_record() {
+    local site="$1" tier="$2" reg="$3" live="$4" staged="$5" host="${6:-$(hostname -s 2>/dev/null || echo unknown)}"
+    local verdict; verdict="$(demo_drift_state "$reg" "$live" "$staged")"
+    # The tier travels with the numbers: "site=25" means nothing until you know
+    # WHICH site was asked, and a dev-tier reading must never be mistaken for
+    # evidence about the live one.
+    verdict="${verdict%%|*}|tier=${tier} ${verdict#*|}"
+    _demo_json_num() {
+        case "${1:-}" in
+            -)              printf '"n/a"' ;;
+            ''|*[!0-9]*)    printf 'null' ;;
+            *)              printf '%s' "$1" ;;
+        esac
+    }
+    printf '{\n'
+    printf '  "version": 1,\n'
+    printf '  "site": "%s",\n' "$site"
+    printf '  "tier": "%s",\n' "$tier"
+    printf '  "host": "%s",\n' "$host"
+    printf '  "checked_utc": "%s",\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '  "checked_epoch": %s,\n' "$(date +%s)"
+    printf '  "registry_active": %s,\n' "$(_demo_json_num "$reg")"
+    printf '  "site_live": %s,\n' "$(_demo_json_num "$live")"
+    printf '  "staged_payload": %s,\n' "$(_demo_json_num "$staged")"
+    printf '  "verdict": "%s",\n' "${verdict%%|*}"
+    printf '  "detail": "%s"\n' "${verdict#*|}"
+    printf '}\n'
+    unset -f _demo_json_num
+}
+
+# demo_drift_report <record_file> [max_age_seconds] [now_epoch] → "<state>|<detail>"
+#
+# The todo/RAG-facing evaluation of a record on disk. States:
+#   missing  no record — THIS HOST HAS NEVER LOOKED. Not clean; it is the exact
+#            state that let a live site serve zero codes unnoticed.
+#   stale    a record, but older than the window; the numbers are history.
+#   drift / unknown / ok  as recorded.
+demo_drift_report() {
+    local file="${1:-}" max_age="${2:-172800}" now="${3:-$(date +%s)}"
+    if [[ ! -s "$file" ]]; then
+        echo "missing|no record at ${file}"
+        return 0
+    fi
+    demo_require_jq >/dev/null 2>&1 || { echo "unknown|jq unavailable, cannot read ${file}"; return 0; }
+    local checked verdict detail
+    checked="$(jq -r '.checked_epoch // empty' "$file" 2>/dev/null)"
+    verdict="$(jq -r '.verdict // empty'       "$file" 2>/dev/null)"
+    detail="$(jq  -r '.detail  // empty'       "$file" 2>/dev/null)"
+    [[ "$checked" =~ ^[0-9]+$ ]] || { echo "unknown|unreadable record at ${file}"; return 0; }
+    [[ -n "$verdict" ]] || { echo "unknown|record at ${file} carries no verdict"; return 0; }
+    local age=$(( now - checked ))
+    if (( age > max_age )); then
+        echo "stale|last checked $(( age / 3600 ))h ago (${detail})"
+        return 0
+    fi
+    echo "${verdict}|${detail}"
+}
+
+################################################################################
 # Invitation email (pl demo invite) — pure rendering, unit-testable
 ################################################################################
 
@@ -255,10 +493,11 @@ DEMO_INVITE_SITE_NAME="${DEMO_INVITE_SITE_NAME:-Saint School}"
 # sites/<site>/.nwp.yml, or a visible placeholder when the domain (or yq)
 # is unavailable. Never fails — the draft must always render.
 demo_invite_join_url() {
-    local site="$1" domain="" yml
+    local site="$1" domain="" yml yqb
+    yqb="$(demo_yq 2>/dev/null || true)"
     yml="$(demo_site_dir "$site")/.nwp.yml"
-    if command -v yq >/dev/null 2>&1 && [[ -f "$yml" ]]; then
-        domain="$(yq eval '.live.domain' "$yml" 2>/dev/null || true)"
+    if [[ -n "$yqb" && -f "$yml" ]]; then
+        domain="$("$yqb" eval '.live.domain' "$yml" 2>/dev/null || true)"
         [[ "$domain" == "null" ]] && domain=""
     fi
     # Fall back to the global nwp.yml. The per-site sites/<site>/.nwp.yml does
@@ -266,10 +505,10 @@ demo_invite_join_url() {
     # host, which is exactly where `pl demo invite` runs when the operator
     # clicks the button. Without this the invite email showed the
     # <YOUR-SITE-URL> placeholder instead of the real join link.
-    if [[ -z "$domain" ]] && command -v yq >/dev/null 2>&1; then
+    if [[ -z "$domain" && -n "$yqb" ]]; then
         local gcfg="${PROJECT_ROOT:-$HOME/nwp}/nwp.yml"
         if [[ -f "$gcfg" ]]; then
-            domain="$(SITE="$site" yq eval '.sites[strenv(SITE)].live.domain // ""' "$gcfg" 2>/dev/null || true)"
+            domain="$(SITE="$site" "$yqb" eval '.sites[strenv(SITE)].live.domain // ""' "$gcfg" 2>/dev/null || true)"
             [[ "$domain" == "null" ]] && domain=""
         fi
     fi
@@ -294,24 +533,24 @@ demo_invite_community_base() {
 # this site, demo.enabled). Empty when there is no demo pair or the consumer's
 # domain is unresolvable — the email then simply omits the courses section.
 demo_invite_courses_url() {
-    local site="$1" consumer="" domain="" yml gcfg f prov demo
-    command -v yq >/dev/null 2>&1 || { echo ""; return 0; }
+    local site="$1" consumer="" domain="" yml gcfg f prov demo yqb
+    yqb="$(demo_yq 2>/dev/null)" || { echo ""; return 0; }
     local pairs_dir="${NWP_PAIR_CONTRACT_DIR:-${PROJECT_ROOT:-$HOME/nwp}/pairs}"
     for f in "$pairs_dir"/*.pair-contract.yml; do
         [[ -f "$f" ]] || continue
-        prov="$(yq eval '.provider // ""' "$f" 2>/dev/null)"
-        demo="$(yq eval '.demo.enabled // false' "$f" 2>/dev/null)"
+        prov="$("$yqb" eval '.provider // ""' "$f" 2>/dev/null)"
+        demo="$("$yqb" eval '.demo.enabled // false' "$f" 2>/dev/null)"
         if [[ "$prov" == "$site" && "$demo" == "true" ]]; then
-            consumer="$(yq eval '.consumer // ""' "$f" 2>/dev/null)"
+            consumer="$("$yqb" eval '.consumer // ""' "$f" 2>/dev/null)"
             break
         fi
     done
     [[ -n "$consumer" && "$consumer" != "null" ]] || { echo ""; return 0; }
     yml="$(demo_site_dir "$consumer")/.nwp.yml"
-    [[ -f "$yml" ]] && { domain="$(yq eval '.live.domain // ""' "$yml" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
+    [[ -f "$yml" ]] && { domain="$("$yqb" eval '.live.domain // ""' "$yml" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
     if [[ -z "$domain" ]]; then
         gcfg="${PROJECT_ROOT:-$HOME/nwp}/nwp.yml"
-        [[ -f "$gcfg" ]] && { domain="$(CONS="$consumer" yq eval '.sites[strenv(CONS)].live.domain // ""' "$gcfg" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
+        [[ -f "$gcfg" ]] && { domain="$(CONS="$consumer" "$yqb" eval '.sites[strenv(CONS)].live.domain // ""' "$gcfg" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
     fi
     [[ -n "$domain" ]] && echo "https://${domain}/login/index.php" || echo ""
 }

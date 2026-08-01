@@ -40,6 +40,7 @@ source "$REPO_ROOT/lib/rollback-remote.sh"
 source "$REPO_ROOT/lib/moodle-promote.sh"  # _mp_cfg, _moodle_is_moodle_site, moodle_purge_caches_cmd
 source "$REPO_ROOT/lib/moodle-deploy.sh"
 source "$REPO_ROOT/lib/moodle-gate.sh"     # ops#137 Art.9 ship-together assertion
+source "$REPO_ROOT/lib/moodle-policy.sh"   # ops#174 tool_policy site-policy-handler invariant
 
 show_help() {
     cat <<EOF
@@ -53,6 +54,7 @@ ${BOLD}USAGE:${NC}
     pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live]
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
+    pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
     pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
@@ -97,6 +99,11 @@ ${BOLD}NOTES:${NC}
       that handles formation data must carry the consent gate in the bytes that
       ship. Override deliberately with --allow-ungated (loudly ledgered).
     * <plugin> is a Moodle <type>/<name> id, e.g. mod/depthcontent.
+    * 'policy' reports whether the site's published legal documents are actually
+      presented for acceptance (\$CFG->sitepolicyhandler == tool_policy). ss/ssc
+      published five MANDATORY documents with the handler unset and recorded zero
+      acceptances for six weeks (ops#174). "No policies visible" reports UNKNOWN,
+      never OK — a cold policyid_<slug> pointer is the ops#174 root cause itself.
 EOF
 }
 
@@ -1047,6 +1054,147 @@ cmd_maintenance() {
 }
 
 ################################################################################
+# policy — the tool_policy site-policy-handler invariant (ops#174)
+#
+#   pl moodle policy <site> --tier=live [--dry-run|--apply] [--disarm]
+#
+# WHAT IT ANSWERS: "are the legal documents this site publishes actually
+# presented to anyone, and is acceptance recorded?"
+#
+# On ss/ssc the answer was NO for six weeks: five mandatory (optional=0),
+# everyone-audience (audience=0) tool_policy documents were published on
+# 2026-07-23 while $CFG->sitepolicyhandler stayed '' — so core's default_handler
+# was active, its is_defined() keyed off an equally empty $CFG->sitepolicy, and
+# the site-policy branch of require_login() never fired. Zero acceptances.
+#
+# Reads and writes go through Moodle's OWN admin/cli/cfg.php — the same
+# contained surface `pl moodle cli` already permits. No raw SQL, no DB
+# credentials, no new remote-execution path.
+#
+# IDEMPOTENT. --apply on an already-armed site is a no-op that says so.
+################################################################################
+cmd_policy() {
+    local site="" tier="" mode="dry-run" want_handler="$MOODLE_POLICY_HANDLER"
+    for a in "$@"; do
+        case "$a" in
+            --tier=*)          tier="${a#*=}" ;;
+            --dry-run)         mode="dry-run" ;;
+            --apply|--execute) mode="execute" ;;
+            --disarm)          want_handler="" ;;
+            -h|--help)
+                print_info "usage: pl moodle policy <site> --tier=live [--dry-run|--apply] [--disarm]"
+                print_info "  (no flags = report only. --apply arms tool_policy. --disarm is the exact rollback.)"
+                return 0 ;;
+            -*) print_error "Unknown option: $a"; return 1 ;;
+            *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle policy <site> --tier=live [--dry-run|--apply] [--disarm]"; return 1; }
+    case "$tier" in
+        live) ;;
+        "")   print_error "--tier is required (live)"; return 1 ;;
+        *)    print_error "--tier must be live (stg is a local ddev tier for Moodle)"; return 1 ;;
+    esac
+    _resolve_moodle_site "$site" || return 1
+
+    local server_ip ssh_user remote_path ssh_opts ssh_target sudo_prefix="" php_bin php_opts
+    server_ip=$(get_live_config "$BASE" "server_ip")
+    [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE' (empty server_ip)."; return 1; }
+    ssh_user=$(get_ssh_user "$BASE")
+    remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+    [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+    ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+    php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+    php_opts="$(moodle_cli_php_opts "$CONFIG_FILE")"
+    moodle_cli_assert "$php_bin" "$php_opts" || return 1
+
+    local cfg="${remote_path%/}/admin/cli/cfg.php"
+    local run="cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${cfg}"
+
+    print_header "Moodle site-policy handler: ${BASE}@live"
+    print_info "Target:  ${ssh_target}:${remote_path}"
+
+    # --- READ (both facts, via Moodle's own CLI) -----------------------------
+    local handler listing rc
+    handler=$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${run} --name=sitepolicyhandler --no-eol" 2>/dev/null); rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+        # 3 = "variable not set", which is a real answer. Anything else is not.
+        print_error "Could not read sitepolicyhandler from ${BASE} live (ssh/cfg.php status ${rc})."
+        print_info  "Refusing to report a verdict on a reading that did not happen."
+        return 1
+    fi
+    listing=$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+        "${run} --component=${MOODLE_POLICY_SYNC_COMPONENT}" 2>/dev/null || true)
+
+    local pointers verdict vrc
+    pointers=$(moodle_policy_pointer_count "$listing")
+    verdict=$(moodle_policy_verdict "$handler" "$pointers"); vrc=$?
+    echo ""
+    moodle_policy_explain "$verdict" "$handler" "$pointers" || true
+    echo ""
+
+    # --- REPORT-ONLY ---------------------------------------------------------
+    if [ "$mode" != "execute" ]; then
+        case "$verdict" in
+            OK)      print_status "OK" "handler armed — nothing to do." ;;
+            GAP)     print_info "Fix it:      pl moodle policy ${BASE} --tier=live --apply" ;;
+            UNKNOWN) print_info "Investigate before treating ${BASE} as clear." ;;
+        esac
+        return "$vrc"
+    fi
+
+    # --- APPLY ---------------------------------------------------------------
+    if [ "$handler" = "$want_handler" ]; then
+        print_status "OK" "already set to '${want_handler:-(empty)}' — idempotent no-op."
+        return 0
+    fi
+    if [ -n "$want_handler" ] && [ "$verdict" = "UNKNOWN" ]; then
+        print_error "REFUSING to arm the handler on a site with no visible published documents."
+        print_info  "  Arming it would present nothing, and the empty pointer set means this tool"
+        print_info  "  cannot tell 'no policies' from 'cold pointer'. Establish which, then re-run."
+        return 1
+    fi
+
+    local live_enabled; live_enabled=$(get_live_config "$BASE" "enabled")
+    [ "$live_enabled" = "false" ] && { print_error "Live disabled for '$BASE' (live.enabled: false)."; return 1; }
+
+    deploy_gate_require "$BASE" "live" "set \$CFG->sitepolicyhandler='${want_handler:-}' on live" || return 1
+    impact_reset
+    impact_overwrite "mdl_config" "sitepolicyhandler: '${handler:-}' -> '${want_handler:-}' on LIVE ${BASE}"
+    if [ -n "$want_handler" ]; then
+        impact_warn "Every non-siteadmin user is shown the published documents at next login and must accept."
+        impact_warn "Site admins (\$CFG->siteadmins) are EXEMPT in core require_login() and are never interrupted."
+    else
+        impact_warn "Disarming: the published documents stop being presented. Existing acceptance rows are kept."
+    fi
+    impact_keep "tool_policy documents, versions and acceptances — not touched by this verb"
+    impact_keep "config.php + moodledata — not touched by this verb"
+    impact_render
+    impact_confirm typed "$BASE" "${AUTO_CONFIRM:-false}" || { print_error "aborted."; return 1; }
+
+    print_header "Setting the site-policy handler on live"
+    # shellcheck disable=SC2086
+    if ! ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+            "${run} --name=sitepolicyhandler --set=${want_handler}"; then
+        print_error "cfg.php write FAILED — handler unchanged."
+        return 1
+    fi
+    ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+        "cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_path%/}/admin/cli/purge_caches.php" >/dev/null 2>&1 \
+        || print_warning "purge_caches failed — run it manually: pl moodle cli ${BASE} --tier=live --execute -- admin/cli/purge_caches.php"
+
+    local after
+    after=$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${run} --name=sitepolicyhandler --no-eol" 2>/dev/null || true)
+    if [ "$after" != "$want_handler" ]; then
+        print_error "VERIFY FAILED: handler reads '${after:-(empty)}', expected '${want_handler:-(empty)}'."
+        return 1
+    fi
+    print_status "OK" "sitepolicyhandler = '${after:-(empty)}' on ${BASE} live (verified by re-read)."
+    print_info  "Rollback: pl moodle policy ${BASE} --tier=live --apply --disarm"
+    return 0
+}
+
+################################################################################
 # core-patch — declared Moodle CORE patches (item 9)
 #
 # DECLARATION RESOLUTION (first hit wins):
@@ -1303,6 +1451,7 @@ case "$SUB" in
         esac
         ;;
     gate-status) cmd_gate_status "$@" ;;
+    policy)    cmd_policy   "$@" ;;
     upgrade)   cmd_upgrade  "$@" ;;
     backup)    cmd_backup   "$@" ;;
     rollback)  cmd_rollback "$@" ;;

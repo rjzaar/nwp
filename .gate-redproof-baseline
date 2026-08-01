@@ -1,0 +1,40 @@
+# .gate-redproof-baseline — gates that have NEVER been observed RED.
+#
+# Format: <verdict>\t<key>.  Verdicts:
+#   CANNOT-FAIL   the pipeline definition makes a red verdict impossible
+#                 (allow_failure:true, every verdict '|| true'/'|| echo',
+#                 or an echo-only placeholder). Worst class: the job name
+#                 asserts coverage the job cannot deliver.
+#   NO-RED-PROOF  it could go red, but no bats case has ever made it.
+#
+# SHRINK-ONLY. Rows are DELETED when a gate earns a red proof; PROVEN-RED
+# is never written here. Adding a row is a recorded decision, not a fix —
+# say in the commit message why the gate is going in blind.
+# Regenerate: scripts/ci/lint-gate-redproof.sh --update-baseline
+# Inspect:    scripts/ci/lint-gate-redproof.sh --inventory
+CANNOT-FAIL	job:cleanup:preview
+CANNOT-FAIL	job:coverage
+CANNOT-FAIL	job:database
+CANNOT-FAIL	job:database:nightly
+CANNOT-FAIL	job:e2e:fresh-install
+CANNOT-FAIL	job:e2e:production
+CANNOT-FAIL	job:security:scan
+CANNOT-FAIL	job:test:verification
+NO-RED-PROOF	impl:scripts/ci/build.sh
+NO-RED-PROOF	impl:scripts/ci/check-coverage.sh
+NO-RED-PROOF	impl:scripts/ci/cleanup-preview.sh
+NO-RED-PROOF	impl:scripts/ci/create-preview.sh
+NO-RED-PROOF	impl:scripts/ci/fetch-db.sh
+NO-RED-PROOF	impl:scripts/ci/lint-secrets.sh
+NO-RED-PROOF	impl:scripts/ci/test-console.sh
+NO-RED-PROOF	impl:scripts/ci/test.sh
+NO-RED-PROOF	impl:scripts/ci/visual-regression.sh
+NO-RED-PROOF	job:boundary:classify
+NO-RED-PROOF	job:build
+NO-RED-PROOF	job:contracts:compat
+NO-RED-PROOF	job:deploy:preview
+NO-RED-PROOF	job:lint:doc-truth
+NO-RED-PROOF	job:lint:leakage
+NO-RED-PROOF	job:lint:secrets
+NO-RED-PROOF	job:lint:snapshot-bundles
+NO-RED-PROOF	job:test:console

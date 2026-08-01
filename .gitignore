@@ -243,6 +243,14 @@ servers/**/*.env
 !.yq-first-baseline
 !.security-meta-baseline
 
+# Gate-honesty baselines (2026-08-02). A check that has never been proven to
+# fail is not a check: .gate-redproof-baseline records every CI gate that has
+# never been observed RED, .test-honesty-baseline records checks that assert
+# less than they appear to. Both SHRINK-ONLY, both must be tracked or the gates
+# cannot tell "nothing to report" from "nobody recorded anything".
+!.gate-redproof-baseline
+!.test-honesty-baseline
+
 # bin/ holds operational helper scripts (audit-authors, migrate-* per F33, etc.)
 # tracked alongside lib/ and scripts/
 !bin/

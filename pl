@@ -456,6 +456,8 @@ ${BOLD}VERIFICATION:${NC}
     verify badges                   Show badge URLs
     verify status                   Show verification summary
     verify report                   Show verification report
+    verify gates                    Which CI gates have EVER been proven to go RED
+    verify honesty                  Lint checks that assert less than they appear to
 
 ${BOLD}DEVELOPER TOOLS:${NC}
     coder add <name>                Add developer coder environment

@@ -125,6 +125,66 @@ the estate acquires operations that only one session knows how to repeat.
 enumerating served nginx roots before `pl server roots` was written. Take the reading, then
 *write the verb*, which is exactly how `pl server roots` came to exist.
 
+## STANDING ORDER: a check that has never been proven to fail is not a check
+
+**Recorded 2026-08-02, after one night found SIX of them.** Before you believe a
+green tick — yours or one already in the tree — ask when that check was last
+*observed red*. If the answer is "never", you have a hypothesis, not a gate.
+
+Every fix in this repo is **red-then-green with real counts**: write the case that
+fails against the current tree, run it, quote the failure, then fix, then re-run.
+"I added a test and it passes" is not evidence; a test written after the fix has
+never been shown capable of failing.
+
+| Question | Command |
+|----------|---------|
+| Which gates have ever been proven RED? | `pl verify gates` |
+| Machine-readable verdicts | `pl verify gates --list` |
+| Which checks assert less than they look? | `pl verify honesty` (`--list` for all findings) |
+| Record a gap deliberately (shrink-only) | `… --update-baseline`, and say why in the commit |
+
+The four shapes the lints catch, all found live:
+
+- **Blind negation.** `! pl install '<payload>' 2>/dev/null` proves only "exited
+  non-zero". `pl install` exited 1 for an unrelated reason and seven security
+  checks went green over a tree with no input validation at all. **Assert the
+  error text**: `pl install d 'bad name' 2>&1 | grep -q 'Invalid site name'`.
+- **Swallowed verdict.** `updates=$(drush pm:security … || echo "[]")` turned a
+  removed-subcommand error into "no security updates". A check may not substitute
+  a literal for a measurement it failed to take — it must fail, or report
+  CANNOT VERIFY.
+- **Skips.** bats scores a skip as `ok`. `tests/.skip-budget` caps runtime skips;
+  `.test-honesty-baseline` caps skip statements at source. Both shrink-only.
+- **Host-blind branches.** `command -v restic || return 0` before validating the
+  argument accepted `--restic-provenance=trustme` on every host without restic.
+  Either fail closed, or add an `NWP_*` knob so the absent-tool path is testable.
+
+**Fail-closed is the default everywhere.** An unreadable corpus, a missing tool,
+an empty input: exit 2 CANNOT VERIFY, never exit 0. `pl server health` already
+works this way (exit 3 when it cannot measure) and it is the estate rule, not
+that command's quirk. Grade an exit-2 AMBER; never count it as a pass.
+
+**Baselines are shrink-only, and growing one is a recorded decision.** Deleting a
+row is a fix. Adding a row says "this goes in blind, on purpose, and here is why"
+— put the why in the commit message. Never add a `.yq-first-baseline` row.
+
+### Merge automation: this GitLab's `detailed_merge_status` goes stale
+
+**Verified 2026-08-02 by local test-merge.** The API reports
+`detailed_merge_status: conflict` for branches that merge cleanly. The value is a
+cached computation, and it is not always recomputed when the target branch moves.
+
+Rules for anything that automates merges:
+
+- **Never trust `conflict` on its own.** Poke it first —
+  `PUT /projects/:id/merge_requests/:iid/rebase` forces GitLab to recompute — or
+  settle it locally with a real test-merge (`git merge --no-commit --no-ff`, then
+  `git merge --abort`). Only a *reproduced* conflict is a conflict.
+- **`checking` means retry, not failure.** Poll it; do not classify it.
+- **If a `pl` verb ever merges MRs, this logic belongs inside the verb**, with
+  its own red-proof — not in a session's shell loop, where the next session
+  re-derives it wrongly. Same standing order as everything else: fix the verb.
+
 ## Critical: Protected Files
 
 ### nwp.yml - NEVER COMMIT

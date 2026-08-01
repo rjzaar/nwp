@@ -13,6 +13,12 @@ set -euo pipefail
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# Respect a caller-supplied NWP_DIR (same pattern as server.sh). PROJECT_ROOT
+# locates the CODE (lib/ sourcing below) and must stay derived from this file's
+# location; NWP_DIR is where DECLARATIONS live (nwp.yml, sites/). They differ
+# only when a test or caller points NWP_DIR at a fixture inventory — unset in
+# production this is exactly the old behaviour.
+NWP_DIR="${NWP_DIR:-$PROJECT_ROOT}"
 
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
@@ -1438,7 +1444,7 @@ replicate_main() {
     case "$newest" in ''|*[!0-9]*) print_error "--newest must be a positive integer"; exit 1 ;; esac
 
     if [[ ${#targets[@]} -eq 0 ]]; then
-        local cfg="${PROJECT_ROOT}/nwp.yml"
+        local cfg="${NWP_DIR}/nwp.yml"
         if [[ -f "$cfg" ]] && command -v yq >/dev/null 2>&1; then
             while IFS= read -r t; do
                 [[ -n "$t" && "$t" != "null" ]] && targets+=("$t")

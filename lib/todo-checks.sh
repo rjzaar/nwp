@@ -1774,6 +1774,97 @@ check_notify_health() {
     fi
 }
 
+# SEC/goldenid: is a real person's identity baked into a demo golden image?
+#
+# WHY THIS EXISTS: on 2026-08-01 the ssd golden was found carrying a Moodle
+# site-administrator row with the operator's real given name, family name and
+# personal mailbox — and had been since the site was installed on 2026-05-19.
+# A golden is not a backup that ages out: it is restored over the live demo site
+# EVERY NIGHT, staged onto the demo box, and duplicated at rest into every backup
+# of that box. Whatever is in it is permanent by construction, on a site whose
+# whole promise to a tester is "you never give us your name or your email, and
+# nothing about you is kept".
+#
+# It graded GREEN the entire time because nothing ever looked. This is the
+# looking. See lib/golden-hygiene.sh for why the rule is expressed structurally
+# (mailbox domains must be RFC-reserved or estate-declared) rather than as a
+# grep for a person — the leakage gate forbids naming either the person or the
+# estate's domains in a tracked file, and a guard that must name what it guards
+# is a guard that leaks it.
+#
+# Category is SEC/high on purpose: `pl rag` grades SEC-high as RED, so a golden
+# carrying somebody's identity turns the fleet red and `pl rag --sync-issues`
+# opens the ops issue by itself.
+check_demo_golden_hygiene() {
+    is_category_enabled "golden_identity" || return 0
+
+    local root="$TODO_CHECKS_PROJECT_ROOT"
+    local lib="$root/lib/golden-hygiene.sh"
+    [ -f "$lib" ] || return 0
+
+    # Goldens only exist under sites/, which is gitignored — so this check is a
+    # no-op on a CI runner and only does work on a host that actually holds one.
+    local found=false d
+    for d in "$root"/sites/*/demo-golden "$root"/sites/*/demo-golden-live; do
+        [ -f "$d/golden.db.sql.gz" ] && { found=true; break; }
+    done
+    [ "$found" = true ] || return 0
+
+    # shellcheck source=/dev/null
+    source "$lib" 2>/dev/null || {
+        todo_add_unknown "golden_identity" \
+            "could not load lib/golden-hygiene.sh — demo goldens are unscanned for personal identifiers" \
+            "" "pl todo check"
+        return 0
+    }
+
+    local config_file="${TODO_CONFIG_FILE:-$root/nwp.yml}"
+    local declared; declared=$(golden_hygiene_declared_domains "$config_file")
+    local denylist; denylist=$(golden_hygiene_denylist_file "$root")
+
+    local site tier artifact scan foreign masked
+    for d in "$root"/sites/*/demo-golden "$root"/sites/*/demo-golden-live; do
+        [ -d "$d" ] || continue
+        site=$(basename "$(dirname "$d")")
+        tier=$([ "$(basename "$d")" = "demo-golden-live" ] && echo live || echo "dev/stg")
+
+        for artifact in "$d/golden.db.sql.gz" "$d/golden.files.tar.gz"; do
+            [ -f "$artifact" ] || continue
+
+            # Memoised on the sha256 of the artifact + both inputs: a recapture
+            # or a denylist edit rescans, an unchanged golden costs one hash.
+            scan=$(golden_hygiene_scan "$artifact" "$declared" "$denylist" "$TODO_CACHE_DIR" 2>/dev/null)
+            foreign=$(printf '%s\n' "$scan" | sed -n 's/^MAIL //p')
+            masked=$(printf '%s\n' "$scan"  | sed -n 's/^NAME //p')
+
+            if [ -n "$foreign" ]; then
+                todo_add_item "SEC" "goldenid-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)-mail" "high" \
+                    "Demo golden for ${site} (${tier}) carries a mailbox on an undeclared domain" \
+                    "$(basename "$artifact") holds an address on: $(echo "$foreign" | tr '\n' ' '). A golden is restored over the LIVE demo site every night and copied into every backup of the demo box, so anything personal in it is permanent. Demo accounts must use an undeliverable sentinel address (RFC 2606, e.g. *.invalid); operational notification addresses must be a role address on an estate domain, not a person's. Fix the LIVE site, then recapture: pl demo golden ${site} --tier=live" \
+                    "$site" "pl demo golden ${site} --tier=live"
+            fi
+
+            if [ -n "$masked" ]; then
+                todo_add_item "SEC" "goldenid-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)-name" "high" \
+                    "Demo golden for ${site} (${tier}) contains a denylisted personal identifier" \
+                    "$(basename "$artifact") matched $(echo "$masked" | tr '\n' ' ') from the untracked identity denylist. Reported masked on purpose — a finding must not republish what it found. Fix the LIVE site, then recapture: pl demo golden ${site} --tier=live" \
+                    "$site" "pl demo golden ${site} --tier=live"
+            fi
+        done
+    done
+
+    # NO DENYLIST IS NOT A PASS. Rule 1 (mailbox domains) always ran, but
+    # personal NAMES have no structure to check against, so on a host that holds
+    # goldens and has never been told which name tokens to reject, the name half
+    # of this check did not happen. UNKNOWN, not CLEAR — `pl rag` will not grade
+    # a site with an open UNK item green.
+    if [ ! -f "$denylist" ]; then
+        todo_add_unknown "golden_identity_names" \
+            "no identity denylist at private/golden-identity-denylist.txt — demo goldens are checked for foreign mail domains but NOT for personal names. Create it (one name token per line, '#' comments; private/ is gitignored, so nothing personal enters the repo)." \
+            "" "pl todo check"
+    fi
+}
+
 ################################################################################
 # Main Check Runner
 ################################################################################
@@ -1812,6 +1903,7 @@ TODO_CHECK_LIST=(
     "check_paused_automation:Paused automation"
     "check_rag_sync_freshness:RAG-sync freshness"
     "check_notify_health:Notification path health"
+    "check_demo_golden_hygiene:Demo golden identity hygiene"
 )
 
 # Get check count
@@ -1893,6 +1985,7 @@ export -f check_live_backup_freshness
 export -f check_paused_automation
 export -f check_rag_sync_freshness
 export -f check_notify_health
+export -f check_demo_golden_hygiene
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

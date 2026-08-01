@@ -103,6 +103,7 @@ ${BOLD}CATEGORIES:${NC}
     GWK     Uncommitted git work
     DSK     Disk usage warnings
     SSL     SSL certificates expiring soon
+    SEC     …also: personal identity baked into a demo golden image
 
 ${BOLD}PRIORITY LEVELS:${NC}
     high    Action required within 24 hours

@@ -4582,3 +4582,54 @@ at 02:00 will actually look.
   rollback-registry row was added.
 * `docs/guides/demo-nightly-on-met.md` §Gaps was left alone — outside this item's territory, and
   another workflow may be in it.
+
+---
+
+## [2026-08-02] php-setting-floors-become-a-verb (operator ruling D10)
+
+**Decision:** `pl host apply <host> --kind=php --execute` is ENABLED and applies a declared per-SAPI
+PHP setting floor to a real box. Every other capture kind (`cron`, `systemd`, `nginx`, `ssh`,
+`firewall`, `headscale`) stays declare-only exactly as before.
+
+**This SUPERSEDES item 6's Sub-decision C in part** ("`pl host apply --execute` … NOT enabled …
+*Alternative rejected:* shipping a working `--execute` behind a typed confirm"). It is superseded on
+the operator's explicit ruling D10 — *"the `max_input_vars` floor I applied by hand needs to be
+properly integrated into the appropriate `pl` command"* — and on the operator's grant of full access
+to the `live` box. The general principle of Sub-decision C is retained for the other six kinds.
+
+**Basis (why the php kind is genuinely different, not just the one we wanted):**
+* It is **declared**, not captured. `servers/<h>/php/conf.d/*.ini` is authored and reviewed; the
+  captured tree is identity-redacted and therefore a faithful record, not a restorable artifact.
+  Pushing a redacted capture back at a box is the thing Sub-decision C was protecting against.
+* It is **additive and single-purpose** — one conf.d file holding one floor, reviewable at a glance,
+  applied by `install -m0644`, reversible with `rm`.
+* It is **measurable after the fact.** The verb asks the target SAPI's own interpreter what it now
+  believes and refuses to report success otherwise. None of the other kinds have that property.
+* Leaving it un-automated has a **proven** cost, which is the whole of D10: the declared remedy sat
+  "NOT YET APPLIED" from 2026-07-26, and on 2026-08-01 it reached the live box by `scp` + `sudo cp` —
+  no backup, no sha256, no post-write measurement, no rollback row. A gap routed around stays a gap.
+
+**Alternatives rejected:**
+* *A new parallel verb (`pl php floor apply`).* Rejected: `pl host apply` already exists, already
+  owns "declared host state → box", and already prints the diff. A second verb for the same job is
+  how the estate acquires two drifting answers.
+* *Enabling `--execute` for all kinds.* Rejected: nothing else in the kind set has the measurable
+  post-condition that makes "applied" checkable rather than assumed.
+* *Leaving php declare-only and writing a runbook.* Rejected: that is the state that produced the
+  by-hand write. `lint:doc-truth`'s `raw-remote-cli` rule would reject the runbook anyway.
+
+**Blast radius:** one file per declared floor under `/etc/php/<v>/<sapi>/conf.d/`, plus a
+`systemctl reload php<v>-fpm` per affected version. No site code, database, upload or vhost is
+readable or writable by this path. Refuses below 512 MB free RAM (`host_health_require`), refuses on
+a SAPI whose conf.d does not exist, refuses on an unmeasurable value, and auto-restores from the
+backup it took if the reload fails.
+
+**Reversible-how:** `git revert -m 1 <merge>` restores the "not enabled" refusal. The live-box write
+is reversed per rollback-registry `CP-20260802-phpfloor-live` (restore the `.bak`, or `rm` both files
+and reload — the second re-creates the 2026-07-26 outage condition and `pl server-state php-check
+live` will go RED to prove it).
+
+**Not taken:** the `nwpcode` box was **not** applied. Measured 2026-08-02 with `pl server roots
+nwpcode`: after the 2026-07-31 split it serves only headscale and pray.rosaryforge — no Moodle, no
+php8.2-fpm vhost — so its two `php_floors` protect nothing there. The recommendation is to retire or
+re-scope that declaration as a separate reviewed change, not to `--execute` it to turn a red green.

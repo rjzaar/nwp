@@ -873,7 +873,12 @@ cmd_enroll() {
             print_hint "find it with: headscale users list   (on that box)"
         fi
         print_info "Create the pre-auth key yourself on the headscale host:"
-        echo "    sudo headscale preauthkeys create --user <headscale-user> --expiration ${expiry}"
+        # headscale >= 0.26 takes a NUMERIC id here and rejects a name outright
+        # ("strconv.ParseUint"). The mint path resolves that for the operator;
+        # the manual path has to tell them, or the runbook fails the same way
+        # the old one did.
+        echo "    sudo headscale users list                 # note the numeric id"
+        echo "    sudo headscale preauthkeys create --user <numeric-user-id> --expiration ${expiry}"
         _enroll_steps
         [ "$runbook" = 1 ] && return 0 || return 1
     fi
@@ -928,13 +933,29 @@ main() {
             *) args+=("$1"); shift ;;
         esac
     done
+    # ${args[@]+"${args[@]}"} — NOT "${args[@]:-}". On an EMPTY array the latter
+    # expands to one empty-string argument, which every parser below reads as a
+    # flag it does not know.
+    #
+    # `enroll` had it worse still: it was dispatched with no arguments at all.
+    # So --runbook (the offline path, for when the mesh is the broken thing)
+    # silently took the NETWORK path, and --expiry never reached its validator —
+    # `pl console enroll --expiry forever` did not refuse, it minted a live
+    # pre-auth key on the production control plane with the default expiry.
+    # Reproduced on the workstation 2026-08-01; eight unredeemed keys from that
+    # and from the feature's own testing were expired by hand.
+    #
+    # CI never minted: the runner has no nwp.yml (gitignored), so HEADSCALE_HOST
+    # is empty there and enroll takes the fallback branch. That is why the two
+    # bats cases failed in CI with the FALLBACK text rather than by minting —
+    # they were red for the real defect, by a different route.
     case "$sub" in
         -h|--help|"") show_help ;;
-        deploy)  _require_configured && cmd_deploy "${args[@]:-}" ;;
+        deploy)  _require_configured && cmd_deploy ${args[@]+"${args[@]}"} ;;
         status)  _require_configured && cmd_status ;;
-        user)    cmd_user "${args[@]:-}" ;;      # gates itself AFTER validating input
-        project) cmd_project "${args[@]:-}" ;;   # ditto
-        enroll)  cmd_enroll ;;
+        user)    cmd_user ${args[@]+"${args[@]}"} ;;      # gates itself AFTER validating input
+        project) cmd_project ${args[@]+"${args[@]}"} ;;   # ditto
+        enroll)  cmd_enroll ${args[@]+"${args[@]}"} ;;
         dns)     _require_configured && cmd_dns ;;
         cert)    _require_configured && cmd_cert ;;
         logs)    _require_configured && cmd_logs ;;

@@ -69,6 +69,33 @@ setup() {
   [[ "$output" == *preauthkeys* ]]
 }
 
+@test "every subcommand actually RECEIVES its flags (the dispatch drops nothing)" {
+  # `enroll` was dispatched as bare `cmd_enroll`, so no flag ever reached it:
+  # --runbook silently took the network path and --expiry never reached its
+  # validator, which meant `--expiry forever` minted a live pre-auth key on the
+  # production control plane instead of refusing. The two cases above now cover
+  # enroll specifically; this one pins the DISPATCH so the same class of bug
+  # cannot reappear on a sibling verb.
+  #
+  # It also pins the idiom. "${args[@]:-}" on an EMPTY array expands to one
+  # empty-string argument, which the parsers read as an unknown flag — so the
+  # no-argument path must reach the verb with genuinely zero arguments.
+  local sub
+  for sub in deploy user project enroll; do
+    grep -qE "^ *${sub}\)" "$CONSOLE_SH"
+    # each dispatch arm forwards the collected args, and none of them uses the
+    # :- form that injects an empty argument
+    run bash -c "grep -E '^ *${sub}\)' '$CONSOLE_SH' | grep -c 'args\[@\]:-'"
+    [ "$output" = "0" ]
+  done
+  grep -q 'args\[@\]+"\${args\[@\]}"' "$CONSOLE_SH"
+
+  # and the behaviour those idioms exist for: a bare verb reaches its own
+  # usage/guard, not an "unknown flag: " complaint about an empty string
+  NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent run "$CONSOLE_SH" enroll
+  [[ "$output" != *"unknown flag: "* ]]
+}
+
 @test "network verbs fail closed when settings.console is unconfigured" {
   # Force the placeholder chain (no nwp.yml anywhere).
   NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent run "$CONSOLE_SH" status

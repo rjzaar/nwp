@@ -68,3 +68,43 @@ setup() {
     source_verify_runner
     [ "$(command -v pl)" = "${REAL_ROOT}/pl" ]
 }
+
+@test "no site-name rejection check depends on a recipe being ABSENT (vacuity guard)" {
+    # These checks are of the form `! pl install <recipe> '<hostile name>'`.
+    # In CI the bootstrapped nwp.yml (from example.nwp.yml) ships only the
+    # `pod` recipe, so `pl install d …` exits 1 on "Recipe 'd' not found" and
+    # the leading `!` turns THAT into a green — the check passed while proving
+    # nothing about name validation. Measured 2026-08-02: all 7 such checks
+    # passed on a tree whose install.sh had no validation at all.
+    #
+    # They now assert the shared predicate directly (the idiom items 0-1
+    # always used), which behaves identically on a runner and a workstation.
+    # If someone reintroduces the `! pl install <recipe>` shape, this fails.
+    run grep -nE "cmd: '?! pl install [a-z]" "$MANIFEST"
+    [ "$status" -ne 0 ]
+}
+
+@test "the site-name rejection checks pass on the real validator and FAIL on a permissive one" {
+    command -v yq >/dev/null || skip "needs yq"
+    local cmds
+    cmds="$(yq e '.features.security_validation.checklist[]
+                  | select(.machine.checks.basic.commands[0].cmd | test("validate_sitename"))
+                  | .machine.checks.basic.commands[0].cmd' "$MANIFEST")"
+    [ -n "$cmds" ]
+    [ "$(printf '%s\n' "$cmds" | wc -l)" -ge 7 ]
+
+    # A stub tree whose validator accepts EVERYTHING: every check must go red.
+    local stub="${BATS_TEST_TMPDIR}/permissive"
+    mkdir -p "$stub/lib"
+    printf 'validate_sitename() { return 0; }\n' > "$stub/lib/common.sh"
+    : > "$stub/lib/ui.sh"
+
+    local c
+    while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        # real validator in the real tree: rejects ⇒ check passes
+        ( cd "$REAL_ROOT" && bash -c "$c" >/dev/null 2>&1 )
+        # permissive stub: accepts ⇒ check must fail (proves non-vacuity)
+        ! ( cd "$stub" && bash -c "$c" >/dev/null 2>&1 )
+    done <<< "$cmds"
+}

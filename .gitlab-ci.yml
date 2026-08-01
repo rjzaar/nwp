@@ -886,6 +886,45 @@ security:review:
     - nwp
   allow_failure: false
 
+# Sensitive-path HOLD gate (D13, 2026-08-01).
+#
+# `security:review` above asserts that a sensitive-path change is LABELLED
+# `REVIEW:`. On 2026-08-01 that proved to be not nearly enough: an MR that was
+# correctly labelled `REVIEW:`, was two-person-approval class, and had been
+# explicitly decided-against, merged itself anyway. A background sweeper had
+# armed `merge_when_pipeline_succeeds` on every open MR and re-armed the held
+# one after the hold was recorded; the moment this pipeline went green, GitLab
+# merged it. The hold existed only in a document.
+#
+# This job makes the hold a machine state instead. It runs `pl mr guard --ci`,
+# which HOLDS the MR (sets Draft — GitLab then refuses the merge with 405 even
+# while auto-merge is armed — cancels the arming, labels and explains it) unless
+# a release record exists that is bound to the MR's CURRENT head commit.
+#
+# It is blocking, and that is a second, credential-free layer: a red pipeline is
+# a pipeline `merge_when_pipeline_succeeds` can never fire on. If NWP_MR_TOKEN
+# is not configured, the Draft cannot be set but the MR still cannot auto-merge,
+# and the job says so in as many words rather than passing quietly.
+#
+# Release the hold deliberately:
+#     pl mr release <iid> --approved-by=<handle> --reason='...'
+# The approver may not be the MR author and may not be a bot, and the release is
+# bound to the head commit — push again and it re-holds by itself.
+#
+# OPERATOR SETUP (one-time, optional but recommended): add a MASKED CI variable
+# `NWP_MR_TOKEN` holding an MR-capable token (Developer on nwp/nwp) to turn on
+# the forge-enforced Draft layer. Without it, only the red-pipeline layer runs.
+security:mr-hold:
+  stage: security
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - ./scripts/ci/sensitive-path-hold-gate.sh
+  tags:
+    - nwp
+  allow_failure: false
+
 # Console pytest suite (P-console). 224 assertions across 10 modules — including
 # test_authz.py and test_notify.py, the runtime half of the Gotify `security`
 # detector — ran in NO CI job and behind no `pl` verb until 2026-07-26, and

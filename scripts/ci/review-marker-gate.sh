@@ -63,18 +63,18 @@ if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
     exit 2
 fi
 
-# CLAUDE.md "Sensitive File Paths" (two-person approval class), verbatim.
-SENSITIVE_PATTERNS=(
-    '^lib/auth'
-    '^lib/[^/]*secret'
-    '(^|/)settings\.php$'
-    '^\.gitlab-ci\.yml$'
-    '(^|/)composer\.json$'
-    '^scripts/commands/live'
-    '^CLAUDE\.md$'
-    '(^|/)\.env'
-    '^keys/'
-)
+# CLAUDE.md "Sensitive File Paths" (two-person approval class).
+#
+# This list used to be a hardcoded array right here — a SECOND copy of a
+# security list whose first copy is the standing order humans actually read.
+# The two could drift, and the copy that drifts silently is always the one that
+# gates the merge. It is now derived from CLAUDE.md at run time by
+# lib/sensitive-paths.sh: add a path to the standing order and this gate covers
+# it on the next pipeline, with nothing to remember and nothing to sync.
+SCRIPT_DIR_RMG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR_RMG/../.." && pwd)"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/sensitive-paths.sh"
 
 mapfile -t changed < <(git diff --name-only "${BASE}...${HEAD_REF}" 2>/dev/null)
 if [ "${#changed[@]}" -eq 0 ]; then
@@ -82,15 +82,16 @@ if [ "${#changed[@]}" -eq 0 ]; then
     exit 0
 fi
 
+# rc 2 = the standing order could not be read. Fail closed: an unreadable list
+# of sensitive paths is not an empty list of sensitive paths.
 touched=()
-for f in "${changed[@]}"; do
-    for p in "${SENSITIVE_PATTERNS[@]}"; do
-        if printf '%s\n' "$f" | grep -qE "$p"; then
-            touched+=("$f")
-            break
-        fi
-    done
-done
+if ! mapfile -t touched < <(printf '%s\n' "${changed[@]}" | nwp_sensitive_filter); then
+    echo "ERROR: could not read CLAUDE.md's 'Sensitive File Paths' list — cannot verify." >&2
+    echo "       Failing closed rather than reporting a vacuous pass." >&2
+    exit 2
+fi
+# mapfile yields one empty element for empty input; normalise that away.
+[ "${#touched[@]}" -eq 1 ] && [ -z "${touched[0]}" ] && touched=()
 
 echo "Files changed: ${#changed[@]}"
 if [ "${#touched[@]}" -eq 0 ]; then

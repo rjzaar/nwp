@@ -132,6 +132,29 @@ location** — so a restore needs all three fixed, not just a `mv`.
 Fleet dry-run after: **14 success / 0 failure**, `certbot.service`
 `Result=success`. Fourteen lineages, fourteen served vhosts, no orphans.
 
+### 5. Postfix still identified as `git.nwpcode.org` (fixed 2026-08-01, second pass)
+
+`myhostname = git.nwpcode.org` — clone leftover from the split. Every message
+this box sent HELO'd/stamped `Received:` headers as the *other* box. Set to
+`live.nwpcode.org`, which is what forward AND reverse DNS already said this box
+is (`live.nwpcode.org → 45.33.76.180`, PTR `45.33.76.180 → live.nwpcode.org`,
+and the IP is in the nwpcode.org SPF record). `mydomain`/`myorigin` stay
+`nwpcode.org`, so envelope-from domains and DKIM (opendkim milter on :8891) are
+unaffected. Applied with `postconf -e` + `postfix reload`; prior main.cf backed
+up to `/var/backups/main.cf.20260801`
+(sha256 `6fa783a2788e3722e208ee739466cafb81bedc22e59c5d4106478d7550ce921b`).
+The mirror of the resulting `/etc/postfix/main.cf` is `postfix/main.cf` here.
+
+One deferred queue entry from the same morning — a Moodle new-sign-in notice to
+the synthetic `policycheck20260801@invalid.local` probe account (device
+`curl/8.5.0`, source IP the box itself) — was inspected with `postcat -q` and
+deleted; `.local`/`invalid.local` can never deliver. Queue empty after.
+
+⚠️ Still stale, deliberately untouched: the OS hostname is `git` (also a clone
+leftover). Renaming a hostname mid-flight touches more than mail
+(`/etc/hosts`, logs, monitoring identity), so it is left for an operator
+decision rather than fixed as a side effect here.
+
 ## What is NOT here
 
 `conf.d/*.bak*`, `retired-*/` and `mothballed-*/` on the box are excluded:

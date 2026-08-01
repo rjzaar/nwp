@@ -52,7 +52,11 @@ ${BOLD}COMMANDS:${NC}
 
 ${BOLD}CROSS-HOST:${NC}
     where                   Which HOST owns each schedule (local + every server;
-                            an unreachable host reports UNREACHABLE, never "none")
+                            an unreachable host reports UNREACHABLE, never "none").
+                            Each entry carries its cron DAEMON state: a schedule
+                            on a stopped daemon is flagged INACTIVE and exits 1;
+                            an unreadable daemon state is flagged UNKNOWN and
+                            exits 3 (cannot-measure, as in 'pl server health')
     host <target> list      List cron on a remote role/server over ssh
     host <target> install --name=<id> --schedule="<expr>" --command=<abs-path>
     host <target> remove  --name=<id>
@@ -409,12 +413,62 @@ cmd_schedule_host() {
     exec "$PROJECT_ROOT/scripts/commands/host.sh" schedule "$@"
 }
 
+# ops#164 — a cron FILE existing proves nothing if the daemon that would run
+# it is stopped. During the 2026-08-01 box split a parked clone had cron
+# deliberately stopped+disabled; this verb still listed
+# /etc/cron.d/nwp-box-backup as if it were scheduled. Every entry line now
+# carries the daemon's state, and the exit code goes nonzero when a declared
+# schedule sits on a host whose daemon cannot run it.
+
+# Shell fragment that prints the cron daemon's state on whatever host runs it:
+# "active", "inactive", or "unknown" (no systemctl — cannot tell). Debian
+# names the unit `cron`, RHEL names it `crond`; `is-active --quiet` is exit-0
+# iff the unit is running, and prints nothing.
+schedule_daemon_probe_script() {
+    cat <<'EOF'
+if ! command -v systemctl >/dev/null 2>&1; then
+    echo unknown
+elif systemctl is-active --quiet cron 2>/dev/null || systemctl is-active --quiet crond 2>/dev/null; then
+    echo active
+else
+    echo inactive
+fi
+EOF
+}
+
+# Pure mapping: daemon state -> line suffix (stdout) + rc contribution (return).
+#   active          -> ""                                              rc 0
+#   unknown / empty -> " (cron state UNKNOWN — could not read daemon)" rc 3
+#   anything else   -> " (cron INACTIVE — will not run)"               rc 1
+# Blindness is reported as blindness, never as active; rc 3 mirrors
+# `pl server health`, where cannot-measure is never treated as healthy.
+schedule_annotate_daemon_state() {
+    local state="${1:-}"
+    case "$state" in
+        active)     return 0 ;;
+        unknown|'') printf ' (cron state UNKNOWN — could not read daemon)'; return 3 ;;
+        *)          printf ' (cron INACTIVE — will not run)'; return 1 ;;
+    esac
+}
+
+# Combine two rc contributions: 1 (dead daemon) beats 3 (blind) beats 0.
+schedule_rc_combine() {
+    local a="$1" b="$2"
+    if [ "$a" -eq 1 ] || [ "$b" -eq 1 ]; then echo 1
+    elif [ "$a" -eq 3 ] || [ "$b" -eq 3 ]; then echo 3
+    else echo 0
+    fi
+}
+
 # pl schedule where — which HOST owns each schedule.
 cmd_schedule_where() {
     # shellcheck source=/dev/null
     source "$PROJECT_ROOT/lib/server-resolver.sh"
     # shellcheck source=/dev/null
     source "$PROJECT_ROOT/lib/host-capture.sh"
+
+    local overall_rc=0
+    local probe_script; probe_script="$(schedule_daemon_probe_script)"
 
     printf '%-18s %-12s %s\n' "HOST" "STATE" "SCHEDULE"
     printf '%-18s %-12s %s\n' "----" "-----" "--------"
@@ -423,16 +477,30 @@ cmd_schedule_where() {
     local local_entries
     local_entries="$(crontab -l 2>/dev/null | grep -E '^[0-9*].*(nwp|pl |agent-loop|rag-sync|demo)' || true)"
     if [ -n "$local_entries" ]; then
+        # Same honesty locally: a local crontab entry under a stopped local
+        # daemon must not read as scheduled either.
+        local local_state local_suffix local_src=0
+        local_state="$(bash -c "$probe_script" 2>/dev/null </dev/null || true)"
+        local_suffix="$(schedule_annotate_daemon_state "$local_state")" || local_src=$?
+        overall_rc="$(schedule_rc_combine "$overall_rc" "$local_src")"
         while IFS= read -r line; do
             [ -n "$line" ] || continue
-            printf '%-18s %-12s %s\n' "$me" "local" "$(printf '%s' "$line" | cut -c1-90)"
+            printf '%-18s %-12s %s%s\n' "$me" "local" "$(printf '%s' "$line" | cut -c1-90)" "$local_suffix"
         done <<< "$local_entries"
     else
         printf '%-18s %-12s %s\n' "$me" "local" "(no NWP cron entries on this machine)"
     fi
 
+    # One round trip per host: daemon state (tagged DAEMON:) then the cron.d
+    # listing. A missing DAEMON: line is parsed as unknown, never as active.
+    local remote_script
+    remote_script="printf 'DAEMON:%s\n' \"\$(
+${probe_script}
+)\"
+ls -1 /etc/cron.d 2>/dev/null | grep -E 'nwp|demo|dr-pull' || true"
+
     local servers; servers="$(discover_servers 2>/dev/null || true)"
-    local name prefix out rc
+    local name prefix out rc daemon_state first_line suffix src
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         if ! prefix="$(host_resolve_dest "$name" 2>/dev/null)"; then
@@ -440,18 +508,27 @@ cmd_schedule_where() {
             continue
         fi
         rc=0
-        out="$(host_run "$prefix" 'ls -1 /etc/cron.d 2>/dev/null | grep -E "nwp|demo|dr-pull" || true' 2>/dev/null)" || rc=$?
+        out="$(host_run "$prefix" "$remote_script" 2>/dev/null)" || rc=$?
         if [ "$rc" -ne 0 ]; then
             # Blindness is reported as blindness, never as "no schedules".
             printf '%-18s %-12s %s\n' "$name" "UNREACHABLE" "(could not read cron — this is NOT 'none')"
             continue
         fi
+        daemon_state="unknown"
+        first_line="$(printf '%s\n' "$out" | head -n 1)"
+        if [[ "$first_line" == DAEMON:* ]]; then
+            daemon_state="${first_line#DAEMON:}"
+            out="$(printf '%s\n' "$out" | tail -n +2)"
+        fi
         if [ -z "$out" ]; then
             printf '%-18s %-12s %s\n' "$name" "remote" "(no /etc/cron.d NWP entries)"
         else
+            suffix=""; src=0
+            suffix="$(schedule_annotate_daemon_state "$daemon_state")" || src=$?
+            overall_rc="$(schedule_rc_combine "$overall_rc" "$src")"
             while IFS= read -r f; do
                 [ -n "$f" ] || continue
-                printf '%-18s %-12s %s\n' "$name" "remote" "/etc/cron.d/$f"
+                printf '%-18s %-12s %s%s\n' "$name" "remote" "/etc/cron.d/$f" "$suffix"
             done <<< "$out"
         fi
     done <<< "$servers"
@@ -459,7 +536,7 @@ cmd_schedule_where() {
     echo ""
     printf '  detail on one host:  pl host schedule <target> list\n'
     printf '  install/remove:      pl schedule host <target> install|remove ...\n'
-    return 0
+    return "$overall_rc"
 }
 
 main() {
@@ -468,7 +545,12 @@ main() {
     # reject.
     case "${1:-}" in
         host)  shift; cmd_schedule_host "$@"; exit $? ;;
-        where) shift; cmd_schedule_where "$@"; exit $? ;;
+        where) shift
+               # Exit codes are part of the contract (ops#164): 1 = a declared
+               # schedule sits on a stopped daemon, 3 = daemon state unreadable.
+               local where_rc=0
+               cmd_schedule_where "$@" || where_rc=$?
+               exit "$where_rc" ;;
     esac
 
     # Parse options

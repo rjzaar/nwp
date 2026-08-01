@@ -423,7 +423,12 @@ EOF
 
 @test "pl schedule where reports which HOST owns each schedule" {
   run "$PL" schedule where
-  [ "$status" -eq 0 ]
+  # ops#164: this is a LIVE probe and the exit code is part of the contract —
+  # 0 = clean, 1 = a declared schedule sits on a stopped cron daemon,
+  # 3 = a daemon state could not be read. All three are honest reports;
+  # anything else is a real failure. (tests/unit/test-schedule-where.bats
+  # pins each code against a stubbed estate.)
+  [[ "$status" -eq 0 || "$status" -eq 1 || "$status" -eq 3 ]]
   [[ "$output" == *"HOST"* || "$output" == *"host"* ]]
 }
 

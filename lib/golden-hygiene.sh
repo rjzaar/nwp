@@ -49,8 +49,62 @@
 #     to look for has not been checked, and `pl rag` refuses to grade an UNKNOWN
 #     site green.
 #
+#   RULE 3 (always on, no configuration) — ORPHANED CONSENT
+#     Every user_consent row must still resolve to a data_policy revision that
+#     exists. This is the structural fingerprint of the WRONG REMEDY: someone
+#     found personal data in an old policy revision and DELETED the revision.
+#     See "THE SANCTIONED REMEDY" below.
+#
+# THE SANCTIONED REMEDY — REDACT AS A REVISION, NEVER DELETE
+# ----------------------------------------------------------
+# Finding personal data inside a golden is only half a guard. The other half is
+# saying what to DO about it, because the obvious reflex is destructive and the
+# damage is silent.
+#
+# On 2026-08-02 an identity-hygiene scrub of live `nwd` found the operator's
+# personal mailbox and full name inside an OLD `data_policy` revision — the
+# PUBLISHED text was already clean; only the superseded draft was dirty. The
+# scrub DELETED that revision. It worked, in the sense that the mailbox was
+# gone. It also:
+#
+#   * destroyed the drafting work in that revision, irrecoverably from live; and
+#   * ORPHANED a `user_consent` row, whose whole evidentiary purpose is to say
+#     "this person accepted THAT revision of the policy". With the revision
+#     deleted, the estate could no longer show what the user had agreed to.
+#     A consent record pointing at nothing is worse than no consent record: it
+#     looks like proof and is not.
+#
+# Operator ruling (nwp/ops#200), verbatim:
+#
+#     "it should be a new revision which is a redaction since we want to
+#      preserve any work done."
+#
+# So the remedy for personal data in a REVISIONED, CONSENT-BEARING entity is:
+#
+#   1. WRITE A REVISION whose body is the original text with the identifiers
+#      replaced by their institutional equivalents — the role address and the
+#      impersonal operator wording the CURRENT clean revisions already use. Do
+#      not invent a new convention; copy the one in force.
+#   2. Change nothing else. Same body byte-for-byte everywhere the identifier
+#      is not. The point of the ruling is that the WORK survives.
+#   3. Record the redaction in the revision log message: what was replaced (in
+#      kind, never in content), why, and the provenance of the recovered text.
+#   4. Leave the published/current revision alone unless it is itself dirty.
+#   5. NEVER `DELETE FROM` a revision table to make a scanner go quiet. If the
+#      revision has already been deleted, restore it AT ITS ORIGINAL revision
+#      id with the redacted body — that is the only thing that un-orphans the
+#      consent rows that name it.
+#
+# Rule 3 exists so this is not merely written down. A deletion of a
+# consent-bearing revision now shows up in `pl todo check` as a DATA/high
+# finding on the very next scan.
+#
 # Read-only. No network. Decompresses each golden once and streams it.
 ################################################################################
+
+# The remedy text every finding carries. One definition, so the guidance cannot
+# drift between the library, `pl todo` and whatever reads them next.
+GOLDEN_HYGIENE_REMEDY='REMEDY — REDACT, NEVER DELETE (operator ruling, nwp/ops#200): fix the LIVE site by REPLACING the identifier with the institutional equivalent already in use (role address / impersonal operator wording), then recapture. For a revisioned, consent-bearing entity (data_policy) write a REVISION carrying the redacted text and preserve everything else byte-for-byte — deleting the revision destroys the drafting work AND orphans the user_consent rows that cite it, leaving a consent record that points at nothing.'
 
 # Reserved/sentinel mail domains. RFC 2606 (.test/.example/.invalid/.localhost +
 # example.com|net|org) and RFC 6761 — all guaranteed never to resolve, which is
@@ -243,6 +297,17 @@ golden_hygiene_foreign_mail_domains() {
         [ -n "$d" ] || continue
         # Trailing dots / version-looking strings (mathjax@2.7.9) are not mail.
         printf '%s' "$d" | grep -qE '[a-z]' || continue
+        # ...and neither is `intl-tel-input@v17.0.19`. The `[a-z]` test above
+        # passes it, because the "domain" v17.0.19 contains a letter. A real
+        # mail domain's LAST label is alphabetic — no TLD is all-digits (a
+        # trailing numeric label means an IPv4 literal or, here, a package
+        # version). Warm cache tables in a Drupal golden are full of CDN
+        # library refs in exactly this shape, so without this the check
+        # reports three "foreign mail domains" on every capture forever —
+        # and a guard that cries wolf every night is a guard that gets
+        # ignored, which is the failure mode this whole library exists to
+        # avoid. Nothing deliverable is excluded: gmail.com still fails.
+        printf '%s' "$d" | grep -qE '\.[A-Za-z][A-Za-z-]*$' || continue
         if printf '%s' "$d" | grep -qE "$GOLDEN_SENTINEL_DOMAINS_RE"; then
             continue
         fi
@@ -289,7 +354,73 @@ golden_hygiene_denylisted_tokens() {
     done <<< "$hits"
 }
 
-# Both rules for one artifact, memoised on CONTENT.
+# RULE 3 — consent rows whose data_policy revision no longer exists.
+#
+# This is the structural signature of the WRONG REMEDY (see the header). Nobody
+# has to know which revision was dirty, or what was in it: a `user_consent` row
+# exists precisely to say "this person accepted revision N", so if revision N is
+# gone, the record has been hollowed out. Deleting a revision is the only
+# ordinary way to produce this state — the module never reuses or renumbers vids.
+#
+# Both tables are read in ONE streaming pass. `pl todo check` budgets 45s for
+# ~24 checks and a second decompression per artifact would blow it, which
+# downgrades the check to UNKNOWN and thereby to no check at all.
+#
+# Prints one line per orphaned revision id:  <vid> <consent-row-count>
+# Empty output = clean (and also = "this golden has no data_policy at all").
+# Args: $1 = artifact path
+golden_hygiene_orphaned_consents() {
+    local artifact="$1"
+    local raw
+    # The `.` standing in for a backtick/quote keeps the awk program free of
+    # shell-quoting escapes; the surrounding tuple shape is what makes it exact.
+    # The patterns are STRINGS, not /regex/ literals: awk evaluates a regex
+    # literal passed as a function argument to 0 or 1 (the result of matching it
+    # against $0), so scan() would silently receive "0" and find nothing. That
+    # bug reports every golden clean, which is the one answer this must never
+    # give by accident — hence the round-trip test on a fixture with a known
+    # deleted revision.
+    raw=$(golden_hygiene_stream "$artifact" | awk '
+        function scan(s, pat, kind,   t) {
+            while (match(s, pat)) {
+                t = substr(s, RSTART, RLENGTH)
+                print kind " " t
+                s = substr(s, RSTART + RLENGTH)
+            }
+        }
+        /^INSERT INTO .data_policy_revision. VALUES/                  { cur = "REV" }
+        /^INSERT INTO .user_consent__data_policy_revision_id. VALUES/ { cur = "CON" }
+        cur == "REV" { scan($0, "\\([0-9]+,[0-9]+,.[A-Za-z-]+.,", "REV") }
+        cur == "CON" { scan($0, "\\(.user_consent.,[0-9]+,[0-9]+,[0-9]+,.[A-Za-z-]+.,[0-9]+,[0-9]+\\)", "CON") }
+        /;[[:space:]]*$/ { cur = "" }
+    ' 2>/dev/null)
+    [ -n "$raw" ] || return 0
+
+    # data_policy_revision: (id, vid, langcode, …) → field 2 is the vid.
+    local revs; revs=$(printf '%s\n' "$raw" \
+        | sed -n 's/^REV ([0-9]*,\([0-9]*\),.*/\1/p' | sort -u)
+    # user_consent__…: (bundle, deleted, entity, revision, langcode, delta, VALUE)
+    # → the trailing field is the data_policy revision the consent cites.
+    local cons; cons=$(printf '%s\n' "$raw" \
+        | sed -n 's/^CON .*,\([0-9]*\))$/\1/p' | sort)
+
+    # No revisions parsed at all means this golden has no data_policy tables —
+    # silence, not "every consent is orphaned". Fail QUIET here, never loud:
+    # a false RED on every Moodle golden would get the whole check switched off.
+    [ -n "$revs" ] || return 0
+    [ -n "$cons" ] || return 0
+
+    local vid n
+    while IFS= read -r vid; do
+        [ -n "$vid" ] || continue
+        if ! printf '%s\n' "$revs" | grep -qx -- "$vid"; then
+            n=$(printf '%s\n' "$cons" | grep -cx -- "$vid")
+            printf '%s %s\n' "$vid" "$n"
+        fi
+    done <<< "$(printf '%s\n' "$cons" | sort -u)"
+}
+
+# All three rules for one artifact, memoised on CONTENT.
 #
 # Decompressing a multi-megabyte golden twice per artifact costs ~20s across the
 # five images this workstation holds. `pl todo check` budgets 45s for ~24 checks
@@ -300,9 +431,10 @@ golden_hygiene_denylisted_tokens() {
 # either input, is a different key and forces a fresh scan — the cache can go
 # stale-positive but never stale-negative.
 #
-# Prints:  MAIL  <domain>          (one per line)
-#          NAME  <masked>          (one per line)
-#          FENCE uid=<n> <domain>  (one per line)
+# Prints:  MAIL   <domain>          (one per line)
+#          NAME   <masked>          (one per line)
+#          FENCE  uid=<n> <domain>  (one per line)
+#          ORPHAN <vid> <rows>      (one per line)
 # Args: $1=artifact  $2=declared domains  $3=denylist file  $4=cache dir
 golden_hygiene_scan() {
     local artifact="$1" declared="$2" list="$3" cache_dir="$4"
@@ -322,17 +454,25 @@ golden_hygiene_scan() {
     fi
 
     local out=""
-    local d m
+    local d m o
     while IFS= read -r d; do
         [ -n "$d" ] && out+="MAIL $d"$'\n'
     done <<< "$(golden_hygiene_foreign_mail_domains "$artifact" "$declared")"
     while IFS= read -r m; do
         [ -n "$m" ] && out+="NAME $m"$'\n'
     done <<< "$(golden_hygiene_denylisted_tokens "$artifact" "$list")"
+    # FENCE (seed-fence violations) and ORPHAN (consent rows whose policy
+    # revision is gone) were added independently on either side of this rebase.
+    # They are separate hazards and neither subsumes the other, so the
+    # aggregator reports both.
     local v
     while IFS= read -r v; do
         [ -n "$v" ] && out+="FENCE $v"$'\n'
     done <<< "$(golden_demo_fence_violations "$artifact")"
+    local o
+    while IFS= read -r o; do
+        [ -n "$o" ] && out+="ORPHAN $o"$'\n'
+    done <<< "$(golden_hygiene_orphaned_consents "$artifact")"
 
     if [ -n "$cache" ]; then
         mkdir -p "$(dirname "$cache")" 2>/dev/null && printf '%s' "$out" > "$cache" 2>/dev/null

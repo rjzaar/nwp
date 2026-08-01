@@ -22,7 +22,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-VERIFICATION_FILE="${PROJECT_ROOT}/.verification.yml"
+# The registry path is env-overridable (nwp/ops#159) so tests can point the
+# whole engine at a tiny fixture instead of the 33k-line production registry.
+VERIFICATION_FILE="${NWP_VERIFICATION_FILE:-${PROJECT_ROOT}/.verification.yml}"
 
 # Source UI library for colors
 source "$PROJECT_ROOT/lib/ui.sh"
@@ -2513,6 +2515,9 @@ run_console() {
 source_verify_runner() {
     local runner_lib="$PROJECT_ROOT/lib/verify-runner.sh"
     if [[ -f "$runner_lib" ]]; then
+        # Keep the runner's view of the registry in lockstep with ours —
+        # including the NWP_VERIFICATION_FILE override.        (nwp/ops#159)
+        VERIFY_YAML_FILE="$VERIFICATION_FILE"
         source "$runner_lib"
         # THE CHECKOUT UNDER TEST MUST SUPPLY ITS OWN `pl` (ops#165).
         #
@@ -3129,6 +3134,202 @@ get_item_machine_commands() {
     ' "$VERIFICATION_FILE"
 }
 
+################################################################################
+# CI-suitability classification                                  (nwp/ops#159)
+#
+# A shell-executor build slot cannot run checks that need ddev, docker, or a
+# live site. Those checks are not evidence of failure there — and not evidence
+# of success either. In ci mode they are SKIPPED, with the reason, and the
+# pass rate is computed over the RUNNABLE subset only.
+#
+# Resolution order per item: an explicit `machine.requires:` key in the
+# registry wins; otherwise the requirement is INFERRED from the item's check
+# commands with the small table below (highest-ranked requirement wins).
+################################################################################
+
+# Requirement severity: live > ddev > docker > network > none
+verify_requirement_rank() {
+    case "$1" in
+        live)    echo 4 ;;
+        ddev)    echo 3 ;;
+        docker)  echo 2 ;;
+        network) echo 1 ;;
+        *)       echo 0 ;;
+    esac
+}
+
+# Pure inference: map one check command string to the capability it needs.
+# Table-like on purpose — first match wins, and the cases are ordered by rank
+# so a command spanning several tiers lands on the highest one.
+# Word matches are space-delimited over a space-padded copy of the command, so
+# `ddev-site` does not read as `ddev` and `ripl install` does not read as
+# `pl install`.
+#
+# INFERENCE IS COSTLY WHEN WRONG, IN ONE DIRECTION ONLY. A false negative just
+# runs a check that then fails honestly. A false POSITIVE silently removes a
+# perfectly runnable check from the denominator — coverage lost without a red
+# line anywhere. So each pattern must match the command DOING the thing, not
+# merely NAMING it.
+#
+# Measured against the real registry (2026-08-02): a bare ` ssh ` token
+# classified `live:4` — whose whole basic check is `which ssh` plus a
+# `test -f` — as needing production, and it went from passed to skipped. There
+# is not one command in the manifest at any depth that actually opens a remote
+# shell; every `ssh` mention is local (`which ssh`, `ssh -V`, `grep 'ssh'
+# file`, `~/.ssh`). Hence: an ssh/scp invocation counts as `live` only when it
+# names a remote TARGET (`user@host`, or a dotted hostname argument).
+verify_infer_requirement() {
+    local padded=" ${1:-} "
+    case "$padded" in
+        # -- NEGATIVE FIRST: a tool-availability probe names tools, it does
+        # not use them. `which rsync ssh curl` needs no network, no server and
+        # no docker; classifying it by its argument list is the same mistake
+        # as the ` ssh ` token below, and it cost `which rsync ssh curl 2>&1`
+        # its place in the denominator. A compound that goes on to USE the
+        # tool carries a URL or a remote target, so it falls through.
+        " which "*|" command -v "*|" type ")
+            case "$padded" in
+                *"://"*|*@*) ;;              # compound — keep classifying
+                *) echo "none"; return 0 ;;
+            esac ;;
+    esac
+    case "$padded" in
+        # -- live: touches a real server or a live tier --------------------
+        # `--tier=live` and an estate domain are unambiguous. For ssh/scp the
+        # test is a remote target, never the bare word: `ssh user@host …`,
+        # `scp f user@host:…`, or `ssh host.domain …`.
+        *"--tier=live"*|*nwpcode.org*)
+            echo "live" ;;
+        *" ssh "*@*|*" scp "*@*)
+            echo "live" ;;
+        *" ssh "[a-zA-Z0-9]*.[a-zA-Z]*|*" scp "*.*:*)
+            echo "live" ;;
+        # -- ddev: the ddev CLI, site creation, or the {site} placeholder --
+        *" ddev "*|*"{site}"*|*" pl init "*|*" pl install "*|*"verify-test"*)
+            echo "ddev" ;;
+        # -- docker --------------------------------------------------------
+        *" docker "*|*" docker-compose "*)
+            echo "docker" ;;
+        # -- network: generic outbound HTTP --------------------------------
+        *" curl "*|*" wget "*|*"https://"*|*"http://"*)
+            echo "network" ;;
+        *)
+            echo "none" ;;
+    esac
+}
+
+# Probe THIS runner and record its capabilities in VERIFY_RUNNER_CAPS
+# (comma-padded list, e.g. ",docker,ddev,network,").
+#
+# Overrides:
+#   NWP_VERIFY_CAPS  — if SET (even empty), it is authoritative: exactly these
+#                      capabilities, no probing. Empty = "runner has nothing".
+#   NWP_VERIFY_LIVE=1 — the ONLY way to grant `live`. It is never probed:
+#                      CI must not touch production to find out whether it can.
+verify_detect_capabilities() {
+    if [[ -n "${NWP_VERIFY_CAPS+set}" ]]; then
+        VERIFY_RUNNER_CAPS=",${NWP_VERIFY_CAPS},"
+        return 0
+    fi
+
+    local caps=","
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        caps+="docker,"
+        # ddev without a usable docker daemon underneath is not a capability
+        if command -v ddev >/dev/null 2>&1; then
+            caps+="ddev,"
+        fi
+    fi
+    if [[ "${NWP_VERIFY_LIVE:-0}" == "1" ]]; then
+        caps+="live,"
+    fi
+    # DNS resolution of our own forge (derived from the origin remote — the
+    # literal internal domain must not appear in code). No production HTTP
+    # probe; an unresolvable/absent remote just means no network capability.
+    # `|| true` is load-bearing: under `set -euo pipefail` an assignment from a
+    # failing command substitution ABORTS the script, and git exits 128 when
+    # PROJECT_ROOT is not a repo — which is exactly the throwaway-tree case the
+    # bats fixtures use. Absent remote => no network capability, never a crash.
+    local forge_host
+    forge_host="$(git -C "$PROJECT_ROOT" remote get-url origin 2>/dev/null \
+        | sed -E 's#^[a-z]+@([^:/]+):.*#\1#; s#^[a-z+]+://([^/@]*@)?([^:/]+).*#\2#' || true)"
+    if [[ -n "$forge_host" ]] && getent hosts "$forge_host" >/dev/null 2>&1; then
+        caps+="network,"
+    fi
+    VERIFY_RUNNER_CAPS="$caps"
+}
+
+# Does the runner meet one requirement? `none` is always met.
+verify_cap_met() {
+    local req="${1:-none}"
+    [[ "$req" == "none" || -z "$req" ]] && return 0
+    [[ "${VERIFY_RUNNER_CAPS:-,}" == *",$req,"* ]]
+}
+
+# Explicit per-item override: `machine.requires` on one checklist item.
+# Prints nothing when the item carries no explicit tag.
+#
+# yq, not awk — ADR-0015 / lint:yq-first. The registry is YAML and `pl` reads
+# YAML with yq (see _machine_verified_timestamps above, lib/ci-stats.sh,
+# pl get_site_field). A hand-rolled indentation parser is exactly what that
+# gate exists to stop, and the .yq-first-baseline is shrink-only: a brand-new
+# parser may not be added to it.
+#
+# A LIST value (`requires: [ddev, docker]`) is legal and emits one requirement
+# per line, so the caller can take the highest-ranked one; a scalar emits a
+# single line. env(IDX) is parsed as YAML, so a numeric index arrives as an
+# int; strenv(FID) keeps a feature id that looks numeric a string.
+get_item_requires() {
+    local feature_id="$1"
+    local item_idx="$2"
+
+    FID="$feature_id" IDX="$item_idx" yq e '
+        .features[strenv(FID)].checklist[env(IDX)].machine.requires
+        | select(. != null)
+        | (.[]? // .)
+        | select(. != null and . != "")
+    ' "$VERIFICATION_FILE" 2>/dev/null
+}
+
+# Resolve the requirement for one item at one depth: explicit tag wins, else
+# the highest-ranked inference over the item's commands.
+verify_resolve_item_requirement() {
+    local feature_id="$1"
+    local item_idx="$2"
+    local depth="$3"
+
+    local explicit best="none" best_rank=0 req rank
+    explicit=$(get_item_requires "$feature_id" "$item_idx")
+    if [[ -n "$explicit" ]]; then
+        # One line per requirement (a list value tags several); the strictest
+        # wins, so `requires: [ddev, live]` needs live.
+        while IFS= read -r req; do
+            [[ -z "$req" ]] && continue
+            rank=$(verify_requirement_rank "$req")
+            if (( rank >= best_rank )); then
+                best="$req"
+                best_rank=$rank
+            fi
+        done <<< "$explicit"
+        echo "$best"
+        return 0
+    fi
+
+    best="none"
+    best_rank=0
+    local cmd rest
+    while IFS=$'\t' read -r cmd rest; do
+        [[ -z "$cmd" ]] && continue
+        req=$(verify_infer_requirement "$cmd")
+        rank=$(verify_requirement_rank "$req")
+        if (( rank > best_rank )); then
+            best="$req"
+            best_rank=$rank
+        fi
+    done <<< "$(get_item_machine_commands "$feature_id" "$item_idx" "$depth")"
+    echo "$best"
+}
+
 # Execute machine checks for a single item
 # Usage: execute_item_machine_checks feature_id item_index depth test_site
 # Returns: 0 on success, 1 on failure
@@ -3491,6 +3692,26 @@ run_machine_checks() {
     local test_site=""
     local needs_test_site=true  # In future, check if any commands need {site}
 
+    # NO CAPABILITY SHORT-CIRCUIT HERE — deliberately, and this comment is the
+    # guard rail (ops#159 on ops#165).
+    #
+    # An earlier draft of ops#159 skipped the create_test_site attempt outright
+    # when the runner had no ddev: "don't burn time on a create that cannot
+    # succeed". It was wrong, and CI caught it (job 10183, ops#165's test "a
+    # create_test_site failure warns and the run continues"). That test forces
+    # a creation failure and pins that the run WARNS and CARRIES ON rather than
+    # aborting under `set -euo pipefail`. Skipping the attempt on a ddev-less
+    # box removed the very path the test exercises — on precisely the machine
+    # where the guarantee matters, a bare CI slot. It passed on a laptop with
+    # ddev installed and failed on the runner: an environment assumption, the
+    # same shape as the demo_yq/PATH bug in ops#173.4.
+    #
+    # So: always ATTEMPT, and let create_test_site's own fail-soft path report
+    # the outcome. One code path, exercised everywhere, in the environment that
+    # actually has the constraint. The consequence is still reported honestly —
+    # ops#165's NOT MEASURED line counts the site-dependent checks that could
+    # not run, and the CI ledger prints that bucket alongside the capability
+    # skips. Nothing is hidden; nothing is measured twice.
     if [[ "$needs_test_site" == true ]]; then
         echo -e "${BLUE}Creating test site...${NC}"
         VERIFY_TEST_PREFIX="$prefix"
@@ -3590,6 +3811,14 @@ run_machine_checks() {
             # noise that buried the real failures. Skipped-for-no-site is
             # reported per feature and in the run summary, never counted as
             # passed: this is "I could not look", not "all clear".
+            #
+            # ops#159 ORDER NOTE: this runs BEFORE the capability skip below,
+            # deliberately. A {site} check on a ddev-less runner satisfies both
+            # conditions, and "there is no test site" is the more specific,
+            # concrete fact — it is also what feeds ops#165's NOT MEASURED
+            # line. Reporting the same item under both names would double-count
+            # it in the ledger; the site arm wins, and the ledger prints both
+            # buckets so the totals still reconcile.
             if [[ -z "$test_site" ]] && item_machine_checks_need_site "$f" "$i" "$depth"; then
                 echo -e "  ${YELLOW}[skip]${NC} $item_text ${DIM}(needs a test site; none available)${NC}"
                 item_skipped=$((item_skipped + 1))
@@ -3598,6 +3827,23 @@ run_machine_checks() {
                 items_processed=$((items_processed + 1))
                 draw_progress_bar "$items_processed" "$total_items"
                 continue
+            fi
+
+            # ops#159: in ci mode, a check whose requirement this runner
+            # cannot meet is SKIPPED — visibly, with the reason — never
+            # run-to-fail and never silently passed over.
+            if [[ "${VERIFY_CI_SKIP_UNRUNNABLE:-false}" == true ]]; then
+                local item_req
+                item_req=$(verify_resolve_item_requirement "$f" "$i" "$depth")
+                if ! verify_cap_met "$item_req"; then
+                    echo -e "  ${YELLOW}[skip]${NC} $item_text ${DIM}(SKIP: requires $item_req — runner has none)${NC}"
+                    item_skipped=$((item_skipped + 1))
+                    total_skipped=$((total_skipped + 1))
+                    track_result "$f" "$i" "skipped" "0" "requires $item_req — runner has none"
+                    items_processed=$((items_processed + 1))
+                    draw_progress_bar "$items_processed" "$total_items"
+                    continue
+                fi
             fi
 
             # Execute the actual machine checks from YAML
@@ -3671,6 +3917,10 @@ run_machine_checks() {
                 "(create one, or run on a host with DDEV, to measure them)"
         echo ""
     fi
+    # Publish it: run_ci_mode's ledger prints this bucket alongside the
+    # capability skips, so the two exclusions from the pass-rate denominator
+    # are both visible and the totals reconcile. (ops#159 on ops#165)
+    VERIFY_SITE_SKIPPED=$site_skipped
 
     # Return non-zero if any failures
     if [[ $total_failed -gt 0 ]]; then
@@ -3785,6 +4035,16 @@ run_ci_mode() {
     verify_ci_bootstrap_config "$PROJECT_ROOT" || true
     echo ""
 
+    # ops#159: classify what THIS runner can honestly execute. Checks whose
+    # requirement it cannot meet will be skipped with the reason, and the
+    # pass rate below is computed over the runnable subset only.
+    verify_detect_capabilities
+    local caps_pretty
+    caps_pretty=$(echo "${VERIFY_RUNNER_CAPS:-,}" | tr ',' ' ' | sed 's/^ *//;s/ *$//')
+    echo -e "${DIM}Runner capabilities: ${caps_pretty:-(none)}${NC}"
+    echo ""
+    VERIFY_CI_SKIP_UNRUNNABLE=true
+
     # Run all machine checks
     #
     # `|| exit_code=$?` for the same `set -e` reason as the test-site
@@ -3808,6 +4068,30 @@ run_ci_mode() {
         echo -e ".verification.yml are unchanged and are NOT evidence about this commit.${NC}"
         return 1
     fi
+
+    # ops#159 — the honest ledger: what had checks, what could run HERE, and
+    # how the runnable subset fared. Unrunnable skips are neither red nor
+    # green; they simply are not evidence on this runner.
+    #
+    # TWO exclusion buckets, both printed, because there are two ways a check
+    # can fail to be evidence here and a reader must be able to add them up:
+    #   * capability skips — tracked through track_result, so they are inside
+    #     VERIFY_TESTS_RUN and subtracted out below;
+    #   * site skips (ops#165 NOT MEASURED) — never tracked at all, so they
+    #     are outside VERIFY_TESTS_RUN and need reporting separately, or the
+    #     ledger would silently understate how much went unmeasured.
+    local ci_total=$VERIFY_TESTS_RUN
+    local ci_unrunnable=$VERIFY_TESTS_SKIPPED
+    local ci_runnable=$((ci_total - ci_unrunnable))
+    local ci_site_skipped="${VERIFY_SITE_SKIPPED:-0}"
+    echo ""
+    echo -e "${BOLD}CI suitability summary${NC}"
+    echo -e "  Checks with commands:    $((ci_total + ci_site_skipped))"
+    echo -e "  Runnable on this runner: $ci_runnable"
+    echo -e "  Passed:                  $VERIFY_TESTS_PASSED"
+    echo -e "  Failed:                  $VERIFY_TESTS_FAILED"
+    echo -e "  Skipped (unrunnable):    $ci_unrunnable"
+    echo -e "  Not measured (no site):  $ci_site_skipped"
 
     # Export results
     if [[ "$export_json" == true ]]; then
@@ -3851,13 +4135,19 @@ run_ci_mode() {
     # teaches people to stop reading either (ops#165). The threshold is the
     # verdict; failures inside the tolerance are listed in the summary above
     # and repeated here so they cannot hide behind a green tick.
+    #
+    # ops#159 adds WHAT the rate is a rate OF: the RUNNABLE subset. A check
+    # this runner could not execute is not evidence either way, so it is out
+    # of the denominator entirely — it can neither redden nor green the job.
+    # Both exclusions are named on the line so the number is auditable:
+    # capability skips (ledger above) and site skips (NOT MEASURED above).
     local pass_rate=$(get_pass_rate)
     echo ""
     if [[ $pass_rate -lt 98 ]]; then
-        echo -e "${RED}FAIL:${NC} Pass rate ${pass_rate}% below 98% threshold"
+        echo -e "${RED}FAIL:${NC} Pass rate ${pass_rate}% over ${ci_runnable} runnable check(s) — below 98% threshold"
         return 1
     fi
-    echo -e "${GREEN}PASS:${NC} ${pass_rate}% pass rate"
+    echo -e "${GREEN}PASS:${NC} ${pass_rate}% pass rate over ${ci_runnable} runnable check(s)"
     if [[ $exit_code -ne 0 ]]; then
         echo -e "${YELLOW}NOTE:${NC} some checks failed but the rate is within the 98% threshold — see 'Failed Items' above. Fix or fix the manifest; do not let them accumulate."
     fi

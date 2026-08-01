@@ -541,6 +541,24 @@ PHP
   [ "$status" -ne 0 ]
 }
 
+@test "the OIDC wiring script refuses a contract without oidc.issuer_name (no codename fallback)" {
+  # issuer_name is MEMBER-FACING (the SSO login-button label). The old silent
+  # fallback "<provider> (F26)" once put an internal codename on the live login
+  # page; a missing key must abort with instructions, never guess.
+  c="$(demo_pair_contract_for cons)"
+  sed -i '/^  issuer_name:/d' "$c"
+  run bash "${REPO_ROOT}/scripts/demo/ssd-oidc-wire.sh" --site=cons --tier=dev --check
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"oidc.issuer_name is not set"* ]]
+  [[ "$output" != *"(F26)"* ]]
+}
+
+@test "NEGATIVE CONTROL: with issuer_name present the issuer-name refusal does not fire" {
+  # Without this, an unconditional refusal would satisfy the test above.
+  run bash "${REPO_ROOT}/scripts/demo/ssd-oidc-wire.sh" --site=cons --tier=dev --check
+  [[ "$output" != *"oidc.issuer_name is not set"* ]]
+}
+
 @test "the decoy sweep names auth_nwc_oauth2 and is fail-loud" {
   grep -q 'DECOY_PLUGIN="auth_nwc_oauth2"' "${REPO_ROOT}/scripts/demo/ssd-rebuild.sh"
   grep -q 'REFUSED: auth_nwc_oauth2 traces present' "${REPO_ROOT}/scripts/demo/ssd-rebuild.sh"

@@ -129,8 +129,27 @@ _fetch() {
     # vanish with no error at all. Observed exactly once, on the first real run
     # (1 of 9 captured, exit 0) — a capture that silently captures almost
     # nothing is precisely the failure this command exists to prevent.
-    timeout 30 ssh -n -o ConnectTimeout=8 -o BatchMode=yes ${NWP_SERVER_STATE_SSH_OPTS:-} \
-        "$target" "$rcmd" || return 1
+    #
+    # ONE bounded retry, and only on the real ssh path (the test shim above
+    # returns before this point, so retry semantics never leak into the suite).
+    # The first 20-artifact run against the `live` box dropped a different
+    # 1-2 connections every pass (~10% per-connection, sshd MaxStartups-shaped)
+    # while every individual retry succeeded — a red that is 100% weather
+    # trains the reader to ignore red, which is the same vacuity UNREACHABLE
+    # exists to prevent. Two honest failures in a row still report UNREACHABLE.
+    # stdout is buffered per attempt so a half-emitted first attempt can never
+    # be concatenated with (or mistaken for) the successful second one.
+    local buf attempt
+    buf="$(mktemp)"
+    for attempt in 1 2; do
+        if timeout 30 ssh -n -o ConnectTimeout=8 -o BatchMode=yes ${NWP_SERVER_STATE_SSH_OPTS:-} \
+            "$target" "$rcmd" > "$buf"; then
+            cat "$buf"; rm -f "$buf"; return 0
+        fi
+        [ "$attempt" -eq 1 ] && sleep 2
+    done
+    rm -f "$buf"
+    return 1
 }
 
 # ---------------------------------------------------------------------------

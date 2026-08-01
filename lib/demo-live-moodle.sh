@@ -137,14 +137,57 @@ demo_moodle_idle_ok() {
     (( now - last > window ))
 }
 
+# Log tables whose SCHEMA belongs in the golden but whose ROWS never do
+# (nwp/ops#168). Space-separated, overridable for a site with a different
+# logstore.
+#
+# WHY, with the numbers that forced it. The 2026-08-01 ssd golden carried
+# 4,521 `mdl_logstore_standard_log` rows — 74 days deep, 299 distinct public
+# visitor IPs, and 652 KB of a 2.40 MB dump (27 % of the whole artifact). A
+# golden is a REFERENCE IMAGE that is restored onto the live demo site every
+# night, so those rows are not a log: they are an immortal replay. They cannot
+# age out, because the thing that would age them out is replaced from the image
+# at 01:00; they are duplicated at rest into every golden and every backup of
+# one; and on the Drupal half the same defect made the nightly harvest digest
+# re-report the identical errors three nights running (ops#168's evidence).
+# `mdl_task_log` is EMPTY today and is excluded anyway: it fills exactly when a
+# scheduled task fails, which is precisely the state nobody wants frozen.
+#
+# Nothing is lost. The box wrapper harvests the errors it cares about BEFORE
+# the wipe (servers/live/demo/ssd-demo-reset-restricted), and that digest — not
+# the golden's copy of the table — is the record.
+DEMO_MOODLE_NODATA_TABLES="${DEMO_MOODLE_NODATA_TABLES:-mdl_logstore_standard_log mdl_task_log}"
+
 # ---------------------------------------------------------------------------
 # demo_moodle_dump_cmd <dbname> <out-path>
 # The remote dump command. --single-transaction so a live site is not locked;
 # --routines/--events so the restore is complete rather than merely populated.
+#
+# TWO PASSES, and the second one is not optional (nwp/ops#168). A plain
+# `--ignore-table` drops the CREATE TABLE along with the rows, and the Moodle
+# restore path DROPS THE WHOLE SCHEMA FIRST (demo_moodle_droptables_cmd) — so a
+# one-pass exclusion would leave the restored site with those tables simply
+# absent, and Moodle fatals the moment anything writes a log row. Pass 1 is the
+# data dump minus those tables; pass 2 re-adds their structure with --no-data.
+# Both stream into ONE gzip, so the artifact keeps exactly the shape the rest of
+# the pipeline (sha256 sidecar, demo_moodle_import_cmd's `gunzip -c`) already
+# expects.
+#
+# The passes are chained with `&&`, not `;`: if the data pass dies, the
+# structure pass must not run and hand back a dump that LOOKS complete. Note
+# the pre-existing limit this does not fix — the exit status of `… | gzip > f`
+# is gzip's, so a mysqldump failure is not visible to the caller here either
+# way. That is unchanged from the single-pass version and is the golden
+# verifier's gap (it checks sha256, not content), not this function's.
 # ---------------------------------------------------------------------------
 demo_moodle_dump_cmd() {
-    local db="$1" out="$2"
-    printf 'sudo mysqldump --single-transaction --quick --routines --events %s | gzip > %s' "$db" "$out"
+    local db="$1" out="$2" t ignore="" structonly=""
+    for t in $DEMO_MOODLE_NODATA_TABLES; do
+        ignore+=" --ignore-table=${db}.${t}"
+        structonly+=" ${t}"
+    done
+    printf '{ sudo mysqldump --single-transaction --quick --routines --events%s %s && sudo mysqldump --single-transaction --no-data %s%s; } | gzip > %s' \
+        "$ignore" "$db" "$db" "$structonly" "$out"
 }
 
 # ---------------------------------------------------------------------------

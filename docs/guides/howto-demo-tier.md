@@ -41,6 +41,20 @@ manifest, under `sites/nwd/demo-golden/`.
 Do this when the site is in the state you *want* testers to start from — sample
 content in place, no test rubbish, no leftover accounts.
 
+**Log tables are captured as structure only, never as rows** (nwp/ops#168) —
+`watchdog`, `sessions` and `flood` on Drupal; `mdl_logstore_standard_log` and
+`mdl_task_log` on Moodle. A golden is restored onto the live demo site every
+night, so a row inside it is *immortal*: it cannot age out, because the table
+that would age it out is replaced from the image at 01:00. The 2026-08-01
+goldens carried 36 `watchdog` rows (16 of them from ddev, with dev-path
+backtraces) and 4,521 Moodle log rows across 299 public visitor IPs — and the
+nightly harvest digest re-reported the identical two errors every night as a
+result. Nothing is lost: the box wrapper harvests errors *before* the wipe, and
+that digest is the record.
+
+This takes effect at the **next** capture. Fixing the dump command does not
+clean an already-stored golden.
+
 ### 2. Reset the site
 
 ```bash

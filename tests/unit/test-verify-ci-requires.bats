@@ -168,7 +168,10 @@ _vfn() {
     printf '#!/bin/sh\nexit 1\n' > "$SHIM/docker"
     printf '#!/bin/sh\nexit 0\n' > "$SHIM/ddev"
     chmod +x "$SHIM/docker" "$SHIM/ddev"
-    run bash -c "export PATH='$SHIM:/usr/bin:/bin'
+    # `unset NWP_VERIFY_CAPS` is load-bearing: this test is ABOUT detection,
+    # and the override would silently answer for it if the caller's shell
+    # happens to export one. A test must mean the same thing in any shell.
+    run bash -c "export PATH='$SHIM:/usr/bin:/bin'; unset NWP_VERIFY_CAPS
                  source '$VERIFY' && verify_detect_capabilities
                  verify_cap_met docker && exit 1
                  verify_cap_met ddev && exit 1   # ddev without usable docker is not a capability
@@ -182,7 +185,10 @@ _vfn() {
     printf '#!/bin/sh\nexit 0\n' > "$SHIM/docker"
     printf '#!/bin/sh\nexit 0\n' > "$SHIM/ddev"
     chmod +x "$SHIM/docker" "$SHIM/ddev"
-    run bash -c "export PATH='$SHIM:/usr/bin:/bin'
+    # `unset NWP_VERIFY_CAPS` is load-bearing: this test is ABOUT detection,
+    # and the override would silently answer for it if the caller's shell
+    # happens to export one. A test must mean the same thing in any shell.
+    run bash -c "export PATH='$SHIM:/usr/bin:/bin'; unset NWP_VERIFY_CAPS
                  source '$VERIFY' && verify_detect_capabilities
                  verify_cap_met docker || exit 1
                  verify_cap_met ddev || exit 1
@@ -195,7 +201,7 @@ _vfn() {
     mkdir -p "$SHIM"
     printf '#!/bin/sh\nexit 1\n' > "$SHIM/docker"
     chmod +x "$SHIM/docker"
-    run bash -c "export PATH='$SHIM:/usr/bin:/bin' NWP_VERIFY_LIVE=1
+    run bash -c "export PATH='$SHIM:/usr/bin:/bin' NWP_VERIFY_LIVE=1; unset NWP_VERIFY_CAPS
                  source '$VERIFY' && verify_detect_capabilities
                  verify_cap_met live || exit 1
                  exit 0"
@@ -506,12 +512,22 @@ _run_ci_caps() {
     [ "$status" -eq 0 ]
 }
 
-@test "with no ddev capability, ci does not attempt to create a test site" {
+# This test used to assert the OPPOSITE — that a ddev-less runner does not
+# even attempt create_test_site. That was an optimisation of mine, and it
+# deleted ops#165's graceful-degradation path on exactly the machine where the
+# guarantee matters: CI job 10183 went red on "a create_test_site failure warns
+# and the run continues" while every local run stayed green, because this
+# laptop has ddev and the runner does not. The contract below is the correct
+# one, and it is pinned in the ddev-less condition on purpose.
+@test "with no ddev capability, ci STILL attempts the test site and degrades gracefully" {
     _mini_repo
     _run_ci_caps ""
-    # The old path burned time calling create_test_site just to fail; with no
-    # ddev there is nothing a test site could run.
-    [[ "$output" != *"Creating test site"* ]]
+    # One code path, attempted everywhere: the attempt is announced,
+    [[ "$output" == *"Creating test site"* ]]
+    # it fails soft rather than aborting under set -euo pipefail,
+    [[ "$output" == *"Could not create test site"* ]]
+    # and the run carries on to produce its verdict.
+    [[ "$output" == *"pass rate"* || "$output" == *"PASS:"* ]]
 }
 
 @test "NWP_VERIFICATION_FILE points the whole engine at an alternate registry" {

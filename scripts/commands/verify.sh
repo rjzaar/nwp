@@ -3692,15 +3692,26 @@ run_machine_checks() {
     local test_site=""
     local needs_test_site=true  # In future, check if any commands need {site}
 
-    # ops#159: a runner without ddev cannot host a test site. In ci mode say
-    # so once and skip the attempt, instead of failing into the warning below
-    # after burning time on a create that cannot succeed.
-    if [[ "${VERIFY_CI_SKIP_UNRUNNABLE:-false}" == true ]] && ! verify_cap_met "ddev"; then
-        needs_test_site=false
-        echo -e "${YELLOW}Test site:${NC} skipped — runner has no ddev capability"
-        echo ""
-    fi
-
+    # NO CAPABILITY SHORT-CIRCUIT HERE — deliberately, and this comment is the
+    # guard rail (ops#159 on ops#165).
+    #
+    # An earlier draft of ops#159 skipped the create_test_site attempt outright
+    # when the runner had no ddev: "don't burn time on a create that cannot
+    # succeed". It was wrong, and CI caught it (job 10183, ops#165's test "a
+    # create_test_site failure warns and the run continues"). That test forces
+    # a creation failure and pins that the run WARNS and CARRIES ON rather than
+    # aborting under `set -euo pipefail`. Skipping the attempt on a ddev-less
+    # box removed the very path the test exercises — on precisely the machine
+    # where the guarantee matters, a bare CI slot. It passed on a laptop with
+    # ddev installed and failed on the runner: an environment assumption, the
+    # same shape as the demo_yq/PATH bug in ops#173.4.
+    #
+    # So: always ATTEMPT, and let create_test_site's own fail-soft path report
+    # the outcome. One code path, exercised everywhere, in the environment that
+    # actually has the constraint. The consequence is still reported honestly —
+    # ops#165's NOT MEASURED line counts the site-dependent checks that could
+    # not run, and the CI ledger prints that bucket alongside the capability
+    # skips. Nothing is hidden; nothing is measured twice.
     if [[ "$needs_test_site" == true ]]; then
         echo -e "${BLUE}Creating test site...${NC}"
         VERIFY_TEST_PREFIX="$prefix"

@@ -416,6 +416,113 @@ cleanup_test_linodes() {
 }
 
 ################################################################################
+# Values-safe Linode API transport
+#
+# WHY THIS EXISTS
+# ---------------
+# Every helper above builds its own `curl -s -H "Authorization: Bearer $token"`.
+# That puts a live API credential in curl's ARGV, where `ps -ef` shows it to
+# every user on the box for the lifetime of the request, and where a shell trace
+# (`set -x`, `pl -d`) prints it verbatim. The estate already has the fix and
+# already documents it — lib/gitlab-issues.sh keeps its token inside a 0600 curl
+# config and never lets it near argv. This is the same construction for Linode,
+# in the one place, so new callers inherit it instead of copying the old shape.
+#
+# It is deliberately NOT a second API client: it is the transport the existing
+# DNS primitives below now call, so there is one authenticated path, not two.
+#
+# THE STATUS IS RETURNED IN-BAND, ON PURPOSE.
+# The obvious design — set a global LINODE_API_HTTP_CODE — is silently broken
+# here, because every caller writes `body=$(linode_api_get …)`, and a command
+# substitution is a SUBSHELL: the global is assigned in the child and is gone by
+# the time the parent looks at it. The caller would then read an empty status
+# and, if it treated empty as "fine", would believe an unauthenticated or failed
+# request. So the transport appends one sentinel line
+#
+#     NWPHTTP:<http_code>
+#
+# and callers split it off with linode_api_code / linode_api_body. An HTTP
+# status that cannot go missing is worth the extra line.
+#
+# Returns 0 when the transport worked (whatever the HTTP status), 1 when curl
+# itself failed. "curl failed" and "the server said 401" are different answers
+# and are never merged — see lib/http.sh.
+################################################################################
+
+# Source lib/http.sh for the shared timeout policy, if it is available. Without
+# it these calls would inherit curl's defaults (~2 min to give up on a connect,
+# effectively unbounded on a stalled body) — the exact thing lib/http.sh exists
+# to stop.
+if ! declare -F nwp_http_config_lines >/dev/null 2>&1; then
+    LINODE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # shellcheck source=/dev/null
+    [ -f "$LINODE_LIB_DIR/http.sh" ] && source "$LINODE_LIB_DIR/http.sh"
+fi
+if ! declare -F nwp_http_config_lines >/dev/null 2>&1; then
+    nwp_http_config_lines(){ printf 'connect-timeout = 8\nmax-time = 30\n'; }
+fi
+
+# linode_api_request TOKEN METHOD PATH [JSON_BODY]
+#   PATH is everything after https://api.linode.com — e.g. /v4/domains
+# Prints the response body followed by a `NWPHTTP:<code>` sentinel line.
+# The token never appears in argv.
+linode_api_request() {
+    local token="$1" method="$2" path="$3" payload="${4:-}"
+    local cfg body="" out rc
+
+    cfg=$(mktemp) || return 1
+    chmod 600 "$cfg"
+    {
+        printf 'silent\n'
+        nwp_http_config_lines
+        printf 'header = "Authorization: Bearer %s"\n' "$token"
+        printf 'request = "%s"\n' "$method"
+        if [ -n "$payload" ]; then
+            body=$(mktemp); chmod 600 "$body"; printf '%s' "$payload" > "$body"
+            printf 'header = "Content-Type: application/json"\n'
+            printf 'data = "@%s"\n' "$body"
+        fi
+        # Trailing sentinel so the HTTP status can be recovered without a second
+        # request. Split off below; never printed to the caller.
+        printf 'write-out = "\\nNWPHTTP:%%{http_code}"\n'
+        printf 'url = "https://api.linode.com%s"\n' "$path"
+    } > "$cfg"
+    token=""
+
+    out=$(curl -K "$cfg" 2>/dev/null); rc=$?
+    rm -f "$cfg" ${body:+"$body"}
+
+    # curl failed outright: no status was ever received. Say so explicitly
+    # rather than emitting a sentinel that would read as a real answer.
+    if [ "$rc" -ne 0 ] && [[ "${out##*$'\n'}" != NWPHTTP:* ]]; then
+        printf '\nNWPHTTP:000'
+        return 1
+    fi
+
+    printf '%s' "$out"
+    [ "$rc" -eq 0 ] || return 1
+    return 0
+}
+
+# Convenience wrapper for the read path.
+linode_api_get() { linode_api_request "$1" GET "$2"; }
+
+# Split a linode_api_request result. Pure text, no state, subshell-safe.
+#   linode_api_code "$raw"  -> the HTTP status, or 000 when there was no answer
+#   linode_api_body "$raw"  -> the response body with the sentinel removed
+linode_api_code() {
+    local raw="$1" last="${1##*$'\n'}"
+    if [[ "$last" == NWPHTTP:* ]]; then printf '%s' "${last#NWPHTTP:}"; else printf '000'; fi
+}
+linode_api_body() {
+    local raw="$1" last="${1##*$'\n'}"
+    [[ "$last" == NWPHTTP:* ]] || { printf '%s' "$raw"; return 0; }
+    # Everything before the final newline. A body-less response is exactly the
+    # sentinel, and must render as empty rather than as itself.
+    if [ "$raw" = "$last" ]; then printf ''; else printf '%s' "${raw%$'\n'*}"; fi
+}
+
+################################################################################
 # Linode DNS Functions
 ################################################################################
 
@@ -552,23 +659,40 @@ linode_delete_ns_delegation() {
 
 # Delete a DNS record
 # Usage: linode_delete_dns_record "TOKEN" "DOMAIN_ID" "RECORD_ID"
+#
+# Success is decided on the HTTP STATUS, not on the body being empty. The old
+# test was `[ -z "$response" ] || grep '"id"'` — and an unreachable API also
+# returns an empty body, so a delete that never happened reported "deleted".
+# For a verb whose whole job is removing outward-facing records, "I could not
+# tell" must never render as "done".
 linode_delete_dns_record() {
     local token=$1
     local domain_id=$2
     local record_id=$3
 
-    local response=$(curl -s -X DELETE \
-        -H "Authorization: Bearer $token" \
-        "https://api.linode.com/v4/domains/$domain_id/records/$record_id")
+    local raw rc response code
+    raw=$(linode_api_request "$token" DELETE "/v4/domains/$domain_id/records/$record_id"); rc=$?
+    code=$(linode_api_code "$raw")
+    response=$(linode_api_body "$raw")
 
-    # Linode returns empty response on successful delete
-    if [ -z "$response" ] || echo "$response" | grep -q '"id":[0-9]*'; then
-        echo "DNS record $record_id deleted" >&2
-        return 0
-    else
-        echo "ERROR: Failed to delete DNS record $record_id" >&2
+    if [ "$rc" -ne 0 ] || [ -z "$code" ] || [ "$code" = "000" ]; then
+        echo "ERROR: no answer from the Linode API deleting record $record_id — NOT deleted" >&2
         return 1
     fi
+    case "$code" in
+        200|204)
+            if printf '%s' "$response" | grep -q '"errors"'; then
+                echo "ERROR: Failed to delete DNS record $record_id: $response" >&2
+                return 1
+            fi
+            echo "DNS record $record_id deleted" >&2
+            return 0
+            ;;
+        *)
+            echo "ERROR: Failed to delete DNS record $record_id (HTTP $code)" >&2
+            return 1
+            ;;
+    esac
 }
 
 # List NS records for a subdomain
@@ -717,6 +841,10 @@ linode_create_dns_a_for_domain() {
 }
 
 # Export functions for use in other scripts
+export -f linode_api_request
+export -f linode_api_get
+export -f linode_api_code
+export -f linode_api_body
 export -f get_linode_token
 export -f get_ssh_key_id
 export -f get_first_ssh_key_id

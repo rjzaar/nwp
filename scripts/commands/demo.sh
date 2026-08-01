@@ -83,8 +83,10 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   pairing is AUTOMATIC when the partner has an
                                   instance at this tier; --with-pair demands
                                   it, --no-pair suppresses. At --tier=live an
-                                  "instance" is a configured live HOST, and the
-                                  cut is written into demo-golden-live/ carrying
+                                  "instance" is a configured live HOST, pairing
+                                  is OPT-IN (pass --with-pair; a bare live
+                                  capture stays single-site), and the cut is
+                                  written into demo-golden-live/ carrying
                                   tier=live — a dev cut can never authorise a
                                   live restore.
     reset <site> [--if-idle 30m] [--force] [--yes] [--skip-seed] [--dry-run]
@@ -106,14 +108,18 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   posture and course catalogue. Naming EITHER
                                   half runs the paired reset; --no-pair is the
                                   explicit single-site override and warns.
-                                  AT --tier=live the paired reset also: takes
-                                  the box's own nightly-wrapper pair lock plus a
-                                  local one-writer lock, pre-flights BOTH hosts
-                                  (reachable + demo_mode) before destroying
-                                  anything, stages BOTH goldens on the box and
-                                  re-verifies them there first, and — if the
-                                  second half still fails — RECORDS the split
-                                  pair in sites/<provider>/demo-pair-
+                                  AT --tier=live THE PAIRED RESET IS OPT-IN:
+                                  it runs only with an explicit --with-pair.
+                                  Without it, a live reset of a coupled half
+                                  REFUSES and names the flag — it never quietly
+                                  falls back to wiping one host. The live paired
+                                  reset also: takes the box's own nightly-wrapper
+                                  pair lock plus a local one-writer lock,
+                                  pre-flights BOTH hosts (reachable + demo_mode)
+                                  before destroying anything, stages BOTH goldens
+                                  on the box and re-verifies them there first,
+                                  and — if the second half still fails — RECORDS
+                                  the split pair in sites/<provider>/demo-pair-
                                   INCONSISTENT.json, prints the repair command
                                   and exits non-zero. Re-running repairs it.
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
@@ -200,7 +206,10 @@ ${BOLD}SUBCOMMANDS:${NC}
 
 ${BOLD}OPTIONS:${NC}
     --with-pair        Demand the paired path (refuse if the pair or the
-                       partner instance is unavailable).
+                       partner instance is unavailable). REQUIRED at
+                       --tier=live: there the paired path is opt-in, because it
+                       destroys two live hosts and has not yet had a supervised
+                       run. dev/stg still pair automatically.
     --no-pair          Operator override: act on this site alone even though it
                        is half of a demo pair. Leaves the other half holding
                        SSO locks against accounts that no longer exist — only
@@ -1866,10 +1875,18 @@ demo_reset_pair_guard() {
         demo_log "$site" reset-unpaired-override "tier=$tier pair=${DEMO_PAIR_LABEL}"
         return 0
     fi
-    # Reached only by a direct/library call that bypassed main()'s auto-upgrade.
-    # From the CLI, naming either half runs the paired path.
+    # At dev/stg this is reached only by a direct/library call that bypassed
+    # main()'s auto-upgrade. AT LIVE IT IS THE NORMAL PATH: the paired live
+    # reset is opt-IN (ops#170), so `pl demo reset ssd --tier=live` lands here
+    # and is told what to pass. That is deliberate — the alternative was for a
+    # live verb to silently start doing a new, never-exercised thing.
     print_error "REFUSED: '$site' is half of the demo pair ${DEMO_PAIR_LABEL} at tier '$tier'."
-    print_hint  "Use: pl demo reset ${DEMO_PAIR_PROVIDER} --with-pair --tier=${tier}  (or --no-pair to override)"
+    print_error "Resetting it alone leaves ${DEMO_PAIR_LABEL}'s other half holding SSO locks against accounts this wipe destroys."
+    print_hint  "Both halves, one cut:  pl demo reset ${DEMO_PAIR_PROVIDER} --with-pair --tier=${tier}"
+    print_hint  "This site only:        pl demo reset ${site} --no-pair --tier=${tier}   (then re-capture the pair)"
+    if demo_is_live "$tier"; then
+        print_info "The paired LIVE path is OPT-IN and has not yet had a supervised run — capture first: pl demo golden ${DEMO_PAIR_PROVIDER} --with-pair --tier=live"
+    fi
     demo_log "$site" reset-refused "tier=$tier reason=unpaired-half-of-demo-pair"
     return 1
 }
@@ -3608,6 +3625,25 @@ main() {
     # Pair resolution (ops#133 Phase 2). `auto` = pair when the contract opts in
     # AND the partner actually has an instance at this tier; `yes` = demand it
     # (refuse if unavailable); `no` = operator override, single-site path.
+    #
+    # AT --tier=live, `auto` IS NOT ENOUGH — the paired path must be asked for
+    # (nwp/ops#170, operator decision 2026-08-02).
+    #
+    # WHY THE LIVE DEFAULT IS INVERTED, when dev/stg auto-upgrade. The paired
+    # live path is destructive, touches two live hosts, and — as of this
+    # commit — HAS NEVER RUN AGAINST THE ESTATE. Making a never-exercised
+    # destructive path the new default behaviour of an existing live verb is
+    # exactly the move that the bug found while writing it argues against: the
+    # process-global live context would have written the provider's database
+    # into the consumer's golden, sha-verified and correctly manifest-stamped,
+    # and no downstream check could have seen it because every check would have
+    # been consistently checking the wrong site. In that neighbourhood, a new
+    # behaviour must be REQUESTED, not inherited.
+    #
+    # What does NOT relax is the pair itself: without --with-pair, a live reset
+    # of a coupled half still hits demo_reset_pair_guard and REFUSES, naming the
+    # flag. Refusing is a fine default; silently doing a new thing is not.
+    # Flip this to auto once the path has a supervised live run behind it.
     local use_pair="false"
     if [[ "$with_pair" != "no" ]] && demo_pair_resolve "$site"; then
         local _partner; _partner="$(demo_pair_partner "$site" "$DEMO_PAIR_CONTRACT")"
@@ -3615,7 +3651,11 @@ main() {
         # has a local DDEV project, so the old test made the pair structurally
         # invisible exactly where it matters most (nwp/ops#170).
         if demo_instance_exists "$_partner" "$tier" >/dev/null 2>&1; then
-            use_pair="true"
+            if demo_is_live "$tier" && [[ "$with_pair" != "yes" ]]; then
+                use_pair="false"   # opt-IN only at live; the guard below refuses
+            else
+                use_pair="true"
+            fi
         elif [[ "$with_pair" == "yes" ]]; then
             print_error "REFUSED: --with-pair, but the partner '$_partner' has no instance at tier '$tier'."
             return 1
@@ -3633,10 +3673,10 @@ main() {
                       # one product and one is never safe to wipe alone.
                       [[ "$site" != "$DEMO_PAIR_PROVIDER" ]] && \
                           print_info "'$site' is half of ${DEMO_PAIR_LABEL} — running the PAIRED reset (both halves)."
-                      # Say it out loud at live: this is a behaviour CHANGE for a
-                      # command that used to reset one host (nwp/ops#170).
+                      # At live this only happens because --with-pair was passed.
+                      # Say what was asked for, since it destroys two hosts.
                       demo_is_live "$tier" && \
-                          print_info "LIVE PAIRED reset: BOTH ${DEMO_PAIR_PROVIDER} and ${DEMO_PAIR_CONSUMER} are restored to one cut. Use --no-pair for the old single-host behaviour."
+                          print_warning "--with-pair at LIVE: BOTH ${DEMO_PAIR_PROVIDER} and ${DEMO_PAIR_CONSUMER} will be ERASED and restored to ONE cut."
                       # dry_run is arg 6 on BOTH reset verbs. Dropping it here
                       # turned `--with-pair --dry-run` into a real double wipe.
                       cmd_reset_paired "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run"

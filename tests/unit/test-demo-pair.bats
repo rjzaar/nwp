@@ -338,7 +338,7 @@ _fake_golden() {
   printf '%s\n' "$body" | grep -q 'return "\$DEMO_EXIT_ACTIVE"'
 }
 
-@test "naming EITHER half from the CLI runs the paired reset (auto-upgrade)" {
+@test "naming EITHER half from the CLI runs the paired reset (auto-upgrade at dev/stg)" {
   body=$(awk '/^main\(\)/,/^}/' "$DEMO_CMD")
   printf '%s\n' "$body" | grep -q 'running the PAIRED reset'
 }
@@ -1297,4 +1297,112 @@ _line_of() { printf '%s\n' "$1" | grep -n "^$2" | head -1 | cut -d: -f1; }
     [ "$status" -ne 0 ]
     [[ "$output" == *"prod"* ]]
   done
+}
+
+################################################################################
+# ops#170, operator decision 2026-08-02 — AT LIVE THE PAIRED PATH IS OPT-IN
+#
+# dev/stg auto-upgrade: naming either half runs the pair. Live does NOT, and the
+# asymmetry is the point. The paired live path is destructive across two hosts
+# and has never been exercised against the estate; making a never-run
+# destructive path the new default of an existing live verb is precisely the
+# move that the context-bleed bug found while writing it argues against.
+#
+# The pair does not stop being enforced, though: without --with-pair, a live
+# reset of a coupled half REFUSES and names the flag. Refusing is a fine
+# default. Silently doing a new thing is not.
+################################################################################
+
+@test "ops#170 OPT-IN: a bare live reset of a coupled half REFUSES and names --with-pair" {
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset cons --tier=live --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"half of the demo pair"* ]]
+  [[ "$output" == *"--with-pair --tier=live"* ]]
+  # …and it did NOT quietly reset one host instead
+  ! [[ "$output" == *"Golden image verified"* ]]
+  grep -q 'reset-refused' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+}
+
+@test "ops#170 OPT-IN: the refusal also names the single-host escape and the capture step" {
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset prov --tier=live --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--no-pair --tier=live"* ]]
+  [[ "$output" == *"golden prov --with-pair --tier=live"* ]]
+}
+
+@test "ops#170 OPT-IN: --with-pair at live DOES opt in (negative control — the gate is not a blanket refusal)" {
+  # It must get PAST the unpaired-half refusal. It then fails for an honest
+  # later reason (no golden / no cut / no reachable box), which is what we assert
+  # — the point is that the pair gate is no longer what stops it.
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset prov --with-pair --tier=live --force
+  [ "$status" -ne 0 ]
+  ! [[ "$output" == *"half of the demo pair"* ]]
+  [[ "$output" == *"Paired demo reset"* || "$output" == *"pair lock"* || "$output" == *"golden"* ]]
+}
+
+@test "ops#170 OPT-IN: --no-pair at live is still the loud, logged single-host override" {
+  _live_fixture_config
+  run bash "$DEMO_CMD" reset cons --no-pair --tier=live --force
+  [[ "$output" == *"--no-pair: resetting ONLY 'cons'"* ]]
+  grep -q 'reset-unpaired-override' "${PROJECT_ROOT}/sites/cons/demo-reset.log"
+}
+
+@test "ops#170 OPT-IN is LIVE-ONLY: dev still auto-upgrades to the pair" {
+  # The negative control for the inversion: it must not have disabled pairing
+  # everywhere. dev has DDEV projects for both halves, so the pair applies.
+  mkdir -p "${TEST_TMP}/proj-prov/.ddev" "${TEST_TMP}/proj-cons/.ddev"
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    demo_project_dir() { case "$1" in prov) echo "$TEST_TMP/proj-prov";; *) echo "$TEST_TMP/proj-cons";; esac; }
+    cmd_reset_paired() { echo "PAIRED-PATH tier=$2"; return 0; }
+    cmd_reset()        { echo "SINGLE-PATH tier=$2"; return 0; }
+    main reset cons --tier=dev --force
+  '
+  [[ "$output" == *"PAIRED-PATH tier=dev"* ]]
+  ! [[ "$output" == *"SINGLE-PATH"* ]]
+}
+
+@test "ops#170 OPT-IN: at live, main() routes a bare reset to the SINGLE path (where the guard refuses)" {
+  _live_fixture_config
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    cmd_reset_paired() { echo "PAIRED-PATH tier=$2"; return 0; }
+    cmd_reset()        { echo "SINGLE-PATH tier=$2 pairflag=[${7:-}]"; return 0; }
+    main reset cons --tier=live --force
+    main reset cons --tier=live --with-pair --force
+  '
+  [[ "$output" == *"SINGLE-PATH tier=live pairflag=[]"* ]]   # bare: single path, guard refuses inside
+  [[ "$output" == *"PAIRED-PATH tier=live"* ]]               # --with-pair: opted in
+}
+
+@test "ops#170 OPT-IN: a bare live CAPTURE is unchanged (single-site, non-destructive)" {
+  # The other half of not surprising anyone: `pl demo golden <site> --tier=live`
+  # must keep doing exactly what it did, because capture destroys nothing and a
+  # session may be mid-flight relying on it.
+  _live_fixture_config
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    set +e
+    cmd_golden_paired() { echo "PAIRED-CAPTURE"; return 0; }
+    cmd_golden()        { echo "SINGLE-CAPTURE $1 tier=$2"; return 0; }
+    main golden cons --tier=live
+    main golden cons --tier=live --with-pair
+  '
+  [[ "$output" == *"SINGLE-CAPTURE cons tier=live"* ]]
+  [[ "$output" == *"PAIRED-CAPTURE"* ]]
+}
+
+@test "ops#170 OPT-IN: the live opt-in is stated in main(), not inferred" {
+  body=$(awk '/^main\(\)/,/^}/' "$DEMO_CMD")
+  printf '%s\n' "$body" | grep -q 'demo_is_live "\$tier" && \[\[ "\$with_pair" != "yes" \]\]'
+  printf '%s\n' "$body" | grep -q 'opt-IN only at live'
 }

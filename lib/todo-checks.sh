@@ -1956,6 +1956,201 @@ check_demo_golden_hygiene() {
 }
 
 ################################################################################
+# check_demo_pair_cut — do both halves of the demo pair share ONE valid cut for
+# the LIVE tier, and did the last paired operation complete or SPLIT? (D17)
+#
+# WHY THIS EXISTS
+#   ops#170 made the paired live erasure real: `pl demo reset <provider>
+#   --with-pair --tier=live` restores BOTH halves to one logical cut, refuses if
+#   the cut was captured at another tier, and — if the consumer half fails after
+#   the provider has already been restored — writes a SPLIT record at
+#   sites/<provider>/demo-pair-INCONSISTENT.json.
+#
+#   Two things follow that nothing was watching:
+#
+#   1. The paired LIVE path has never run, and NO live golden has ever carried a
+#      pair cut. So the verb will refuse the first time somebody reaches for it,
+#      in an incident, at the worst possible moment. "It will refuse until a
+#      --with-pair capture happens" is exactly the sort of fact that should be
+#      on a dashboard rather than in an agent's head.
+#
+#   2. A SPLIT record means the two halves hold DIFFERENT data right now and the
+#      OIDC identities between them are mismatched. It is written to a JSON file
+#      on disk and read by precisely one thing: `pl demo status`, if a human
+#      happens to run it, for the right site, at the right tier. A split that
+#      nobody runs a verb to discover is a split nobody discovers.
+#
+#   This check answers both continuously, from the filesystem only — no ssh, no
+#   probe. `pl todo check --json` runs inside a 45s budget for the WHOLE sweep
+#   (180s batch), so a check that phones anywhere is a check that makes `pl rag`
+#   time out and charge every site an `unknown`.
+#
+# GRADING, chosen deliberately
+#   SPLIT              → SEC/high  ⇒ `pl rag` grades the site RED and
+#                                    `pl rag --sync-issues` opens the ops issue
+#                                    by itself. A live split is a data-integrity
+#                                    incident, not a chore.
+#   no live cut        → PCUT/medium ⇒ AMBER. Not broken; unproven. The honest
+#                                    grade for a recovery path that has never
+#                                    been exercised.
+#   cut at wrong tier  → PCUT/high ⇒ AMBER, loudly. A dev cut sitting in a live
+#                                    golden dir is a licence to wipe two LIVE
+#                                    sites; ops#170 refuses it, and this says so
+#                                    before anyone tries.
+#   sha drift          → PCUT/high ⇒ AMBER. One half was re-captured alone; the
+#                                    cut no longer binds the two goldens.
+#   cannot tell        → UNKNOWN   ⇒ AMBER, and never GREEN. jq missing, a
+#                                    contract that will not parse, a manifest
+#                                    that will not read.
+################################################################################
+check_demo_pair_cut() {
+    is_category_enabled "demo_pair_cut" || return 0
+
+    local root="$TODO_CHECKS_PROJECT_ROOT"
+
+    # Contracts are tracked; goldens are not. Both must be present for this
+    # check to mean anything, so it is a silent no-op on a CI runner.
+    [ -d "$root/pairs" ] || return 0
+
+    local found=false d
+    for d in "$root"/sites/*/demo-golden-live; do
+        [ -f "$d/golden.manifest.json" ] && { found=true; break; }
+    done
+    [ "$found" = true ] || return 0
+
+    if ! command -v jq >/dev/null 2>&1; then
+        todo_add_unknown "demo_pair_cut" \
+            "jq is not installed — cannot read pair cuts, so a live SPLIT would be invisible here" \
+            "" "install jq"
+        return 0
+    fi
+
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    if [ -z "$yq_bin" ]; then
+        todo_add_unknown "demo_pair_cut" \
+            "yq is not installed — cannot read pairs/*.pair-contract.yml" \
+            "" "install yq"
+        return 0
+    fi
+
+    local contract prov cons any=false
+    for contract in "$root"/pairs/*.pair-contract.yml; do
+        [ -e "$contract" ] || continue
+
+        # OPT-IN, exactly as lib/demo-pair.sh gates it: only a contract that
+        # DECLARES itself part of the demo tier is eligible. This is what keeps
+        # the real ssc<->nwc pair (real students, no demo: block) out of here.
+        [ "$("$yq_bin" e '.demo.enabled // false' "$contract" 2>/dev/null)" = "true" ] || continue
+
+        prov="$("$yq_bin" e '.provider // ""' "$contract" 2>/dev/null)"
+        cons="$("$yq_bin" e '.consumer // ""' "$contract" 2>/dev/null)"
+        if [ -z "$prov" ] || [ "$prov" = "null" ] || [ -z "$cons" ] || [ "$cons" = "null" ]; then
+            todo_add_unknown "demo_pair_cut_$(basename "$contract" .pair-contract.yml)" \
+                "$(basename "$contract") declares demo.enabled but names no provider/consumer" \
+                "" "pl pair check"
+            continue
+        fi
+        any=true
+
+        # ── 1. A SPLIT outranks everything else. Report it and move on: the cut
+        #       state of a pair that is already inconsistent is not the story.
+        local split="$root/sites/$prov/demo-pair-INCONSISTENT.json"
+        if [ -s "$split" ]; then
+            local when half cut_id
+            when="$(jq -r '.recorded_utc // "unknown"' "$split" 2>/dev/null)"
+            half="$(jq -r '.failed_half // "unknown"' "$split" 2>/dev/null)"
+            cut_id="$(jq -r '.cut_id // "unknown"' "$split" 2>/dev/null)"
+            todo_add_item "SEC" "pair-split-$prov" "high" \
+                "PAIR SPLIT: $prov and $cons are NOT at the same cut" \
+                "The $half half failed at cut $cut_id on $when. The two halves hold different data and their SSO identities are mismatched. Recorded in sites/$prov/demo-pair-INCONSISTENT.json" \
+                "$prov" "pl demo reset $prov --with-pair --tier=live"
+            continue
+        fi
+
+        # ── 2. Does a LIVE cut exist at all?
+        local pdir="$root/sites/$prov/demo-golden-live"
+        local cdir="$root/sites/$cons/demo-golden-live"
+        local cut="$pdir/pair.cut.json"
+
+        # Only meaningful once BOTH halves actually hold a live golden.
+        [ -f "$pdir/golden.manifest.json" ] || continue
+        if [ ! -f "$cdir/golden.manifest.json" ]; then
+            todo_add_item "PCUT" "half-$cons" "medium" \
+                "Live golden exists for $prov but not for $cons" \
+                "The pair cannot be captured as one cut until both halves have a live golden" \
+                "$cons" "pl demo golden $prov --with-pair --tier=live"
+            continue
+        fi
+
+        if [ ! -s "$cut" ]; then
+            todo_add_item "PCUT" "nocut-$prov" "medium" \
+                "No LIVE pair cut for $prov and $cons — the paired live path has never run" \
+                "Both halves hold a live golden but neither shares a cut, so 'pl demo reset $prov --with-pair --tier=live' will REFUSE. Capture one before you need it" \
+                "$prov" "pl demo golden $prov --with-pair --tier=live"
+            continue
+        fi
+
+        # ── 3. Is the cut this pair, at this tier?
+        local ctier cprov ccons
+        ctier="$(jq -r '.tier // ""' "$cut" 2>/dev/null)"
+        cprov="$(jq -r '.provider.site // ""' "$cut" 2>/dev/null)"
+        ccons="$(jq -r '.consumer.site // ""' "$cut" 2>/dev/null)"
+        if [ -z "$ctier$cprov$ccons" ]; then
+            todo_add_unknown "demo_pair_cut_$prov" \
+                "sites/$prov/demo-golden-live/pair.cut.json will not parse — the live cut is unreadable" \
+                "$prov" "pl demo golden $prov --with-pair --tier=live"
+            continue
+        fi
+        if [ "$ctier" != "live" ]; then
+            todo_add_item "PCUT" "wrongtier-$prov" "high" \
+                "The live golden of $prov carries a '${ctier:-untiered}' pair cut, not a live one" \
+                "A non-live cut in a live golden dir is a licence to wipe two LIVE sites; ops#170 refuses it. Re-capture at this tier" \
+                "$prov" "pl demo golden $prov --with-pair --tier=live"
+            continue
+        fi
+        if [ "$cprov" != "$prov" ] || [ "$ccons" != "$cons" ]; then
+            todo_add_item "PCUT" "wrongpair-$prov" "high" \
+                "The live pair cut in $prov names ${cprov}/${ccons}, not ${prov}/${cons}" \
+                "A cut copied from another pair binds nothing here" \
+                "$prov" "pl demo golden $prov --with-pair --tier=live"
+            continue
+        fi
+
+        # ── 4. Does the cut still BIND? Four sha256s, against each half's own
+        #       manifest. Drift means one half was re-captured alone, and a
+        #       paired restore would leave the SSO identities mismatched.
+        local drift="" half key want got mdir msite
+        for half in provider consumer; do
+            if [ "$half" = provider ]; then mdir="$pdir"; msite="$prov"; else mdir="$cdir"; msite="$cons"; fi
+            for key in db files; do
+                want="$(jq -r ".${half}.${key}_sha256 // \"\"" "$cut" 2>/dev/null)"
+                got="$(jq -r ".${key}_sha256 // \"\"" "$mdir/golden.manifest.json" 2>/dev/null)"
+                if [ -z "$want" ] || [ -z "$got" ]; then
+                    drift="${drift}${drift:+, }${msite} ${key} (unreadable)"
+                elif [ "$want" != "$got" ]; then
+                    drift="${drift}${drift:+, }${msite} ${key}"
+                fi
+            done
+        done
+        if [ -n "$drift" ]; then
+            todo_add_item "PCUT" "drift-$prov" "high" \
+                "LIVE pair cut for $prov and $cons no longer binds: $drift" \
+                "One half was re-captured on its own, so the cut no longer describes what is on disk. A paired restore from it would leave SSO identities mismatched" \
+                "$prov" "pl demo golden $prov --with-pair --tier=live"
+        fi
+    done
+
+    # A host that holds live goldens but resolves NO demo pair is not "fine" —
+    # it means the contract that couples them is missing or has been switched
+    # off, and the coupling invariant is going unenforced.
+    if [ "$any" = false ]; then
+        todo_add_unknown "demo_pair_cut" \
+            "live demo goldens exist but no pairs/*.pair-contract.yml declares demo.enabled — the pairing invariant is unenforced" \
+            "" "pl pair check"
+    fi
+}
+
+################################################################################
 # Main Check Runner
 ################################################################################
 
@@ -1995,6 +2190,7 @@ TODO_CHECK_LIST=(
     "check_notify_health:Notification path health"
     "check_demo_golden_hygiene:Demo golden identity hygiene"
     "check_demo_code_drift:Demo invite-code drift"
+    "check_demo_pair_cut:Demo pair cut (live) + SPLIT"
 )
 
 # Get check count
@@ -2078,6 +2274,7 @@ export -f check_rag_sync_freshness
 export -f check_notify_health
 export -f check_demo_golden_hygiene
 export -f check_demo_code_drift
+export -f check_demo_pair_cut
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

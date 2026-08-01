@@ -56,6 +56,7 @@ source "$REPO_ROOT/lib/impact.sh"        # ops#47 impact contract (fate manifest
 source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"     # paired golden/reset (ops#133 Phase 2)
 source "$REPO_ROOT/lib/demo-live-moodle.sh"  # Moodle half of the LIVE tier (ops#170)
+source "$REPO_ROOT/lib/demo-box-status.sh"   # the BOX's own reset record (ops#198)
 source "$REPO_ROOT/lib/deploy-gate.sh"   # deploy_gate_require (live tier only)
 
 # Names of the golden artifacts inside sites/<site>/demo-golden/.
@@ -2235,15 +2236,75 @@ cmd_status() {
         esac
     fi
 
+    # nwp/ops#198 — SAY WHOSE LOG THIS IS.
+    #
+    # This block used to be headed "Recent resets/skips (last 10)" with no
+    # qualifier, and it reads sites/<site>/demo-reset.log: a file written only
+    # by THIS checkout. On a night when both unattended box resets ran perfectly
+    # at 15:00 and 15:15 it reported "last reset 06:32" — the last time someone
+    # ran a reset from this laptop. True about the wrong machine.
     echo ""
-    echo "  Recent resets/skips (last 10):"
+    echo "  Recent resets/skips — THIS CHECKOUT only (last 10):"
     if [[ -f "$lfile" ]]; then
         tail -n 10 "$lfile" | sed 's/^/    /'
         if tail -n 3 "$lfile" | grep -q "skip-"; then
             print_status "WARN" "Recent skip present — check activity guard / floor"
         fi
     else
-        echo "    (no resets logged yet)"
+        echo "    (this checkout has run no resets)"
+    fi
+
+    # The unattended resets do not run here. At the live tier, ask the box.
+    if [[ "$tier" == "live" && "${DEMO_STATUS_NO_BOX:-0}" != "1" ]]; then
+        cmd_status_box "$site"
+    elif [[ "$tier" == "live" ]]; then
+        echo ""
+        echo "  Box-side (unattended) resets: SKIPPED (DEMO_STATUS_NO_BOX=1)"
+    fi
+}
+
+# cmd_status_box <site> — the box's own account of the unattended resets.
+#
+# Split into its own function so the reporting stays honest about its THREE
+# states. The old code had two ("a time" / "nothing logged"), and collapsed
+# "I could not look" into the second — which is how a silently-dead nightly
+# would have gone on reading as "no resets yet" forever.
+cmd_status_box() {
+    local site="$1" raw="" rc=0
+    echo ""
+    echo "  Box-side (unattended) resets:"
+    raw="$(demo_box_reset_status "$site")" || rc=$?
+
+    if [[ "$rc" -ne 0 ]]; then
+        print_status "WARN" "UNKNOWN — could not read the box (no ${site}_demo_reset key, ssh refused, or timed out)"
+        echo "    This is NOT 'no resets'. The box may be resetting perfectly."
+        print_hint "  ssh route: pl demo schedule $site --via-key   ·   skip this probe: DEMO_STATUS_NO_BOX=1"
+        return 0
+    fi
+
+    local last; last="$(demo_box_last_reset "$raw")"
+    if [[ -z "$last" ]]; then
+        print_status "WARN" "UNKNOWN — the box answered but named no 'last reset' (wrapper format changed?)"
+    elif [[ "$last" == "none" ]]; then
+        print_status "WARN" "the box has NEVER reset $site — the unattended path has not run"
+        print_hint "  pl demo schedule $site --via-key"
+    else
+        local age
+        if age="$(demo_box_reset_age_days "$last")"; then
+            if [[ "$age" -ge 2 ]]; then
+                print_status "WARN" "last box reset: $last (${age} days ago)"
+            else
+                print_status "OK" "last box reset: $last"
+            fi
+        else
+            print_status "OK" "last box reset: $last"
+        fi
+    fi
+
+    local tailed; tailed="$(demo_box_log_tail "$raw" 10)"
+    if [[ -n "$tailed" ]]; then
+        echo "    box log (/var/log/nwp-demo/${site}-demo-reset.log, pipe-separated):"
+        printf '%s\n' "$tailed" | sed 's/^/      /'
     fi
 }
 

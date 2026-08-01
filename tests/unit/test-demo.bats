@@ -1373,12 +1373,42 @@ YML
   # pass 1: data, with the log tables ignored
   [[ "$output" == *"--ignore-table=ssdmoodle.mdl_logstore_standard_log"* ]]
   [[ "$output" == *"--ignore-table=ssdmoodle.mdl_task_log"* ]]
+  [[ "$output" == *"--ignore-table=ssdmoodle.mdl_sessions"* ]]
   # pass 2: their SCHEMA comes back, or the restore leaves Moodle without them
-  [[ "$output" == *"--no-data ssdmoodle mdl_logstore_standard_log mdl_task_log"* ]]
+  [[ "$output" == *"--no-data ssdmoodle mdl_logstore_standard_log mdl_task_log mdl_sessions"* ]]
   # ONE gzip, ONE artifact — the sha256 sidecar and the `gunzip -c` restore are
   # unchanged by this, and must stay that way
   [[ "$output" == *"| gzip > ~/g.db.sql.gz"* ]]
   [ "$(grep -c 'gzip >' <<<"$output")" -eq 1 ]
+}
+
+@test "ops#168 Moodle: mdl_sessions is excluded too — it was the WORSE offender, and it was missed" {
+  # Measured on the ssd golden captured immediately AFTER the first ops#168 fix
+  # landed: logstore was gone, and the artifact still carried 3,940
+  # `mdl_sessions` rows holding 306 distinct public visitor IPs. Moodle writes a
+  # session row for every ANONYMOUS request — the same fact that forces [G4] of
+  # the box wrapper to count `userid <> 0`. Excluding the log tables alone moved
+  # the visitor IPs from one table to another; it did not remove them.
+  run bash -c "source '${REPO_ROOT}/lib/demo-live-moodle.sh'
+               demo_moodle_dump_cmd ssdmoodle '~/g.db.sql.gz'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--ignore-table=ssdmoodle.mdl_sessions"* ]]
+  [[ "$output" == *"--no-data"*"mdl_sessions"* ]]
+}
+
+@test "ops#168: the two halves agree about what a golden may contain (parity is the guard)" {
+  # The Drupal half has excluded `sessions` since its first commit; the Moodle
+  # half did not, and that DISAGREEMENT is how mdl_sessions was missed. Pin the
+  # correspondence so the next table added to one side is visibly owed on the
+  # other.
+  local drupal moodle
+  drupal="$(grep -oE '^DEMO_DRUPAL_NODATA_TABLES="[^"]*"' "${REPO_ROOT}/scripts/commands/demo.sh")"
+  [[ "$drupal" == *"sessions"* ]]
+  moodle="$(grep -oE '^DEMO_MOODLE_NODATA_TABLES="[^"]*"' "${REPO_ROOT}/lib/demo-live-moodle.sh")"
+  [[ "$moodle" == *"mdl_sessions"* ]]
+  # and each side keeps its own log table
+  [[ "$drupal" == *"watchdog"* ]]
+  [[ "$moodle" == *"mdl_logstore_standard_log"* ]]
 }
 
 @test "ops#168 Moodle: a plain --ignore-table alone would be a BUG, so the structure pass is mandatory" {

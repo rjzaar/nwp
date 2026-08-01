@@ -1177,3 +1177,48 @@ STUB
   refute_in "$calls" REACHED_PUSH
   grep -q 'REFUSING PUSH' "$calls"
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ops#160 item 3 — SECRET-NAME RULES MUST BE CASE-INSENSITIVE.
+#
+# On a case-sensitive filesystem `SECRET.md`, `.SECRETS.yml` and `NOTES/SECRETS`
+# are distinct paths from their lowercase forms, and the old `[Ss]ecret` /
+# `\.secrets[^/]*` rules matched none of them: before this widening, all three
+# uppercase forms passed the gate (verified against the pre-fix regex — every
+# deny test below was RED). The widening is a per-character class, not grep -i,
+# so no other alternation is silently case-folded.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@test "ops#160#3: gate REFUSES upper/mixed-case secret-named paths" {
+  run gate_verdict SECRET.md
+  [ "$status" -eq 1 ]
+  [[ "$output" == REFUSED* ]]
+  run gate_verdict .SECRETS.yml
+  [ "$status" -eq 1 ]
+  run gate_verdict notes/SECRETS
+  [ "$status" -eq 1 ]
+  run gate_verdict config/MySecretRotation.php
+  [ "$status" -eq 1 ]
+  run gate_verdict docs/sEcReT-handling.md
+  [ "$status" -eq 1 ]
+}
+
+@test "ops#160#3: anchored .secrets* file rule matches uppercase at every path depth" {
+  printf '.SECRETS.yml\n'        | grep -Eq "$SENSITIVE_PATH_RE"
+  printf 'a/b/.SECRETS.data\n'   | grep -Eq "$SENSITIVE_PATH_RE"
+  printf './.Secrets.yml\n'      | grep -Eq "$SENSITIVE_PATH_RE"
+}
+
+# NEGATIVE CONTROL — the widening is scoped to the SECRET rules. Ordinary paths
+# (including ones that merely *contain* the letters in other words, split by
+# non-letters) must stay ALLOWED, or every deny test above passes vacuously on
+# a refuse-everything gate.
+@test "ops#160#3 NEGATIVE CONTROL: benign paths stay ALLOWED after the case widening" {
+  run gate_verdict docs/sections/retention.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == ALLOWED* ]]
+  run gate_verdict scripts/commands/status.sh
+  [ "$status" -eq 0 ]
+  run gate_verdict web/modules/custom/nwc/nwc.module
+  [ "$status" -eq 0 ]
+}

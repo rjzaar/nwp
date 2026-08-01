@@ -173,8 +173,14 @@ PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 #   test-authoring surface, and contracts/*.schema.json are DATA validate.py
 #   reads, not code the runner executes. Pinned by the ops#160 block in
 #   tests/unit/test-agent-loop-sensitive-gate.bats.
+#   ops#160 item 3: the secret-name rules are CASE-INSENSITIVE by explicit
+#   character class ([Ss][Ee][Cc][Rr][Ee][Tt]), because on a case-sensitive
+#   filesystem `SECRET.md` / `.SECRETS.yml` are distinct paths that previously
+#   slipped a case-sensitive `[Ss]ecret`. Spelled per-char rather than grep -i
+#   so the widening stays scoped to the secret rules and does not silently
+#   case-fold every other alternation.
 # shellcheck disable=SC2016
-SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-|loop-)|(^|/)scripts/agent-loop/|(^|/)scripts/ci/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console|snapshot|doc-truth|impact|contracts|verify)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(^|/)contracts/validate\.py$|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
+SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.[Ss][Ee][Cc][Rr][Ee][Tt][Ss][^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss][Ee][Cc][Rr][Ee][Tt]|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-|loop-)|(^|/)scripts/agent-loop/|(^|/)scripts/ci/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console|snapshot|doc-truth|impact|contracts|verify)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(^|/)contracts/validate\.py$|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
 
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 

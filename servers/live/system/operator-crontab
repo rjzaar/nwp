@@ -1,0 +1,8 @@
+CRON_TZ=Australia/Sydney
+# Financial Market Monitor - 8am AEST/AEDT (after US market close)
+0 8 * * 1-5 /home/<operator>/fin/run-fin-monitor.sh >> /home/<operator>/fin/fin-monitor.log 2>&1
+# Financial Market Monitor - 12pm AEST/AEDT midday check
+0 12 * * 1-5 /home/<operator>/fin/run-fin-monitor.sh >> /home/<operator>/fin/fin-monitor.log 2>&1
+CRON_TZ=UTC
+# Mass Times Scraper - 3am daily extraction (mt.<prod-base> now lives here)
+0 3 * * * /home/<operator>/mt/run-mass-times.sh --extract >> /home/<operator>/mt/mass-times.log 2>&1

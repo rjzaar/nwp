@@ -1,0 +1,2 @@
+postmaster:    root
+reply-pipe: |/usr/local/bin/avc-email-reply-pipe.sh

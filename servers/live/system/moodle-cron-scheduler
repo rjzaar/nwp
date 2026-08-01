@@ -1,0 +1,1 @@
+*/15 * * * * /usr/bin/php8.2 /var/www/ssc/admin/cli/cron.php > /dev/null 2>&1

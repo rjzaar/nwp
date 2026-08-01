@@ -234,6 +234,10 @@ oidc:
     # ⚠ GOTCHA (inherited from ssc): JWKS is at /.well-known/jwks.json — NOT
     #   /oauth/jwks, which 301-redirects and breaks signature verification.
     jwks: "/.well-known/jwks.json"
+  # Member-facing: this is the text ON the SSO login button (the wire script
+  # says so itself — no internal codenames). The live button was verified
+  # reading "Narrow Way Commons" on 2026-08-02; the invite email and the
+  # smoke verb's A10 check both read this value, so it must match the button.
   issuer_name: "Narrow Way Commons"
   issuer_flags:
     showonloginpage: 1

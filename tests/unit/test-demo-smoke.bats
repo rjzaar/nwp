@@ -97,3 +97,115 @@ teardown() { [ -n "${FAKE:-}" ] && rm -rf "$FAKE"; return 0; }
   run grep -nE '(-X[[:space:]]*(POST|PUT|DELETE)|--data|--request)' "$LIB"
   [ "$status" -ne 0 ]
 }
+
+# --- A10: the SSO button must say what the email says ---------------------------
+# `pl demo smoke nwd` sat 9/9 green while the invite email named the button
+# wrongly, because the old check only proved the page said "Log in using your
+# account on" SOMEWHERE — it never read the text of the button the tester must
+# actually click. These pin the equality check against the contract's name.
+
+_btn_page() {
+  printf '<html><body><h2 class="login-heading">Log in using your account on:</h2>
+<a class="btn login-identityprovider-btn btn-block" href="/auth/oauth2/login.php?id=1">%s</a></body></html>' "$1"
+}
+
+@test "SSO button label: equals the contract name, surrounding whitespace collapsed" {
+  # Moodle renders the label padded with spaces and newlines — the live button
+  # carries "     Narrow Way Commons     ". Cosmetic whitespace is not drift.
+  _with_fake_page "$(_btn_page '     Narrow Way
+   Commons   ')"
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_button_label B http://x login-identityprovider-btn 'Narrow Way Commons'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Narrow Way Commons"* ]]
+}
+
+@test "SSO button label: a codename on the button FAILS even when the heading is right" {
+  _with_fake_page "$(_btn_page 'nwd (F26)')"
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_button_label B http://x login-identityprovider-btn 'Narrow Way Commons'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nwd (F26)"* ]]
+  [[ "$output" == *"Narrow Way Commons"* ]]
+}
+
+@test "SSO button label: a login page with NO identity-provider button FAILS" {
+  # The issuer being disabled removes the button while the page still 200s.
+  _with_fake_page '<html><body><h2>Log in using your account on:</h2> Username Password</body></html>'
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_button_label B http://x login-identityprovider-btn 'Narrow Way Commons'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+}
+
+# --- A12: redirects checked WITHOUT following them -------------------------------
+
+# Fake curl that answers with a raw header block (what -D - produces).
+_with_fake_redirect() {
+  FAKE="$(mktemp -d)"
+  {
+    printf 'HTTP/2 %s \r\n' "$1"
+    [ -n "${2:-}" ] && printf 'location: %s\r\n' "$2"
+    printf 'content-type: text/html\r\n\r\n'
+  } > "$FAKE/headers"
+  cat > "$FAKE/curl" <<'EOF'
+#!/usr/bin/env bash
+d="$(dirname "$0")"
+cat "$d/headers"
+EOF
+  chmod +x "$FAKE/curl"
+  export PATH="$FAKE:$PATH"
+}
+
+@test "redirect check: 302 with Location ending /apply PASSES without following" {
+  _with_fake_redirect 302 'https://x.example/apply'
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_redirect R http://x/user/register 302 /apply"
+  [ "$status" -eq 0 ]
+}
+
+@test "redirect check: a 200 that never redirects FAILS" {
+  # /user/register serving an open registration form is exactly the regression
+  # this exists to catch — the gated-signup promise silently un-gated.
+  _with_fake_redirect 200 ''
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_redirect R http://x/user/register 302 /apply"
+  [ "$status" -ne 0 ]
+}
+
+@test "redirect check: redirecting somewhere ELSE fails — a query-string /apply does not count" {
+  # ?destination=/apply ENDS with /apply; the check must compare the path, not
+  # the raw string, or a login bounce would impersonate the apply redirect.
+  _with_fake_redirect 302 'https://x.example/user/login?destination=/apply'
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_redirect R http://x/user/register 302 /apply"
+  [ "$status" -ne 0 ]
+}
+
+# --- A14: the consumer's shortname must not be its public identity ---------------
+
+@test "shortname leak: <title> 'Home | ssd' FAILS the machine-name rule" {
+  # This is the defect the 9/9-green run missed: ssd's own front page titled
+  # with the machine shortname while every promise-level check passed.
+  _with_fake_page '<html><head><title>Home | ssd</title></head><body></body></html>'
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_title_regex T http://x 'Saint School' '\bssd\b'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+}
+
+@test "shortname leak: a word merely CONTAINING the shortname is not a leak" {
+  _with_fake_page '<html><head><title>Saint School ssdemo</title></head><body></body></html>'
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_title_regex T http://x 'Saint School' '\bssd\b'"
+  [ "$status" -eq 0 ]
+}
+
+@test "shortname leak: passing the forbid rule is not enough — the real name must be present" {
+  _with_fake_page '<html><head><title>Home</title></head><body></body></html>'
+  run bash -c "source '$LIB'; smoke_reset_counters; smoke_check_title_regex T http://x 'Saint School' '\bssd\b'"
+  [ "$status" -ne 0 ]
+}
+
+# --- the consumer half smokes ITSELF ---------------------------------------------
+
+@test "pl demo smoke <consumer> runs its own half's assertions, not a bounce to the provider" {
+  # Delegating ssd's smoke wholesale to nwd is how a broken ssd surface hid
+  # behind a green nwd run. The consumer path must exist by name, and the old
+  # redirect-to-provider message must be gone.
+  DEMO_CMD="${REPO_ROOT}/scripts/commands/demo.sh"
+  grep -q 'smoke_consumer_half' "$DEMO_CMD"
+  ! grep -q 'smoking the provider' "$DEMO_CMD"
+}

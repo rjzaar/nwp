@@ -527,24 +527,50 @@ demo_invite_community_base() {
     echo "${ju%/demo/join}"
 }
 
-# demo_invite_courses_url <community-site> — the login page of the paired demo
-# COURSES site (Moodle), where the tester clicks "Log in using your account on:
-# <community>". Resolved generically from the demo pair contract (provider ==
-# this site, demo.enabled). Empty when there is no demo pair or the consumer's
-# domain is unresolvable — the email then simply omits the courses section.
-demo_invite_courses_url() {
-    local site="$1" consumer="" domain="" yml gcfg f prov demo yqb
+# demo_invite_pair_contract <site> — the demo pair contract naming <site> as
+# PROVIDER (demo.enabled: true), or "" when there is none. The email reads two
+# member-facing facts from it: which site is the courses half, and what the
+# SSO button there is called.
+demo_invite_pair_contract() {
+    local site="$1" f prov demo yqb
     yqb="$(demo_yq 2>/dev/null)" || { echo ""; return 0; }
     local pairs_dir="${NWP_PAIR_CONTRACT_DIR:-${PROJECT_ROOT:-$HOME/nwp}/pairs}"
     for f in "$pairs_dir"/*.pair-contract.yml; do
         [[ -f "$f" ]] || continue
         prov="$("$yqb" eval '.provider // ""' "$f" 2>/dev/null)"
         demo="$("$yqb" eval '.demo.enabled // false' "$f" 2>/dev/null)"
-        if [[ "$prov" == "$site" && "$demo" == "true" ]]; then
-            consumer="$("$yqb" eval '.consumer // ""' "$f" 2>/dev/null)"
-            break
-        fi
+        [[ "$prov" == "$site" && "$demo" == "true" ]] && { echo "$f"; return 0; }
     done
+    echo ""
+}
+
+# demo_invite_sso_button_label <community-site> — the EXACT text on the courses
+# site's SSO login button, read from the contract's oidc.issuer_name (the one
+# declared source of that label; the wire script puts the same value on the
+# live button). The email must name the button verbatim — "click the button X"
+# with the wrong X is precisely the broken promise the smoke verb's A10 check
+# exists to catch. Empty when there is no demo pair contract.
+demo_invite_sso_button_label() {
+    local c v yqb
+    c="$(demo_invite_pair_contract "$1")"
+    [[ -n "$c" ]] || { echo ""; return 0; }
+    yqb="$(demo_yq 2>/dev/null)" || { echo ""; return 0; }
+    v="$("$yqb" eval '.oidc.issuer_name // ""' "$c" 2>/dev/null)"
+    [[ "$v" == "null" ]] && v=""
+    echo "$v"
+}
+
+# demo_invite_courses_url <community-site> — the login page of the paired demo
+# COURSES site (Moodle), where the tester clicks the SSO button. Resolved
+# generically from the demo pair contract (provider == this site,
+# demo.enabled). Empty when there is no demo pair or the consumer's domain is
+# unresolvable — the email then simply omits the courses section.
+demo_invite_courses_url() {
+    local site="$1" consumer="" domain="" yml gcfg contract yqb
+    yqb="$(demo_yq 2>/dev/null)" || { echo ""; return 0; }
+    contract="$(demo_invite_pair_contract "$site")"
+    [[ -n "$contract" ]] || { echo ""; return 0; }
+    consumer="$("$yqb" eval '.consumer // ""' "$contract" 2>/dev/null)"
     [[ -n "$consumer" && "$consumer" != "null" ]] || { echo ""; return 0; }
     yml="$(demo_site_dir "$consumer")/.nwp.yml"
     [[ -f "$yml" ]] && { domain="$("$yqb" eval '.live.domain // ""' "$yml" 2>/dev/null)"; [[ "$domain" == "null" ]] && domain=""; }
@@ -609,6 +635,8 @@ job is a careful editorial eye on the Saint School courses.
 Try these in the community — ${cb}
 - From /all-groups, enter your guild, then open its leader views: the guild
   dashboard, the leaderboard, and the verification / ratification queues.
+  (Those queues start empty until someone completes work — do the
+  work-queue items first, then come back to verify and ratify.)
 - Look at member progress — you only see what members chose to share; check
   that boundary feels right.
 - Post a welcome or announcement to the guild.
@@ -618,10 +646,12 @@ BLOCK
         tester-content-manager)
             cat <<BLOCK
 The perspective of someone who writes and arranges the teaching material —
-the craft side the Writers and Pedagogy guilds care for.
+the craft side the Writers and Pedagogy guilds care for. Your editing
+powers live on the community site only: on the courses side you browse as
+an ordinary member.
 
 Try these in the community — ${cb}
-- Edit an existing page or course item and save it.
+- Edit an existing page and save it.
 - Create a brand-new piece of content.
 - Rearrange the structure — move things around, change the order.
 - Then look at your changes the way an ordinary member would see them.
@@ -671,9 +701,14 @@ BLOCK
 demo_invite_email() {
     local join_url="$1" expiry_days="$2"; shift 2
     local pair bundle code site_arg="${DEMO_INVITE_PROVIDER_SITE:-nwd}"
-    local community_base courses_url
+    local community_base courses_url sso_label
     community_base="$(demo_invite_community_base "$site_arg")"
     courses_url="$(demo_invite_courses_url "$site_arg")"
+    # The button's exact text, from the pair contract (never hardcoded here:
+    # a hardcoded name is how the email came to promise a button that read
+    # "nwd" while the live one read "Narrow Way Commons").
+    sso_label="$(demo_invite_sso_button_label "$site_arg")"
+    [[ -n "$sso_label" ]] || sso_label="<COMMUNITY-SITE-NAME>"
 
     cat <<INTRO
 Subject: Would you help us test ${DEMO_INVITE_SITE_NAME}?
@@ -703,10 +738,10 @@ WHAT WE'RE ASKING
 
 Spend 20-60 minutes clicking around as if you were a real member — on BOTH
 halves. Try the things your level unlocks (below). And whenever anything is
-broken, confusing, or just feels wrong — even slightly — use the "Report a
-problem" link and tell us in a sentence or two. Every report goes straight
-into our fix queue. There are no silly reports; "this confused me" is
-exactly what we need to hear.
+broken, confusing, or just feels wrong — even slightly — report it (the two
+ways are listed below) and tell us in a sentence or two. Every report goes
+straight into our fix queue. There are no silly reports; "this confused me"
+is exactly what we need to hear.
 
 COMPLETELY SAFE, COMPLETELY PRIVATE
 
@@ -721,20 +756,25 @@ HOW TO GET IN
 STEP 1 — Join the community:
   1. Open:  ${join_url}
   2. Paste YOUR code (from your section below).
-  3. You're in — you'll land on the community home.
+  3. First you'll meet a short discernment page — the examen — asking
+     whether now is truly the right time; answer honestly, and it either
+     carries you straight on or asks you to come back when you're free.
+  4. You're in — you'll land on the community home.
 
 STEP 2 — Walk into the courses (whenever you like):
   1. Open:  ${courses_url:-<COURSES-SITE>/login}
-  2. Click the button "Log in using your account on: nwd".
+  2. Under the heading "Log in using your account on:", click the button
+     "${sso_label}".
   3. You're now in Saint School with the same identity — browse the courses
      and start one. (There's no code box on the courses site; it uses your
      community sign-in, not a code.)
 
 WHERE TO REPORT PROBLEMS
 
-On the community site: ${community_base:-<COMMUNITY-SITE>}/feedback/submit —
-or the "Report a problem" link you'll see around both sites. One sentence is
-plenty.
+On the community site, sign in and open:
+  ${community_base:-<COMMUNITY-SITE>}/feedback/submit
+On the courses site, use the floating "Report a problem" button you'll see
+on its pages. Either way, one sentence is plenty.
 
 INTRO
 

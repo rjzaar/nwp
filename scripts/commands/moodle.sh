@@ -55,6 +55,7 @@ ${BOLD}USAGE:${NC}
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
     pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
+    pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
     pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
@@ -1417,6 +1418,488 @@ cmd_plugin_drift() {
 }
 
 ################################################################################
+# course restore — guarded bulk course import from .mbz backups
+#
+#   pl moodle course restore <site> --tier=live|dev --from=DIR
+#       [--category=NAME | --category-map=FILE] [--enable-self-enrol]
+#       [--dry-run|--apply]
+#
+# Replaces the hand idiom (scp *.mbz + ssh 'sudo -u www-data php
+# admin/cli/restore_backup.php …' per file) with one verb that keeps the
+# guarantees:
+#   * dry-run DEFAULT; a LIVE --apply takes the ADR-0028 deploy gate and the
+#     typed impact confirm;
+#   * accepts ONLY files named backup-moodle2-course-*.mbz — no traversal, no
+#     symlinks, no shell-hostile names (the names end up in remote commands);
+#   * PII FAIL-CLOSE: each mbz's moodle_backup.xml is parsed LOCALLY, BEFORE
+#     any byte ships. A backup with users=1, or with no readable `users`
+#     setting at all, is REFUSED unless anonymize=1 — course backups are the
+#     one Moodle artifact that can silently carry the whole user table;
+#   * IDEMPOTENT: shortnames already present on the target are skipped (staged
+#     read-only query), so a re-run after a partial failure is safe;
+#   * artifacts reach the box via the sha256-verified push (the
+#     demo_push_verified contract: scp to remote home, verify the hash ON THE
+#     REMOTE, use, delete) — a corrupt upload is caught before restore runs;
+#   * per-course restore via admin/cli/restore_backup.php as www-data, through
+#     the resolved php + max_input_vars (moodle_cli_assert — item 9);
+#   * post-pass ASSERTS every restored course is visible=1 with an enabled,
+#     keyless self-enrolment (generalised from scripts/demo/ssd-seed-courses.php
+#     --check) — a course a tester cannot walk into is a restore that failed
+#     its purpose, and must say so;
+#   * --enable-self-enrol (EXPLICIT opt-in): restore_backup.php provably
+#     brings courses up WITHOUT an enabled self-enrolment (ssd rehearsal,
+#     2026-08-01 — every restored course ENTER-FAILed). With the flag, each
+#     course THIS run restored is made enterable exactly the way the ssd
+#     seeder does it (visible + enabled keyless self-enrol, same plugin
+#     settings) BEFORE the post-pass asserts. Never retrofits pre-existing
+#     (skipped) courses; without the flag behaviour is unchanged and the
+#     post-pass fails loudly;
+#   * --category-map=FILE maps shortname-prefix → category name (creating
+#     categories as needed), e.g. the four formation rails:
+#         b = Your Yes
+#         c = Prayer & Recollection
+#         d = Ascesis
+#         e = Sacraments
+#     A shortname no prefix matches is a REFUSAL, not a silent default.
+################################################################################
+
+# The staged remote helper (list-shortnames / ensure-category / assert-enterable).
+CR_HELPER="${CR_HELPER:-$REPO_ROOT/scripts/moodle/course-restore-check.php}"
+
+_cr_trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+# _cr_extract_backup_xml <mbz> <outfile> — moodle_backup.xml only, locally.
+# .mbz is a tgz on this estate (verified against the 2026-07-11 ss set), but
+# Moodle also emits zip-flavoured .mbz — accept both, refuse anything else.
+_cr_extract_backup_xml() {
+    local mbz="$1" out="$2"
+    if tar -xzf "$mbz" -O moodle_backup.xml > "$out" 2>/dev/null && [ -s "$out" ]; then return 0; fi
+    if command -v unzip >/dev/null 2>&1 \
+        && unzip -p "$mbz" moodle_backup.xml > "$out" 2>/dev/null && [ -s "$out" ]; then return 0; fi
+    return 1
+}
+
+# _cr_backup_setting <xmlfile> <name> — value of a ROOT-level backup setting.
+# Prints nothing when the setting is absent (callers must fail-close on that).
+_cr_backup_setting() {
+    awk -v want="$2" 'BEGIN{RS="</setting>"}
+        /<level>root<\/level>/ && $0 ~ ("<name>" want "</name>") {
+            if (match($0, /<value>[^<]*<\/value>/)) {
+                print substr($0, RSTART+7, RLENGTH-15); exit
+            }
+        }' "$1"
+}
+
+_cr_backup_shortname() {
+    sed -n 's/.*<original_course_shortname>\([^<]*\)<\/original_course_shortname>.*/\1/p' "$1" | head -1
+}
+
+# Category map: `prefix = Category Name` lines, `#` comments. Fills the two
+# parallel arrays; refuses an unparseable line rather than skipping it.
+_cr_parse_category_map() {
+    local file="$1" line prefix name lineno=0
+    CR_MAP_PREFIXES=(); CR_MAP_NAMES=()
+    [ -f "$file" ] || { print_error "category map not found: $file"; return 1; }
+    while IFS= read -r line || [ -n "$line" ]; do
+        lineno=$((lineno+1))
+        line="${line%%#*}"
+        [ -z "$(_cr_trim "$line")" ] && continue
+        case "$line" in
+            *=*) prefix="$(_cr_trim "${line%%=*}")"; name="$(_cr_trim "${line#*=}")" ;;
+            *)   print_error "category map ${file}:${lineno}: expected 'prefix = Category Name', got: $(_cr_trim "$line")"; return 1 ;;
+        esac
+        if [ -z "$prefix" ] || [ -z "$name" ]; then
+            print_error "category map ${file}:${lineno}: empty prefix or category name"; return 1
+        fi
+        CR_MAP_PREFIXES+=("$prefix"); CR_MAP_NAMES+=("$name")
+    done < "$file"
+    [ "${#CR_MAP_PREFIXES[@]}" -gt 0 ] || { print_error "category map ${file} declares no mappings"; return 1; }
+    return 0
+}
+
+# _cr_map_category <shortname> — longest case-insensitive prefix wins.
+# Returns 1 (mapped to nothing) when no prefix matches: the caller REFUSES.
+_cr_map_category() {
+    local sn lp i best="" bestlen=0
+    sn="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    for i in "${!CR_MAP_PREFIXES[@]}"; do
+        lp="$(printf '%s' "${CR_MAP_PREFIXES[$i]}" | tr '[:upper:]' '[:lower:]')"
+        if [ "${sn:0:${#lp}}" = "$lp" ] && [ "${#lp}" -gt "$bestlen" ]; then
+            best="${CR_MAP_NAMES[$i]}"; bestlen="${#lp}"
+        fi
+    done
+    [ -n "$best" ] && { printf '%s' "$best"; return 0; }
+    return 1
+}
+
+# _cr_sha256 <file> — the hash field of sha256sum output, nothing else.
+#
+# `cut -d' ' -f1`, NOT `awk '{print $1}'`, on purpose. This is sha256sum output,
+# not YAML — but lint:yq-first's file-scoped heuristic learns that `f` is a YAML
+# variable from `_moodle_core_patches_decl` (f="…/${base}.yml") and then flags
+# any awk invocation whose arguments mention any `$f`, including the unrelated
+# .mbz loop variable in the staging path below. The awk-free form is the honest
+# fix rather than a baseline row: `cut -d' ' -f1` is already the sibling idiom
+# in lib/verify-runner.sh, lib/console-deploy.sh and lib/golden-hygiene.sh.
+_cr_sha256() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+
+# _cr_push_verified <ssh_target> <ssh_opts> <local_path> <remote_name>
+# The demo_push_verified contract, parameterised for this verb's target: scp to
+# the remote HOME, verify the sha256 ON THE REMOTE against the locally computed
+# hash, fail-closed (and remove the corrupt upload) on mismatch.
+_cr_push_verified() {
+    local ssh_target="$1" ssh_opts="$2" local_path="$3" remote_name="$4"
+    local want got
+    want="$(_cr_sha256 "$local_path")"
+    if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+        print_error "Cannot compute a local sha256 for $(basename "$local_path")"; return 1
+    fi
+    # shellcheck disable=SC2086
+    if ! scp ${ssh_opts} -o BatchMode=yes "$local_path" "${ssh_target}:${remote_name}" >/dev/null 2>&1; then
+        print_error "Failed to push $(basename "$local_path") to the target"; return 1
+    fi
+    # shellcheck disable=SC2086
+    got="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "sha256sum ~/${remote_name} 2>/dev/null | cut -d' ' -f1" 2>/dev/null)"
+    if [ "$got" != "$want" ]; then
+        print_error "sha256 MISMATCH after push for ${remote_name} (local=${want} remote=${got:-none}) — aborting BEFORE restore."
+        # shellcheck disable=SC2086
+        ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "rm -f ~/${remote_name}" >/dev/null 2>&1 || true
+        return 1
+    fi
+    return 0
+}
+
+cmd_course_restore() {
+    local site="" tier="" from_dir="" category="" category_map="" mode="dry-run" enable_self="false"
+    for a in "$@"; do
+        case "$a" in
+            --tier=*)         tier="${a#*=}" ;;
+            --from=*)         from_dir="${a#*=}" ;;
+            --category=*)     category="${a#*=}" ;;
+            --category-map=*) category_map="${a#*=}" ;;
+            --enable-self-enrol) enable_self="true" ;;
+            --dry-run)        mode="dry-run" ;;
+            --apply|--execute) mode="apply" ;;
+            -h|--help)
+                print_info "usage: pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]"
+                return 0 ;;
+            -*) print_error "Unknown option: $a"; return 1 ;;
+            *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--apply]"; return 1; }
+    case "$tier" in
+        live|dev) ;;
+        "") print_error "--tier is required (live|dev)"; return 1 ;;
+        *)  print_error "--tier must be live or dev (stg is a local ddev tier without a restore path here)"; return 1 ;;
+    esac
+    [ -z "$from_dir" ] && { print_error "--from=DIR is required (directory of backup-moodle2-course-*.mbz files)"; return 1; }
+    if [ -n "$category" ] && [ -n "$category_map" ]; then
+        print_error "--category and --category-map are mutually exclusive"; return 1
+    fi
+    if [ -z "$category" ] && [ -z "$category_map" ]; then
+        print_error "One of --category=NAME or --category-map=FILE is required — this verb never guesses a category."
+        return 1
+    fi
+    _resolve_moodle_site "$site" || return 1
+    [ -d "$from_dir" ] || { print_error "--from is not a directory: $from_dir"; return 1; }
+    if [ -n "$category_map" ]; then
+        _cr_parse_category_map "$category_map" || return 1
+    fi
+
+    # ---- candidate enumeration + name guard (guard 1) -----------------------
+    # Only regular files (find without -L excludes symlinks), only the exact
+    # backup-moodle2-course-*.mbz shape, and only shell-safe basenames: these
+    # names are later embedded in remote command lines, so a hostile name is a
+    # refusal for the WHOLE run, not a skip.
+    local -a files=()
+    mapfile -t files < <(find "$from_dir" -maxdepth 1 -type f -name 'backup-moodle2-course-*.mbz' 2>/dev/null | sort)
+    [ "${#files[@]}" -eq 0 ] && { print_error "No backup-moodle2-course-*.mbz files in $from_dir"; return 1; }
+    local f base
+    for f in "${files[@]}"; do
+        base="$(basename "$f")"
+        case "$base" in
+            *..*) print_error "Refusing '${base}': path-traversal shape ('..') in an mbz name."; return 1 ;;
+        esac
+        if [[ ! "$base" =~ ^backup-moodle2-course-[A-Za-z0-9._-]+\.mbz$ ]]; then
+            print_error "Refusing '${base}': mbz names must match backup-moodle2-course-*.mbz with only [A-Za-z0-9._-]."
+            return 1
+        fi
+    done
+
+    # ---- PII fail-close + shortname + category resolution (all LOCAL) ------
+    # Guard 2: parse each mbz BEFORE anything ships. users=1, or an unreadable
+    # `users` setting, refuses the run unless anonymize=1. No per-file skip:
+    # a batch that contains user data is a wrong batch.
+    local xml_tmp; xml_tmp="$(mktemp)" || return 1
+    local -a shortnames=() categories=()
+    local users anonymize sn cat
+    print_header "Moodle course restore: ${BASE}@${tier} (${#files[@]} candidate mbz)"
+    for f in "${files[@]}"; do
+        base="$(basename "$f")"
+        if ! _cr_extract_backup_xml "$f" "$xml_tmp"; then
+            print_error "REFUSING ${base}: cannot extract moodle_backup.xml (not a readable .mbz?)."
+            rm -f "$xml_tmp"; return 1
+        fi
+        users="$(_cr_backup_setting "$xml_tmp" users)"
+        anonymize="$(_cr_backup_setting "$xml_tmp" anonymize)"
+        if [ "$anonymize" != "1" ]; then
+            if [ -z "$users" ]; then
+                print_error "REFUSING ${base}: no root-level 'users' setting in moodle_backup.xml — cannot prove it carries no user data (PII fail-close)."
+                rm -f "$xml_tmp"; return 1
+            fi
+            if [ "$users" != "0" ]; then
+                print_error "REFUSING ${base}: backup includes user data (users=${users}, anonymize=${anonymize:-0})."
+                print_info  "  Re-export the course WITHOUT users (or with anonymize) — raw user data never rides a course mbz through this verb."
+                rm -f "$xml_tmp"; return 1
+            fi
+        fi
+        sn="$(_cr_backup_shortname "$xml_tmp")"
+        if [ -z "$sn" ]; then
+            print_error "REFUSING ${base}: no <original_course_shortname> — without it the idempotency check is impossible."
+            rm -f "$xml_tmp"; return 1
+        fi
+        if [ -n "$category_map" ]; then
+            if ! cat="$(_cr_map_category "$sn")"; then
+                print_error "REFUSING ${base}: shortname '${sn}' matches no prefix in ${category_map}."
+                print_info  "  Add a mapping line ('prefix = Category Name') — this verb never guesses a category."
+                rm -f "$xml_tmp"; return 1
+            fi
+        else
+            cat="$category"
+        fi
+        shortnames+=("$sn"); categories+=("$cat")
+    done
+    rm -f "$xml_tmp"
+
+    # ---- plan --------------------------------------------------------------
+    local i
+    printf '    %-46s %-14s %s\n' "FILE" "SHORTNAME" "CATEGORY"
+    for i in "${!files[@]}"; do
+        printf '    %-46s %-14s %s\n' "$(basename "${files[$i]}")" "${shortnames[$i]}" "${categories[$i]}"
+    done
+    echo ""
+
+    # ---- tier plumbing ------------------------------------------------------
+    local ssh_target="" ssh_opts="" sudo_prefix="" remote_path="" php_bin="" php_opts=""
+    local dev_root="" dev_stage_rel=".nwp-course-restore-stage"
+    if [ "$tier" = "live" ]; then
+        local live_enabled; live_enabled=$(get_live_config "$BASE" "enabled")
+        [ "$live_enabled" = "false" ] && { print_error "Live disabled for '$BASE' (live.enabled: false)."; return 1; }
+        local server_ip ssh_user
+        server_ip=$(get_live_config "$BASE" "server_ip")
+        [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE'."; return 1; }
+        ssh_user=$(get_ssh_user "$BASE")
+        remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+        [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+        ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+        # Item 9: the two pieces of box knowledge, resolved and ASSERTED.
+        php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+        php_opts="$(moodle_cli_php_opts "$CONFIG_FILE")"
+        moodle_cli_assert "$php_bin" "$php_opts" || return 1
+        print_info "Target:  ${ssh_target}:${remote_path}"
+        print_info "php:     ${php_bin} ${php_opts}"
+    else
+        dev_root="$PROJECT_ROOT/sites/${BASE}/dev"
+        [ -f "$dev_root/config.php" ] || { print_error "No Moodle dev tier at ${dev_root} (config.php missing)."; return 1; }
+        command -v ddev >/dev/null 2>&1 || { print_error "ddev is required for --tier=dev."; return 1; }
+        print_info "Target:  ddev project at ${dev_root}"
+    fi
+    [ -f "$CR_HELPER" ] || { print_error "Missing staged helper: $CR_HELPER"; return 1; }
+
+    # ---- dry-run stops HERE: no ssh, no scp, no ddev exec ------------------
+    if [ "$mode" != "apply" ]; then
+        print_info "At --apply time, shortnames already present on the target are SKIPPED (idempotent),"
+        print_info "categories are created as needed, and every restored course is asserted"
+        print_info "visible + keyless-self-enrolable."
+        if [ "$enable_self" = "true" ]; then
+            print_info "--enable-self-enrol: WOULD enable a keyless self-enrolment (+ visibility) on each"
+            print_info "course restored by that run — restored courses only, never pre-existing ones."
+        else
+            print_info "(restore_backup.php brings courses up WITHOUT enabled self-enrol; the post-pass"
+            print_info " will fail loudly unless you pass --enable-self-enrol or fix enrolments yourself.)"
+        fi
+        print_status "OK" "[dry-run] ${#files[@]} restore(s) planned — nothing executed. Re-run with --apply."
+        return 0
+    fi
+
+    # ---- live gates (ADR-0028 + fate manifest + typed confirm) --------------
+    if [ "$tier" = "live" ]; then
+        deploy_gate_require "$BASE" "live" "restore ${#files[@]} course mbz file(s) into live Moodle via admin/cli/restore_backup.php" || return 1
+        impact_reset
+        impact_overwrite "mdl_course" "up to ${#files[@]} NEW course(s) created by admin/cli/restore_backup.php (existing shortnames are skipped, never replaced)"
+        impact_overwrite "mdl_course_categories" "categories created as needed: $(printf '%s\n' "${categories[@]}" | sort -u | paste -sd ', ' -)"
+        if [ "$enable_self" = "true" ]; then
+            impact_overwrite "mdl_enrol" "keyless self-enrolment ENABLED (+ visible=1) on each course THIS run restores — never on pre-existing courses"
+        fi
+        impact_keep "existing courses, users and enrolments — restore only ADDS courses"
+        impact_keep "config.php + moodledata config — untouched"
+        impact_warn "restore_backup.php has no down-hook; removing a restored course afterwards is a manual course deletion."
+        impact_render
+        impact_confirm typed "$BASE" "${AUTO_CONFIRM:-false}" || { print_error "aborted."; return 1; }
+    fi
+
+    # ---- runner shims: one remote surface per tier --------------------------
+    local remote_stage="/tmp/nwp-course-restore-$(date +%s)-$$"
+    # Both runners take stdin from /dev/null: ssh and `ddev exec` otherwise
+    # swallow the caller's stdin, which silently truncates any surrounding
+    # read loop (caught live by the ssd dev-tier rehearsal — only the first
+    # category of three resolved).
+    _cr_run_helper() {   # <args...> — run the staged helper as the web user
+        if [ "$tier" = "live" ]; then
+            local qargs="" x
+            for x in "$@"; do qargs+=" $(printf '%q' "$x")"; done
+            # shellcheck disable=SC2086
+            ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+                "cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_stage}/course-restore-check.php${qargs}" </dev/null
+        else
+            (cd "$dev_root" && ddev exec php -d max_input_vars=5000 "${dev_stage_rel}/course-restore-check.php" "$@" </dev/null)
+        fi
+    }
+    _cr_run_restore() {  # <staged mbz name> <categoryid>
+        if [ "$tier" = "live" ]; then
+            # shellcheck disable=SC2086
+            ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+                "cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_path%/}/admin/cli/restore_backup.php --file=${remote_stage}/$1 --categoryid=$2" </dev/null
+        else
+            (cd "$dev_root" && ddev exec php -d max_input_vars=5000 admin/cli/restore_backup.php \
+                "--file=/var/www/html/${dev_stage_rel}/$1" "--categoryid=$2" </dev/null)
+        fi
+    }
+    _cr_cleanup() {
+        if [ "$tier" = "live" ]; then
+            # shellcheck disable=SC2086
+            ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${sudo_prefix} rm -rf ${remote_stage}" >/dev/null 2>&1 || true
+        else
+            rm -rf "${dev_root:?}/${dev_stage_rel}"
+        fi
+    }
+
+    # ---- stage: sha256-verified push, then a www-data-readable dir ---------
+    print_header "Staging (sha256-verified)"
+    if [ "$tier" = "live" ]; then
+        local -a pushed=()
+        _cr_push_verified "$ssh_target" "$ssh_opts" "$CR_HELPER" "course-restore-check.php" || return 1
+        pushed+=("course-restore-check.php")
+        for f in "${files[@]}"; do
+            base="$(basename "$f")"
+            if ! _cr_push_verified "$ssh_target" "$ssh_opts" "$f" "$base"; then
+                # shellcheck disable=SC2086
+                ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "cd ~ && rm -f ${pushed[*]}" >/dev/null 2>&1 || true
+                return 1
+            fi
+            pushed+=("$base")
+        done
+        # Move the verified uploads out of ~ into a stage www-data can read,
+        # then DELETE the home copies (the push-verify-use-delete contract).
+        # shellcheck disable=SC2086
+        if ! ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+            "${sudo_prefix} mkdir -p ${remote_stage} && cd ~ && ${sudo_prefix} cp ${pushed[*]} ${remote_stage}/ && ${sudo_prefix} chown -R www-data:www-data ${remote_stage} && ${sudo_prefix} chmod 0755 ${remote_stage} && rm -f ${pushed[*]}"; then
+            print_error "Could not stage verified files into ${remote_stage} on the target."
+            _cr_cleanup; return 1
+        fi
+    else
+        mkdir -p "${dev_root}/${dev_stage_rel}" || return 1
+        cp "$CR_HELPER" "${dev_root}/${dev_stage_rel}/course-restore-check.php" || { _cr_cleanup; return 1; }
+        for f in "${files[@]}"; do
+            cp "$f" "${dev_root}/${dev_stage_rel}/" || { _cr_cleanup; return 1; }
+            if [ "$(_cr_sha256 "${dev_root}/${dev_stage_rel}/$(basename "$f")")" != "$(_cr_sha256 "$f")" ]; then
+                print_error "sha256 MISMATCH staging $(basename "$f") into the dev tier."; _cr_cleanup; return 1
+            fi
+        done
+    fi
+
+    # ---- idempotency: staged READ-ONLY query of existing shortnames --------
+    print_header "Idempotency check (existing shortnames on target)"
+    local existing
+    if ! existing="$(_cr_run_helper --list-shortnames)"; then
+        print_error "Could not enumerate existing course shortnames on the target — refusing to restore blind."
+        _cr_cleanup; return 1
+    fi
+    existing="$(printf '%s\n' "$existing" | awk '/^SHORTNAME /{ $1=""; sub(/^ /,""); print }')"
+
+    local -a do_files=() do_shortnames=() do_categories=()
+    for i in "${!files[@]}"; do
+        if printf '%s\n' "$existing" | grep -Fxq -- "${shortnames[$i]}"; then
+            print_info "SKIP $(basename "${files[$i]}") — shortname '${shortnames[$i]}' already present on target."
+        else
+            do_files+=("${files[$i]}"); do_shortnames+=("${shortnames[$i]}"); do_categories+=("${categories[$i]}")
+        fi
+    done
+    if [ "${#do_files[@]}" -eq 0 ]; then
+        _cr_cleanup
+        print_status "OK" "0 restores to perform — the target already has all ${#files[@]} course(s). Idempotent no-op."
+        return 0
+    fi
+    print_info "${#do_files[@]} of ${#files[@]} course(s) to restore."
+
+    # ---- categories (created as needed) ------------------------------------
+    print_header "Category resolution"
+    local -a cat_names=() cat_ids=() uniq_cats=()
+    local cat_out cat_id
+    # mapfile, not a `while read` pipe: the helper below execs ssh/ddev, and a
+    # child that reads the loop's stdin truncates the category list.
+    mapfile -t uniq_cats < <(printf '%s\n' "${do_categories[@]}" | sort -u)
+    for cat in "${uniq_cats[@]}"; do
+        [ -n "$cat" ] || continue
+        if ! cat_out="$(_cr_run_helper "--ensure-category=${cat}")"; then
+            print_error "Could not resolve/create category '${cat}' on the target."
+            _cr_cleanup; return 1
+        fi
+        cat_id="$(printf '%s\n' "$cat_out" | awk '/^CATID /{print $2; exit}')"
+        if [[ ! "$cat_id" =~ ^[0-9]+$ ]]; then
+            print_error "Unparseable category id for '${cat}' (got: ${cat_out})."
+            _cr_cleanup; return 1
+        fi
+        cat_names+=("$cat"); cat_ids+=("$cat_id")
+        print_info "  ${cat} → categoryid=${cat_id}"
+    done
+
+    # ---- per-course restore -------------------------------------------------
+    print_header "Restoring ${#do_files[@]} course(s)"
+    local restored=0 j
+    for i in "${!do_files[@]}"; do
+        base="$(basename "${do_files[$i]}")"
+        cat_id=""
+        for j in "${!cat_names[@]}"; do
+            [ "${cat_names[$j]}" = "${do_categories[$i]}" ] && { cat_id="${cat_ids[$j]}"; break; }
+        done
+        [ -z "$cat_id" ] && { print_error "internal: no category id for '${do_categories[$i]}'"; _cr_cleanup; return 1; }
+        print_info "RESTORE ${base} (${do_shortnames[$i]}) → '${do_categories[$i]}' (categoryid=${cat_id})"
+        if ! _cr_run_restore "$base" "$cat_id"; then
+            print_error "restore_backup.php FAILED for ${base} — stopping (${restored} restored; re-run is safe, restored shortnames will be skipped)."
+            _cr_cleanup; return 1
+        fi
+        restored=$((restored+1))
+    done
+
+    # ---- opt-in: make THIS run's restored courses enterable -----------------
+    # restore_backup.php provably restores courses with no enabled self-enrol
+    # (ssd rehearsal 2026-08-01). Scoped to do_shortnames — exactly the courses
+    # restored above — so pre-existing (skipped) courses are never retrofitted.
+    if [ "$enable_self" = "true" ]; then
+        print_header "Enabling keyless self-enrol on ${#do_shortnames[@]} restored course(s)"
+        if ! _cr_run_helper --enable-self-enrol "${do_shortnames[@]}"; then
+            print_error "--enable-self-enrol FAILED (see ENROL-FAIL lines) — the post-pass below will show what is still closed."
+        fi
+    fi
+
+    # ---- post-pass: every restored course must be enterable -----------------
+    print_header "Post-restore assertion (visible + keyless self-enrol)"
+    local assert_rc=0
+    _cr_run_helper --assert-enterable "${do_shortnames[@]}" || assert_rc=$?
+    _cr_cleanup
+    if [ "$assert_rc" -ne 0 ]; then
+        print_error "${restored} course(s) restored, but the enterability assertion FAILED (see ENTER-FAIL lines)."
+        print_info  "A hidden course rejects require_login; a keyed/disabled self-enrol strands a tester at the door."
+        print_info  "Fix visibility/self-enrolment on the target, then re-run the assertion."
+        return 1
+    fi
+    print_status "OK" "${restored} course(s) restored into ${BASE}@${tier}; all visible + keyless-self-enrolable."
+    return 0
+}
+
+################################################################################
 # Dispatch
 #
 # Sourcing this file (bats unit tests) defines the functions WITHOUT dispatching,
@@ -1442,6 +1925,13 @@ case "$SUB" in
     cli)         cmd_cli         "$@" ;;
     maintenance) cmd_maintenance "$@" ;;
     core-patch)  cmd_core_patch  "$@" ;;
+    course)
+        PSUB="${1:-}"; shift || true
+        case "$PSUB" in
+            restore) cmd_course_restore "$@" ;;
+            *) print_error "Unknown 'course' subcommand: ${PSUB:-(none)} (restore)"; exit 1 ;;
+        esac
+        ;;
     plugins)
         PSUB="${1:-}"; shift || true
         case "$PSUB" in

@@ -1,0 +1,20 @@
+{
+  "depths": {
+    "standard": "<p>Prayer is the raising of the mind and heart to God. This demo activity exists so you can click something and see what happens.</p>"
+  },
+  "quiz_items": [
+    {
+      "id": "q1",
+      "depth": "standard",
+      "difficulty": "standard",
+      "type": "multichoice",
+      "question": "Which of these is a form of prayer the Church has always practised?",
+      "options": [
+        "Lectio divina",
+        "Sitting quietly until you feel nothing at all"
+      ],
+      "answer": 0
+    }
+  ],
+  "practice": null
+}

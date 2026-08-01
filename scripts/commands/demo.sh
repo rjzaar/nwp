@@ -135,6 +135,7 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   Retry-safe: only posted digests are moved to
                                   demo-harvest/posted/.
     schedule <site> [--tier=live] [--remove] [--via-key]
+             [--host <[user@]ip>] [--print-only]
                                   Install/remove the nightly cron on THIS
                                   machine (intended host: met).
                                   --via-key schedules the RESTRICTED
@@ -147,6 +148,16 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   (the wrapper is idempotent), giving the same
                                   ${DEMO_FLOOR_TIME} floor without holding a
                                   3-hour ssh session open.
+                                  --host (or NWP_DEMO_BOX_HOST) names the box
+                                  directly, so --via-key can run on a scheduler
+                                  that has no sites/<site>/.nwp.yml — which is
+                                  the whole point of --via-key and was, until
+                                  ops#171, the one thing it could not do.
+                                  --print-only emits the 3-line block on stdout
+                                  and touches no crontab at all: generate it
+                                  where the config is, install it where the
+                                  scheduler is. The block is byte-identical to
+                                  what the install path writes.
 
 ${BOLD}OPTIONS:${NC}
     --with-pair        Demand the paired path (refuse if the pair or the
@@ -1300,6 +1311,55 @@ cmd_golden() {
     print_hint "Nightly restore will return $site to exactly this state."
 }
 
+# Drupal tables whose SCHEMA belongs in the golden but whose ROWS never do
+# (nwp/ops#168). Comma-separated because that is drush's own syntax.
+#
+# WHY, with the numbers. The 2026-08-01 nwd golden carried 36 `watchdog` rows,
+# SIXTEEN of them from the ddev dev environment — `location` of
+# `https://nwd-dev.ddev.site/…`, backtraces rooted at `/var/www/html/html/…`
+# (live is `/var/www/nwd/html/…`) — plus the operator's personal email address
+# twice, a real public client IP nine times, and 11 `sessions` rows including
+# one AUTHENTICATED session captured on dev.
+#
+# The golden is restored onto the live demo site every night, so none of that
+# ages out: the table that would age it out is replaced from the image at
+# 01:00. The concrete cost is the monitoring channel. The pre-wipe harvest
+# collects `watchdog:show --severity=Error`, the golden holds exactly two Error
+# rows, and so every nightly digest re-reports the same two errors with the same
+# timestamps for ever — one of them printing a path from an environment that is
+# not the one being monitored. ops#168 caught this in the wild: three digests
+# from three different nights (2026-07-27/28/29) are byte-identical below their
+# header. A channel that cries wolf nightly is a channel that stops being read,
+# and then the next REAL tester error vanishes into it.
+#
+# Nothing is lost by dumping these empty. The box wrapper harvests before the
+# wipe (servers/live/demo/nwd-demo-reset-restricted) and those digests are the
+# record; the golden's copy of `watchdog` is not the record of anything.
+#
+# STRUCTURE, not omission: drush's --structure-tables-list keeps the CREATE
+# TABLE and drops only the rows, which is what a reference image wants — the
+# same idiom lib/sanitize.sh, lib/sanitizers/standard.sh and lib/import.sh
+# already use. `sessions` and `flood` are here for the same reason as
+# `watchdog`: they are runtime state, not reference state, and re-inserting
+# last week's session rows nightly is meaningless at best.
+DEMO_DRUPAL_NODATA_TABLES="${DEMO_DRUPAL_NODATA_TABLES:-watchdog,sessions,flood}"
+
+# ---------------------------------------------------------------------------
+# demo_drupal_dump_cmd <site-root> <drush-sudo-prefix> <out-path>
+# The remote Drupal dump command. PURE — no ssh, no globals — so the table
+# exclusions above are assertable in a unit test instead of only observable by
+# unpacking a golden after the fact, which is how ops#168 had to be found.
+#
+# 2>/dev/null: drush writes its progress chatter to stderr and the caller
+# redirects stdout into the artifact, so anything drush says would otherwise
+# interleave into the operator's terminal on every capture.
+# ---------------------------------------------------------------------------
+demo_drupal_dump_cmd() {
+    local root="$1" drushsudo="$2" out="$3"
+    printf 'cd %s && %s ./vendor/bin/drush sql:dump --gzip --structure-tables-list=%s 2>/dev/null > %s' \
+        "$root" "$drushsudo" "$DEMO_DRUPAL_NODATA_TABLES" "$out"
+}
+
 # --- live capture (read-only against the demo host) --------------------------
 # Dumps the DB and tars sites/default/files ON the live host, computes each
 # sha256 there, pulls both back and re-verifies locally. Nothing on live is
@@ -1366,7 +1426,7 @@ cmd_golden_live() {
     else
         # 1. Remote DB dump.
         print_info "Dumping database on the live host…"
-        if ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:dump --gzip 2>/dev/null > ~/${rdb}"; then
+        if ! demo_rssh "$site" "$(demo_drupal_dump_cmd "${DEMO_LIVE_PATH}" "${DEMO_LIVE_DRUSHSUDO}" "~/${rdb}")"; then
             print_error "Remote drush sql:dump failed"
             demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
             return 1
@@ -2275,20 +2335,62 @@ cmd_harvest_post() {
 # entry instead of the forced command (found the hard way — see the guide).
 DEMO_KEY_PATH="${DEMO_KEY_PATH:-\$HOME/.ssh/<site>_demo_reset}"
 
-# demo_schedule_key_cmd <site> → the ssh invocation the cron line will run.
-# Host and user come from sites/<site>/.nwp.yml (live.server_ip → live.domain,
-# get_ssh_user), never from a hardcoded hostname.
+# demo_schedule_key_cmd <site> [<[user@]host-override>] → the ssh invocation
+# the cron line will run.
+#
+# Host and user normally come from sites/<site>/.nwp.yml (live.server_ip →
+# live.domain, get_ssh_user), never from a hardcoded hostname.
+#
+# THE OVERRIDE EXISTS BECAUSE THE VERB COULD NOT RUN WHERE IT IS MEANT TO RUN
+# (nwp/ops#171). `--via-key`'s whole point is that the SCHEDULER needs no site
+# config: the cron line is self-contained and the box-side forced command does
+# the rest. But resolving the box's address through get_site_config_value made
+# the verb depend on exactly the `sites/<site>/.nwp.yml` the scheduler is
+# designed not to have — so on met it failed with "No live.server_ip", and the
+# one verb that installs the repo-free cron was the one thing that could not run
+# on the repo-free host. Both nightly blocks (nwd and ssd) had to be generated
+# on the workstation against a stub crontab and installed by hand, which nearly
+# became a live regression: met's checkout predated MR !262, so a re-run there
+# would have installed the cron line WITHOUT `-F /dev/null` — the exact
+# admin-key hijack that MR had just fixed.
+#
+# The override takes `host` or `user@host`. It is honoured ahead of every config
+# lookup, because someone who names the box explicitly is not asking to be
+# second-guessed by whatever a stale local checkout happens to think.
 demo_schedule_key_cmd() {
-    local site="$1" host="" user="" key="" server_name=""
-    # Same resolution order as demo_live_ctx: named server → server_ip → domain.
-    server_name="$(get_site_config_value "$site" '.live.server' "")"
-    if [[ -n "$server_name" ]] && declare -F get_server_config >/dev/null 2>&1; then
-        host="$(get_server_config "$server_name" "ip" "" 2>/dev/null)"
+    local site="$1" override="${2:-${NWP_DEMO_BOX_HOST:-}}"
+    local host="" user="" key="" server_name=""
+    if [[ -n "$override" ]]; then
+        # `user@host` splits; a bare host keeps the config-derived user.
+        if [[ "$override" == *"@"* ]]; then
+            user="${override%@*}"
+            host="${override##*@}"
+        else
+            host="$override"
+        fi
+        # print_error already goes to stderr; nothing may reach stdout here
+        # because stdout is the returned ssh command (see the refusal below).
+        [[ -n "$host" ]] || { print_error "--host '${override}' has no hostname part"; return 1; }
+    else
+        # Same resolution order as demo_live_ctx: named server → server_ip → domain.
+        server_name="$(get_site_config_value "$site" '.live.server' "")"
+        if [[ -n "$server_name" ]] && declare -F get_server_config >/dev/null 2>&1; then
+            host="$(get_server_config "$server_name" "ip" "" 2>/dev/null)"
+        fi
+        [[ -z "$host" ]] && host="$(get_site_config_value "$site" '.live.server_ip' "")"
+        [[ -z "$host" ]] && host="$(get_site_config_value "$site" '.live.domain' "")"
+        [[ -n "$host" ]] || {
+            # >&2 is LOAD-BEARING: this function's stdout IS the ssh command the
+            # caller captures with $( ). print_hint writes to stdout, so an
+            # un-redirected hint would be swallowed into the command string and
+            # the operator would be told nothing — which is how a "cannot
+            # schedule" message ended up naming no way out.
+            print_error "No live.server_ip / live.domain for '$site' — cannot schedule --via-key"
+            print_hint "On a host with no sites/ config (met): pass --host <ip> or --host <user>@<ip>, or set NWP_DEMO_BOX_HOST." >&2
+            return 1
+        }
     fi
-    [[ -z "$host" ]] && host="$(get_site_config_value "$site" '.live.server_ip' "")"
-    [[ -z "$host" ]] && host="$(get_site_config_value "$site" '.live.domain' "")"
-    [[ -n "$host" ]] || { print_error "No live.server_ip / live.domain for '$site' — cannot schedule --via-key"; return 1; }
-    user="$(get_ssh_user "$site")"
+    [[ -n "$user" ]] || user="$(get_ssh_user "$site")"
     key="${DEMO_KEY_PATH//<site>/$site}"
     # -F /dev/null: IdentitiesOnly + IdentityAgent=none block the AGENT, but an
     # `IdentityFile` in ~/.ssh/config for this host is still offered — and on a
@@ -2305,26 +2407,41 @@ demo_schedule_key_cmd() {
 
 cmd_schedule() {
     local site="$1" remove="$2" tier="${3:-dev}" via_key="${4:-false}"
+    local host_override="${5:-}" print_only="${6:-false}"
     # `pl demo schedule --help` parsed the FLAG as a site name and cheerfully
     # installed a nightly cron for a site called "--help". A scheduler that
     # accepts a name no site could ever have is writing a job that can only
     # fail, nightly, into a crontab nobody re-reads.
     if [[ -z "$site" || "$site" == -* ]]; then
-        print_error "Usage: pl demo schedule <site> [--tier=live] [--via-key] [--remove]"
+        print_error "Usage: pl demo schedule <site> [--tier=live] [--via-key] [--host <[user@]ip>] [--print-only] [--remove]"
         [[ "$site" == -* ]] && print_hint "'$site' looks like an option, not a site name."
         return 2
     fi
+    # --print-only EMITS a block; --remove DELETES one. Together they are a
+    # request with no meaning, and the dangerous reading ("print what I would
+    # remove") is not the one the code would take — it would remove for real.
+    if [[ "$print_only" == "true" && "$remove" == "true" ]]; then
+        print_error "REFUSED: --print-only and --remove are contradictory."
+        print_hint "To see what --remove would drop: crontab -l | grep -A2 'NWP Demo Reset - ${site}'"
+        return 2
+    fi
     local marker="# NWP Demo Reset - $site"
-    local current
-    current="$(crontab -l 2>/dev/null || true)"
-    # Drop any existing entry (idempotent install / clean removal). The install
-    # writes a 3-line block (marker, CRON_TZ, command) — remove the whole block
-    # by marker, plus any stray command line as belt-and-braces (either flavour).
-    local cleaned
-    cleaned="$(printf '%s\n' "$current" \
-        | awk -v m="$marker" 'index($0, m) == 1 { skip = 3 } skip > 0 { skip--; next } { print }' \
-        | grep -v "pl demo nightly $site\b" \
-        | grep -v "${site}_demo_reset" || true)"
+    local current="" cleaned=""
+    # --print-only does not touch a crontab AT ALL — not even to read one. That
+    # is the point of it (nwp/ops#171): the block gets generated on whatever
+    # machine has the site config and is installed on the machine that is
+    # actually the scheduler, so reading THIS machine's crontab here would be
+    # reading the wrong one and inviting the block to be trimmed against it.
+    if [[ "$print_only" != "true" ]]; then
+        current="$(crontab -l 2>/dev/null || true)"
+        # Drop any existing entry (idempotent install / clean removal). The install
+        # writes a 3-line block (marker, CRON_TZ, command) — remove the whole block
+        # by marker, plus any stray command line as belt-and-braces (either flavour).
+        cleaned="$(printf '%s\n' "$current" \
+            | awk -v m="$marker" 'index($0, m) == 1 { skip = 3 } skip > 0 { skip--; next } { print }' \
+            | grep -v "pl demo nightly $site\b" \
+            | grep -v "${site}_demo_reset" || true)"
+    fi
 
     if [[ "$remove" == "true" ]]; then
         printf '%s\n' "$cleaned" | crontab -
@@ -2332,7 +2449,10 @@ cmd_schedule() {
         return 0
     fi
 
-    mkdir -p "$PROJECT_ROOT/logs"
+    # No logs/ dir is created under --print-only: this machine is not the one
+    # that will run the job, so creating it here would be creating it in the
+    # wrong place while implying the right one exists.
+    [[ "$print_only" == "true" ]] || mkdir -p "$PROJECT_ROOT/logs"
     local log="${PROJECT_ROOT}/logs/demo-nightly-${site}.log"
     local entry
 
@@ -2361,7 +2481,7 @@ cmd_schedule() {
         # 04:00 floor" semantics without holding a connection open on a 3.8 GB
         # host. No repo checkout is needed on the scheduler at all.
         local sshcmd
-        sshcmd="$(demo_schedule_key_cmd "$site")" || return 1
+        sshcmd="$(demo_schedule_key_cmd "$site" "$host_override")" || return 1
         entry="CRON_TZ=${DEMO_TZ}
 ${minutes} 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
     else
@@ -2378,6 +2498,32 @@ ${minutes} 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
     # interim and someone has to know to delete it when met takes over.
     local marker_line="$marker"
     [[ "$via_key" == "true" ]] && marker_line="${marker} (restricted key; see docs/guides/demo-nightly-on-met.md)"
+
+    # BYTE-IDENTITY BY CONSTRUCTION. Both paths render the same two variables in
+    # the same order, so what --print-only emits is exactly the block the
+    # install path appends — never a second rendering that can drift from it.
+    # An operator pasting this into met's crontab is running the tested path,
+    # not reproducing it by hand, which is the whole ask of ops#171.
+    if [[ "$print_only" == "true" ]]; then
+        printf '%s\n%s\n' "$marker_line" "$entry"
+        # Everything else goes to STDERR so `… --print-only > block.txt` and
+        # `… --print-only | ssh met 'cat >> …'` stay clean.
+        {
+            print_info "--print-only: nothing was written to any crontab."
+            print_hint "Install on the scheduler (met): crontab -l > /tmp/c; cat block >> /tmp/c; crontab /tmp/c"
+            if [[ "$via_key" != "true" ]]; then
+                # The local-pl flavour hard-codes THIS machine's checkout path.
+                print_status "WARN" "This block runs ${PROJECT_ROOT}/pl — that path must exist on the TARGET machine, not just this one."
+            else
+                # Even the repo-free flavour names a log path, and it is this
+                # machine's. On met the checkout lives elsewhere and cron would
+                # silently write nowhere useful.
+                print_info "Log path in the block is ${log} — confirm it exists on the target, or edit the block's '>>' path."
+            fi
+        } >&2
+        return 0
+    fi
+
     printf '%s\n%s\n%s\n' "$cleaned" "$marker_line" "$entry" | crontab -
     if [[ "$via_key" == "true" ]]; then
         print_status "OK" "Installed nightly demo reset for $site via the RESTRICTED key (01:00–03:30 ${DEMO_TZ}, minutes ${minutes}, ${DEMO_FLOOR_TIME} floor)${pair_note}"
@@ -2413,6 +2559,10 @@ main() {
     # Common option parse (subcommand-specific positionals pass through).
     local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false" dry_run="false" via_key="false"
     local allow_gaps="false"
+    # ops#171. NWP_DEMO_BOX_HOST is the env form of --host, so a scheduler host
+    # can carry the box address in its environment instead of in site config it
+    # is deliberately not given.
+    local box_host="${NWP_DEMO_BOX_HOST:-}" print_only="false"
     local with_pair="auto"
     local passthru=()
     while [[ $# -gt 0 ]]; do
@@ -2428,6 +2578,12 @@ main() {
             --no-pair)   with_pair="no";  shift ;;
             --remove)   remove="true"; shift ;;
             --via-key)  via_key="true"; shift ;;
+            # A bare trailing `--host` would `shift 2` off the end and, under
+            # `set -e`, kill the script with no message at all. Say what is wrong.
+            --host)     [[ -n "${2:-}" ]] || { print_error "--host requires a value: --host <[user@]ip>"; return 2; }
+                        box_host="$2"; shift 2 ;;
+            --host=*)   box_host="${1#--host=}"; shift ;;
+            --print-only) print_only="true"; shift ;;
             *)          passthru+=("$1"); shift ;;
         esac
     done
@@ -2475,7 +2631,7 @@ main() {
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
-        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" ;;
+        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
         harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;

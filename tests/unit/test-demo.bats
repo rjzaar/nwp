@@ -1066,11 +1066,16 @@ TOTAL_VENDOR 53'" >/dev/null 2>&1 || true
   [[ "${lines[0]}" == *"demo_parity_check_local"* ]]
   [[ "${lines[1]}" == *"export-db"* ]]
 
+  # ops#168 moved the Drupal dump string into demo_drupal_dump_cmd (so the
+  # log-table exclusions are unit-assertable), so this now matches the BUILDER
+  # CALLS rather than the drush string. Same guarantee, and stronger: BOTH
+  # kinds' dumps must come after the gate, not just the Drupal one.
   run bash -c "sed -n '/^cmd_golden_live() {/,/^}/p' '$DEMO_CMD' \
-               | grep -n 'demo_parity_check_live\|sql:dump --gzip'"
+               | grep -n 'demo_parity_check_live\|demo_moodle_dump_cmd\|demo_drupal_dump_cmd'"
   [ "$status" -eq 0 ]
   [[ "${lines[0]}" == *"demo_parity_check_live"* ]]
-  [[ "${lines[1]}" == *"sql:dump"* ]]
+  [[ "${lines[1]}" == *"demo_moodle_dump_cmd"* ]]
+  [[ "${lines[2]}" == *"demo_drupal_dump_cmd"* ]]
 }
 
 @test "the parity override is opt-in, off by default, and logged" {
@@ -1308,4 +1313,313 @@ YML
 @test "invite warns a live code won't survive the nightly box reset until re-staged (A4-B3)" {
   grep -q 'nightly reset restores the box' "$DEMO_CMD"
   grep -q 'install-box.sh --stage-codes' "$DEMO_CMD"
+}
+
+################################################################################
+# nwp/ops#168 — the golden must not bake in LOG-TABLE ROWS.
+#
+# A golden is a reference image restored onto the live demo site every night, so
+# any row inside it is immortal: it cannot age out, because the table that would
+# age it out is replaced from the image at 01:00. The 2026-08-01 pair proved the
+# cost. nwd's golden held 36 `watchdog` rows — 16 of them from ddev, with
+# `/var/www/html/html/…` backtraces, plus the operator's personal email twice
+# and a real public client IP nine times. ssd's held 4,521
+# `mdl_logstore_standard_log` rows across 299 distinct public visitor IPs, 27 %
+# of the entire dump. The observable damage was the monitoring channel: the
+# nightly digest re-reported the identical two Error rows, with the identical
+# timestamps, every night for ever.
+#
+# These assert the generated dump COMMAND, because that is the only place the
+# guarantee lives before a capture runs — the alternative is unpacking a golden
+# after the fact, which is how ops#168 had to be found in the first place.
+################################################################################
+
+@test "ops#168 Drupal: the live dump excludes the DATA of watchdog/sessions/flood" {
+  run bash -c "source '$DEMO_CMD'
+               demo_drupal_dump_cmd /var/www/nwd/html 'sudo -u www-data' '~/g.db.sql.gz'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--structure-tables-list=watchdog,sessions,flood"* ]]
+  # still a gzipped drush dump landing where the caller asked
+  [[ "$output" == *"drush sql:dump --gzip"* ]]
+  [[ "$output" == *"> ~/g.db.sql.gz"* ]]
+  [[ "$output" == "cd /var/www/nwd/html && sudo -u www-data "* ]]
+}
+
+@test "ops#168 Drupal: it is STRUCTURE-only, never an omission" {
+  # --structure-tables-list keeps the CREATE TABLE and drops only the rows.
+  # Omitting the table itself would break a site that logs on the next request,
+  # so the two are not interchangeable and the wrong flag must not appear.
+  run bash -c "source '$DEMO_CMD'
+               demo_drupal_dump_cmd /var/www/nwd/html 'sudo -u www-data' '~/g.db.sql.gz'"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"--skip-tables-list"* ]]
+  [[ "$output" != *"--skip-tables-key"* ]]
+}
+
+@test "ops#168 Drupal: the live capture USES the builder (no second, drifting command)" {
+  # The exclusion is worthless if cmd_golden_live still hand-rolls its own drush
+  # line. There must be exactly ONE `drush sql:dump` in the command script, and
+  # it must be the builder's.
+  grep -qF 'demo_rssh "$site" "$(demo_drupal_dump_cmd "${DEMO_LIVE_PATH}" "${DEMO_LIVE_DRUSHSUDO}" "~/${rdb}")"' "$DEMO_CMD"
+  # exactly one place invokes drush's dumper (message strings don't count)
+  run grep -c 'vendor/bin/drush sql:dump' "$DEMO_CMD"
+  [ "$output" -eq 1 ]
+}
+
+@test "ops#168 Moodle: the dump is TWO passes — data minus the log tables, then their structure" {
+  run bash -c "source '${REPO_ROOT}/lib/demo-live-moodle.sh'
+               demo_moodle_dump_cmd ssdmoodle '~/g.db.sql.gz'"
+  [ "$status" -eq 0 ]
+  # pass 1: data, with the log tables ignored
+  [[ "$output" == *"--ignore-table=ssdmoodle.mdl_logstore_standard_log"* ]]
+  [[ "$output" == *"--ignore-table=ssdmoodle.mdl_task_log"* ]]
+  # pass 2: their SCHEMA comes back, or the restore leaves Moodle without them
+  [[ "$output" == *"--no-data ssdmoodle mdl_logstore_standard_log mdl_task_log"* ]]
+  # ONE gzip, ONE artifact — the sha256 sidecar and the `gunzip -c` restore are
+  # unchanged by this, and must stay that way
+  [[ "$output" == *"| gzip > ~/g.db.sql.gz"* ]]
+  [ "$(grep -c 'gzip >' <<<"$output")" -eq 1 ]
+}
+
+@test "ops#168 Moodle: a plain --ignore-table alone would be a BUG, so the structure pass is mandatory" {
+  # demo_moodle_droptables_cmd drops the WHOLE schema before importing. If the
+  # dump omitted the CREATE TABLE along with the rows, the restored site would
+  # simply not have those tables and Moodle fatals on the first log write. This
+  # pins both halves of that reasoning together so neither can be edited alone.
+  grep -q 'DROP TABLE IF EXISTS' "${REPO_ROOT}/lib/demo-live-moodle.sh"
+  run bash -c "source '${REPO_ROOT}/lib/demo-live-moodle.sh'
+               demo_moodle_dump_cmd ssdmoodle '~/g.db.sql.gz'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--no-data"* ]]
+  # the passes are chained with && : a failed data pass must not be followed by
+  # a structure pass that makes a truncated artifact look complete
+  [[ "$output" == *"&& sudo mysqldump"* ]]
+}
+
+@test "ops#168 Moodle: the generated command is valid shell (a two-pass group is easy to mis-quote)" {
+  run bash -c "source '${REPO_ROOT}/lib/demo-live-moodle.sh'
+               cmd=\"\$(demo_moodle_dump_cmd ssdmoodle '~/g.db.sql.gz')\"
+               bash -n <<< \"\$cmd\""
+  [ "$status" -eq 0 ]
+}
+
+@test "ops#168 Moodle: the excluded set is overridable but defaults to both log tables" {
+  run bash -c "source '${REPO_ROOT}/lib/demo-live-moodle.sh'
+               DEMO_MOODLE_NODATA_TABLES='mdl_foo' demo_moodle_dump_cmd d '~/o'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--ignore-table=d.mdl_foo"* ]]
+  [[ "$output" == *"--no-data d mdl_foo"* ]]
+  [[ "$output" != *"mdl_logstore"* ]]
+}
+
+@test "ops#168 Moodle: --routines/--events survive (a dump that loses them restores an incomplete site)" {
+  run bash -c "source '${REPO_ROOT}/lib/demo-live-moodle.sh'
+               demo_moodle_dump_cmd ssdmoodle '~/g.db.sql.gz'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--single-transaction --quick --routines --events"* ]]
+}
+
+################################################################################
+# nwp/ops#171 — the scheduler must be schedulable.
+#
+# `--via-key` exists so the scheduler needs no repo checkout, no admin key and
+# no root on the box. It then resolved the box's address out of
+# sites/<site>/.nwp.yml — which met does not have — so the one verb that
+# installs the repo-free cron was the one thing that could not run on the
+# repo-free host. Both nightly blocks (nwd and ssd) had to be generated on the
+# workstation and installed by hand, and re-running the verb on the workstation
+# would have rewritten the WORKSTATION's crontab instead.
+################################################################################
+
+# A crontab stub that RECORDS being handed anything, so "wrote nothing" is
+# observable rather than assumed.
+_stub_crontab() {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+touch "${STUB_CRON}.written"
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"
+  rm -f "${STUB_CRON}.written"
+}
+
+_site_with_live() {   # $1 site  $2 server_ip
+  mkdir -p "${PROJECT_ROOT}/sites/$1"
+  cat > "${PROJECT_ROOT}/sites/$1/.nwp.yml" <<YML
+schema_version: 2
+project:
+  name: $1
+live:
+  enabled: true
+  domain: $1.example.com
+  server_ip: $2
+YML
+}
+
+@test "ops#171 --host overrides the site config (and is not second-guessed by it)" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  _site_with_live demo1 203.0.113.9      # config says .9 …
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --host 198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q '198.51.100.7' "$STUB_CRON"    # … the flag says .7, and the flag wins
+  ! grep -q '203.0.113.9' "$STUB_CRON"
+  grep -q 'demo1_demo_reset' "$STUB_CRON"
+}
+
+@test "ops#171 --via-key works with NO site config at all — that is the whole point of it" {
+  # The met case verbatim: a checkout with no sites/ directory. Before ops#171
+  # this printed "No live.server_ip / live.domain" and installed nothing.
+  _stub_crontab
+  : > "$STUB_CRON"
+  rm -rf "${PROJECT_ROOT}/sites/demo1"
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q 'gitlab@198.51.100.7' "$STUB_CRON"
+  grep -q 'IdentitiesOnly=yes' "$STUB_CRON"
+  grep -q 'IdentityAgent=none' "$STUB_CRON"
+  grep -q -- '-F /dev/null' "$STUB_CRON"   # MR !262's anti-hijack fix, still there
+}
+
+@test "ops#171 NWP_DEMO_BOX_HOST is the env form of --host" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  rm -rf "${PROJECT_ROOT}/sites/demo1"
+
+  PATH="${TEST_TMP}/bin:$PATH" NWP_DEMO_BOX_HOST=gitlab@198.51.100.7 \
+    run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key
+  [ "$status" -eq 0 ]
+  grep -q 'gitlab@198.51.100.7' "$STUB_CRON"
+}
+
+@test "ops#171 --host beats NWP_DEMO_BOX_HOST (the explicit flag is the last word)" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  rm -rf "${PROJECT_ROOT}/sites/demo1"
+
+  PATH="${TEST_TMP}/bin:$PATH" NWP_DEMO_BOX_HOST=gitlab@10.0.0.1 \
+    run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q 'gitlab@198.51.100.7' "$STUB_CRON"
+  ! grep -q '10.0.0.1' "$STUB_CRON"
+}
+
+@test "ops#171 --print-only writes NO crontab — not even reading one" {
+  _stub_crontab
+  printf '# unrelated\n30 2 * * * $HOME/bin/nwp-daily-audit\n' > "$STUB_CRON"
+  _site_with_live demo1 203.0.113.9
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --print-only
+  [ "$status" -eq 0 ]
+  [ ! -e "${STUB_CRON}.written" ]           # crontab was never handed anything
+  grep -q 'nwp-daily-audit' "$STUB_CRON"    # and the real one is untouched
+  ! grep -q 'demo1_demo_reset' "$STUB_CRON"
+  # no logs/ dir either: this machine is not the one that will run the job
+  [ ! -d "${PROJECT_ROOT}/logs" ]
+}
+
+@test "ops#171 --print-only emits the block on STDOUT, byte-identical to what install writes" {
+  # Why this matters: the operator pastes this into met's crontab. A SECOND
+  # rendering could drift from the tested one — which is exactly how a block
+  # missing `-F /dev/null` nearly went live on 2026-08-01.
+  _stub_crontab
+  : > "$STUB_CRON"
+  _site_with_live demo1 203.0.113.9
+
+  PATH="${TEST_TMP}/bin:$PATH" \
+    bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --print-only \
+    2>/dev/null > "${TEST_TMP}/printed"
+
+  PATH="${TEST_TMP}/bin:$PATH" \
+    bash "$DEMO_CMD" schedule demo1 --tier=live --via-key >/dev/null 2>&1
+  [ -e "${STUB_CRON}.written" ]
+
+  # the installed crontab's last 3 lines ARE the block (marker, CRON_TZ, job)
+  tail -3 "$STUB_CRON" > "${TEST_TMP}/installed"
+  run diff -u "${TEST_TMP}/installed" "${TEST_TMP}/printed"
+  [ "$status" -eq 0 ]
+  [ -s "${TEST_TMP}/printed" ]
+  grep -q 'NWP Demo Reset - demo1' "${TEST_TMP}/printed"
+}
+
+@test "ops#171 --print-only keeps stdout crontab-clean (diagnostics go to stderr)" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  _site_with_live demo1 203.0.113.9
+
+  PATH="${TEST_TMP}/bin:$PATH" \
+    bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --print-only \
+    2>/dev/null > "${TEST_TMP}/printed"
+  # exactly 3 lines: a marker comment, CRON_TZ, one job. Nothing else may ride
+  # along, or `--print-only >> crontab` installs prose as a cron line.
+  [ "$(wc -l < "${TEST_TMP}/printed")" -eq 3 ]
+  ! grep -q 'nothing was written' "${TEST_TMP}/printed"
+
+  PATH="${TEST_TMP}/bin:$PATH" \
+    bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --print-only \
+    2>"${TEST_TMP}/err" >/dev/null
+  grep -q 'nothing was written to any crontab' "${TEST_TMP}/err"
+}
+
+@test "ops#171 --print-only carries the pair offset too (it is derived, not re-typed)" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  mkdir -p "${PROJECT_ROOT}/pairs"
+  _site_with_live prov1 203.0.113.9
+  _site_with_live cons1 203.0.113.9
+  cat > "${PROJECT_ROOT}/pairs/cons1.pair-contract.yml" <<'YML'
+pair: cons1-prov1
+provider: prov1
+consumer: cons1
+demo:
+  enabled: true
+  paired_golden: true
+  paired_reset: true
+YML
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule cons1 --tier=live --via-key --print-only --host 198.51.100.7
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"15,45 1-3 * * *"* ]]
+  [ ! -e "${STUB_CRON}.written" ]
+}
+
+@test "ops#171 --print-only --remove is REFUSED (emit and delete are not one request)" {
+  _stub_crontab
+  printf '# unrelated\n30 2 * * * $HOME/bin/nwp-daily-audit\n' > "$STUB_CRON"
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --print-only --remove
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [ ! -e "${STUB_CRON}.written" ]
+}
+
+@test "ops#171 without --host and without site config, the refusal NAMES the way out" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  rm -rf "${PROJECT_ROOT}/sites/demo1"
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No live.server_ip"* ]]
+  [[ "$output" == *"--host"* ]]
+  [[ "$output" == *"NWP_DEMO_BOX_HOST"* ]]
+  [ ! -e "${STUB_CRON}.written" ]
+}
+
+@test "ops#171 a bare --host says so instead of dying silently under set -e" {
+  run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --host
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--host requires a value"* ]]
+}
+
+@test "ops#171 the help documents both new flags (an undocumented escape hatch is hand-work again)" {
+  run bash "$DEMO_CMD" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--print-only"* ]]
+  [[ "$output" == *"NWP_DEMO_BOX_HOST"* ]]
 }

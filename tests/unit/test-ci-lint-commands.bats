@@ -151,6 +151,214 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+# ---------------------------------------------------------------- ops#196 ---
+# The variable-learning pass was FILE-SCOPED: one `f="…/x.yml"` anywhere in a
+# file made every later `$f` in that file a YAML path. Both directions of the
+# fix are pinned here, because a gate that stops crying wolf by going blind has
+# not been fixed.
+
+@test "lint-yq-first: a function-local .yml variable does NOT taint a same-named variable elsewhere" {
+  # Reduced from scripts/commands/moodle.sh. `_decl` sets a LOCAL f to a .yml
+  # path; 400 lines later a different function loops a LOCAL f over .mbz backups
+  # and awks sha256sum output. PRE-FIX: "NEW AWK YAML PARSER: …::verify_backups".
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/scoped.sh" <<'EOF'
+#!/bin/bash
+_core_patches_decl() {
+    local base="$1" cache f
+    f="${cache}/core-patches/${base}.yml"
+    printf '%s' "$f"
+}
+
+verify_backups() {
+    local dir="$1" f sum
+    for f in "$dir"/*.mbz; do
+        sum="$(awk '{print $1}' "$f.sha256")"
+        echo "$sum"
+    done
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"verify_backups"* ]]
+}
+
+@test "lint-yq-first: the OTHER direction — a real parser in the same file is still caught" {
+  # Same file shape, but this function genuinely awks the .yml. Going quiet on
+  # the .mbz loop must not go quiet on this.
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/scoped2.sh" <<'EOF'
+#!/bin/bash
+_core_patches_decl() {
+    local base="$1" cache f
+    f="${cache}/core-patches/${base}.yml"
+    printf '%s' "$f"
+}
+
+read_patch_ids() {
+    local base="$1" f
+    f="$(_core_patches_decl "$base")"
+    awk '
+      /^  - id:/ { print $3 }
+    ' "$f"
+}
+
+verify_backups() {
+    local dir="$1" f sum
+    for f in "$dir"/*.mbz; do
+        sum="$(awk '{print $1}' "$f.sha256")"
+        echo "$sum"
+    done
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"read_patch_ids"* ]]
+  [[ "$output" != *"verify_backups"* ]]
+}
+
+@test "lint-yq-first: reachability — a local defaulted from a global YAML path is caught" {
+  # lib/verify-runner.sh shape: `local file="${2:-$VERIFY_YAML_FILE}"`, then
+  # `awk '…' "$file"`. The assignment line never says .yml, and PRE-FIX these
+  # five real parsers were MISSED entirely (false negative).
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/reach.sh" <<'EOF'
+#!/bin/bash
+VERIFY_YAML_FILE="${PROJECT_ROOT}/.verification.yml"
+
+get_feature_ids() {
+    local feature="$1"
+    local file="${2:-$VERIFY_YAML_FILE}"
+    awk '
+      /^  [a-z0-9_]+:$/ { print }
+    ' "$file"
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"get_feature_ids"* ]]
+}
+
+@test "lint-yq-first: reachability — a value returned by a same-file resolver is caught" {
+  # lib/common.sh::get_secret shape: secrets_file="$(_resolve_infra_secrets_file)".
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/producer.sh" <<'EOF'
+#!/bin/bash
+_resolve_secrets_file() {
+    local f="${PROJECT_ROOT}/.secrets.yml"
+    printf '%s' "$f"
+}
+
+get_secret() {
+    local secrets_file
+    secrets_file="$(_resolve_secrets_file)"
+    awk -F: '/^gitlab:/{print $2}' "$secrets_file"
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"get_secret"* ]]
+}
+
+@test "lint-yq-first: reachability — a for-loop over *.yml taints the loop variable" {
+  # lib/verify-issues.sh::list_issues shape.
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/loopvar.sh" <<'EOF'
+#!/bin/bash
+list_issues() {
+    for issue_file in "$ISSUES_DIR"/*.yml; do
+        [[ -f "$issue_file" ]] || continue
+        awk '/^status:/{print $2}' "$issue_file"
+    done
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"list_issues"* ]]
+}
+
+@test "lint-yq-first: -v parameters are not file arguments (awk BEGIN arithmetic)" {
+  # lib/ci-stats.sh::ci_stats_check — pure BEGIN{} arithmetic, no file at all.
+  # It was reported as a YAML parser because the whole `awk …` text, including
+  # `-v v="$value"`, was searched for tainted variables.
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/arith.sh" <<'EOF'
+#!/bin/bash
+CONFIG="${PROJECT_ROOT}/.ci-stats.yml"
+
+ci_stats_check() {
+    local value threshold
+    value="$(awk '/^count:/{print $2}' "$CONFIG")"
+    threshold="$(awk '/^max:/{print $2}' "$CONFIG")"
+    within=$(awk -v v="$value" -v t="$threshold" 'BEGIN { print (v <= t) ? 1 : 0 }')
+    echo "$within"
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  # The two REAL parsers are caught; the BEGIN{} arithmetic is not a third hit.
+  run bash "$CI_DIR/lint-yq-first.sh" --list "$FIX/scripts/commands"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c ci_stats_check)" -eq 2 ]
+  [[ "$output" != *"BEGIN"* ]]
+}
+
+@test "lint-yq-first: the offender is attributed to its ENCLOSING function, not a nested helper" {
+  # The tracker only ever ENTERED functions: after an indented `_inner() { … }`
+  # every later hit was keyed to `_inner`, so baseline rows named a function
+  # that does not contain the awk. Keys are the shrink-only contract's identity.
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/nested.sh" <<'EOF'
+#!/bin/bash
+CFG="${PROJECT_ROOT}/nwp.yml"
+
+outer_reads_yaml() {
+    _inner_helper() {
+        echo "helper"
+    }
+    _inner_helper
+    awk '
+      /^sites:/ { print }
+    ' "$CFG"
+}
+EOF
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"nested.sh::outer_reads_yaml"* ]]
+  [[ "$output" != *"_inner_helper"* ]]
+}
+
+@test "lint-yq-first: an awk YAML parser quoted inside a HEREDOC is documentation, not code" {
+  mkdir -p "$FIX/scripts/commands"
+  cat > "$FIX/scripts/commands/heredoc.sh" <<'OUTER'
+#!/bin/bash
+CFG="${PROJECT_ROOT}/nwp.yml"
+
+show_help() {
+    cat <<'EOF'
+Historical idiom, now forbidden:
+    awk '/^sites:/{print}' "$CFG"
+EOF
+}
+OUTER
+  : > "$FIX/.yq-baseline"
+  run bash "$CI_DIR/lint-yq-first.sh" --baseline="$FIX/.yq-baseline" "$FIX/scripts/commands"
+  [ "$status" -eq 0 ]
+}
+
+@test "lint-yq-first: --list reports path::function TAB line TAB args for every hit" {
+  _yq_fixture_multiline
+  run bash "$CI_DIR/lint-yq-first.sh" --list "$FIX/scripts/commands"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"count_things"* ]]
+  [[ "$output" == *'$CFG_FILE'* ]]
+}
+
 # ------------------------------------------------------------ security:meta ---
 # PRE-FIX: the whole `security` stage was gated on `exists: [composer.json]`,
 # and /home/rob/nwp/composer.json does not exist, so it never ran at all.

@@ -2,6 +2,31 @@
 # SHRINK-ONLY: entries may be DELETED (when converted to yq) but never added
 # by hand. Regenerate with: scripts/ci/lint-yq-first.sh --update-baseline
 # Key = <path>::<enclosing shell function>.
+#=
+#= PROVENANCE 2026-08-02 (ops#196). Re-derived after the scanner's variable
+#= learning was rescoped from FILE-wide to bash's real scoping + assignment
+#= reachability, and its function attribution given a proper stack.
+#= Result: 122 -> 129 rows, 0 removed, 7 added. Every one of the original 122
+#= was audited and IS a genuine awk YAML parser (the contamination the fix was
+#= expected to expose was not present in the committed baseline). The 7 new
+#= rows are PRE-EXISTING parsers the old heuristic could not see, not new code:
+#=   lib/verify-runner.sh::get_feature_files
+#=   lib/verify-runner.sh::get_feature_items
+#=   lib/verify-runner.sh::get_feature_name
+#=   lib/verify-runner.sh::get_machine_checks
+#=   lib/verify-runner.sh::get_verification_features
+#=       -- all read `local file="${N:-$VERIFY_YAML_FILE}"`, an assignment line
+#=          that never says .yml, so the old file-scoped learner missed them.
+#=   scripts/commands/fix.sh::cmd_interactive
+#=   scripts/commands/todo.sh::show_list
+#=       -- `for issue_file in "$ISSUES_DIR"/*.yml`, a loop variable the old
+#=          learner had no rule for.
+#= SHRINK-ONLY still holds: this grew ONCE, deliberately, by regeneration, and
+#= the 7 are recorded here so converting them to yq is a visible, checkable debt.
+#= KNOWN GAP (not baselined because not detected):
+#=   lib/install-common.sh::get_recipe_list_value's nested `_awk_recipe_list`
+#=   takes its file as "$1"; resolving that needs call-graph, not scope, analysis.
+#=
 lib/badges.sh::generate_badge_url
 lib/badges.sh::generate_badge_urls
 lib/badges.sh::generate_readme_badges
@@ -50,6 +75,11 @@ lib/verify-opportunistic.sh::find_verification_item
 lib/verify-opportunistic.sh::get_prompt_mode
 lib/verify-opportunistic.sh::get_prompt_timeout
 lib/verify-opportunistic.sh::is_tester
+lib/verify-runner.sh::get_feature_files
+lib/verify-runner.sh::get_feature_items
+lib/verify-runner.sh::get_feature_name
+lib/verify-runner.sh::get_machine_checks
+lib/verify-runner.sh::get_verification_features
 lib/yaml-write.sh::yaml_add_migration_stub
 lib/yaml-write.sh::yaml_add_site
 lib/yaml-write.sh::yaml_add_site_live
@@ -89,6 +119,7 @@ scripts/commands/cutover.sh::read_target_profile
 scripts/commands/delete.sh::_ddev_project_name
 scripts/commands/delete.sh::remove_from_cnwp
 scripts/commands/demo.sh::demo_docroot
+scripts/commands/fix.sh::cmd_interactive
 scripts/commands/install.sh::main
 scripts/commands/live2prod.sh::get_prod_config
 scripts/commands/live.sh::get_base_domain
@@ -105,6 +136,7 @@ scripts/commands/setup-ssh.sh::get_linode_servers
 scripts/commands/setup-ssh.sh::get_server_detail
 scripts/commands/status.sh::get_ddev_project_name
 scripts/commands/stg2live.sh::read_build_profile
+scripts/commands/todo.sh::show_list
 scripts/commands/verify.sh::count_automatable_items
 scripts/commands/verify.sh::count_feature_machine_checkable
 scripts/commands/verify.sh::count_feature_machine_verified

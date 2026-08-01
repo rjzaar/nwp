@@ -62,15 +62,51 @@ boundary_contract_file() {
 
 _boundary_yq() { command -v yq 2>/dev/null || true; }
 
-# Can the contract be READ at all? yq on PATH and the file on disk. Classify
-# must treat "no" as UNCOMPUTABLE (fail-safe closed): without yq every surface
-# list comes back empty, every path lookup misses, and — measured on the six
-# straight red MR pipelines behind ops#165 — a genuinely boundary-touching diff
-# silently classifies INTERNAL. "Can't read the boundary" must never render as
-# "not on the boundary".
+# Can the contract be READ at all? Classify must treat "no" as UNCOMPUTABLE
+# (fail-safe closed): with no readable boundary map every surface list comes
+# back empty, every path lookup misses, and — measured on the six straight red
+# MR pipelines behind ops#165 — a genuinely boundary-touching diff silently
+# classifies INTERNAL. "Can't read the boundary" must never render as "not on
+# the boundary".
+#
+# ops#196 (2026-08-02): this used to check only `yq on PATH && file exists`,
+# which left TWO fail-OPEN holes that the ops#165 note believed were closed.
+# Measured on the real contract with the merged, now-BLOCKING job:
+#   * a contract whose YAML is CORRUPT — every `yq e` in this library redirects
+#     stderr to /dev/null and returns nothing, so zero surfaces ⇒ INTERNAL,
+#     uncomputable:false, exit 0. Identical output to a genuinely internal diff.
+#   * a contract that parses but declares `boundary: {}` — same result.
+# Both are the pre-ops#165 defect wearing a different hat: the classifier
+# reported "not on the boundary" when the truth was "I could not look". So the
+# check now PARSES the file and requires at least one declared surface; only a
+# contract that can actually answer questions counts as readable.
 boundary_contract_readable() {
     local file="${1:-$(boundary_contract_file)}"
-    [ -n "$(_boundary_yq)" ] && [ -f "$file" ]
+    local yq; yq="$(_boundary_yq)"
+    [ -n "$yq" ] || return 1
+    [ -f "$file" ] || return 1
+    # Parse must SUCCEED (not just be silenced) …
+    "$yq" e '.' "$file" >/dev/null 2>&1 || return 1
+    # … and must yield a boundary map with at least one surface. A classifier
+    # with zero surfaces cannot distinguish "internal" from "blind".
+    local n
+    n="$("$yq" e -r '.boundary // {} | length' "$file" 2>/dev/null)" || return 1
+    case "$n" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$n" -gt 0 ]
+}
+
+# Why is it unreadable? A red gate that only says "unreadable" costs the next
+# reader an investigation; each of these four causes has a different fix.
+boundary_unreadable_why() {
+    local file="${1:-$(boundary_contract_file)}"
+    local yq; yq="$(_boundary_yq)"
+    [ -n "$yq" ]   || { echo "yq is not on PATH — run scripts/ci/ensure-yq.sh"; return 0; }
+    [ -f "$file" ] || { echo "'${file}' does not exist"; return 0; }
+    "$yq" e '.' "$file" >/dev/null 2>&1 \
+        || { echo "'${file}' is not parseable YAML"; return 0; }
+    echo "'${file}' declares no boundary: surfaces — a classifier with zero surfaces cannot tell INTERNAL from blind"
 }
 
 # List surface names that carry a boundary: entry.
@@ -182,7 +218,7 @@ boundary_classify() {
     if ! boundary_contract_readable "$file"; then
         BOUNDARY_UNCOMPUTABLE=1
         BOUNDARY_CLASS="BOUNDARY"
-        BOUNDARY_REASON="pair contract unreadable (yq missing or '${file}' absent) — fail-safe closed"
+        BOUNDARY_REASON="pair contract unreadable ($(boundary_unreadable_why "$file")) — fail-safe closed"
         return 0
     fi
 
@@ -473,7 +509,7 @@ boundary_honesty_check() {
     # CONTRACT problem and sent the first investigation down the wrong path
     # (the committed contract declares 7 surfaces; the runner just had no yq).
     if ! boundary_contract_readable "$file"; then
-        echo "CANNOT-VERIFY: pair contract unreadable (yq missing or '${file}' absent) — install yq / check the path before believing anything else this check says."
+        echo "CANNOT-VERIFY: pair contract unreadable ($(boundary_unreadable_why "$file")) — fix that before believing anything else this check says."
         return 2
     fi
 

@@ -95,7 +95,15 @@ ISSUER="$(demo_pair_issuer "$CONTRACT" "$TIER")" || {
     print_error "REFUSED: no endpoints.${TIER}.issuer in $CONTRACT"
     exit 1
 }
-ISSUER_NAME="$(demo_pair_get "$CONTRACT" '.oidc.issuer_name' "${PROVIDER} (F26)")"
+# ISSUER_NAME is MEMBER-FACING: it is the label on the SSO login button. It has
+# no safe default — a fallback here once put the internal codename "nwd (F26)"
+# on the live login page. Fail loud, never guess (same posture as the issuer).
+ISSUER_NAME="$(demo_pair_get "$CONTRACT" '.oidc.issuer_name')"
+[[ -n "$ISSUER_NAME" ]] || {
+    print_error "REFUSED: oidc.issuer_name is not set in $CONTRACT."
+    print_info  "Set oidc.issuer_name to the member-facing SSO button label — it appears verbatim on the login page, so no internal codenames."
+    exit 1
+}
 CLIENT_ID="$(demo_pair_get "$CONTRACT" '.oidc.provider_prereqs.consumer_client_id' "${SITE}_moodle")"
 CLI_PHP="${CLI_PHP:-$(demo_pair_get "$CONTRACT" '.oidc.cli_php_version' '8.3')}"
 [[ "$CLI_PHP" == php* ]] || CLI_PHP="php${CLI_PHP}"

@@ -174,5 +174,89 @@ setup() {
 @test "honesty check without yq names the REAL blocker (not 'no surfaces declared')" {
   run env PATH=/usr/bin:/bin bash -c "source '${PROJECT_ROOT}/lib/boundary.sh'; boundary_honesty_check '$CONTRACT'"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"yq missing"* ]]
+  [[ "$output" == *"yq is not on PATH"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# ops#196 — the two remaining FAIL-OPEN holes in boundary_contract_readable.
+#
+# !295 made this job BLOCKING, on the stated ground that the only red it can
+# show is "this runner could not classify". That claim rested on
+# boundary_contract_readable, which until now asked only `yq on PATH && file
+# exists`. Measured on the real tree 2026-08-02, BEFORE this fix:
+#
+#   corrupt contract  → {"classification":"INTERNAL","uncomputable":false} exit 0
+#   boundary: {}      → {"classification":"INTERNAL","uncomputable":false} exit 0
+#
+# Byte-identical to the verdict a genuinely internal diff gets. That is the
+# pre-ops#165 defect ("parsed to zero surfaces ⇒ INTERNAL") surviving in two
+# forms the ops#165 fix did not cover — and it is worse under a BLOCKING gate,
+# because a green light now reads as positive assurance.
+# ---------------------------------------------------------------------------
+
+@test "FAIL-SAFE CLOSED: an UNPARSEABLE contract ⇒ BOUNDARY / uncomputable, not INTERNAL" {
+  command -v yq >/dev/null || skip "needs yq to prove the parse itself fails"
+  local bad="${BATS_TEST_TMPDIR}/corrupt.pair-contract.yml"
+  printf 'boundary:\n  oauth_sso:\n   provider_paths: [\n' > "$bad"
+  export NWP_IMPACT_FILES="README.md"
+  boundary_classify main "$bad"
+  [ "$BOUNDARY_CLASS" = "BOUNDARY" ]
+  [ "$BOUNDARY_UNCOMPUTABLE" -eq 1 ]
+  [[ "$BOUNDARY_REASON" == *"not parseable YAML"* ]]
+}
+
+@test "FAIL-SAFE CLOSED: a contract declaring ZERO surfaces ⇒ BOUNDARY / uncomputable" {
+  command -v yq >/dev/null || skip "needs yq"
+  local empty="${BATS_TEST_TMPDIR}/empty.pair-contract.yml"
+  printf 'pair: ssc\nboundary: {}\n' > "$empty"
+  export NWP_IMPACT_FILES="README.md"
+  boundary_classify main "$empty"
+  [ "$BOUNDARY_CLASS" = "BOUNDARY" ]
+  [ "$BOUNDARY_UNCOMPUTABLE" -eq 1 ]
+  [[ "$BOUNDARY_REASON" == *"no boundary: surfaces"* ]]
+}
+
+@test "pl impact --fail-uncomputable: an unparseable contract is exit 2, never a green INTERNAL" {
+  command -v yq >/dev/null || skip "needs yq"
+  local dir="${BATS_TEST_TMPDIR}/pairs-bad"
+  mkdir -p "$dir"
+  printf 'boundary:\n  oauth_sso:\n   provider_paths: [\n' > "$dir/ssc.pair-contract.yml"
+  run env NWP_PAIR_CONTRACT_DIR="$dir" NWP_IMPACT_FILES="README.md" \
+      bash "${PROJECT_ROOT}/scripts/commands/impact.sh" --base=main --json --fail-uncomputable
+  [ "$status" -eq 2 ]
+  [[ "$output" == *'"uncomputable":true'* ]]
+  [[ "$output" != *'"classification":"INTERNAL"'* ]]
+}
+
+@test "boundary_unreadable_why distinguishes all four causes" {
+  command -v yq >/dev/null || skip "needs yq"
+  run boundary_unreadable_why "${BATS_TEST_TMPDIR}/nope.yml"
+  [[ "$output" == *"does not exist"* ]]
+
+  printf 'boundary:\n  x:\n   p: [\n' > "${BATS_TEST_TMPDIR}/c1.yml"
+  run boundary_unreadable_why "${BATS_TEST_TMPDIR}/c1.yml"
+  [[ "$output" == *"not parseable YAML"* ]]
+
+  printf 'boundary: {}\n' > "${BATS_TEST_TMPDIR}/c2.yml"
+  run boundary_unreadable_why "${BATS_TEST_TMPDIR}/c2.yml"
+  [[ "$output" == *"no boundary: surfaces"* ]]
+
+  run env PATH=/usr/bin:/bin bash -c "source '${PROJECT_ROOT}/lib/boundary.sh'; boundary_unreadable_why '$CONTRACT'"
+  [[ "$output" == *"yq is not on PATH"* ]]
+}
+
+# POSITIVE CONTROL for the blocking flip: the gate must still be able to reach
+# a real verdict on the real contract, both ways, or "no MR was blocked" would
+# only mean "the probe cannot return positive" (see feedback-verify-before-asserting).
+@test "the REAL contract still yields both verdicts — the gate is not vacuous" {
+  command -v yq >/dev/null || skip "needs yq"
+  export NWP_IMPACT_FILES="lib/sanitizers/oidc-email.sh"
+  boundary_classify main "$CONTRACT"
+  [ "$BOUNDARY_CLASS" = "BOUNDARY-TOUCHING" ]
+  [ "$BOUNDARY_UNCOMPUTABLE" -eq 0 ]
+
+  export NWP_IMPACT_FILES="README.md"
+  boundary_classify main "$CONTRACT"
+  [ "$BOUNDARY_CLASS" = "INTERNAL" ]
+  [ "$BOUNDARY_UNCOMPUTABLE" -eq 0 ]
 }

@@ -234,7 +234,7 @@ oidc:
     # ⚠ GOTCHA (inherited from ssc): JWKS is at /.well-known/jwks.json — NOT
     #   /oauth/jwks, which 301-redirects and breaks signature verification.
     jwks: "/.well-known/jwks.json"
-  issuer_name: "nwd (F26)"
+  issuer_name: "Narrow Way Commons"
   issuer_flags:
     showonloginpage: 1
     enabled: 1

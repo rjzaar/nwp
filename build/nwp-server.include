@@ -57,6 +57,12 @@ scripts/commands/server-publish.sh
 # hard-source lib/prod-guard.sh — without them the artifact's backup verb dies at
 # source-time (found by the pl ver-test harness real run, task #11).
 lib/server-backup-resolve.sh
+# --host (BOX scope): the disaster-recovery unit. Per-site snapshots restore a
+# pile of files that serves nothing; this is /etc, the grants, the packages, the
+# crontabs and every webroot — the difference between "we have the data" and "we
+# can rebuild the host". Hard-sourced by server-backup.sh, so its absence would
+# kill the artifact's backup verb at source-time.
+lib/server-backup-host.sh
 lib/prod-guard.sh
 scripts/commands/server-backup.sh
 scripts/commands/ver-backup-pull.sh

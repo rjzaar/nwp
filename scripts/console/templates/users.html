@@ -31,9 +31,33 @@
       {%- elif projects %}<span class="warnfg">none — sees nothing</span>
       {%- else %}<span class="muted">n/a</span>{% endif %}
     </td>
-    <td>{{ u.passkeys }}</td>
+    {# One row per passkey, not a bare count: when a key goes missing the
+       question is "which of these is it?", and only the label answers that.
+       Revoking one leaves the others working — reset is the all-or-nothing
+       twin, and it lives in the next column. #}
+    <td class="small">
+      {%- for k in keys.get(u.name, []) %}
+      <div>
+        <code>{{ k.handle }}</code> — {{ k.label }}
+        <span class="muted">{{ k.added }}</span>
+        <form method="post" action="/users/{{ u.name }}/revoke" class="inline"
+              onsubmit="return confirm('Revoke passkey {{ k.handle }} on {{ u.name }}? Their other passkeys keep working.')">
+          <input type="hidden" name="handle" value="{{ k.handle }}">
+          <button class="warn">revoke</button>
+        </form>
+      </div>
+      {%- else %}
+      <span class="muted">none yet</span>
+      {%- endfor %}
+    </td>
     <td class="mono small">{{ u.created }}</td>
     <td>
+      {# add key ≠ reset: the everyday case (a hardware key beside a phone)
+         must not revoke the credential you are signed in with. #}
+      <form method="post" action="/users/{{ u.name }}/addkey" class="inline"
+            onsubmit="return confirm('Issue a link to add ANOTHER passkey for {{ u.name }}? Existing passkeys are kept.')">
+        <button>add key</button>
+      </form>
       <form method="post" action="/users/{{ u.name }}/reset" class="inline"
             onsubmit="return confirm('Revoke all passkeys for {{ u.name }} and issue a new enrolment link?')">
         <button class="warn">reset</button>

@@ -34,11 +34,39 @@ setup() {
   [[ "$output" == *"Unknown subcommand"* ]]
 }
 
-@test "enroll prints the headscale runbook without touching the network" {
-  run "$CONSOLE_SH" enroll
+@test "enroll --runbook prints the steps without touching the network" {
+  # Bare `enroll` now MINTS a key (it ssh's the control-plane host), so the
+  # offline contract moved to --runbook. Keeping an offline path matters: it is
+  # what you read when the mesh is the thing that is broken.
+  run "$CONSOLE_SH" enroll --runbook
   [ "$status" -eq 0 ]
   [[ "$output" == *preauthkeys* ]]
-  [[ "$output" == *"control server"* ]]
+  [[ "$output" == *"CONTROL SERVER"* ]]
+}
+
+@test "enroll rejects a malformed --expiry before going near ssh" {
+  run "$CONSOLE_SH" enroll --expiry forever
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"duration like"* ]]
+}
+
+@test "enroll reads the headscale host from its OWN setting, not the console host" {
+  # 2026-08-01: the runbook told the operator to ssh the CONSOLE host for
+  # headscale. The console runs on a keyless dev-tier box precisely so that a
+  # public control endpoint is not on it — the two are different machines and
+  # the config has to say so.
+  grep -q 'HEADSCALE_HOST=' "$CONSOLE_SH"
+  grep -q '_console_cfg headscale_host' "$CONSOLE_SH"
+  run bash -c "grep -A4 'minting a' '$CONSOLE_SH' | grep -c 'CONSOLE_HOST'"
+  [ "$output" = "0" ]
+}
+
+@test "enroll falls back to the manual runbook when the control host is unset" {
+  NWP_CONSOLE_HEADSCALE_HOST= NWP_CONSOLE_HEADSCALE_USER= \
+    NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent run "$CONSOLE_SH" enroll
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"headscale_host"* ]]
+  [[ "$output" == *preauthkeys* ]]
 }
 
 @test "network verbs fail closed when settings.console is unconfigured" {
@@ -251,4 +279,37 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"user addkey"* ]]
   [[ "$output" == *"--no-open"* ]]
+}
+
+# --- per-passkey inventory + revoke ----------------------------------------
+
+@test "user keys requires a name and validates it locally" {
+  run "$CONSOLE_SH" user keys
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage: pl console user keys"* ]]
+  run "$CONSOLE_SH" user keys 'Bad;Name'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid username"* ]]
+}
+
+@test "user rmkey demands both a name and a handle, and validates the handle" {
+  run "$CONSOLE_SH" user rmkey rob
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage: pl console user rmkey"* ]]
+  run "$CONSOLE_SH" user rmkey rob 'a b;rm -rf /'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid handle"* ]]
+}
+
+@test "addkey --qr never opens a browser on THIS machine" {
+  # The QR exists to enrol a different device; opening the link here would
+  # burn the single-use token on the wrong one.
+  grep -A2 -- '--qr)' "$CONSOLE_SH" | grep -q 'do_open=0'
+}
+
+@test "help documents the passkey inventory verbs" {
+  run "$CONSOLE_SH" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"user keys"* ]]
+  [[ "$output" == *"user rmkey"* ]]
 }

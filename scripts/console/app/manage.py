@@ -2,6 +2,9 @@
 
     python3 -m app.manage user-add <name> --role viewer|operator|owner
                                          [--project <pid> --project-role <r>]
+    python3 -m app.manage user-addkey <name>         # +1 passkey, keeps the rest
+    python3 -m app.manage user-keys <name>           # list passkeys + what each one is
+    python3 -m app.manage user-rmkey <name> <handle> # revoke ONE (never the last)
     python3 -m app.manage user-reset <name>          # break-glass re-enrol
     python3 -m app.manage user-role <name> <role>
     python3 -m app.manage user-rm <name>
@@ -18,7 +21,8 @@
     python3 -m app.manage project-unassign <user> <pid>
     python3 -m app.manage project-export [--out FILE]
 
-user-add / user-reset print a ONE-TIME enrolment URL (48 h expiry). The token
+user-add / user-addkey / user-reset print a ONE-TIME enrolment URL (48 h
+expiry). addkey keeps existing passkeys; reset revokes them. The token
 is stored hashed; the plaintext appears only in this terminal output.
 
 project-export writes the read-only project->sites projection consumed by the
@@ -81,6 +85,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project-role", default="viewer",
                    choices=["viewer", "operator", "maintainer"])
 
+    p = sub.add_parser("user-addkey")
+    p.add_argument("name")
+
+    p = sub.add_parser("user-keys")
+    p.add_argument("name")
+
+    p = sub.add_parser("user-rmkey")
+    p.add_argument("name")
+    p.add_argument("handle", help="the short handle from user-keys (prefix of the credential id)")
+
     p = sub.add_parser("user-reset")
     p.add_argument("name")
 
@@ -139,6 +153,24 @@ def main(argv: list[str] | None = None) -> int:
             print("ONE-TIME enrolment link (expires in "
                   f"{config.ENROL_TOKEN_HOURS} h, single use — open it on the device that holds the passkey):")
             print(f"  {config.ORIGIN}/enroll?token={token}")
+        elif a.cmd == "user-addkey":
+            token = store.add_key_token(a.name, config.ENROL_TOKEN_HOURS)
+            _audit("user.addkey", {"name": a.name})
+            n = len((store.get_user(a.name) or {}).get("credentials", []))
+            print(f"user '{a.name}': {n} existing passkey(s) KEPT. "
+                  "ONE-TIME link to enrol one MORE (open it on the device holding the new key):")
+            print(f"  {config.ORIGIN}/enroll?token={token}")
+        elif a.cmd == "user-keys":
+            rows = store.credentials_view(a.name)
+            if not rows:
+                print(f"user '{a.name}' has no passkeys (enrolment pending)")
+            for r in rows:
+                print(f"{r['handle']:<12} {r['label']:<52} added={r['added']} sign_count={r['sign_count']}")
+        elif a.cmd == "user-rmkey":
+            gone = store.remove_credential(a.name, a.handle)
+            _audit("user.revokekey", {"name": a.name, "handle": gone["id"][:10]})
+            left = len((store.get_user(a.name) or {}).get("credentials", []))
+            print(f"revoked passkey {gone['id'][:10]} on '{a.name}' — {left} passkey(s) still work")
         elif a.cmd == "user-reset":
             token = store.reset_user(a.name, config.ENROL_TOKEN_HOURS)
             _audit("user.reset", {"name": a.name})
@@ -176,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"global role: {u.get('role', '?')}")
             print(f"created:     {u.get('created', '')}")
             print(f"passkeys:    {len(u.get('credentials', []))}")
+            for r in store.credentials_view(a.name):
+                print(f"             {r['handle']}  {r['label']}  (added {r['added']})")
             print(f"enrolment:   {'pending' if u.get('enrol') else 'complete'}")
             memb = store.memberships(a.name)
             allp = _projects().all_projects()

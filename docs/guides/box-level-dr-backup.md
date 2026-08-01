@@ -49,7 +49,23 @@ Scope of `--host`, i.e. what a rebuild gets back:
 
 Not included by default: `/home` (on `live` that is ~10 GB of transient `pl` snapshot
 droppings that this very backup supersedes) and the `mysql` system schema (its grants
-are captured as replayable SQL instead, which is the form a restore can apply).
+are captured as replayable SQL instead, which is the form a restore can apply). The plan
+says so on every run, whether or not the host has a `/home`.
+
+### Reproducing a runner's tool set
+
+`NWP_RESTIC_BIN` and `NWP_SBH_ABSENT` exist so that "this host has no restic" and "this
+host has no `mysqldump`" are conditions a caller can *state* rather than inherit:
+
+```bash
+NWP_RESTIC_BIN=/nonexistent/restic pl server backup live      # behave as a host without restic
+NWP_SBH_ABSENT=mysqldump,mysql     …                          # behave as a host without the client
+```
+
+They were added after three of this feature's tests passed on a laptop and failed on the
+CI runner: the machine, not the test, was deciding which guard fired. The suite now runs
+identically under both tool sets (79/79 either way) and skips nothing under either — a
+test that quietly skips on the runner removes coverage without turning anything red.
 
 ## Running it
 

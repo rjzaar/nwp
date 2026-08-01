@@ -93,7 +93,13 @@ source "$PROJECT_ROOT/lib/sanitizers/files-secrets.sh" 2>/dev/null || true
 source "$PROJECT_ROOT/lib/server-backup-host.sh"
 
 SITE_DIR="" REPO="" PASS_FILE="/etc/nwp-server/restic.pass"
-RESTIC="$(command -v restic || echo restic)" RESTIC_PUB=""
+# NWP_RESTIC_BIN: name the binary explicitly instead of taking whatever is first
+# on PATH. Two uses, one of them a real one: pointing a run at a specific restic
+# (e.g. a signed one out of the ver-kit rather than the distro's), and putting a
+# machine that HAS restic into the shoes of one that does not
+# (NWP_RESTIC_BIN=/nonexistent/restic). The second is why the provenance tests
+# can pin runner behaviour from a laptop — see tests/unit/test-server-backup-host.bats.
+RESTIC="${NWP_RESTIC_BIN:-$(command -v restic || echo restic)}" RESTIC_PUB=""
 DRUSH="" FILES_SUB="web/sites/default/files" KEEP_LAST=3 TAG=""
 DB_ONLY=n FILES_ONLY=n SKIP_RESTIC_VERIFY=n EXECUTE=n
 # ops#127: sanitised long-term DR tier. --sanitize runs the site sanitiser
@@ -202,23 +208,41 @@ verify_restic_apt(){
 }
 
 # Verify the restic binary against our pinned minisign key (supply chain), fail-closed.
+#
+# ORDER MATTERS HERE, and it is the whole content of a bug this shipped with.
+# The presence check used to come first, so on any host WITHOUT restic the
+# function returned 0 before it had looked at --restic-provenance at all:
+#   * a typo'd mode (`--restic-provenance=trustme`) was silently ACCEPTED, and
+#   * `--restic-provenance=none` never said the supply chain was unproven.
+# Whether an argument is valid, and what posture the operator asked for, are
+# properties of the COMMAND. Letting an unrelated property of the machine decide
+# them is fail-open on a security-relevant flag. Both now happen unconditionally,
+# before anything is looked up on disk.
 verify_restic(){
-  if ! command -v "$RESTIC" >/dev/null 2>&1; then
-    [ "$EXECUTE" = y ] && die "restic not found: $RESTIC"
-    print_warning "[dry-run] restic not found ($RESTIC) — required for a live run"; return 0
-  fi
+  # 1 · Is the mode itself legal? Environment-independent, always.
   case "${RESTIC_PROVENANCE:-}" in
     ''|minisign|apt|none) : ;;
     *) die "--restic-provenance must be minisign, apt or none (got: $RESTIC_PROVENANCE)" ;;
   esac
+  # 2 · Say the posture out loud. `none` is a decision to run unverified and it
+  #     is stated whether or not the binary happens to be installed here.
+  if [ "$RESTIC_PROVENANCE" = none ] || [ "$SKIP_RESTIC_VERIFY" = y ]; then
+    print_warning "restic binary is UNVERIFIED (--restic-provenance none) — the snapshot's supply chain is unproven"
+    # Still fall through to the presence check: "unverified" and "absent" are
+    # different problems and a live run needs to hear about both.
+  fi
+  # 3 · Now the machine.
+  if ! command -v "$RESTIC" >/dev/null 2>&1; then
+    [ "$EXECUTE" = y ] && die "restic not found: $RESTIC"
+    print_warning "[dry-run] restic not found ($RESTIC) — required for a live run"; return 0
+  fi
+  if [ "$RESTIC_PROVENANCE" = none ] || [ "$SKIP_RESTIC_VERIFY" = y ]; then
+    return 0
+  fi
   if [ "$RESTIC_PROVENANCE" = apt ]; then
     if verify_restic_apt "$(command -v "$RESTIC")"; then return 0; fi
     [ "$EXECUTE" = y ] && die "apt provenance for restic could not be established — refusing (fail-closed)"
     print_warning "[dry-run] apt provenance not established; a live run would refuse"
-    return 0
-  fi
-  if [ "$RESTIC_PROVENANCE" = none ] || [ "$SKIP_RESTIC_VERIFY" = y ]; then
-    print_warning "restic binary is UNVERIFIED (--restic-provenance none) — the snapshot's supply chain is unproven"
     return 0
   fi
   if [ -z "$RESTIC_PUB" ]; then
@@ -325,8 +349,13 @@ main_host(){
   print_info "scope:      $SCOPE"
   print_info "paths:      ${paths[*]:-<none>}"
   [ "${#missing[@]}" -gt 0 ] && print_warning "NOT in this backup (path absent): ${missing[*]}"
-  [ -d /home ] && ! printf '%s\n' ${paths[@]+"${paths[@]}"} | grep -qx /home \
-    && print_info "note:       /home is excluded by default — add --extra-path=/home if it holds anything you would need back"
+  # A statement about the SCOPE, not about this machine. It used to be gated on
+  # `[ -d /home ]`, which made the plan's contents depend on the host rather than
+  # on what was asked for — and made the test that pinned it pass here and fail
+  # on a runner with no /home.
+  if ! printf '%s\n' ${paths[@]+"${paths[@]}"} | grep -qx /home; then
+    print_info "note:       /home is not in the default scope — add --extra-path=/home if it holds anything you would need back"
+  fi
   print_info "sources:    ${src_mb} MB (worst case, before restic dedup/compression)"
   print_info "free:       ${free_mb} MB on the repo filesystem → ${after_mb} MB worst-case remaining"
   if [ "$after_mb" -lt "$MIN_FREE_MB" ]; then

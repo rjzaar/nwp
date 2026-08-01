@@ -46,7 +46,21 @@ SBH_DEFAULT_PATHS=${SBH_DEFAULT_PATHS:-"/etc /usr/local /root /opt /var/www"}
 # instead, which is the form a restore can actually apply.
 SBH_SYSTEM_DBS_RE='^(information_schema|performance_schema|sys|mysql)$'
 
-_sbh_have(){ command -v "$1" >/dev/null 2>&1; }
+# Tool presence, with an override so the "this host does not have it" branch is
+# reachable from a host that does.
+#
+# NWP_SBH_ABSENT is a space- or comma-separated list of tool names to treat as
+# missing. It exists because the alternative is what bit this file in CI: the
+# laptop had mysqldump, the runner did not, and a test that meant to exercise
+# the empty-database-list refusal silently exercised the mysqldump-missing
+# refusal instead — passing on one machine and failing on the other while
+# asserting a behaviour neither run had actually reached. Whether a guard fires
+# must be something a test STATES, not something the machine decides.
+_sbh_have(){
+  local _absent="${NWP_SBH_ABSENT:-}"
+  case " ${_absent//,/ } " in *" $1 "*) return 1 ;; esac
+  command -v "$1" >/dev/null 2>&1
+}
 
 # sbh_hostname — short hostname, used for the repo name and snapshot tag.
 sbh_hostname(){ hostname -s 2>/dev/null || hostname 2>/dev/null || echo host; }

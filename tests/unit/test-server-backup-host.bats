@@ -18,8 +18,21 @@ setup() {
   S="${REPO_ROOT}/scripts/commands/server-backup.sh"
   L="${REPO_ROOT}/lib/server-backup-host.sh"
   TEST_ROOT="$(mktemp -d)"
+  # A path set this file OWNS. Asserting against the real /etc and /var/www made
+  # the plan's contents a property of the machine: a runner without /var/www
+  # produced different output than a laptop with one. The DEFAULTS are pinned
+  # separately, by reading them out of the library.
+  mkdir -p "${TEST_ROOT}/box/etc" "${TEST_ROOT}/box/opt" "${TEST_ROOT}/box/www"
+  export SBH_DEFAULT_PATHS="${TEST_ROOT}/box/etc ${TEST_ROOT}/box/opt"
+  WEB="${TEST_ROOT}/box/www"
+  # Neither restic nor mysqldump is assumed. Every test that cares says so.
+  unset NWP_RESTIC_BIN NWP_SBH_ABSENT
 }
 teardown() { rm -rf "${TEST_ROOT}"; }
+
+# The runner has no restic; this laptop does. Both conditions are reachable from
+# either machine, so neither can quietly decide what a test proves.
+RESTIC_ABSENT="/nonexistent/restic-not-installed"
 
 # ── the scope itself ─────────────────────────────────────────────────────────
 
@@ -29,21 +42,27 @@ teardown() { rm -rf "${TEST_ROOT}"; }
   [[ "$output" == *"different scopes"* ]]
 }
 
-@test "--host plans /etc, /usr/local, /root, /opt and the web root" {
-  run bash "$S" --host --dry-run
+@test "the DEFAULT box paths are /etc, /usr/local, /root, /opt, /var/www" {
+  # Read off the library, not off whatever this machine happens to have.
+  run bash -c "unset SBH_DEFAULT_PATHS; source '$L'; echo \$SBH_DEFAULT_PATHS"
+  [ "$output" = "/etc /usr/local /root /opt /var/www" ]
+}
+
+@test "--host plans every configured path plus the web root" {
+  run bash "$S" --host --web-root="$WEB" --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"/etc"* ]]
-  [[ "$output" == *"/usr/local"* ]]
-  [[ "$output" == *"/var/www"* ]]
+  [[ "$output" == *"${TEST_ROOT}/box/etc"* ]]
+  [[ "$output" == *"${TEST_ROOT}/box/opt"* ]]
+  [[ "$output" == *"${WEB}"* ]]
 }
 
 @test "--host writes to a DISTINCT <name>-system repo, never a site repo" {
-  run bash "$S" --host --dry-run
+  run bash "$S" --host --web-root="$WEB" --dry-run
   [[ "$output" == *"-system"* ]]
 }
 
 @test "--scope rejects anything that is not config, db or web" {
-  run bash "$S" --host --scope=config,secrets --dry-run
+  run bash "$S" --host --scope=config,secrets --web-root="$WEB" --dry-run
   [ "$status" -ne 0 ]
   [[ "$output" == *"config, db or web"* ]]
 }
@@ -51,7 +70,7 @@ teardown() { rm -rf "${TEST_ROOT}"; }
 @test "a --extra-path that does not exist is a hard failure, not a warning" {
   # Silently dropping a path the operator explicitly named is how an archive
   # comes to be missing the one tree they added it for.
-  run bash "$S" --host --extra-path=/definitely/not/here --dry-run
+  run bash "$S" --host --extra-path=/definitely/not/here --web-root="$WEB" --dry-run
   [ "$status" -ne 0 ]
   [[ "$output" == *"does not exist"* ]]
 }
@@ -61,8 +80,10 @@ teardown() { rm -rf "${TEST_ROOT}"; }
 }
 
 @test "/home's exclusion is stated in the plan rather than left implicit" {
-  run bash "$S" --host --dry-run
-  [[ "$output" == *"/home is excluded by default"* ]]
+  # A statement about the scope. It must not depend on whether THIS host has a
+  # /home — that gating is what made the original version machine-specific.
+  run bash "$S" --host --web-root="$WEB" --dry-run
+  [[ "$output" == *"/home is not in the default scope"* ]]
 }
 
 # ── the disk guard ───────────────────────────────────────────────────────────
@@ -84,15 +105,53 @@ teardown() { rm -rf "${TEST_ROOT}"; }
 
 # ── restic provenance ────────────────────────────────────────────────────────
 
-@test "--restic-provenance rejects an unknown mode" {
-  run bash "$S" --host --restic-provenance=trustme --dry-run
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"minisign, apt or none"* ]]
+@test "--restic-provenance rejects an unknown mode WHETHER OR NOT restic is installed" {
+  # The bug this pins: verify_restic returned early on "restic not found", so on
+  # any host without restic a typo'd mode was silently ACCEPTED. Whether an
+  # argument is legal is a property of the command, never of the machine — and
+  # this one governs a supply-chain check, so failing open is the wrong way.
+  local cond
+  for cond in present absent; do
+    if [ "$cond" = absent ]; then export NWP_RESTIC_BIN="$RESTIC_ABSENT"; else unset NWP_RESTIC_BIN; fi
+    run bash "$S" --host --web-root="$WEB" --restic-provenance=trustme --dry-run
+    [ "$status" -ne 0 ] || { echo "restic ${cond}: a bogus mode was ACCEPTED"; return 1; }
+    [[ "$output" == *"minisign, apt or none"* ]] \
+      || { echo "restic ${cond}: refused for the wrong reason: $output"; return 1; }
+  done
+  unset NWP_RESTIC_BIN
 }
 
-@test "'none' provenance is loud, not silent" {
-  run bash "$S" --host --restic-provenance=none --dry-run
-  [[ "$output" == *"UNVERIFIED"* ]]
+@test "'none' provenance is loud WHETHER OR NOT restic is installed" {
+  # "I could not check" and "I chose not to check" are different sentences, and
+  # the operator needs the second one even on a host where the binary is absent.
+  local cond
+  for cond in present absent; do
+    if [ "$cond" = absent ]; then export NWP_RESTIC_BIN="$RESTIC_ABSENT"; else unset NWP_RESTIC_BIN; fi
+    run bash "$S" --host --web-root="$WEB" --restic-provenance=none --dry-run
+    [[ "$output" == *"UNVERIFIED"* ]] \
+      || { echo "restic ${cond}: the unverified posture was never stated"; return 1; }
+  done
+  unset NWP_RESTIC_BIN
+}
+
+@test "an absent restic is reported as absent, not as verified" {
+  export NWP_RESTIC_BIN="$RESTIC_ABSENT"
+  run bash "$S" --host --web-root="$WEB" --restic-provenance=apt --dry-run
+  [[ "$output" == *"restic not found"* ]]
+  [[ "$output" != *"provenance: dpkg package"* ]]
+  unset NWP_RESTIC_BIN
+}
+
+@test "an absent restic is FATAL on a live run, in every provenance mode" {
+  # --dry-run tolerates a missing binary; --execute must not, or the verb
+  # reports a backup it never took.
+  local mode
+  export NWP_RESTIC_BIN="$RESTIC_ABSENT"
+  for mode in apt none minisign; do
+    run bash "$S" --host --web-root="$WEB" --restic-provenance="$mode" --execute
+    [ "$status" -ne 0 ] || { echo "mode ${mode}: --execute survived a missing restic"; return 1; }
+  done
+  unset NWP_RESTIC_BIN
 }
 
 @test "apt provenance re-checks the on-disk binary against what dpkg installed" {
@@ -108,22 +167,64 @@ teardown() { rm -rf "${TEST_ROOT}"; }
 
 # ── the library: partial reads must fail ─────────────────────────────────────
 
-@test "sbh_list_databases fails when the server cannot be reached" {
+@test "sbh_list_databases fails when there is no mysql client at all" {
+  # Prepending a nonexistent directory to PATH does NOT remove mysql from it —
+  # the original version of this test did that and was passing for a different
+  # reason on each machine. Name the condition.
+  run bash -c "NWP_SBH_ABSENT=mysql; source '$L'; sbh_list_databases"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "sbh_list_databases fails when the client is there but the server is not" {
   # An empty list read as 'this box has no databases' would produce a DR
   # archive with no data in it and a green tick on the console.
-  run bash -c "PATH=/nonexistent:\$PATH; source '$L'; sbh_list_databases"
+  run bash -c "
+    source '$L'
+    _sbh_have(){ return 0; }
+    mysql(){ return 1; }
+    sbh_list_databases
+  "
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
 
 @test "sbh_dump_databases refuses an empty database list" {
+  # STATE the tooling condition. Without the _sbh_have stub this passed on a
+  # laptop with mysqldump (reaching the empty-list guard) and failed on a runner
+  # without it (stopping at the mysqldump guard) — asserting a refusal that the
+  # second run never got near.
   run bash -c "
     source '$L'
+    _sbh_have(){ return 0; }
     sbh_list_databases(){ printf ''; return 0; }
     sbh_dump_databases '${TEST_ROOT}/db'
   "
   [ "$status" -ne 0 ]
   [[ "$output" == *"EMPTY"* ]]
+}
+
+@test "sbh_dump_databases refuses when mysqldump is missing, and says which" {
+  # The other side of the same coin, made reachable from a host that HAS
+  # mysqldump. Two distinct refusals, each pinned to its own cause.
+  run bash -c "
+    NWP_SBH_ABSENT=mysqldump
+    source '$L'
+    sbh_list_databases(){ echo onedb; }
+    sbh_dump_databases '${TEST_ROOT}/db'
+  "
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"mysqldump not found"* ]]
+  [[ "$output" != *"EMPTY"* ]]
+}
+
+@test "NWP_SBH_ABSENT makes a tool-missing branch reachable from a host that has it" {
+  # The override itself is under test: if it stops working, the runner-condition
+  # tests above quietly start asserting the laptop's behaviour again.
+  run bash -c "source '$L'; NWP_SBH_ABSENT=bash _sbh_have bash && echo REACHABLE || echo ABSENT"
+  [ "$output" = "ABSENT" ]
+  run bash -c "source '$L'; _sbh_have bash && echo PRESENT || echo ABSENT"
+  [ "$output" = "PRESENT" ]
 }
 
 @test "sbh_dump_databases rejects a truncated dump that is still valid gzip" {

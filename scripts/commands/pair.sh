@@ -155,6 +155,30 @@ cmd_check() {
         print_status "FAIL" "pair_guard would REFUSE this promotion (see above)."
         return 1
     fi
+
+    # Boundary manifest-honesty (P74 Phase 1), run WHERE THE CORPUS EXISTS.
+    # This check needs the provider trees under sites/<provider>/ on disk; in
+    # nwp CI sites/* is gitignored, so 5 of the 7 declared surfaces can never
+    # be scanned there and the old boundary:classify CI step was red on every
+    # MR by construction (ops#165). The workstation running a promotion
+    # dry-run is exactly the machine that HAS the corpus and exactly the
+    # moment the manifest's honesty matters — so it lives here now, and it is
+    # part of the verdict: a leaked boundary symbol (exit 1) or an
+    # unverifiable manifest (exit 2) fails the check the same way a guard
+    # refusal does. Direct verb: `pl impact --honesty`.
+    echo ""
+    print_header "boundary manifest-honesty (pl impact --honesty --pair=$site)"
+    if [ ! -f "${NWP_PAIR_CONTRACT_DIR:-$PROJECT_ROOT/pairs}/${site}.pair-contract.yml" ]; then
+        print_status "WARN" "no pairs/${site}.pair-contract.yml — nothing to honesty-check for this site."
+        return 0
+    fi
+    local rc=0
+    "$PROJECT_ROOT/scripts/commands/impact.sh" --honesty --pair="$site" || rc=$?
+    case "$rc" in
+        0) print_status "OK" "boundary manifest verified clean." ;;
+        1) print_status "FAIL" "boundary symbol(s) referenced outside their declared paths (see above)."; return 1 ;;
+        *) print_status "FAIL" "boundary manifest could NOT be verified here (corpus/yq missing — see above). Run where sites/ is checked out."; return 1 ;;
+    esac
 }
 
 cmd_record() {

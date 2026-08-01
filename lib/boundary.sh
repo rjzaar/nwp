@@ -62,6 +62,17 @@ boundary_contract_file() {
 
 _boundary_yq() { command -v yq 2>/dev/null || true; }
 
+# Can the contract be READ at all? yq on PATH and the file on disk. Classify
+# must treat "no" as UNCOMPUTABLE (fail-safe closed): without yq every surface
+# list comes back empty, every path lookup misses, and — measured on the six
+# straight red MR pipelines behind ops#165 — a genuinely boundary-touching diff
+# silently classifies INTERNAL. "Can't read the boundary" must never render as
+# "not on the boundary".
+boundary_contract_readable() {
+    local file="${1:-$(boundary_contract_file)}"
+    [ -n "$(_boundary_yq)" ] && [ -f "$file" ]
+}
+
 # List surface names that carry a boundary: entry.
 boundary_surfaces() {
     local file="${1:-$(boundary_contract_file)}"
@@ -165,6 +176,15 @@ boundary_classify() {
     local file="${2:-$(boundary_contract_file)}"
     boundary_reset
     BOUNDARY_BASE="$base"
+
+    # An unreadable contract makes every classification below vacuous (zero
+    # surfaces ⇒ nothing ever matches ⇒ INTERNAL). Fail-safe CLOSED instead.
+    if ! boundary_contract_readable "$file"; then
+        BOUNDARY_UNCOMPUTABLE=1
+        BOUNDARY_CLASS="BOUNDARY"
+        BOUNDARY_REASON="pair contract unreadable (yq missing or '${file}' absent) — fail-safe closed"
+        return 0
+    fi
 
     local files
     if ! files="$(boundary_changed_files "$base")"; then
@@ -447,6 +467,15 @@ boundary_surface_present() {
 boundary_honesty_check() {
     local file="${1:-$(boundary_contract_file)}"
     local surface present=0 missing=0 viol
+
+    # Name the real blocker. Before ops#165, a missing yq fell through to the
+    # generic "declares no boundary surfaces at all" below — which reads as a
+    # CONTRACT problem and sent the first investigation down the wrong path
+    # (the committed contract declares 7 surfaces; the runner just had no yq).
+    if ! boundary_contract_readable "$file"; then
+        echo "CANNOT-VERIFY: pair contract unreadable (yq missing or '${file}' absent) — install yq / check the path before believing anything else this check says."
+        return 2
+    fi
 
     while IFS= read -r surface; do
         [ -n "$surface" ] || continue

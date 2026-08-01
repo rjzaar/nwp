@@ -376,7 +376,11 @@ catch a real regression:
 
 ## 11. CI expectations
 
-`boundary:classify` and `test:verification` are `allow_failure` amber and are
-expected to stay that way. The `bats` jobs may fail randomly on the mini runner
-(infrastructure fix in flight) — note it, do not chase it. The signal that
-matters for this branch is `test:console`.
+`boundary:classify` and `test:verification` were `allow_failure` amber when
+this was written; since ops#165 (2026-08-02) both are expected GREEN —
+`boundary:classify` classifies for real (yq bootstrapped, honesty check moved
+to `pl pair check` where the corpus exists) and `test:verification` measures
+the checkout under test. A red on either is now a real finding, not weather.
+The `bats` jobs may fail randomly on the mini runner (infrastructure fix in
+flight) — note it, do not chase it. The signal that matters for this branch is
+`test:console`.

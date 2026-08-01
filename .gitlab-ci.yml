@@ -345,55 +345,55 @@ lint:doc-truth:
 # MR pipelines as the compare base; a missing/unfetched base makes `pl impact`
 # fail-safe CLOSED (⇒ BOUNDARY), never silently "internal".
 #
-# ADVISORY ONLY for now (allow_failure: true; the classifier itself exits 0):
-# it informs, it does not block. The parts that BLOCK — the contract_version
-# bump gate, CODEOWNERS review scoped to the boundary paths, and the schema
-# compat (expand-contract) checker — are a LATER phase (P74 Phase 3); wire them
-# here (and flip allow_failure) then. Shell runner: needs bash + git + yq (yq is
-# what reads the boundary map; without it every diff would look internal).
+# RESHAPED 2026-08-02 (ops#165). Until then this job was red on EVERY MR
+# pipeline (1370…1391 and every one before them), for two stacked reasons:
 #
-# MANIFEST-HONESTY, AND WHY THIS JOB IS EXPECTED TO BE AMBER (item 7)
-#   The `--honesty` step used to always exit 0 and print "clean". In THIS
-#   pipeline `sites/*` is gitignored, so the nwc profile — which holds 10 of the
-#   11 declared provider symbols — is not on the runner at all. The step was
-#   therefore reporting a green boundary contract it had no way to inspect:
-#   measured 2026-07-26, the identical check saw 0 candidate files here and 11
-#   findings on a workstation with the profile checked out.
+#   1. No yq. The job needed yq to read the boundary map but — alone among the
+#      yq-needing jobs — never bootstrapped it. Worse than the red: without yq
+#      the CLASSIFICATION steps parsed the contract to zero surfaces and
+#      artifacted a false `"classification":"INTERNAL"` for every diff.
+#      lib/boundary.sh now fails CLOSED there (BOUNDARY / uncomputable), and
+#      the job bootstraps the same pinned yq as its siblings (ensure-yq.sh).
+#   2. The `--honesty` step CAN NEVER VERIFY HERE: 5 of the 7 declared
+#      surfaces' provider trees live under gitignored sites/, so exit 2
+#      (CANNOT-VERIFY) was the permanent, truthful, useless answer. Honest
+#      amber that never changes is noise that trains people to merge past red
+#      — so the step is GONE from this job and now runs where the corpus
+#      exists: `pl pair check <site> <tier>` (the promotion dry-run) fails on
+#      violations AND on cannot-verify, and `pl impact --honesty` remains the
+#      direct verb. Verified 7/7 surfaces VERIFIED-CLEAN on the operator tree
+#      2026-08-02. Do NOT re-add the honesty step here without also giving the
+#      runner the provider checkouts it needs.
 #
-#   `pl impact --honesty` now separates the verdict from the corpus:
-#       exit 0  VERIFIED CLEAN  every surface's provider tree was scanned
-#       exit 1  VIOLATIONS      a boundary symbol leaked outside its paths
-#       exit 2  CANNOT VERIFY   a surface's provider tree is not on disk
-#   Until this runner has the nwc profile, exit 2 is the truthful answer and
-#   this job will show AMBER (allow_failure: true) on every MR. That is the
-#   intended state: loudly "I cannot see", never silently "all clear". Do NOT
-#   silence it by passing --advisory — the flag exists for callers that have
-#   already recorded the verdict elsewhere, not to repaint this job green.
+# What remains is exactly what the job's name says: classify the MR diff
+# against the pair contract's boundary: block, and artifact the verdict.
+# That needs only git + yq + the contract — all present on a fresh CI clone.
+# GIT_DEPTH 0 so the merge-base sha GitLab hands us is always reachable.
 #
-#   The verifying path today is `pl impact --honesty` on a workstation, where
-#   the profile exists (7/7 surfaces, VERIFIED CLEAN as of 2026-07-26). Flip
-#   allow_failure to false once the corpus is available to the runner.
-#
-#   Note the `--honesty` step is also fail-closed on a missing yq: with no yq
-#   the contract parses to zero surfaces and the check reports CANNOT-VERIFY
-#   rather than "clean", which is how it behaved before.
+# BLOCKING (allow_failure: false), with `--fail-uncomputable`: the classifier
+# still exits 0 for both INTERNAL and BOUNDARY-TOUCHING (classify, don't block
+# — Phase 3 adds the blocking gates), so the only red this job can now show is
+# "this runner could not classify at all" (no yq, unresolvable base). That red
+# means fix-the-pipeline, and unlike the old one it cannot be ignored as
+# "always like that".
 boundary:classify:
   stage: lint
+  variables:
+    GIT_DEPTH: "0"   # base sha must be reachable or classification fail-safes closed
+  before_script:
+    - ./scripts/ci/ensure-yq.sh
+    - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
   script:
     - echo "Classifying diff against the nwc<->ssc boundary (P74 Phase 2)..."
     - BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-main}"
     - echo "Compare base ${BASE}"
-    - ./scripts/commands/impact.sh --base="${BASE}"                 # human report
-    - ./scripts/commands/impact.sh --base="${BASE}" --json | tee impact.json
-    # Manifest honesty. Non-zero here means EITHER a real leak (1) OR "I could
-    # not look" (2) — both are amber, and both are information the previous
-    # always-exit-0 version destroyed.
-    - ./scripts/commands/impact.sh --honesty
+    - ./scripts/commands/impact.sh --base="${BASE}" --fail-uncomputable  # human report
+    - ./scripts/commands/impact.sh --base="${BASE}" --fail-uncomputable --json | tee impact.json
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   tags:
     - nwp
-  allow_failure: true
+  allow_failure: false
   artifacts:
     when: always
     paths:
@@ -461,20 +461,13 @@ test:unit:
     # bats jobs. See scripts/ci/ensure-bats.sh for the pin/verify contract.
     - ./scripts/ci/ensure-bats.sh
     - export PATH="${HOME}/.cache/nwp-ci/bats-v1.11.0/bin:${PATH}"
-    - |
-      YQ_VER=v4.44.1
-      YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3
-      if ! command -v yq >/dev/null 2>&1; then
-        YQ_DIR="${HOME}/.cache/nwp-ci/yq-${YQ_VER}"
-        mkdir -p "$YQ_DIR"
-        if ! echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c - >/dev/null 2>&1; then
-          curl -fsSL -o "$YQ_DIR/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VER}/yq_linux_amd64"
-        fi
-        echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c -
-        chmod +x "$YQ_DIR/yq"
-        export PATH="$YQ_DIR:$PATH"
-      fi
-      yq --version
+    # Pinned, sha256-verified yq bootstrap — one implementation for every
+    # yq-needing job since ops#165 (scripts/ci/ensure-yq.sh); bump the pin
+    # THERE, once. boundary:classify was red on every MR partly because it was
+    # the one yq consumer that never got a copy of the old inline block.
+    - ./scripts/ci/ensure-yq.sh
+    - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
+    - yq --version
   # scripts/ci/run-bats.sh (a) preflights php/bats/yq/git and FAILS the job when
   # one is missing — the registered fallback runner has no php, and the two
   # tests in test-auth-logic.bats (SSO uid-lock decision + ops#81 erasure
@@ -600,20 +593,13 @@ test:verification:
   # sha256-verified v4.44.1 into a per-runner cache as test:unit does.
   before_script:
     - apt-get update -qq && apt-get install -y -qq bash git jq bc || true
-    - |
-      YQ_VER=v4.44.1
-      YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3
-      if ! command -v yq >/dev/null 2>&1; then
-        YQ_DIR="${HOME}/.cache/nwp-ci/yq-${YQ_VER}"
-        mkdir -p "$YQ_DIR"
-        if ! echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c - >/dev/null 2>&1; then
-          curl -fsSL -o "$YQ_DIR/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VER}/yq_linux_amd64"
-        fi
-        echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c -
-        chmod +x "$YQ_DIR/yq"
-        export PATH="$YQ_DIR:$PATH"
-      fi
-      yq --version
+    # Pinned, sha256-verified yq bootstrap — one implementation for every
+    # yq-needing job since ops#165 (scripts/ci/ensure-yq.sh); bump the pin
+    # THERE, once. boundary:classify was red on every MR partly because it was
+    # the one yq consumer that never got a copy of the old inline block.
+    - ./scripts/ci/ensure-yq.sh
+    - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
+    - yq --version
   script:
     - echo "Running NWP verification checks..."
     - ./scripts/commands/verify.sh ci --depth=basic --export-json
@@ -1186,22 +1172,15 @@ lint:secrets:
     - export PATH="${HOME}/.cache/nwp-ci/bats-v1.11.0/bin:${PATH}"
     # …and the suite it runs (test-secrets-registry-truth.bats) drives
     # secrets.sh, which hard-requires yq: with bats bootstrapped, the fallback
-    # runner then failed 127 on yq (job 6725). Same pinned copy as test:unit —
-    # keep the version+sha in lockstep with that block and setup.sh.
-    - |
-      YQ_VER=v4.44.1
-      YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3
-      if ! command -v yq >/dev/null 2>&1; then
-        YQ_DIR="${HOME}/.cache/nwp-ci/yq-${YQ_VER}"
-        mkdir -p "$YQ_DIR"
-        if ! echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c - >/dev/null 2>&1; then
-          curl -fsSL -o "$YQ_DIR/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VER}/yq_linux_amd64"
-        fi
-        echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c -
-        chmod +x "$YQ_DIR/yq"
-        export PATH="$YQ_DIR:$PATH"
-      fi
-      yq --version
+    # runner then failed 127 on yq (job 6725). Same pinned copy as test:unit
+    # (scripts/ci/ensure-yq.sh) — the pin lives there and in setup.sh.
+    # Pinned, sha256-verified yq bootstrap — one implementation for every
+    # yq-needing job since ops#165 (scripts/ci/ensure-yq.sh); bump the pin
+    # THERE, once. boundary:classify was red on every MR partly because it was
+    # the one yq consumer that never got a copy of the old inline block.
+    - ./scripts/ci/ensure-yq.sh
+    - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
+    - yq --version
   script:
     - ./scripts/ci/lint-secrets.sh
   rules:

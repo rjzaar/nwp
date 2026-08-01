@@ -15,13 +15,21 @@ set -euo pipefail
 # (see below), because an honesty check that always exits 0 cannot fail.
 #
 # Usage:
-#   pl impact [--base=main] [--json] [--pair=ssc] [--honesty] [--advisory] [-h]
+#   pl impact [--base=main] [--json] [--pair=ssc] [--honesty] [--advisory]
+#             [--fail-uncomputable] [-h]
 #
 #   --base=<ref>   compare HEAD against <ref> (default: main)
 #   --json         emit a machine summary (for CI) instead of the human report
 #   --pair=<id>    pair contract to use (default: ssc)
 #   --honesty      run the manifest-honesty check instead of classifying a diff
 #   --advisory     with --honesty: report but always exit 0 (legacy behaviour)
+#   --fail-uncomputable
+#                  exit 2 when the classification is FAIL-SAFE-CLOSED (diff or
+#                  contract unreadable). For CI: a runner that cannot classify
+#                  must show red for THAT — "treated as boundary" is the safe
+#                  verdict for a human, but in a pipeline it means the job is
+#                  misprovisioned (no yq, unfetched base) and should say so
+#                  instead of stamping every MR with the same non-answer.
 #
 # --honesty EXIT STATUS (item 7 — "cannot verify" is not "clean"):
 #   0  verified clean   every surface's provider tree was on disk and scanned
@@ -48,6 +56,7 @@ JSON=0
 PAIR="ssc"
 HONESTY=0
 ADVISORY=0
+FAIL_UNCOMPUTABLE=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -56,8 +65,9 @@ for arg in "$@"; do
         --json)     JSON=1 ;;
         --honesty)  HONESTY=1 ;;
         --advisory) ADVISORY=1 ;;
+        --fail-uncomputable) FAIL_UNCOMPUTABLE=1 ;;
         -h|--help)
-            sed -n '3,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '3,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -86,6 +96,13 @@ if [ "$JSON" -eq 1 ]; then
     boundary_json
 else
     boundary_render
+fi
+
+# --fail-uncomputable (CI): an uncomputable classification is a provisioning
+# defect on THIS run, not information about the diff — surface it as red.
+if [ "$FAIL_UNCOMPUTABLE" -eq 1 ] && [ "${BOUNDARY_UNCOMPUTABLE:-0}" -eq 1 ]; then
+    echo "pl impact: classification was FAIL-SAFE-CLOSED (${BOUNDARY_REASON}) — refusing to report it as a verdict (--fail-uncomputable)" >&2
+    exit 2
 fi
 
 # Classify, don't block.

@@ -37,7 +37,10 @@ Configuration (env overrides; see lib/deploy-gate.sh):
     NWP_DEPLOY_SK_KEY            default: ~/.ssh/id_ed25519_sk
     NWP_DEPLOY_GATE_REQUIRE      "true" => unconfigured gate fails CLOSED
     (REQUIRE can also be pinned by /etc/nwp/deploy-gate-require or
-     keys/deploy-gate.require — marker files survive env stripping.)
+     keys/deploy-gate.require — marker files survive env stripping. Their
+     directory must be SEARCHABLE by the unprivileged operator, so create it
+     0755: the marker is not a secret, its presence is the whole signal. If it
+     is unsearchable the gate cannot tell present from unreadable and ABORTS.)
 
 Examples:
     pl deploy-gate status    # Is the gate configured/enforced on this host?

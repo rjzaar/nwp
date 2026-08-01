@@ -320,3 +320,64 @@ dg_status() {
   run grep -nE '\[ -e .*(deploy-gate-require|deploy-gate\.require)' "$CMD"
   [ "$status" -ne 0 ]
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# THE MARKER DIRECTORY'S MODE IS PART OF THE CONTRACT
+#
+# Salvaged from nwp!278 (rescue/priv-path-probes-marker-mode), which was closed
+# as a stale pre-image: its cmd_status rewrite was behaviourally equivalent to
+# what had already landed here, and it paid for a four-line doc hunk by deleting
+# cases 16-23. The doc hunk was the one part worth keeping, so it is kept — and
+# pinned, which !278 never did.
+#
+# The claim: the REQUIRE marker is NOT a secret. Its PRESENCE is the whole
+# signal. Resolving a name inside a directory costs SEARCH (+x), so a 0700
+# /etc/nwp makes `[ -e ]` false whether or not the marker is there — the gate
+# goes blind and (cases 9/13) must ABORT. The remedy is therefore always to make
+# the directory searchable, never to create a second marker.
+#
+# Cases 24-26 fence the ADVICE, which is the part a human acts on. Every mode a
+# gate message hands the operator must be world-searchable; the day someone
+# "hardens" one of these to 0700 they will have re-created the exact posture
+# lib/deploy-gate.sh:32-39 exists to warn about, and these go red.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@test "24 the help text states the marker directory must be searchable" {
+  run bash "$CMD" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"deploy-gate-require"* ]]
+  # The requirement itself, and the mode that satisfies it.
+  [[ "$output" == *"0755"* ]]
+  [[ "$output" == *[Ss]"earchable"* ]]
+}
+
+@test "25 THE FENCE: every marker-dir mode the gate advises is world-searchable" {
+  # `mkdir -m MODE` / `chmod MODE` in operator-facing advice. A mode whose
+  # "other" digit lacks +x (1) re-creates the blind posture. Checked across the
+  # command and the library, since both print remedies.
+  local f mode bad=0
+  for f in "$CMD" "${LIB}/deploy-gate.sh"; do
+    while IFS= read -r mode; do
+      # other-execute is bit 1 of the last octal digit
+      if [ $(( ${mode: -1} & 1 )) -eq 0 ]; then
+        echo "NOT SEARCHABLE: mode $mode advised in $f"; bad=1
+      fi
+    done < <(grep -oE '(mkdir[^&|;]*-m|chmod)[[:space:]]+0?[0-7]{3}' "$f" \
+             | grep -oE '0?[0-7]{3}$')
+  done
+  [ "$bad" -eq 0 ]
+}
+
+@test "26 THE FENCE: the advised mode actually lets an unprivileged probe see the marker" {
+  # Not a spelling check — execute the advice and assert the verdict flips from
+  # cannot-verify to present. Ties case 25's string to observable behaviour.
+  mkdir -p "$PROJECT_ROOT/keys"
+  touch "$PROJECT_ROOT/keys/deploy-gate.require"
+  chmod 000 "$PROJECT_ROOT/keys"
+  run _dg_marker_verdict "$PROJECT_ROOT/keys/deploy-gate.require"
+  [ "$output" = "cannot-verify" ]
+
+  chmod 0755 "$PROJECT_ROOT/keys"          # <- the mode cases 24/25 advertise
+  run _dg_marker_verdict "$PROJECT_ROOT/keys/deploy-gate.require"
+  [ "$output" = "present" ]
+}

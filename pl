@@ -416,6 +416,13 @@ ${BOLD}HOST STATE (own the box, don't ssh into it):${NC}
     server forge status <name>      Forge package version, apt signing-key
                                     expiry, pending upgrades (package manager
                                     only — never the Rails console)
+    dns list [domain] [--json]      READ-ONLY: every DNS record the DNS token can
+                                    see, reconciled against sites/*/.nwp.yml and
+                                    servers/*/. "What points where, and is it
+                                    declared?" rc=1 a record shadowed by an NS
+                                    delegation or a declared site pointing at the
+                                    wrong box; rc=3 CANNOT-VERIFY. The
+                                    DECLARED/UNDECLARED column is NOT a delete list.
     host <role|alias>               Resolve a role label to its hostname(s)
     host capture <target> [--all]   Read cron/systemd/nginx/php/ssh/firewall
                                     state into servers/<host>/system/
@@ -1101,6 +1108,11 @@ main() {
         # + `health` (headroom preflight) and `forge status` (item 6)
         server)
             run_script "server.sh" "$@"
+            ;;
+
+        # DNS enumeration — the one thing the estate could not see (read-only)
+        dns)
+            run_script "dns.sh" "$@"
             ;;
 
         # Host state: role resolution + capture/diff/apply/schedule (item 6)

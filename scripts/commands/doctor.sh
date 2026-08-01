@@ -582,6 +582,66 @@ check_server_state() {
 }
 
 ################################################################################
+# Mail alias coverage — every referenced address must be deliverable
+#
+# WHY: MX for nwpcode.org points at the box whose /etc/postfix/virtual is the
+# only thing that makes an @nwpcode.org address deliverable. On 2026-08-01 a
+# sweep found NINE referenced-but-unaliased addresses (support@, rob@, dev@,
+# nwp-security@, fin-monitor@, mass-times@, robert.zaar@, postmaster@, abuse@)
+# — every one a silent black hole for replies/bounces. The fix pattern is:
+#   servers/<server>/email/referenced-addresses.txt  (the promise)
+#   servers/<server>/email/postfix-virtual           (tracked baseline of the map)
+# This check asserts promise ⊆ baseline, so referencing a new address without
+# aliasing it goes red on the next doctor run instead of years later.
+################################################################################
+check_mail_aliases() {
+    local errors=0 found=0
+    local manifest baseline dir addr
+
+    print_header "Checking Mail Alias Coverage (servers/*/email/)"
+
+    for manifest in "$PROJECT_ROOT"/servers/*/email/referenced-addresses.txt; do
+        [[ -f "$manifest" ]] || continue
+        found=1
+        dir="$(dirname "$manifest")"
+        baseline="$dir/postfix-virtual"
+
+        if [[ ! -f "$baseline" ]]; then
+            print_error "$(basename "$(dirname "$dir")"): referenced-addresses.txt exists but postfix-virtual baseline is missing"
+            print_hint "Refresh it from the box: ssh <box> 'cat /etc/postfix/virtual' > $baseline"
+            errors=$((errors + 1))
+            continue
+        fi
+
+        local missing=0 total=0
+        while IFS= read -r addr; do
+            addr="${addr%%#*}"                    # strip trailing comments
+            addr="$(echo "$addr" | tr -d '[:space:]')"
+            [[ -z "$addr" ]] && continue
+            total=$((total + 1))
+            if ! grep -Eq "^${addr}[[:space:]]" "$baseline"; then
+                print_error "referenced but NOT aliased: $addr"
+                missing=$((missing + 1))
+            fi
+        done < "$manifest"
+
+        if [[ $missing -eq 0 ]]; then
+            print_success "$(basename "$(dirname "$dir")"): all $total referenced addresses have aliases in the tracked baseline"
+        else
+            print_hint "Alias it on the box: sudo /opt/nwp/email/add_site_email.sh <localpart> --forward-only <target> -y"
+            print_hint "then refresh $baseline and commit (server-local repo)"
+            errors=$((errors + missing))
+        fi
+    done
+
+    if [[ $found -eq 0 ]]; then
+        print_success "no servers/*/email/referenced-addresses.txt manifests (check not applicable to this checkout)"
+    fi
+
+    return $errors
+}
+
+################################################################################
 # Main Function
 ################################################################################
 
@@ -651,6 +711,9 @@ main() {
     echo ""
 
     check_server_state || total_errors=$((total_errors + $?))
+    echo ""
+
+    check_mail_aliases || total_errors=$((total_errors + $?))
     echo ""
 
     # Print summary

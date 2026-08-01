@@ -103,6 +103,18 @@ todo_is_ignored() {
     return 0
 }
 
+# Escape a value for embedding in a JSON string literal.
+# Backslash MUST be replaced first, or the escapes we add get re-escaped.
+_todo_json_escape() {
+    local s="${1:-}"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\t'/\\t}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\n'/\\n}"
+    printf '%s' "$s"
+}
+
 # Add a todo item to the results (skips if ignored)
 # Args: $1=category $2=id $3=priority $4=title $5=description $6=site $7=action
 todo_add_item() {
@@ -123,8 +135,24 @@ todo_add_item() {
         return 0
     fi
 
-    # Store as JSON-like format for easy parsing
-    local item="{\"id\":\"$full_id\",\"category\":\"$category\",\"priority\":\"$priority\",\"title\":\"$title\",\"description\":\"$description\",\"site\":\"$site\",\"action\":\"$action\",\"unknown\":${TODO_ITEM_UNKNOWN:-false}}"
+    # Store as JSON. Every field is ESCAPED (ops#178): this was raw string
+    # interpolation into a "JSON-like format". check_agent_host_auth's
+    # description legitimately contains double quotes
+    #   ... Format: \"<name>=<addr>\" (VPN addresses).
+    # and scripts/commands/todo.sh read items back with `"[^"]*"`, which stops
+    # at the first quote inside a value — so that description reached `pl rag`
+    # truncated to `... Format: `, silently, with the document still parsing.
+    # Escaping here is only half the fix: parse_todo_items must decode escapes
+    # and show_json must re-encode them, or the truncation becomes a malformed
+    # document instead. See scripts/commands/todo.sh.
+    local item="{\"id\":\"$(_todo_json_escape "$full_id")\""
+    item+=",\"category\":\"$(_todo_json_escape "$category")\""
+    item+=",\"priority\":\"$(_todo_json_escape "$priority")\""
+    item+=",\"title\":\"$(_todo_json_escape "$title")\""
+    item+=",\"description\":\"$(_todo_json_escape "$description")\""
+    item+=",\"site\":\"$(_todo_json_escape "$site")\""
+    item+=",\"action\":\"$(_todo_json_escape "$action")\""
+    item+=",\"unknown\":${TODO_ITEM_UNKNOWN:-false}}"
     TODO_ITEMS+=("$item")
 }
 
@@ -607,45 +635,120 @@ check_missing_schedules() {
     done < <(yaml_get_all_sites "$config_file" 2>/dev/null)
 }
 
-# SEC: Check security updates
+# SEC: Security updates — read `pl audit`'s cached records.
+#
+# WAS VACUOUS *AND* THE READ-ONLY VIOLATION (ops#178). The previous body shelled
+#     ddev drush pm:security --format=json   ... || echo "[]"
+# once per site. Three independent defects, each sufficient on its own:
+#
+#   1. `pm:security` was REMOVED from Drush ("pm:security has been removed.
+#      Please use `composer audit`"). It can only ever fail.
+#   2. That failure was swallowed by the trailing `|| echo "[]"`, so the removed
+#      command was indistinguishable from a clean site. The check could not emit
+#      a SEC item for ANY input, while "Security: clean" read as a measurement.
+#   3. The webroot probe looked in <directory>/{web,html,docroot,.} — but the v2
+#      nested layout (F17/F23) puts the webroot at sites/<name>/dev/web. On the
+#      live fleet that matched 2 of 21 sites; the other 19 hit `continue` and
+#      were never even attempted.
+#
+#   4. And for the 2 it did match, `ddev drush` AUTO-STARTS a stopped ddev
+#      project. A check advertised as a read-only listing must never mutate the
+#      host it is reporting on.
+#
+# `pl audit` already maintains exactly this signal at
+# private/update-awareness/<site>.json, refreshed nightly, and `pl rag` already
+# grades from it. Reading that cache is both correct and free. Interpretation is
+# shared with rag via lib/audit-record.py so the two cannot disagree.
+#
+# HONESTY: a site with NO record, an UNREADABLE record, a record that says
+# `scanned: false`, or a record too old to be load-bearing is UNKNOWN — never
+# clean. `security_count: 0` on an unscanned record means "not measured".
 check_security_updates() {
     is_category_enabled "security_updates" || return 0
 
     local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
-    [ ! -f "$config_file" ] && return 0
+    if [ ! -f "$config_file" ]; then
+        todo_add_unknown "security_updates" \
+            "no config at $config_file — no site's security state was checked" "" ""
+        return 0
+    fi
+
+    local audit_dir="${NWP_AUDIT_STATE_DIR:-$TODO_CHECKS_PROJECT_ROOT/private/update-awareness}"
+    local interp="$TODO_CHECKS_DIR/audit-record.py"
+
+    if [ ! -d "$audit_dir" ]; then
+        todo_add_unknown "security_updates" \
+            "no pl audit records at $audit_dir — the fleet's security state has never been measured on this host" \
+            "" "pl audit --all"
+        return 0
+    fi
+    if [ ! -f "$interp" ] || ! command -v python3 &>/dev/null; then
+        todo_add_unknown "security_updates" \
+            "cannot interpret audit records (need python3 and $interp) — 'no security items' would be an unfounded claim" \
+            "" "pl audit --all"
+        return 0
+    fi
+
+    local stale_days
+    stale_days=$(get_todo_setting "thresholds.audit_stale_days" "7")
+    [[ "$stale_days" =~ ^[0-9]+$ ]] || stale_days=7
+
+    # One python invocation for the whole directory: site<TAB>state<TAB>count<TAB>ignored<TAB>reason
+    local table
+    if ! table=$(python3 "$interp" --dir "$audit_dir" --stale-days "$stale_days" 2>/dev/null); then
+        todo_add_unknown "security_updates" \
+            "audit-record.py failed to read $audit_dir — the security signal could not be evaluated" \
+            "" "pl audit --all"
+        return 0
+    fi
+
+    # Index the table so we can answer "what does the record say for <site>?"
+    local -A _sec_state=() _sec_count=() _sec_reason=()
+    local s st ct ig rs
+    while IFS=$'\t' read -r s st ct ig rs; do
+        [ -z "$s" ] && continue
+        _sec_state["$s"]="$st"; _sec_count["$s"]="$ct"; _sec_reason["$s"]="$rs"
+    done <<< "$table"
 
     while read -r site; do
         [ -z "$site" ] && continue
 
-        local directory=$(yaml_get_site_field "$site" "directory" "$config_file" 2>/dev/null)
-        [ -z "$directory" ] && directory="$TODO_CHECKS_PROJECT_ROOT/sites/$site"
+        # Test/throwaway instances are not part of the security posture.
+        local purpose
+        purpose=$(yaml_get_site_field "$site" "purpose" "$config_file" 2>/dev/null)
+        [ "$purpose" = "testing" ] && continue
 
-        # Check for Drupal webroot
-        local webroot=""
-        for dir in "web" "html" "docroot" "."; do
-            if [ -f "$directory/$dir/core/lib/Drupal.php" ]; then
-                webroot="$directory/$dir"
-                break
-            fi
-        done
-
-        [ -z "$webroot" ] && continue
-
-        # Check for security updates using drush (if available)
-        if command -v ddev &>/dev/null && [ -d "$directory/.ddev" ]; then
-            local updates
-            updates=$(cd "$directory" && ddev drush pm:security --format=json 2>/dev/null || echo "[]")
-
-            if [ "$updates" != "[]" ] && [ -n "$updates" ]; then
-                # Count security updates
-                local count
-                count=$(echo "$updates" | grep -c '"name"' 2>/dev/null || echo "0")
-
-                if [ "$count" -gt 0 ]; then
-                    todo_add_item "SEC" "$site" "high" "$count security update(s) available" "Site: $site | Run: pl security update $site" "$site" "pl security update $site"
-                fi
-            fi
+        local state="${_sec_state[$site]:-}"
+        if [ -z "$state" ]; then
+            todo_add_unknown "security_updates_$site" \
+                "no pl audit record at $audit_dir/$site.json — this site's security state was never measured (that is not the same as clean)" \
+                "$site" "pl audit $site"
+            continue
         fi
+
+        local count="${_sec_count[$site]:-0}"
+        local reason="${_sec_reason[$site]:-}"
+
+        case "$state" in
+            unscanned)
+                todo_add_unknown "security_updates_$site" \
+                    "UNSCANNED — $reason (recorded security_count $count means 'not measured', NOT zero)" \
+                    "$site" "pl audit $site"
+                ;;
+            stale)
+                todo_add_unknown "security_updates_$site" \
+                    "STALE — $reason (a stale record is not a clean one)" \
+                    "$site" "pl audit $site"
+                ;;
+            measured)
+                if [ "$count" -gt 0 ]; then
+                    todo_add_item "SEC" "$site" "high" \
+                        "$count security advisory/advisories affecting this site" \
+                        "Site: $site | Source: pl audit record ($reason) | Detail: pl audit $site" \
+                        "$site" "pl audit $site"
+                fi
+                ;;
+        esac
     done < <(yaml_get_all_sites "$config_file" 2>/dev/null)
 }
 
@@ -2229,6 +2332,103 @@ todo_run_check_by_index() {
     "$func" 2>/dev/null || true
 }
 
+################################################################################
+# Bounded sweep (ops#178)
+#
+# THE BUG THIS EXISTS TO MAKE IMPOSSIBLE. `run_all_checks` used to be:
+#
+#     for entry in "${TODO_CHECK_LIST[@]}"; do "$func" 2>/dev/null || true; done
+#
+# — an unbounded serial loop over 28 checks. One slow check therefore did not
+# degrade the sweep, it ABOLISHED it: `pl rag` gives `pl todo check --json` a
+# 180s budget, the sweep overran it, rag killed it (exit 143), and rag then
+# printed `TODO ● BLIND` and graded all 28 sites on their audit record alone.
+# Every night. The work/drift half of the estate's only oversight surface was
+# dark, and nothing in the loop was individually "broken".
+#
+# Measured on the live fleet 2026-08-01, the overrun was NOT one pathological
+# check but the sum of several honest ones:
+#     check_missing_backups        133s   (gzip -t over ~10 GB of artifacts)
+#     check_uncommitted_work        14-30s
+#     check_ssl_expiry              13s
+#     check_unpushed_commits        10s
+#     check_live_backup_freshness    4s
+#     ~23 others                    ~10s
+#     -------------------------------------
+#     total                        ~185-200s   > the 180s budget
+#
+# So a per-check cap alone is not sufficient: 28 checks x 25s is 700s, still
+# over budget. TWO bounds are needed, and — this is the whole point — a check
+# stopped by either one must SAY SO. The original defect was that a silent
+# failure was indistinguishable from an empty result.
+#
+#   TODO_CHECK_TIMEOUT   per-check wall clock (default 40s)  -> UNK-timeout-<check>
+#   TODO_SWEEP_BUDGET    total wall clock  (default 150s)    -> UNK-budget-<check>
+#
+# 150s sits deliberately under rag's 180s so the sweep finishes and rag renders
+# real numbers instead of a blind banner. 40s is chosen to clear the slowest
+# HONEST check on a cold cache — check_missing_backups takes ~28s to verify and
+# memoise the fleet's newest artifacts the first time, then 1-2s forever after —
+# so a cold start does not manufacture a spurious timeout item.
+################################################################################
+
+TODO_CHECK_TIMEOUT="${TODO_CHECK_TIMEOUT:-40}"
+TODO_SWEEP_BUDGET="${TODO_SWEEP_BUDGET:-150}"
+
+# Kill a process and everything it spawned. A wedged check is usually blocked in
+# a CHILD (ssh, curl, gzip, ddev); killing only the subshell orphans that child,
+# which then keeps the pipe open and the budget burning.
+_todo_kill_tree() {
+    local pid="$1" child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        _todo_kill_tree "$child"
+    done
+    kill -TERM "$pid" 2>/dev/null
+}
+
+_todo_kill_tree_hard() {
+    local pid="$1" child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        _todo_kill_tree_hard "$child"
+    done
+    kill -KILL "$pid" 2>/dev/null
+}
+
+# Run one check with a wall-clock cap, collecting its items via a temp file.
+# The check runs in a subshell so a check that wedges, exits, or corrupts its
+# own state cannot take the sweep with it.
+#
+# Args: $1=function $2=seconds $3=outfile
+# Returns: 0 completed, 124 timed out
+_todo_run_check_bounded() {
+    local func="$1" limit="$2" outfile="$3"
+
+    : > "$outfile"
+    (
+        todo_clear_items
+        "$func" >/dev/null 2>&1 || true
+        if [ "${#TODO_ITEMS[@]}" -gt 0 ]; then
+            printf '%s\n' "${TODO_ITEMS[@]}" > "$outfile"
+        fi
+    ) &
+    local pid=$!
+
+    local ticks=0 max_ticks=$((limit * 10))
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$ticks" -ge "$max_ticks" ]; then
+            _todo_kill_tree "$pid"
+            sleep 0.3
+            _todo_kill_tree_hard "$pid"
+            wait "$pid" 2>/dev/null
+            return 124
+        fi
+        sleep 0.1
+        ticks=$((ticks + 1))
+    done
+    wait "$pid" 2>/dev/null
+    return 0
+}
+
 run_all_checks() {
     local skip_cache="${1:-false}"
 
@@ -2237,11 +2437,66 @@ run_all_checks() {
 
     todo_clear_items
 
-    # Run all checks (they add to TODO_ITEMS)
+    local per_check="$TODO_CHECK_TIMEOUT"
+    local budget="$TODO_SWEEP_BUDGET"
+    [[ "$per_check" =~ ^[0-9]+$ ]] || per_check=25
+    [[ "$budget"    =~ ^[0-9]+$ ]] || budget=150
+
+    local tmpdir
+    tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/nwp-todo-sweep.XXXXXX") || tmpdir=""
+
+    local started elapsed
+    started=$(date +%s)
+
+    local entry func label outfile rc line remaining
     for entry in "${TODO_CHECK_LIST[@]}"; do
-        local func="${entry%%:*}"
-        "$func" 2>/dev/null || true
+        func="${entry%%:*}"
+        label="${entry#*:}"
+
+        elapsed=$(( $(date +%s) - started ))
+        remaining=$(( budget - elapsed ))
+
+        # BUDGET EXHAUSTED. Say which checks did not run — dropping them silently
+        # is the original bug wearing a different hat.
+        if [ "$remaining" -le 0 ]; then
+            todo_add_unknown "budget-$func" \
+                "sweep budget of ${budget}s was exhausted before '$label' ran — this check did NOT run and its result is unknown" \
+                "" "pl todo check --only=$func"
+            continue
+        fi
+
+        # Never let a single check eat the rest of the budget.
+        local cap="$per_check"
+        [ "$cap" -gt "$remaining" ] && cap="$remaining"
+
+        if [ -z "$tmpdir" ]; then
+            # No temp dir: fall back to the unbounded call rather than skipping
+            # the estate's checks entirely, but be loud that it is unbounded.
+            "$func" >/dev/null 2>&1 || true
+            continue
+        fi
+
+        outfile="$tmpdir/$func.items"
+        _todo_run_check_bounded "$func" "$cap" "$outfile"
+        rc=$?
+
+        # Collect whatever the check managed to record.
+        if [ -s "$outfile" ]; then
+            while IFS= read -r line; do
+                [ -z "$line" ] && continue
+                TODO_ITEMS+=("$line")
+            done < "$outfile"
+        fi
+
+        # TIMED OUT — a named, visible state. Not silence, not "clean".
+        if [ "$rc" -eq 124 ]; then
+            todo_add_unknown "timeout-$func" \
+                "'$label' exceeded its ${cap}s per-check timeout and was killed — its result is UNKNOWN, not clean" \
+                "" "pl todo check --only=$func"
+        fi
     done
+
+    [ -n "$tmpdir" ] && rm -rf "$tmpdir"
 
     # Output results
     todo_output_items
@@ -2251,6 +2506,7 @@ run_all_checks() {
 export -f todo_cache_valid
 export -f todo_cache_init
 export -f todo_cache_clear
+export -f _todo_json_escape
 export -f todo_add_item
 export -f todo_add_unknown
 export -f _lbk_action
@@ -2288,6 +2544,9 @@ export -f check_notify_health
 export -f check_demo_golden_hygiene
 export -f check_demo_code_drift
 export -f check_demo_pair_cut
+export -f _todo_kill_tree
+export -f _todo_kill_tree_hard
+export -f _todo_run_check_bounded
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

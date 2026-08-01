@@ -159,7 +159,73 @@ parse_todo_items() {
     TODO_CATEGORIES=()
     TODO_UNKNOWNS=()
 
-    # Simple JSON parsing without jq
+    # PARSE WITH A REAL JSON PARSER (ops#178).
+    #
+    # This used to be `grep -o '"description":"[^"]*"'` per field. `[^"]*` stops
+    # at the first quote INSIDE the value, so any item whose text legitimately
+    # contains a quote was silently truncated at that point — and show_json then
+    # re-interpolated the truncated fragment, emitting a malformed document.
+    # check_agent_host_auth ships exactly such a description
+    #     ... Format: "<name>=<addr> <name>=<addr>" (VPN addresses).
+    # which reached `pl rag` as `... Format: `, with the rest discarded.
+    # MEASURED on origin/main: the emitted document is still syntactically
+    # VALID, so nothing ever complained — this was silent data loss, not a
+    # crash, which is why it survived. (Escaping the producer without fixing
+    # this reader is what WOULD make it malformed, and rag's
+    # `except: todo={"items":[]}` would then read the whole work signal as
+    # "swept, found nothing". The two halves ship together.)
+    #
+    # The arrays now hold DECODED text (what the check actually wrote); every
+    # consumer that re-emits JSON must escape on the way out (see show_json).
+    local parsed="" used_python=false
+    if command -v python3 >/dev/null 2>&1; then
+        parsed=$(printf '%s' "$json_data" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if isinstance(d, dict):
+    d = d.get("items", [])
+def flat(x):
+    # \x1f (UNIT SEPARATOR) is the field delimiter, deliberately NOT a tab:
+    # bash `read` collapses runs of IFS *whitespace*, so with IFS=$"\t" an EMPTY
+    # field (most items pass site="") vanishes and every later field shifts left
+    # one place. That put each item"s ACTION into its SITE slot, and `pl rag`
+    # duly rendered rows for "sites" called `df -h /`. A non-whitespace
+    # delimiter preserves empty fields exactly.
+    s = str(x)
+    for ch in ("\x1f", "\t", "\n", "\r"):
+        s = s.replace(ch, " ")
+    return s
+for it in d:
+    if not isinstance(it, dict):
+        continue
+    row = [flat(it.get(k, "")) for k in
+           ("id", "priority", "title", "description", "site", "action", "category")]
+    row.append("true" if it.get("unknown") is True else "false")
+    print("\x1f".join(row))
+' 2>/dev/null) && used_python=true
+    fi
+
+    if [ "$used_python" = true ]; then
+        local id priority title description site action category unknown
+        while IFS=$'\x1f' read -r id priority title description site action category unknown; do
+            [ -z "$id" ] && continue
+            TODO_IDS+=("$id")
+            TODO_PRIORITIES+=("$priority")
+            TODO_TITLES+=("$title")
+            TODO_DESCRIPTIONS+=("$description")
+            TODO_SITES+=("$site")
+            TODO_ACTIONS+=("$action")
+            TODO_CATEGORIES+=("$category")
+            TODO_UNKNOWNS+=("${unknown:-false}")
+        done <<< "$parsed"
+        return 0
+    fi
+
+    # FALLBACK: no python3. Keep the old line-wise reader so the command still
+    # works, but it remains quote-naive — which is why it is the fallback.
     while IFS= read -r line; do
         [[ "$line" == "["* ]] || [[ "$line" == "]"* ]] || [[ -z "$line" ]] && continue
 
@@ -525,12 +591,21 @@ show_json() {
     echo "  },"
     echo "  \"items\": ["
 
+    # ESCAPE ON THE WAY OUT (ops#178). parse_todo_items now hands us DECODED
+    # text, so interpolating it raw is what produced the malformed document that
+    # made `pl rag` read the whole work signal as empty. _todo_json_escape is
+    # the same helper lib/todo-checks.sh uses for todo_output_items.
     local first=true
     for i in "${!TODO_IDS[@]}"; do
         [ "$first" = true ] && first=false || echo ","
         printf '    {"id":"%s","category":"%s","priority":"%s","title":"%s","description":"%s","site":"%s","action":"%s","unknown":%s}' \
-            "${TODO_IDS[$i]}" "${TODO_CATEGORIES[$i]}" "${TODO_PRIORITIES[$i]}" \
-            "${TODO_TITLES[$i]}" "${TODO_DESCRIPTIONS[$i]}" "${TODO_SITES[$i]}" "${TODO_ACTIONS[$i]}" \
+            "$(_todo_json_escape "${TODO_IDS[$i]}")" \
+            "$(_todo_json_escape "${TODO_CATEGORIES[$i]}")" \
+            "$(_todo_json_escape "${TODO_PRIORITIES[$i]}")" \
+            "$(_todo_json_escape "${TODO_TITLES[$i]}")" \
+            "$(_todo_json_escape "${TODO_DESCRIPTIONS[$i]}")" \
+            "$(_todo_json_escape "${TODO_SITES[$i]}")" \
+            "$(_todo_json_escape "${TODO_ACTIONS[$i]}")" \
             "${TODO_UNKNOWNS[$i]:-false}"
     done
 

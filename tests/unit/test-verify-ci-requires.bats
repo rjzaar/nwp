@@ -224,6 +224,76 @@ EOF
     [ "$output" = "ddev" ]
 }
 
+# --- the yq reader's own edges (get_item_requires is yq, not awk: ADR-0015) ---
+
+@test "get_item_requires prints NOTHING for an item with no requires: key" {
+    _requires_fixture
+    run bash -c "export NWP_VERIFICATION_FILE='$BATS_TEST_TMPDIR/req.yml'
+                 source '$VERIFY' && get_item_requires demo 1"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "get_item_requires reads the tagged item and only that item" {
+    _requires_fixture
+    run bash -c "export NWP_VERIFICATION_FILE='$BATS_TEST_TMPDIR/req.yml'
+                 source '$VERIFY' && get_item_requires demo 0"
+    [ "$output" = "ddev" ]
+}
+
+@test "get_item_requires is silent for an unknown feature or out-of-range index" {
+    _requires_fixture
+    run bash -c "export NWP_VERIFICATION_FILE='$BATS_TEST_TMPDIR/req.yml'
+                 source '$VERIFY' && get_item_requires no_such_feature 0; get_item_requires demo 99"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "a LIST requires: value emits one requirement per line and the strictest wins" {
+    cat > "$BATS_TEST_TMPDIR/list.yml" <<'EOF'
+version: 3
+config:
+  freshness_days: 90
+features:
+  demo:
+    name: Demo feature
+    description: fixture
+    files:
+    - pl
+    checklist:
+    - text: needs a ddev site AND a live probe
+      completed: false
+      machine:
+        automatable: true
+        requires: [ddev, live]
+        checks:
+          basic:
+            commands:
+            - cmd: 'true'
+              expect_exit: 0
+              timeout: 10
+        state:
+          verified: false
+EOF
+    run bash -c "export NWP_VERIFICATION_FILE='$BATS_TEST_TMPDIR/list.yml'
+                 source '$VERIFY' && get_item_requires demo 0"
+    [ "${lines[0]}" = "ddev" ]
+    [ "${lines[1]}" = "live" ]
+    # live outranks ddev, so a ddev-capable runner must still skip this check.
+    run bash -c "export NWP_VERIFICATION_FILE='$BATS_TEST_TMPDIR/list.yml'
+                 source '$VERIFY' && verify_resolve_item_requirement demo 0 basic"
+    [ "$output" = "live" ]
+}
+
+@test "get_item_requires survives the REAL 33k-line registry (no tags today, no noise)" {
+    # Guards against a yq path that only works on tiny fixtures: the production
+    # registry carries no requires: keys yet, so every read must be EMPTY and
+    # quiet — not an error message, not a stray 'null'.
+    run bash -c "source '$VERIFY' && get_item_requires setup 0"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
 ################################################################################
 # 4. Integration: real verify.sh ci against a tiny fixture registry
 #

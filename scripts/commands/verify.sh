@@ -3212,9 +3212,13 @@ verify_detect_capabilities() {
     # DNS resolution of our own forge (derived from the origin remote — the
     # literal internal domain must not appear in code). No production HTTP
     # probe; an unresolvable/absent remote just means no network capability.
+    # `|| true` is load-bearing: under `set -euo pipefail` an assignment from a
+    # failing command substitution ABORTS the script, and git exits 128 when
+    # PROJECT_ROOT is not a repo — which is exactly the throwaway-tree case the
+    # bats fixtures use. Absent remote => no network capability, never a crash.
     local forge_host
     forge_host="$(git -C "$PROJECT_ROOT" remote get-url origin 2>/dev/null \
-        | sed -E 's#^[a-z]+@([^:/]+):.*#\1#; s#^[a-z+]+://([^/@]*@)?([^:/]+).*#\2#')"
+        | sed -E 's#^[a-z]+@([^:/]+):.*#\1#; s#^[a-z+]+://([^/@]*@)?([^:/]+).*#\2#' || true)"
     if [[ -n "$forge_host" ]] && getent hosts "$forge_host" >/dev/null 2>&1; then
         caps+="network,"
     fi
@@ -3228,30 +3232,29 @@ verify_cap_met() {
     [[ "${VERIFY_RUNNER_CAPS:-,}" == *",$req,"* ]]
 }
 
-# Explicit per-item override: `requires:` at the machine: level (8 spaces).
+# Explicit per-item override: `machine.requires` on one checklist item.
 # Prints nothing when the item carries no explicit tag.
+#
+# yq, not awk — ADR-0015 / lint:yq-first. The registry is YAML and `pl` reads
+# YAML with yq (see _machine_verified_timestamps above, lib/ci-stats.sh,
+# pl get_site_field). A hand-rolled indentation parser is exactly what that
+# gate exists to stop, and the .yq-first-baseline is shrink-only: a brand-new
+# parser may not be added to it.
+#
+# A LIST value (`requires: [ddev, docker]`) is legal and emits one requirement
+# per line, so the caller can take the highest-ranked one; a scalar emits a
+# single line. env(IDX) is parsed as YAML, so a numeric index arrives as an
+# int; strenv(FID) keeps a feature id that looks numeric a string.
 get_item_requires() {
     local feature_id="$1"
     local item_idx="$2"
 
-    awk -v fid="$feature_id" -v idx="$item_idx" '
-    BEGIN { in_features = 0; in_feature = 0; in_checklist = 0; item_count = 0; in_machine = 0 }
-    /^features:/ { in_features = 1; next }
-    in_features && /^  [a-z_]+:$/ {
-        gsub(/:$/, "", $1)
-        gsub(/^  /, "", $1)
-        if ($1 == fid) { in_feature = 1 } else { in_feature = 0 }
-        in_checklist = 0
-        item_count = 0
-        next
-    }
-    in_feature && /^    checklist:/ { in_checklist = 1; item_count = 0; next }
-    in_feature && in_checklist && /^    - / { item_count++; in_machine = 0; next }
-    in_feature && in_checklist && item_count == idx + 1 {
-        if (/^      machine:/) { in_machine = 1; next }
-        if (in_machine && /^        requires:/) { print $2; exit }
-    }
-    ' "$VERIFICATION_FILE"
+    FID="$feature_id" IDX="$item_idx" yq e '
+        .features[strenv(FID)].checklist[env(IDX)].machine.requires
+        | select(. != null)
+        | (.[]? // .)
+        | select(. != null and . != "")
+    ' "$VERIFICATION_FILE" 2>/dev/null
 }
 
 # Resolve the requirement for one item at one depth: explicit tag wins, else
@@ -3261,16 +3264,26 @@ verify_resolve_item_requirement() {
     local item_idx="$2"
     local depth="$3"
 
-    local explicit
+    local explicit best="none" best_rank=0 req rank
     explicit=$(get_item_requires "$feature_id" "$item_idx")
     if [[ -n "$explicit" ]]; then
-        echo "$explicit"
+        # One line per requirement (a list value tags several); the strictest
+        # wins, so `requires: [ddev, live]` needs live.
+        while IFS= read -r req; do
+            [[ -z "$req" ]] && continue
+            rank=$(verify_requirement_rank "$req")
+            if (( rank >= best_rank )); then
+                best="$req"
+                best_rank=$rank
+            fi
+        done <<< "$explicit"
+        echo "$best"
         return 0
     fi
 
-    local best="none"
-    local best_rank=0
-    local cmd rest req rank
+    best="none"
+    best_rank=0
+    local cmd rest
     while IFS=$'\t' read -r cmd rest; do
         [[ -z "$cmd" ]] && continue
         req=$(verify_infer_requirement "$cmd")

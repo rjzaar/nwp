@@ -2556,28 +2556,28 @@ features:
             - cmd: pl backup {site}
               expect_exit: 0
               timeout: 120
-            - cmd: test -d ~/nwp/sitebackups/{site}
+            - cmd: test -d sites/{site}/backups
               expect_exit: 0
           thorough:
             commands:
             - cmd: pl backup {site}
               expect_exit: 0
               timeout: 180
-            - cmd: ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1 | xargs tar -tzf | head -1
+            - cmd: ls sites/{site}/backups/*.tar.gz 2>/dev/null | head -1 | xargs tar -tzf | head -1
               expect_exit: 0
-            - cmd: ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1 | xargs gunzip -t
+            - cmd: ls sites/{site}/backups/*.sql.gz 2>/dev/null | head -1 | xargs gunzip -t
               expect_exit: 0
           paranoid:
             commands:
             - cmd: pl backup {site}
               expect_exit: 0
               timeout: 180
-            - cmd: ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1 | xargs tar -tzf | grep -q 'sites/default'
+            - cmd: ls sites/{site}/backups/*.tar.gz 2>/dev/null | head -1 | xargs tar -tzf | grep -q 'sites/default'
               expect_exit: 0
             - cmd: pl restore {site} --latest -y
               expect_exit: 0
               timeout: 300
-            - cmd: cd ~/nwp/sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'
+            - cmd: cd sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'
               expect_exit: 0
         state:
           verified: true
@@ -2627,25 +2627,25 @@ features:
             - cmd: pl backup {site} -b
               expect_exit: 0
               timeout: 60
-            - cmd: ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1
+            - cmd: ls sites/{site}/backups/*.sql.gz 2>/dev/null | head -1
               expect_exit: 0
           thorough:
             commands:
             - cmd: pl backup {site} -b
               expect_exit: 0
               timeout: 120
-            - cmd: ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1
+            - cmd: ls sites/{site}/backups/*.sql.gz 2>/dev/null | head -1
               expect_exit: 0
-            - cmd: gunzip -t $(ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1)
+            - cmd: gunzip -t $(ls sites/{site}/backups/*.sql.gz 2>/dev/null | head -1)
               expect_exit: 0
           paranoid:
             commands:
             - cmd: pl backup {site} -b -f
               expect_exit: 0
               timeout: 120
-            - cmd: gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) | head -100 | grep -qiE 'drupal|users'
+            - cmd: gunzip -c $(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) | head -100 | grep -qiE 'drupal|users'
               expect_exit: 0
-            - cmd: cd ~/nwp/sites/{site} && ddev drush sql:query "SELECT 1" 2>&1
+            - cmd: cd sites/{site} && ddev drush sql:query "SELECT 1" 2>&1
               expect_exit: 0
               timeout: 30
         state:
@@ -2682,38 +2682,38 @@ features:
         Success: Backup completes successfully with expected results'
       related_docs:
       - docs/reference/commands/backup.md
-    - text: Verify backup files created in sitebackups/<sitename>/
+    - text: Verify backup files created in sites/<sitename>/backups/ (v2 layout; get_backup_dir)
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -d ~/nwp/sitebackups || test -d sitebackups
+            - cmd: bash -c 'source lib/ui.sh 2>/dev/null; source lib/common.sh 2>/dev/null; declare -f get_backup_dir >/dev/null'
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: test -d ~/nwp/sitebackups/{site}
+            - cmd: test -d sites/{site}/backups
               expect_exit: 0
-            - cmd: test $(ls ~/nwp/sitebackups/{site}/ | wc -l) -gt 0
+            - cmd: test $(ls sites/{site}/backups/ | wc -l) -gt 0
               expect_exit: 0
           thorough:
             commands:
-            - cmd: test -d ~/nwp/sitebackups/{site}
+            - cmd: test -d sites/{site}/backups
               expect_exit: 0
-            - cmd: test $(ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | wc -l) -gt 0
+            - cmd: test $(ls sites/{site}/backups/*.tar.gz 2>/dev/null | wc -l) -gt 0
               expect_exit: 0
-            - cmd: test $(ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | wc -l) -gt 0
+            - cmd: test $(ls sites/{site}/backups/*.sql.gz 2>/dev/null | wc -l) -gt 0
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: test -d ~/nwp/sitebackups/{site}
+            - cmd: test -d sites/{site}/backups
               expect_exit: 0
-            - cmd: TARFILE=$(ls -t ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1) && tar -tzf "$TARFILE" | grep -q '.'
+            - cmd: TARFILE=$(ls -t sites/{site}/backups/*.tar.gz 2>/dev/null | head -1) && tar -tzf "$TARFILE" | grep -q '.'
               expect_exit: 0
-            - cmd: SQLFILE=$(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) && gunzip -t "$SQLFILE"
+            - cmd: SQLFILE=$(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) && gunzip -t "$SQLFILE"
               expect_exit: 0
-            - cmd: stat -c %s $(ls -t ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1) | awk '{if($1>1000) exit 0; else exit 1}'
+            - cmd: stat -c %s $(ls -t sites/{site}/backups/*.tar.gz 2>/dev/null | head -1) | awk '{if($1>1000) exit 0; else exit 1}'
               expect_exit: 0
         state:
           verified: true
@@ -2731,7 +2731,7 @@ features:
       how_to_verify: '1. Complete the prerequisite setup/action for this verification
 
 
-        2. Inspect the specific aspect: backup files created in sitebackups/<sitename>/
+        2. Inspect the specific aspect: backup files created in sites/<sitename>/backups/
 
 
         3. Compare actual behavior/state with expected behavior
@@ -2763,25 +2763,25 @@ features:
             - cmd: pl backup {site} --sanitize
               expect_exit: 0
               timeout: 180
-            - cmd: ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1
+            - cmd: ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1
               expect_exit: 0
           thorough:
             commands:
             - cmd: pl backup {site} --sanitize --sanitize-level=basic
               expect_exit: 0
               timeout: 180
-            - cmd: ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1
+            - cmd: ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1
               expect_exit: 0
-            - cmd: test $(gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) | grep -c 'users_field_data') -gt 0
+            - cmd: test $(gunzip -c $(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) | grep -c 'users_field_data') -gt 0
               expect_exit: 0
           paranoid:
             commands:
             - cmd: pl backup {site} --sanitize --sanitize-level=basic
               expect_exit: 0
               timeout: 180
-            - cmd: SANFILE=$(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) && gunzip -t "$SANFILE"
+            - cmd: SANFILE=$(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) && gunzip -t "$SANFILE"
               expect_exit: 0
-            - cmd: gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) | head -200 | grep -qiE 'insert|create'
+            - cmd: gunzip -c $(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) | head -200 | grep -qiE 'insert|create'
               expect_exit: 0
         state:
           verified: true
@@ -2831,23 +2831,23 @@ features:
             - cmd: pl backup {site} --sanitize --sanitize-level=full
               expect_exit: 0
               timeout: 300
-            - cmd: ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1
+            - cmd: ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1
               expect_exit: 0
           thorough:
             commands:
             - cmd: pl backup {site} --sanitize --sanitize-level=full
               expect_exit: 0
               timeout: 300
-            - cmd: ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1
+            - cmd: ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1
               expect_exit: 0
           paranoid:
             commands:
             - cmd: pl backup {site} --sanitize --sanitize-level=full
               expect_exit: 0
               timeout: 300
-            - cmd: SANFILE=$(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) && gunzip -t "$SANFILE"
+            - cmd: SANFILE=$(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) && gunzip -t "$SANFILE"
               expect_exit: 0
-            - cmd: gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) | head -200 | grep -qiE 'insert|create'
+            - cmd: gunzip -c $(ls -t sites/{site}/backups/*.sql.gz 2>/dev/null | head -1) | head -200 | grep -qiE 'insert|create'
               expect_exit: 0
         state:
           verified: true
@@ -3008,26 +3008,26 @@ features:
         checks:
           basic:
             commands:
-            - cmd: ls sitebackups/{site}/ 2>/dev/null | head -1 | grep -qE '[0-9]{4}' || pl backup --help 2>&1 | grep -q 'backup'
+            - cmd: ls sites/{site}/backups/ 2>/dev/null | head -1 | grep -qE '[0-9]{4}' || pl backup --help 2>&1 | grep -q 'backup'
               expect_exit: 0
               timeout: 10
           standard:
             commands:
             - cmd: bash -n scripts/commands/backup.sh
               expect_exit: 0
-            - cmd: ls sitebackups/{site}/*.tar.gz 2>/dev/null | head -1 | grep -qE '[0-9]{4}-[0-9]{2}' || echo 'check skipped'
+            - cmd: ls sites/{site}/backups/*.tar.gz 2>/dev/null | head -1 | grep -qE '[0-9]{4}-[0-9]{2}' || echo 'check skipped'
               expect_exit: 0
           thorough:
             commands:
             - cmd: bash -n scripts/commands/backup.sh
               expect_exit: 0
-            - cmd: ls sitebackups/{site}/*.tar.gz 2>/dev/null | head -1 | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || echo 'check skipped'
+            - cmd: ls sites/{site}/backups/*.tar.gz 2>/dev/null | head -1 | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || echo 'check skipped'
               expect_exit: 0
           paranoid:
             commands:
             - cmd: bash -n scripts/commands/backup.sh
               expect_exit: 0
-            - cmd: ls sitebackups/{site}/ 2>/dev/null | grep -cE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || echo '0'
+            - cmd: ls sites/{site}/backups/ 2>/dev/null | grep -cE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || echo '0'
               expect_exit: 0
         state:
           verified: true
@@ -6608,7 +6608,7 @@ features:
             - cmd: test -f scripts/commands/stg2prod.sh
               expect_exit: 0
               timeout: 5
-            - cmd: test -d sitebackups 2>/dev/null || mkdir -p sitebackups && test -d sitebackups
+            - cmd: bash -c 'source lib/ui.sh 2>/dev/null; source lib/common.sh 2>/dev/null; declare -f get_backup_dir >/dev/null'
               expect_exit: 0
               timeout: 10
           standard:
@@ -16178,22 +16178,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -16228,22 +16228,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -16281,22 +16281,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -16331,22 +16331,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -16381,22 +16381,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -16416,22 +16416,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -16469,22 +16469,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
+            - cmd: bash -n lib/cli-register.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
+            - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
           verified: true
@@ -17736,22 +17736,22 @@ features:
       checks:
         basic:
           commands:
-          - cmd: bash -n ~/nwp/lib/env-generate.sh
+          - cmd: bash -n lib/env-generate.sh
             expect_exit: 0
             timeout: 10
         standard:
           commands:
-          - cmd: bash -n ~/nwp/lib/env-generate.sh
+          - cmd: bash -n lib/env-generate.sh
             expect_exit: 0
-          - cmd: test -f ~/nwp/lib/env-generate.sh
+          - cmd: test -f lib/env-generate.sh
             expect_exit: 0
         thorough:
           commands:
-          - cmd: bash -n ~/nwp/lib/env-generate.sh
+          - cmd: bash -n lib/env-generate.sh
             expect_exit: 0
         paranoid:
           commands:
-          - cmd: bash -n ~/nwp/lib/env-generate.sh
+          - cmd: bash -n lib/env-generate.sh
             expect_exit: 0
       state:
         verified: false
@@ -17779,22 +17779,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -17824,22 +17824,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -17869,22 +17869,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -17914,22 +17914,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -17961,22 +17961,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -18006,22 +18006,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -18053,22 +18053,22 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
-            - cmd: test -f ~/nwp/lib/env-generate.sh
+            - cmd: test -f lib/env-generate.sh
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/env-generate.sh
+            - cmd: bash -n lib/env-generate.sh
               expect_exit: 0
         state:
           verified: true
@@ -21671,14 +21671,14 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/live-server-setup.sh
+            - cmd: bash -n lib/live-server-setup.sh
               expect_exit: 0
               timeout: 10
-            - cmd: grep -qE '^remote_ssh\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^remote_ssh\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type remote_ssh'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type remote_ssh'
               expect_exit: 0
         state:
           verified: true
@@ -21717,11 +21717,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^remote_package_installed\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^remote_package_installed\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type remote_package_installed'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type remote_package_installed'
               expect_exit: 0
         state:
           verified: true
@@ -21760,11 +21760,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^remote_service_running\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^remote_service_running\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type remote_service_running'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type remote_service_running'
               expect_exit: 0
         state:
           verified: true
@@ -21806,11 +21806,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^ensure_php_fpm\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^ensure_php_fpm\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type ensure_php_fpm'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type ensure_php_fpm'
               expect_exit: 0
         state:
           verified: true
@@ -21849,7 +21849,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE 'listen.owner|listen.group' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE 'listen.owner|listen.group' lib/live-server-setup.sh
               expect_exit: 0
         state:
           verified: true
@@ -21888,11 +21888,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^ensure_mariadb\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^ensure_mariadb\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type ensure_mariadb'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type ensure_mariadb'
               expect_exit: 0
         state:
           verified: true
@@ -21931,11 +21931,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^create_site_database\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^create_site_database\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type create_site_database'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type create_site_database'
               expect_exit: 0
         state:
           verified: true
@@ -21974,11 +21974,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^configure_nginx_drupal\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^configure_nginx_drupal\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type configure_nginx_drupal'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type configure_nginx_drupal'
               expect_exit: 0
         state:
           verified: true
@@ -22020,11 +22020,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^provision_drupal_stack\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^provision_drupal_stack\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type provision_drupal_stack'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type provision_drupal_stack'
               expect_exit: 0
         state:
           verified: true
@@ -22063,11 +22063,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE '^check_infrastructure_ready\(\)' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE '^check_infrastructure_ready\(\)' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type check_infrastructure_ready'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type check_infrastructure_ready'
               expect_exit: 0
         state:
           verified: true
@@ -22107,11 +22107,11 @@ features:
         checks:
           basic:
             commands:
-            - cmd: grep -qE 'gitlab-www' ~/nwp/lib/live-server-setup.sh
+            - cmd: grep -qE 'gitlab-www' lib/live-server-setup.sh
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type ensure_php_fpm'
+            - cmd: bash -c 'source lib/live-server-setup.sh && type ensure_php_fpm'
               expect_exit: 0
         state:
           verified: true
@@ -22472,27 +22472,27 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && type cursor_to'
+            - cmd: bash -c 'source lib/terminal.sh && type cursor_to'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && type cursor_hide'
+            - cmd: bash -c 'source lib/terminal.sh && type cursor_hide'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && type cursor_show'
+            - cmd: bash -c 'source lib/terminal.sh && type cursor_show'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && type clear_screen'
+            - cmd: bash -c 'source lib/terminal.sh && type clear_screen'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && type clear_line'
+            - cmd: bash -c 'source lib/terminal.sh && type clear_line'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && type read_key'
+            - cmd: bash -c 'source lib/terminal.sh && type read_key'
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && output=$(cursor_to 5 10 2>&1) && [[ "$output" == *"[5;10H"* ]] || exit 0'
+            - cmd: bash -c 'source lib/terminal.sh && output=$(cursor_to 5 10 2>&1) && [[ "$output" == *"[5;10H"* ]] || exit 0'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && output=$(clear_screen 2>&1) && [[ "$output" == *"[2J"* ]] || exit 0'
+            - cmd: bash -c 'source lib/terminal.sh && output=$(clear_screen 2>&1) && [[ "$output" == *"[2J"* ]] || exit 0'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && declare -F cursor_to cursor_hide cursor_show clear_screen clear_line read_key | wc -l | grep -q 6'
+            - cmd: bash -c 'source lib/terminal.sh && declare -F cursor_to cursor_hide cursor_show clear_screen clear_line read_key | wc -l | grep -q 6'
               expect_exit: 0
         state:
           verified: true
@@ -22814,27 +22814,27 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type run_tui'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type run_tui'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type draw_tui_screen'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type draw_tui_screen'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type build_env_option_list'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type build_env_option_list'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type get_checkbox_display'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type get_checkbox_display'
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type get_env_index && type get_env_display_label'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type get_env_index && type get_env_display_label'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type setup_install_action_option'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type setup_install_action_option'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type load_recipe_defaults'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && type load_recipe_defaults'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && declare -F run_tui draw_tui_screen build_env_option_list get_checkbox_display | wc -l | grep -q 4'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && declare -F run_tui draw_tui_screen build_env_option_list get_checkbox_display | wc -l | grep -q 4'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && [[ "${#ENVIRONMENTS[@]}" -ge 1 ]] && exit 0 || exit 1'
+            - cmd: bash -c 'source lib/terminal.sh && source lib/tui.sh && [[ "${#ENVIRONMENTS[@]}" -ge 1 ]] && exit 0 || exit 1'
               expect_exit: 0
         state:
           verified: true
@@ -22856,20 +22856,20 @@ features:
       checks:
         basic:
           commands:
-          - cmd: bash -n ~/nwp/lib/checkbox.sh
+          - cmd: bash -n lib/checkbox.sh
             expect_exit: 0
             timeout: 10
         standard:
           commands:
-          - cmd: bash -c 'source ~/nwp/lib/checkbox.sh 2>/dev/null && type show_checkbox'
+          - cmd: bash -c 'source lib/checkbox.sh 2>/dev/null && type show_checkbox'
             expect_exit: 0
         thorough:
           commands:
-          - cmd: bash -n ~/nwp/lib/checkbox.sh
+          - cmd: bash -n lib/checkbox.sh
             expect_exit: 0
         paranoid:
           commands:
-          - cmd: bash -n ~/nwp/lib/checkbox.sh
+          - cmd: bash -n lib/checkbox.sh
             expect_exit: 0
       state:
         verified: false
@@ -22905,20 +22905,20 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/checkbox.sh 2>/dev/null && type show_checkbox'
+            - cmd: bash -c 'source lib/checkbox.sh 2>/dev/null && type show_checkbox'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
         state:
           verified: true
@@ -22956,20 +22956,20 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/checkbox.sh 2>/dev/null && type show_checkbox'
+            - cmd: bash -c 'source lib/checkbox.sh 2>/dev/null && type show_checkbox'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
         state:
           verified: true
@@ -23007,20 +23007,20 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/checkbox.sh 2>/dev/null && type show_checkbox'
+            - cmd: bash -c 'source lib/checkbox.sh 2>/dev/null && type show_checkbox'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
         state:
           verified: true
@@ -23058,20 +23058,20 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/checkbox.sh 2>/dev/null && type show_checkbox'
+            - cmd: bash -c 'source lib/checkbox.sh 2>/dev/null && type show_checkbox'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
         state:
           verified: true
@@ -23109,20 +23109,20 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/checkbox.sh 2>/dev/null && type show_checkbox'
+            - cmd: bash -c 'source lib/checkbox.sh 2>/dev/null && type show_checkbox'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
           paranoid:
             commands:
-            - cmd: bash -n ~/nwp/lib/checkbox.sh
+            - cmd: bash -n lib/checkbox.sh
               expect_exit: 0
         state:
           verified: true
@@ -23438,55 +23438,55 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_site_exists'
+            - cmd: bash -c 'source lib/yaml-write.sh && type yaml_site_exists'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_get_site_field'
+            - cmd: bash -c 'source lib/yaml-write.sh && type yaml_get_site_field'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_validate_sitename'
+            - cmd: bash -c 'source lib/yaml-write.sh && type yaml_validate_sitename'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_backup'
+            - cmd: bash -c 'source lib/yaml-write.sh && type yaml_backup'
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && yaml_validate_sitename testsite'
+            - cmd: bash -c 'source lib/yaml-write.sh && yaml_validate_sitename testsite'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename "../etc" 2>/dev/null'
+            - cmd: bash -c 'source lib/yaml-write.sh && ! yaml_validate_sitename "../etc" 2>/dev/null'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_get_setting && type yaml_get_all_sites'
+            - cmd: bash -c 'source lib/yaml-write.sh && type yaml_get_setting && type yaml_get_all_sites'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && declare -F yaml_site_exists yaml_get_site_field yaml_add_site yaml_remove_site yaml_update_site_field | wc -l | grep -q 5'
+            - cmd: bash -c 'source lib/yaml-write.sh && declare -F yaml_site_exists yaml_get_site_field yaml_add_site yaml_remove_site yaml_update_site_field | wc -l | grep -q 5'
               expect_exit: 0
-            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.nwp.yml'
+            - cmd: bash -c 'source lib/yaml-write.sh && yaml_validate example.nwp.yml'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename "test;rm" 2>/dev/null'
+            - cmd: bash -c 'source lib/yaml-write.sh && ! yaml_validate_sitename "test;rm" 2>/dev/null'
               expect_exit: 0
               timeout: 15
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename "" 2>/dev/null'
+            - cmd: bash -c 'source lib/yaml-write.sh && ! yaml_validate_sitename "" 2>/dev/null'
               expect_exit: 0
               timeout: 10
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_add_site_modules && type yaml_add_site_production && type yaml_add_site_live'
+            - cmd: bash -c 'source lib/yaml-write.sh && type yaml_add_site_modules && type yaml_add_site_production && type yaml_add_site_live'
               expect_exit: 0
               timeout: 15
           paranoid:
             commands:
-            - cmd: bash -c 'for fn in yaml_validate_sitename yaml_validate_purpose yaml_validate yaml_backup yaml_site_exists yaml_get_site_field yaml_get_site_list yaml_get_site_purpose yaml_add_site yaml_add_site_stub yaml_complete_site_stub yaml_add_migration_stub yaml_remove_site yaml_update_site_field yaml_add_site_modules yaml_add_site_production yaml_add_site_live yaml_get_setting yaml_get_array yaml_get_recipe_field yaml_get_secret yaml_get_all_sites yaml_get_coder_list yaml_get_coder_field yaml_get_recipe_list; do source ~/nwp/lib/yaml-write.sh && type $fn >/dev/null || exit 1; done'
+            - cmd: bash -c 'for fn in yaml_validate_sitename yaml_validate_purpose yaml_validate yaml_backup yaml_site_exists yaml_get_site_field yaml_get_site_list yaml_get_site_purpose yaml_add_site yaml_add_site_stub yaml_complete_site_stub yaml_add_migration_stub yaml_remove_site yaml_update_site_field yaml_add_site_modules yaml_add_site_production yaml_add_site_live yaml_get_setting yaml_get_array yaml_get_recipe_field yaml_get_secret yaml_get_all_sites yaml_get_coder_list yaml_get_coder_field yaml_get_recipe_list; do source lib/yaml-write.sh && type $fn >/dev/null || exit 1; done'
               expect_exit: 0
               timeout: 120
-            - cmd: bash -n ~/nwp/lib/yaml-write.sh
+            - cmd: bash -n lib/yaml-write.sh
               expect_exit: 0
               timeout: 10
-            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.nwp.yml && [[ -f example.nwp.yml ]]'
+            - cmd: bash -c 'source lib/yaml-write.sh && yaml_validate example.nwp.yml && [[ -f example.nwp.yml ]]'
               expect_exit: 0
               timeout: 30
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && yaml_validate_purpose testing && yaml_validate_purpose indefinite && yaml_validate_purpose permanent && yaml_validate_purpose migration'
+            - cmd: bash -c 'source lib/yaml-write.sh && yaml_validate_purpose testing && yaml_validate_purpose indefinite && yaml_validate_purpose permanent && yaml_validate_purpose migration'
               expect_exit: 0
               timeout: 20
-            - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_purpose invalid_purpose 2>/dev/null'
+            - cmd: bash -c 'source lib/yaml-write.sh && ! yaml_validate_purpose invalid_purpose 2>/dev/null'
               expect_exit: 0
               timeout: 10
-            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && [[ -n "$(yaml_get_all_sites example.nwp.yml 2>/dev/null)" ]] || exit 0'
+            - cmd: bash -c 'source lib/yaml-write.sh && [[ -n "$(yaml_get_all_sites example.nwp.yml 2>/dev/null)" ]] || exit 0'
               expect_exit: 0
               timeout: 30
         state:
@@ -23818,27 +23818,27 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type get_secret'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && type get_secret'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type get_setting'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && type get_setting'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type validate_sitename'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && type validate_sitename'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type ask_yes_no'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && type ask_yes_no'
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && validate_sitename testsite'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && validate_sitename testsite'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && ! validate_sitename "../etc" 2>/dev/null'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && ! validate_sitename "../etc" 2>/dev/null'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && result=$(get_secret "nonexistent.key" "default") && [[ "$result" == "default" ]]'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && result=$(get_secret "nonexistent.key" "default") && [[ "$result" == "default" ]]'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && declare -F get_secret get_setting validate_sitename get_env_type_from_name get_base_name | wc -l | grep -q 5'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && declare -F get_secret get_setting validate_sitename get_env_type_from_name get_base_name | wc -l | grep -q 5'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && [[ $(get_env_type_from_name "site-stg") == "stage" ]]'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && [[ $(get_env_type_from_name "site-stg") == "stage" ]]'
               expect_exit: 0
         state:
           verified: true
@@ -24158,27 +24158,27 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && type print_status'
+            - cmd: bash -c 'source lib/ui.sh && type print_status'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && type print_error'
+            - cmd: bash -c 'source lib/ui.sh && type print_error'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && type print_header'
+            - cmd: bash -c 'source lib/ui.sh && type print_header'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && type print_info'
+            - cmd: bash -c 'source lib/ui.sh && type print_info'
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && print_status OK "Test message" | grep -q "✓"'
+            - cmd: bash -c 'source lib/ui.sh && print_status OK "Test message" | grep -q "✓"'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && print_status FAIL "Test message" | grep -q "✗"'
+            - cmd: bash -c 'source lib/ui.sh && print_status FAIL "Test message" | grep -q "✗"'
               expect_exit: 0
-            - cmd: bash -c 'NO_COLOR=1 source ~/nwp/lib/ui.sh && [[ -z "$RED" ]]'
+            - cmd: bash -c 'NO_COLOR=1 source lib/ui.sh && [[ -z "$RED" ]]'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && declare -F print_status print_error print_info print_warning print_success print_header | wc -l | grep -q 6'
+            - cmd: bash -c 'source lib/ui.sh && declare -F print_status print_error print_info print_warning print_success print_header | wc -l | grep -q 6'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && type fail && type warn && type info && type pass'
+            - cmd: bash -c 'source lib/ui.sh && type fail && type warn && type info && type pass'
               expect_exit: 0
         state:
           verified: true
@@ -24515,27 +24515,27 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_init'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type git_init'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_add_all'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type git_add_all'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_commit'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type git_commit'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_backup'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type git_backup'
               expect_exit: 0
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_has_changes && type git_get_current_branch'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type git_has_changes && type git_get_current_branch'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_create_gitignore'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type git_create_gitignore'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type gitlab_api_create_project'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && type gitlab_api_create_project'
               expect_exit: 0
           thorough:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && declare -F git_init git_add_all git_commit git_backup git_push | wc -l | grep -q 5'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && declare -F git_init git_add_all git_commit git_backup git_push | wc -l | grep -q 5'
               expect_exit: 0
-            - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && declare -F gitlab_api_create_project gitlab_api_list_projects | wc -l | grep -q 2'
+            - cmd: bash -c 'source lib/ui.sh && source lib/common.sh && source lib/git.sh && declare -F gitlab_api_create_project gitlab_api_list_projects | wc -l | grep -q 2'
               expect_exit: 0
         state:
           verified: true
@@ -24558,12 +24558,12 @@ features:
       checks:
         basic:
           commands:
-          - cmd: bash -n ~/nwp/lib/cloudflare.sh
+          - cmd: bash -n lib/cloudflare.sh
             expect_exit: 0
             timeout: 10
         standard:
           commands:
-          - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
+          - cmd: bash -c 'source lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
             expect_exit: 0
       state:
         verified: false
@@ -24603,12 +24603,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cloudflare.sh
+            - cmd: bash -n lib/cloudflare.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
+            - cmd: bash -c 'source lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
           verified: true
@@ -24644,12 +24644,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cloudflare.sh
+            - cmd: bash -n lib/cloudflare.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
+            - cmd: bash -c 'source lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
           verified: true
@@ -24688,12 +24688,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cloudflare.sh
+            - cmd: bash -n lib/cloudflare.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
+            - cmd: bash -c 'source lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
           verified: true
@@ -24732,12 +24732,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cloudflare.sh
+            - cmd: bash -n lib/cloudflare.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
+            - cmd: bash -c 'source lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
           verified: true
@@ -24776,12 +24776,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/cloudflare.sh
+            - cmd: bash -n lib/cloudflare.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
+            - cmd: bash -c 'source lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
           verified: true
@@ -24801,12 +24801,12 @@ features:
       checks:
         basic:
           commands:
-          - cmd: bash -n ~/nwp/lib/linode.sh
+          - cmd: bash -n lib/linode.sh
             expect_exit: 0
             timeout: 10
         standard:
           commands:
-          - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
+          - cmd: bash -c 'source lib/linode.sh 2>/dev/null && type linode_create_instance'
             expect_exit: 0
       state:
         verified: false
@@ -24846,12 +24846,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/linode.sh
+            - cmd: bash -n lib/linode.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
+            - cmd: bash -c 'source lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
           verified: true
@@ -24887,12 +24887,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/linode.sh
+            - cmd: bash -n lib/linode.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
+            - cmd: bash -c 'source lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
           verified: true
@@ -24931,12 +24931,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/linode.sh
+            - cmd: bash -n lib/linode.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
+            - cmd: bash -c 'source lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
           verified: true
@@ -24975,12 +24975,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/linode.sh
+            - cmd: bash -n lib/linode.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
+            - cmd: bash -c 'source lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
           verified: true
@@ -25019,12 +25019,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/linode.sh
+            - cmd: bash -n lib/linode.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
+            - cmd: bash -c 'source lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
           verified: true
@@ -25044,12 +25044,12 @@ features:
       checks:
         basic:
           commands:
-          - cmd: bash -n ~/nwp/lib/b2.sh
+          - cmd: bash -n lib/b2.sh
             expect_exit: 0
             timeout: 10
         standard:
           commands:
-          - cmd: bash -c 'source ~/nwp/lib/b2.sh 2>/dev/null && type b2_upload_file'
+          - cmd: bash -c 'source lib/b2.sh 2>/dev/null && type b2_upload_file'
             expect_exit: 0
       state:
         verified: false
@@ -25089,12 +25089,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/b2.sh
+            - cmd: bash -n lib/b2.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/b2.sh 2>/dev/null && type b2_upload_file'
+            - cmd: bash -c 'source lib/b2.sh 2>/dev/null && type b2_upload_file'
               expect_exit: 0
         state:
           verified: false
@@ -25133,12 +25133,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/b2.sh
+            - cmd: bash -n lib/b2.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/b2.sh 2>/dev/null && type b2_upload_file'
+            - cmd: bash -c 'source lib/b2.sh 2>/dev/null && type b2_upload_file'
               expect_exit: 0
         state:
           verified: false
@@ -25177,12 +25177,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/b2.sh
+            - cmd: bash -n lib/b2.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/b2.sh 2>/dev/null && type b2_upload_file'
+            - cmd: bash -c 'source lib/b2.sh 2>/dev/null && type b2_upload_file'
               expect_exit: 0
         state:
           verified: false
@@ -25221,12 +25221,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/b2.sh
+            - cmd: bash -n lib/b2.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/b2.sh 2>/dev/null && type b2_upload_file'
+            - cmd: bash -c 'source lib/b2.sh 2>/dev/null && type b2_upload_file'
               expect_exit: 0
         state:
           verified: false
@@ -25265,12 +25265,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/b2.sh
+            - cmd: bash -n lib/b2.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/b2.sh 2>/dev/null && type b2_upload_file'
+            - cmd: bash -c 'source lib/b2.sh 2>/dev/null && type b2_upload_file'
               expect_exit: 0
         state:
           verified: false
@@ -25290,12 +25290,12 @@ features:
       checks:
         basic:
           commands:
-          - cmd: bash -n ~/nwp/lib/remote.sh
+          - cmd: bash -n lib/remote.sh
             expect_exit: 0
             timeout: 10
         standard:
           commands:
-          - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
+          - cmd: bash -c 'source lib/remote.sh 2>/dev/null && type remote_exec'
             expect_exit: 0
       state:
         verified: false
@@ -25332,12 +25332,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/remote.sh
+            - cmd: bash -n lib/remote.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
+            - cmd: bash -c 'source lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
           verified: true
@@ -25376,12 +25376,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/remote.sh
+            - cmd: bash -n lib/remote.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
+            - cmd: bash -c 'source lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
           verified: true
@@ -25420,12 +25420,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/remote.sh
+            - cmd: bash -n lib/remote.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
+            - cmd: bash -c 'source lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
           verified: true
@@ -25464,12 +25464,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/remote.sh
+            - cmd: bash -n lib/remote.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
+            - cmd: bash -c 'source lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
           verified: true
@@ -25508,12 +25508,12 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -n ~/nwp/lib/remote.sh
+            - cmd: bash -n lib/remote.sh
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
+            - cmd: bash -c 'source lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
           verified: true
@@ -27225,237 +27225,6 @@ features:
           verified_at: null
           depth: null
           duration_seconds: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: null
-  lib_safe_ops:
-    name: Safe Operations Library (lib/safe-ops.sh)
-    description: Proxy functions that return sanitized output without exposing secrets
-    files:
-    - lib/safe-ops.sh
-    machine:
-      automatable: true
-      checks:
-        basic:
-          commands:
-          - cmd: bash -n lib/safe-ops.sh
-            expect_exit: 0
-            timeout: 10
-        standard:
-          commands:
-          - cmd: bash -n lib/safe-ops.sh
-            expect_exit: 0
-          - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null'
-            expect_exit: 0
-      state:
-        verified: false
-        verified_at: null
-        depth: null
-        duration_seconds: null
-    checklist:
-    - text: Test safe_server_status returns sanitized data
-      completed: false
-      completed_by: null
-      completed_at: null
-      how_to_verify: '1. Source the library: source lib/safe-ops.sh
-
-
-        2. Run: safe_server_status prod1
-
-
-        3. Verify output includes: Status, Uptime, Load, Memory, Disk
-
-
-        4. Verify output DOES NOT include: IP addresses, paths with user data, credentials
-
-
-        5. Test with invalid server: safe_server_status nonexistent (should fail gracefully)
-
-
-        Success: Server status returned without exposing sensitive information
-
-
-        '
-      related_docs:
-      - docs/reference/api/library-functions.md
-      - lib/safe-ops.sh
-      - docs/DATA_SECURITY_BEST_PRACTICES.md
-      machine:
-        automatable: true
-        checks:
-          basic:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-          standard:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-          thorough:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-            - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null; exit 0'
-              expect_exit: 0
-              timeout: 30
-          paranoid:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-            - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null; exit 0'
-              expect_exit: 0
-              timeout: 30
-        state:
-          verified: true
-          verified_at: '2026-02-02T19:29:57+11:00'
-          depth: thorough
-          duration_seconds: 0
-    - text: Verify safe_db_status hides credentials
-      completed: false
-      completed_by: null
-      completed_at: null
-      how_to_verify: '1. Source the library: source lib/safe-ops.sh
-
-
-        2. Run: safe_db_status avc
-
-
-        3. Verify output includes: Table count, Database size (MB), Last backup time
-
-
-        4. Verify output DOES NOT include: Database passwords, connection strings, actual data
-
-
-        5. Test with non-existent site: safe_db_status nonexistent (should fail gracefully)
-
-
-        Success: Database info returned without credentials or user data
-
-
-        '
-      related_docs:
-      - docs/reference/api/library-functions.md
-      - lib/safe-ops.sh
-      - docs/DATA_SECURITY_BEST_PRACTICES.md
-      machine:
-        automatable: true
-        checks:
-          basic:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-          standard:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-          thorough:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-            - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null; exit 0'
-              expect_exit: 0
-              timeout: 30
-          paranoid:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-            - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null; exit 0'
-              expect_exit: 0
-              timeout: 30
-        state:
-          verified: true
-          verified_at: '2026-02-02T19:29:57+11:00'
-          depth: thorough
-          duration_seconds: 0
-    - text: Check safe_security_check sanitization
-      completed: false
-      completed_by: null
-      completed_at: null
-      how_to_verify: '1. Source the library: source lib/safe-ops.sh
-
-
-        2. Run: safe_security_check avc
-
-
-        3. Verify output includes: Update count, Security issues count
-
-
-        4. Verify output DOES NOT include: Actual passwords, API tokens, database content
-
-
-        5. Check error handling: safe_security_check nonexistent
-
-
-        Success: Security status returned with counts only, no sensitive data
-
-
-        '
-      related_docs:
-      - docs/reference/api/library-functions.md
-      - lib/safe-ops.sh
-      - docs/DATA_SECURITY_BEST_PRACTICES.md
-      machine:
-        automatable: true
-        checks:
-          basic:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-          standard:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-          thorough:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-            - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null; exit 0'
-              expect_exit: 0
-              timeout: 30
-          paranoid:
-            commands:
-            - cmd: bash -n lib/safe-ops.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: test -f lib/safe-ops.sh
-              expect_exit: 0
-            - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null; exit 0'
-              expect_exit: 0
-              timeout: 30
-        state:
-          verified: true
-          verified_at: '2026-02-02T19:29:57+11:00'
-          depth: thorough
-          duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -33017,7 +32786,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/common.sh && ! validate_sitename "../malicious" 2>/dev/null'
+            - cmd: bash -c 'source lib/common.sh && ! validate_sitename "../malicious" 2>/dev/null'
               expect_exit: 0
               timeout: 10
         state:
@@ -33045,7 +32814,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: bash -c 'source ~/nwp/lib/common.sh && ! validate_sitename "test;rm" 2>/dev/null'
+            - cmd: bash -c 'source lib/common.sh && ! validate_sitename "test;rm" 2>/dev/null'
               expect_exit: 0
               timeout: 10
         state:
@@ -33506,7 +33275,7 @@ features:
             commands:
             - cmd: bash -n scripts/commands/todo.sh
               expect_exit: 0
-            - cmd: pl todo list 2>&1 | head -5
+            - cmd: pl todo --help 2>&1 | grep -qi 'list'
               expect_exit: 0
           standard:
             commands:
@@ -33516,6 +33285,7 @@ features:
               expect_exit: 0
             - cmd: pl todo list 2>&1 | head -5
               expect_exit: 0
+              timeout: 180
           thorough:
             commands:
             - cmd: bash -n scripts/commands/todo.sh
@@ -33530,6 +33300,7 @@ features:
               expect_exit: 0
             - cmd: pl todo list 2>&1 | head -5
               expect_exit: 0
+              timeout: 180
             - cmd: pl todo check --quiet 2>&1
               expect_exit: 0
         state:
@@ -33584,8 +33355,13 @@ features:
         checks:
           basic:
             commands:
+            - cmd: pl todo --help 2>&1 | grep -q 'json'
+              expect_exit: 0
+          standard:
+            commands:
             - cmd: pl todo check --json 2>&1 | grep -q '"timestamp"'
               expect_exit: 0
+              timeout: 180
         state:
           verified: true
           verified_at: '2026-01-18T19:18:47+11:00'

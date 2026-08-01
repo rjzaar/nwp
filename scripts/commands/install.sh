@@ -332,6 +332,19 @@ main() {
         target="${positional_args[1]}"
     fi
 
+    # Validate the target site name BEFORE it is used anywhere (ops#165).
+    # install.sh never called validate_sitename: on 2026-08-01 the
+    # security_validation:17 verification check proved that
+    #     pl install d 'test|cat /etc/passwd'
+    # sailed past every guard, created sites/'test|cat '/etc/passwd/ and
+    # registered a site named "passwd" in nwp.yml before hanging in composer.
+    # validate_sitename (lib/common.sh) allows only [a-zA-Z0-9._-]+, which is
+    # what every path/DDEV/yq consumer downstream assumes. Checked here, at the
+    # top of main, so it fails fast with no config file needed.
+    if [ -n "$target" ] && ! validate_sitename "$target" "target site name"; then
+        exit 1
+    fi
+
     # Handle --resume: look up install_step from nwp.yml
     if [ -n "$auto_resume" ]; then
         local site_name="${target:-$recipe}"

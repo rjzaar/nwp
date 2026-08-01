@@ -2514,6 +2514,18 @@ source_verify_runner() {
     local runner_lib="$PROJECT_ROOT/lib/verify-runner.sh"
     if [[ -f "$runner_lib" ]]; then
         source "$runner_lib"
+        # THE CHECKOUT UNDER TEST MUST SUPPLY ITS OWN `pl` (ops#165).
+        #
+        # Manifest commands invoke bare `pl`. Before this line, that resolved
+        # through the CALLER's PATH: on the CI runner there is no `pl` at all,
+        # so every `pl … | grep` check failed and every `pl … | head` check
+        # passed VACUOUSLY (head exits 0 over "command not found"); on a
+        # workstation it resolved to the operator's shared ~/nwp/pl — i.e. the
+        # gate measured a DIFFERENT TREE than the commit it was reporting on.
+        # Job 9004 (main pipeline 1448, fallback shell runner) measured 72%
+        # for exactly this reason. Prepending PROJECT_ROOT pins `pl` to the
+        # checkout.
+        export PATH="$PROJECT_ROOT:$PATH"
         return 0
     else
         echo -e "${RED}Error:${NC} verify-runner.sh not found at $runner_lib"
@@ -2973,6 +2985,19 @@ has_item_machine_checks() {
     ' "$VERIFICATION_FILE"
 }
 
+# Does this item's check set (at this depth) require a test site?
+# True iff any command carries a {site} placeholder. Used by run_machine_checks
+# to SKIP such checks when no test site exists — before ops#165 they were run
+# anyway with {site} substituted to the EMPTY STRING, turning e.g.
+# `cd sites/{site} && ddev drush uli` into `cd sites/ && ddev drush uli`:
+# a guaranteed failure that asserts nothing about the code. On a runner where
+# the test site can never be created (no ddev), that mis-shape alone accounted
+# for the bulk of the permanent 72%-red on main.
+# Usage: item_machine_checks_need_site feature_id item_index depth
+item_machine_checks_need_site() {
+    get_item_machine_commands "$1" "$2" "$3" | grep -qF '{site}'
+}
+
 # Get machine check commands for a checklist item at specified depth
 # Usage: get_item_machine_commands feature_id item_index depth
 # Returns commands one per line in format: cmd|expect_exit|timeout|expect_output
@@ -3043,6 +3068,13 @@ get_item_machine_commands() {
             } else if (cmd ~ /^'\''.*'\''$/) {
                 gsub(/^'\''/, "", cmd)
                 gsub(/'\''$/, "", cmd)
+                # YAML single-quoted scalars escape a quote by DOUBLING it.
+                # Left literal, the doubled quotes re-split the shell words:
+                # security_validation:17 became `! pl install d ''test | cat
+                # /etc/passwd'' …` — a PIPELINE whose exit status was cat(1)
+                # reading /etc/passwd, so the "reject pipe character" check
+                # could never pass on any machine, anywhere (ops#165).
+                gsub(/'\'''\''/, "'\''", cmd)
             }
             expect_exit = "0"
             timeout = "60"
@@ -3126,8 +3158,12 @@ execute_item_machine_checks() {
         local output
         local exit_code
 
-        # Run with timeout
-        output=$(timeout "${timeout:-60}" bash -c "$cmd" 2>&1)
+        # Run with timeout, from PROJECT_ROOT: manifest commands are written
+        # repo-relative (`bash -n lib/x.sh`, `source lib/common.sh`), so they
+        # must not depend on the caller's cwd. They used to reach the tree via
+        # hardcoded `~/nwp/…`, which measured the OPERATOR'S clone (or nothing,
+        # on a runner user with no ~/nwp) instead of the checkout under test.
+        output=$(cd "$PROJECT_ROOT" && timeout "${timeout:-60}" bash -c "$cmd" 2>&1)
         exit_code=$?
 
         # Check exit code
@@ -3503,6 +3539,7 @@ run_machine_checks() {
     local total_passed=0
     local total_failed=0
     local total_skipped=0
+    local site_skipped=0
 
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
@@ -3542,6 +3579,22 @@ run_machine_checks() {
                 fi
                 item_skipped=$((item_skipped + 1))
                 total_skipped=$((total_skipped + 1))
+                items_processed=$((items_processed + 1))
+                draw_progress_bar "$items_processed" "$total_items"
+                continue
+            fi
+
+            # A {site}-parameterised check with no test site cannot run: SKIP
+            # it, visibly. Running it anyway (the pre-ops#165 behaviour) meant
+            # substituting {site} with "" and failing on a garbage command —
+            # noise that buried the real failures. Skipped-for-no-site is
+            # reported per feature and in the run summary, never counted as
+            # passed: this is "I could not look", not "all clear".
+            if [[ -z "$test_site" ]] && item_machine_checks_need_site "$f" "$i" "$depth"; then
+                echo -e "  ${YELLOW}[skip]${NC} $item_text ${DIM}(needs a test site; none available)${NC}"
+                item_skipped=$((item_skipped + 1))
+                total_skipped=$((total_skipped + 1))
+                site_skipped=$((site_skipped + 1))
                 items_processed=$((items_processed + 1))
                 draw_progress_bar "$items_processed" "$total_items"
                 continue
@@ -3608,6 +3661,16 @@ run_machine_checks() {
 
     # Print summary
     print_verify_summary
+
+    # Say — loudly, next to the totals — how much of the surface was not
+    # measured because no test site existed. A skipped check is missing
+    # evidence, not passing evidence; anyone reading a green run must be able
+    # to see how green it actually is.
+    if [[ $site_skipped -gt 0 ]]; then
+        echo -e "  ${YELLOW}NOT MEASURED:${NC} $site_skipped site-dependent check(s) skipped — no test site" \
+                "(create one, or run on a host with DDEV, to measure them)"
+        echo ""
+    fi
 
     # Return non-zero if any failures
     if [[ $total_failed -gt 0 ]]; then
@@ -3781,17 +3844,24 @@ run_ci_mode() {
         echo -e "${GREEN}Generated:${NC} $junit_file"
     fi
 
-    # Check pass rate threshold
+    # Check pass rate threshold — and let the EXIT CODE say the same thing the
+    # trace says. This used to print "PASS: ${rate}%" and then `return
+    # $exit_code`, i.e. red on any single failure regardless of the announced
+    # 98% contract: a job whose last line is PASS and whose status is failed
+    # teaches people to stop reading either (ops#165). The threshold is the
+    # verdict; failures inside the tolerance are listed in the summary above
+    # and repeated here so they cannot hide behind a green tick.
     local pass_rate=$(get_pass_rate)
     echo ""
     if [[ $pass_rate -lt 98 ]]; then
         echo -e "${RED}FAIL:${NC} Pass rate ${pass_rate}% below 98% threshold"
         return 1
-    else
-        echo -e "${GREEN}PASS:${NC} ${pass_rate}% pass rate"
     fi
-
-    return $exit_code
+    echo -e "${GREEN}PASS:${NC} ${pass_rate}% pass rate"
+    if [[ $exit_code -ne 0 ]]; then
+        echo -e "${YELLOW}NOTE:${NC} some checks failed but the rate is within the 98% threshold — see 'Failed Items' above. Fix or fix the manifest; do not let them accumulate."
+    fi
+    return 0
 }
 
 # Generate badge information

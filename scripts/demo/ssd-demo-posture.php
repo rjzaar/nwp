@@ -13,6 +13,9 @@
 //     "Report a problem" link back to the provider's feedback form (v1 of the
 //     cross-site report path — the proposal explicitly allows linking back)
 //   * self-registration OFF         (accounts arrive by SSO only)
+//   * human site identity           (site course fullname/shortname — the
+//                                    shortname is what Moodle puts in every
+//                                    page <title>; 'ssd' is an internal code)
 //   * a machine-readable demo marker ($CFG->nwp_demo_mode = 1) — the SAME
 //     opt-in fact the live reset guard requires before it will wipe anything.
 //
@@ -135,6 +138,28 @@ foreach ($want as $name => $value) {
     cli_writeln("set $name");
 }
 
+// Human site identity. Moodle appends the SITE COURSE's shortname to every
+// page <title> ("Home | ssd"), so the machine code 'ssd' leaked into browser
+// tabs, bookmarks and search snippets on every page a tester saw. The site
+// course row is not $CFG, hence this block rather than a $want entry. The
+// names are demo-tier facts of THIS script's site (the file is ssd-specific
+// by name, like the banner text above), not contract endpoints — hardcoded
+// deliberately, next to the other hardcoded ssd facts.
+$wantfullname  = 'Saint School (Demo)';
+$wantshortname = 'Saint School (Demo)';
+$site = $DB->get_record('course', ['id' => SITEID], 'id,fullname,shortname', MUST_EXIST);
+if ($site->fullname !== $wantfullname || $site->shortname !== $wantshortname) {
+    if ($checkonly) {
+        $bad[] = 'site_identity';
+    } else {
+        cli_writeln("site fullname:  '{$site->fullname}' → '{$wantfullname}'");
+        cli_writeln("site shortname: '{$site->shortname}' → '{$wantshortname}'");
+        $site->fullname  = $wantfullname;
+        $site->shortname = $wantshortname;
+        $DB->update_record('course', $site);
+    }
+}
+
 // Mail diversion as belt-and-braces: if noemailever were ever cleared by hand,
 // everything still lands in a black hole rather than a real inbox.
 if (!$checkonly) {
@@ -153,4 +178,4 @@ if ($checkonly) {
 }
 
 purge_all_caches();
-cli_writeln('OK: demo posture applied (noindex=2, noemailever=1, banner, no self-registration, nwp_demo_mode=1)');
+cli_writeln('OK: demo posture applied (noindex=2, noemailever=1, banner, no self-registration, nwp_demo_mode=1, site identity)');

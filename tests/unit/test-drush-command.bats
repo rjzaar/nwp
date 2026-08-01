@@ -182,3 +182,23 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"wrong-site guard"* ]]
 }
+
+# ── ops#155: project-root vendor/bin/drush fallback ──────────────────────────
+# Sites with NO local stg tree (webroot guess defaults to "web") whose live
+# docroot is "html" (Open Social template, e.g. avctest) failed BOTH remote
+# candidates: PATH drush is absent for www-data, and ${remote_path}/web does
+# not exist. The third candidate runs ${remote_path}/vendor/bin/drush from the
+# project root, which exists in any composer layout regardless of webroot name.
+
+@test "ops#155: live dry-run prints the project-root vendor/bin/drush fallback" {
+  run bash "$DRUSH" nwc --tier=live -- cr
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cd /var/www/nwc && sudo -u www-data vendor/bin/drush cr"* ]]
+  [[ "$output" == *"Fallback 2:"* ]]
+}
+
+@test "ops#155: execute path tries the project-root vendor fallback (three candidates)" {
+  grep -q 'fallback2="cd ${remote_path} && ${sudo_prefix} -u www-data vendor/bin/drush${qargs}"' "$DRUSH"
+  # and the run chain actually reaches it (not just the print)
+  grep -q '"\$fallback2" || {' "$DRUSH"
+}

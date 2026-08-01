@@ -127,3 +127,52 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *BOUNDARY-TOUCHING* ]]
 }
+
+################################################################################
+# ops#165 — an unreadable contract must classify FAIL-SAFE CLOSED, not INTERNAL.
+#
+# boundary:classify ran on a runner with no yq for its whole life: the contract
+# parsed to zero surfaces, so every diff — including one rewriting a declared
+# provider path — classified INTERNAL, and the artifacted impact.json carried
+# that false verdict. These cases pin the repaired behaviour and the CI flag
+# that turns "could not classify" into a red job instead of a quiet non-answer.
+################################################################################
+
+@test "FAIL-SAFE CLOSED: missing contract file ⇒ BOUNDARY / uncomputable, not INTERNAL" {
+  export NWP_IMPACT_FILES="README.md"
+  boundary_classify main "${BATS_TEST_TMPDIR}/no-such-contract.yml"
+  [ "$BOUNDARY_CLASS" = "BOUNDARY" ]
+  [ "$BOUNDARY_UNCOMPUTABLE" -eq 1 ]
+  [[ "$BOUNDARY_REASON" == *"unreadable"* ]]
+}
+
+@test "FAIL-SAFE CLOSED: no yq on PATH ⇒ BOUNDARY / uncomputable, even for a boundary-touching diff" {
+  command -v yq >/dev/null || skip "needs yq present to prove the contrast"
+  # Same diff twice: with yq it is BOUNDARY-TOUCHING; without yq the old code
+  # said INTERNAL (the ops#165 false-green). Now it must say uncomputable.
+  run env PATH=/usr/bin:/bin NWP_IMPACT_FILES="moodle/local/nwc_erase/erase.php" \
+      bash -c "source '${PROJECT_ROOT}/lib/boundary.sh'; boundary_classify main '$CONTRACT'; echo \"\$BOUNDARY_CLASS/\$BOUNDARY_UNCOMPUTABLE\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BOUNDARY/1"* ]]
+}
+
+@test "pl impact --fail-uncomputable: exit 2 when classification is fail-safe-closed" {
+  run env PATH=/usr/bin:/bin NWP_IMPACT_FILES="README.md" \
+      bash "${PROJECT_ROOT}/scripts/commands/impact.sh" --base=main --json --fail-uncomputable
+  [ "$status" -eq 2 ]
+  [[ "$output" == *'"uncomputable":true'* ]]
+}
+
+@test "pl impact --fail-uncomputable: exit 0 when classification computed (INTERNAL)" {
+  command -v yq >/dev/null || skip "needs yq"
+  run env NWP_IMPACT_FILES="README.md" \
+      bash "${PROJECT_ROOT}/scripts/commands/impact.sh" --base=main --json --fail-uncomputable
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"classification":"INTERNAL"'* ]]
+}
+
+@test "honesty check without yq names the REAL blocker (not 'no surfaces declared')" {
+  run env PATH=/usr/bin:/bin bash -c "source '${PROJECT_ROOT}/lib/boundary.sh'; boundary_honesty_check '$CONTRACT'"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"yq missing"* ]]
+}

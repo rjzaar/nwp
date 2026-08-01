@@ -104,6 +104,7 @@ ${BOLD}CATEGORIES:${NC}
     DSK     Disk usage warnings
     SSL     SSL certificates expiring soon
     SEC     …also: personal identity baked into a demo golden image
+    DCD     Demo invite-code drift (registry vs site vs staged payload)
 
 ${BOLD}PRIORITY LEVELS:${NC}
     high    Action required within 24 hours

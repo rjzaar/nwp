@@ -12,7 +12,7 @@ set -euo pipefail
 #   pl demo reset  <site> [--if-idle 30m]     verified restore + reseed + cr
 #   pl demo nightly <site>                    scheduled entrypoint (retry loop)
 #   pl demo status <site>                     last reset/skips, golden, codes
-#   pl demo codes  <site> list|issue|revoke|rotate|sync
+#   pl demo codes  <site> list|issue|revoke|rotate|sync|drift
 #   pl demo invite <site> [--bundles a,b] [--expiry 14d] [--all]
 #                                             copy-ready invite email, one
 #                                             fresh code per level (0600 draft)
@@ -37,6 +37,11 @@ set -euo pipefail
 #     distinct from errors, so the nightly wrapper can retry.
 #   * codes are hashed (sha256) before they ever touch disk or the site;
 #     `issue`/`rotate` print the plaintext exactly ONCE and never store it.
+#   * a code verb REFUSES on a host that cannot deliver to the named tier
+#     (demo_require_delivery, nwp/ops#173). The registry has ONE writable home
+#     per tier — the host that can reach that tier — and everywhere else it is
+#     a read-only replica. `pl demo codes <site> drift` compares the three
+#     numbers that must agree and leaves the record pl todo/pl rag grade.
 ################################################################################
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -120,6 +125,13 @@ ${BOLD}SUBCOMMANDS:${NC}
     codes <site> rotate           Revoke every live code, reissue one per
                                   bundle that had one (new plaintexts, once)
     codes <site> sync             Re-push the hashed registry into the site
+    codes <site> drift [--tier=live]
+                                  Compare the THREE numbers that must agree —
+                                  registry-active, site-live, and the box's
+                                  staged payload (what the 01:00 reset restores
+                                  over the top). Read-only; records the result
+                                  in private/demo-codes/<site>.json, which
+                                  pl todo / pl rag grade AMBER on disagreement.
     invite <site> [--bundles a,b] [--expiry 14d] [--all]
                                   Issue ONE fresh code per level and render a
                                   copy-ready invitation email (stdout + a 0600
@@ -181,6 +193,10 @@ ${BOLD}OPTIONS:${NC}
                        shown a success either way, so those verbs refuse
                        until the tier is named. 'codes list' and the
                        read-only verbs keep the dev default.
+                       Naming the tier is necessary but not sufficient: those
+                       same verbs then REFUSE on a host with no delivery path
+                       to it (ops#173 — the console host named --tier=live
+                       correctly and still could not reach the box).
     --if-idle <dur>    Only reset when no session activity within <dur>
                        (e.g. 30m). Active → exit ${DEMO_EXIT_ACTIVE} (retryable), logged as skip.
     --force            Skip the confirmation PROMPT (same as --yes). It never
@@ -215,7 +231,12 @@ ${BOLD}FILES:${NC}
     sites/<site>/demo-golden/       local (dev|stg) golden + sidecars + manifest
     sites/<site>/demo-golden-live/  live golden — tier-scoped so a local image
                                     can never be restored over the live host
-    sites/<site>/demo-codes.json    hashed code registry (survives the wipe)
+    sites/<site>/demo-codes.json    hashed code registry (survives the wipe).
+                                    ONE writable home per tier: the host that
+                                    can deliver to it. Read-only replica
+                                    everywhere else (ops#173).
+    private/demo-codes/<site>.json  what THIS host last measured: registry vs
+                                    site vs staged payload, with a timestamp
     sites/<site>/demo-reset.log     every reset / skip / harvest, one line each
     sites/<site>/demo-harvest/      pre-wipe error digests awaiting posting
     sites/<site>/demo-harvest/posted/  digests confirmed posted to nwp/ops
@@ -1009,6 +1030,10 @@ demo_sync_codes_to_site() {
         # array and silently break all invite codes. Pin it explicitly.
         if demo_rdrush "$site" state:set --input-format=string nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
             demo_log "$site" codes-synced "tier=$tier"
+            # Re-read all three numbers while the ssh context is warm. This is
+            # the moment they can have changed, and it is the only moment at
+            # which recording them costs nothing (ops#173 item 3).
+            demo_drift_record_save "$site" "$tier"
             return 0
         fi
         print_warning "Could not sync codes into ${site} live (is nwc_demo_access enabled there?)"
@@ -1024,6 +1049,163 @@ demo_sync_codes_to_site() {
     print_warning "Could not sync codes into the site (is $site-$tier running with nwc_demo_access enabled?)"
     print_hint "Re-run later: pl demo codes $site sync --tier=$tier"
     return 1
+}
+
+################################################################################
+# CAN THIS HOST DELIVER? (nwp/ops#173 item 2 — the highest-value half)
+#
+# "Issued a code you have no way to deliver" was a SUCCESS. The console host —
+# the operator's actual interface for issuing codes — could not ssh to the box
+# at all, so `pl demo invite` minted five codes, rendered a warm invitation
+# naming them, printed OK, and delivered nothing to any site. The operator
+# mailed those codes to real testers. The site rejected every one.
+#
+# Nothing in that chain was broken code: each step did what it was told. What
+# was missing is the question nobody asked BEFORE minting — can this machine
+# reach the place a code has to land?
+#
+# So: probe the real write path, minus the write, before a code exists. The
+# probe is deliberately the same transport the sync uses (ssh + remote drush for
+# live; ddev + drush for dev|stg) rather than a cheaper proxy such as a ping — a
+# proxy that succeeds where the real path fails would reproduce the bug with
+# extra steps.
+#
+# Ordering matters as much as the check. It runs BEFORE demo_generate_code, for
+# the same reason demo_require_explicit_tier does: a refusal that had already
+# burned a code id — or printed a plaintext code the operator might act on — is
+# a worse outcome than the bug.
+################################################################################
+
+DEMO_DELIVERY_REASON=""
+# Memoised "<site>/<tier>" of a probe that already succeeded. `codes rotate`
+# re-enters cmd_codes once per bundle, and re-running a remote drush call five
+# times to re-learn the same answer is pure latency. Only SUCCESS is cached: a
+# failure must be re-probed, because the operator's obvious next move is to fix
+# the path and try again in the same shell.
+DEMO_DELIVERY_OK=""
+
+# NOTE: deliberately NO env override. An "assume I can deliver" escape hatch is
+# precisely the silence this guard exists to end, and an undocumented one would
+# be found and used. The unit suite stands up a real (stubbed) delivery path
+# instead, so it exercises this code rather than stepping around it.
+
+# demo_codes_delivery_probe <site> <tier> — 0 = this host can deliver.
+# Sets DEMO_DELIVERY_REASON to a plain-language cause on failure.
+demo_codes_delivery_probe() {
+    local site="$1" tier="$2"
+    DEMO_DELIVERY_REASON=""
+    [[ "$DEMO_DELIVERY_OK" == "${site}/${tier}" ]] && return 0
+
+    if demo_is_live "$tier"; then
+        if ! demo_live_ctx "$site" >/dev/null 2>&1; then
+            DEMO_DELIVERY_REASON="this host cannot reach ${site}'s live box over ssh — no route, no key, or an unverified host key (that last one is what bit the console host: 'Host key verification failed', and nothing anywhere said so)"
+            return 1
+        fi
+        if ! demo_rdrush "$site" state:get nwc_demo_access.codes >/dev/null 2>&1; then
+            DEMO_DELIVERY_REASON="ssh to ${site}'s live box works, but drush there will not answer for nwc_demo_access (module disabled, or the drush user cannot bootstrap the site)"
+            return 1
+        fi
+        DEMO_DELIVERY_OK="${site}/${tier}"
+        return 0
+    fi
+
+    local proj
+    if ! proj="$(demo_project_dir "$site" "$tier" 2>/dev/null)"; then
+        DEMO_DELIVERY_REASON="there is no ${tier} DDEV project for '${site}' on this host"
+        return 1
+    fi
+    if ! demo_drush "$proj" state:get nwc_demo_access.codes >/dev/null 2>&1; then
+        DEMO_DELIVERY_REASON="the ${tier} DDEV project for '${site}' is not answering drush (is it running? \`ddev start\` in ${proj})"
+        return 1
+    fi
+    DEMO_DELIVERY_OK="${site}/${tier}"
+    return 0
+}
+
+# demo_require_delivery <site> <tier> <label>
+# The refusal. It has to do more than say no: the operator standing in front of
+# it is the one who cannot see the problem, so it names the model, the cause,
+# and the machine to go to.
+demo_require_delivery() {
+    local site="$1" tier="$2" label="$3"
+    demo_codes_delivery_probe "$site" "$tier" && return 0
+
+    print_error "REFUSED: '${label}' would issue a code this host cannot deliver to ${site} (${tier})."
+    print_info  "  why: ${DEMO_DELIVERY_REASON}"
+    echo ""
+    print_info  "The invite-code registry has ONE writable home per tier: the host that can"
+    print_info  "deliver to it. This host can read sites/${site}/demo-codes.json but must not"
+    print_info  "write to it — two writable copies with nothing reconciling them is how the"
+    print_info  "live site came to serve ZERO codes while five valid ones were in the post"
+    print_info  "(nwp/ops#173)."
+    echo ""
+    print_hint  "Nothing was issued, revoked or synced. sites/${site}/demo-codes.json is untouched."
+    print_hint  "Do it on the host that can reach the box (the workstation):"
+    print_hint  "  pl demo invite ${site} --tier=${tier}"
+    print_hint  "  bash servers/live/demo/install-box.sh ${site} --stage-codes   # survive tonight's reset"
+    if demo_is_live "$tier"; then
+        print_hint  "Or give THIS host the path first, then re-run:"
+        print_hint  "  pl demo codes ${site} drift --tier=live    # says exactly which leg is missing"
+    fi
+    return 1
+}
+
+################################################################################
+# DRIFT PROBE (nwp/ops#173 item 3)
+#
+# Reads all three numbers off the real sources and records what it saw in
+# private/demo-codes/<site>.json, which `pl todo`'s check_demo_code_drift ages
+# and grades — so the comparison reaches `pl rag` through the machinery that
+# already exists rather than a second monitoring path nobody looks at either.
+#
+# Records what it CAN read. A leg that cannot be read is recorded as unknown,
+# never as zero: "the box says 0 codes" and "I could not ask the box" lead to
+# opposite actions, and the whole of ops#173 is what happens when a system
+# cannot tell them apart.
+################################################################################
+
+DEMO_DRIFT_REGISTRY=""; DEMO_DRIFT_SITE=""; DEMO_DRIFT_STAGED=""
+
+# demo_codes_drift_probe <site> <tier> — always returns 0; the numbers are the
+# result, and "could not read" is one of the possible numbers.
+demo_codes_drift_probe() {
+    local site="$1" tier="$2" raw=""
+    DEMO_DRIFT_REGISTRY="$(demo_codes_active_count "$(demo_codes_file "$site")")"
+    DEMO_DRIFT_SITE=""
+    DEMO_DRIFT_STAGED="-"
+
+    if demo_is_live "$tier"; then
+        if demo_live_ctx "$site" >/dev/null 2>&1; then
+            raw="$(demo_rdrush "$site" state:get nwc_demo_access.codes --format=string 2>/dev/null)" || raw=""
+            DEMO_DRIFT_SITE="$(demo_payload_count "$raw")"
+            # The staged payload is a 0644 root-owned file in a 0755 dir, so the
+            # ssh user reads it without sudo. It is the ONLY one of the three
+            # that decides what works tomorrow morning.
+            raw="$(demo_rssh "$site" "cat $(demo_box_codes_payload "$site") 2>/dev/null" 2>/dev/null)" || raw=""
+            DEMO_DRIFT_STAGED="$(demo_payload_count "$raw")"
+        fi
+        return 0
+    fi
+
+    local proj
+    if proj="$(demo_project_dir "$site" "$tier" 2>/dev/null)"; then
+        raw="$(demo_drush "$proj" state:get nwc_demo_access.codes --format=string 2>/dev/null)" || raw=""
+        DEMO_DRIFT_SITE="$(demo_payload_count "$raw")"
+    fi
+    return 0
+}
+
+# demo_drift_record_save <site> <tier> — probe + persist. Called after every
+# successful live sync as well as by `pl demo codes <site> drift`, so the record
+# is refreshed exactly when the numbers can change.
+demo_drift_record_save() {
+    local site="$1" tier="$2" f
+    demo_codes_drift_probe "$site" "$tier"
+    f="$(demo_drift_file "$site")"
+    mkdir -p "$(dirname "$f")" 2>/dev/null || return 0
+    demo_drift_record "$site" "$tier" \
+        "$DEMO_DRIFT_REGISTRY" "$DEMO_DRIFT_SITE" "$DEMO_DRIFT_STAGED" > "$f" 2>/dev/null || return 0
+    return 0
 }
 
 # Collector for the pre-wipe error harvest: watchdog Error + Critical rows
@@ -1989,6 +2171,27 @@ cmd_status() {
         echo "    (no code registry — pl demo codes $site issue <bundle> --tier=live)"
     fi
 
+    # Registry-active vs site-live vs staged-payload, as last MEASURED by this
+    # host (ops#173). Read from the record rather than probed here: `pl demo
+    # status` must stay fast and read-only, and a number is worth more with its
+    # age attached than a fresh one that costs two ssh round trips every time.
+    if [[ -f "$cfile" ]]; then
+        local _rep _rstate _rdetail
+        _rep="$(demo_drift_report "$(demo_drift_file "$site")")"
+        _rstate="${_rep%%|*}"; _rdetail="${_rep#*|}"
+        echo ""
+        case "$_rstate" in
+            ok)      print_status "OK"   "Code delivery verified: $_rdetail" ;;
+            drift)   print_status "FAIL" "CODE DRIFT: $_rdetail — testers are being rejected, or will be after 01:00"
+                     print_hint "  pl demo codes $site drift --tier=live" ;;
+            stale)   print_status "WARN" "Code delivery unverified: $_rdetail"
+                     print_hint "  pl demo codes $site drift --tier=live" ;;
+            missing) print_status "WARN" "This host has NEVER checked that ${site}'s codes reach the site."
+                     print_hint "  pl demo codes $site drift --tier=live" ;;
+            *)       print_status "WARN" "Code delivery: $_rdetail" ;;
+        esac
+    fi
+
     echo ""
     echo "  Recent resets/skips (last 10):"
     if [[ -f "$lfile" ]]; then
@@ -2018,6 +2221,17 @@ cmd_codes() {
         issue|revoke|rotate|sync)
             demo_require_explicit_tier "codes ${action}" \
                 "pl demo codes ${site} ${action} --tier=live" || return 1
+            ;;
+    esac
+
+    # …and then, on the same three write verbs, whether this host can reach the
+    # tier it just named (ops#173). `sync` is exempt from the pre-check only in
+    # the sense that it has no code to burn — it still goes through the same
+    # probe so the refusal explains the registry-home model instead of leaving
+    # the operator with a bare "Cannot reach live host".
+    case "$action" in
+        issue|revoke|rotate|sync)
+            demo_require_delivery "$site" "$tier" "codes ${action}" || return 1
             ;;
     esac
 
@@ -2078,11 +2292,48 @@ cmd_codes() {
         sync)
             demo_sync_codes_to_site "$site" "$tier"
             ;;
+        drift)
+            cmd_codes_drift "$site" "$tier"
+            ;;
         *)
-            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync)"
+            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift)"
             return 1
             ;;
     esac
+}
+
+# `pl demo codes <site> drift [--tier=live]` — read the three numbers off the
+# real sources, print them side by side, and leave the record `pl todo`/`pl rag`
+# grade. Read-only: it writes nothing to any site or box.
+cmd_codes_drift() {
+    local site="$1" tier="$2"
+    print_header "Invite-code drift: $site ($tier)"
+    demo_drift_record_save "$site" "$tier"
+
+    local f; f="$(demo_drift_file "$site")"
+    local reg="$DEMO_DRIFT_REGISTRY" live="$DEMO_DRIFT_SITE" staged="$DEMO_DRIFT_STAGED"
+    _fmt() { case "${1:-}" in -) echo "n/a" ;; ''|*[!0-9]*) echo "?" ;; *) echo "$1" ;; esac; }
+    echo ""
+    printf '    %-18s %-6s %s\n' "registry-active" "$(_fmt "$reg")"    "$(demo_codes_file "$site")"
+    printf '    %-18s %-6s %s\n' "site-live"       "$(_fmt "$live")"   "state nwc_demo_access.codes — what a code is checked against TODAY"
+    printf '    %-18s %-6s %s\n' "staged-payload"  "$(_fmt "$staged")" "$(demo_box_codes_payload "$site") — what the 01:00 reset restores TOMORROW"
+    echo ""
+
+    local verdict detail
+    verdict="$(demo_drift_state "$reg" "$live" "$staged")"
+    detail="${verdict#*|}"; verdict="${verdict%%|*}"
+    case "$verdict" in
+        ok)      print_status "OK"   "All three agree ($detail)" ;;
+        drift)   print_status "FAIL" "DRIFT — these must agree: $detail"
+                 print_hint "  pl demo codes $site sync --tier=$tier                        # registry → site"
+                 print_hint "  bash servers/live/demo/install-box.sh $site --stage-codes    # registry → box" ;;
+        *)       print_status "WARN" "Could not read every number: $detail"
+                 print_hint "A number this host cannot read is NOT zero — see 'why' above." ;;
+    esac
+    print_info "Recorded: $f (graded by pl todo / pl rag)"
+    unset -f _fmt
+    [[ "$verdict" == "drift" ]] && return 1
+    return 0
 }
 
 ################################################################################
@@ -2133,6 +2384,10 @@ cmd_invite() {
     # site that will reject every one of its recipients.
     demo_require_explicit_tier invite "pl demo invite ${site} --tier=live" || return 1
     demo_require_jq || return 1
+    # SECOND, still before the option parse: naming the right tier is not the
+    # same as being able to REACH it. The console host named --tier=live
+    # correctly every time and still could not deliver a single code (ops#173).
+    demo_require_delivery "$site" "$tier" invite || return 1
 
     # ---- invite-specific options (arrive via passthru) ----
     local bundles_csv="" expiry="14d" all="false" a

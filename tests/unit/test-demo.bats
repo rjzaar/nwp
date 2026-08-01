@@ -2023,12 +2023,44 @@ EOF
   [[ "$output" == "https://demo1.example.org/demo/join" ]]
   [[ "$output" != *"<YOUR-SITE-URL>"* ]]
 
-  # NEGATIVE CONTROL: with no yq anywhere the placeholder still renders, because
+  # NEGATIVE CONTROL: with no yq REACHABLE the placeholder still renders, because
   # a draft that fails to render is worse than one with a visible gap.
+  #
+  # DEMO_YQ_BIN (not just an empty PATH) is what makes "no yq" expressible: an
+  # empty HOME and PATH still leave demo_yq's absolute-path sweep, and
+  # /usr/local/bin/yq exists on the CI runner. Before demo_yq honoured an
+  # explicit override strictly, this control silently found that binary,
+  # resolved the real URL, and reddened every branch that touched this file.
   run env -i HOME="${TEST_TMP}/emptyhome" PATH="$emptybin" PROJECT_ROOT="$PROJECT_ROOT" \
+      DEMO_YQ_BIN="${TEST_TMP}/no-such-yq" \
       /bin/bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
   [ "$status" -eq 0 ]
   [[ "$output" == "<YOUR-SITE-URL>/demo/join" ]]
+}
+
+@test "demo_yq: an explicit DEMO_YQ_BIN is honoured or fails — never silently replaced" {
+  real_yq="$(command -v yq)"
+  [ -n "$real_yq" ]
+
+  # Honoured when executable.
+  run env DEMO_YQ_BIN="$real_yq" bash -c \
+      'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_yq'
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$real_yq" ]]
+
+  # Set but not executable → FAIL CLOSED, even though a system yq is on PATH
+  # and at /usr/local/bin. Falling through here is how a typo'd override used
+  # to run a different binary than the operator named.
+  run env DEMO_YQ_BIN="${TEST_TMP}/definitely-not-here" bash -c \
+      'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_yq'
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+
+  # Unset → the normal search still works.
+  run env -u DEMO_YQ_BIN bash -c \
+      'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_yq'
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
 }
 
 ################################################################################

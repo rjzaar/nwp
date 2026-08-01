@@ -104,7 +104,17 @@ demo_drift_file() { echo "$(demo_drift_dir)/${1:?site required}.json"; }
 # the usual user-local spots themselves (so they do not depend on it).
 ################################################################################
 demo_yq() {
-    if [[ -n "${DEMO_YQ_BIN:-}" && -x "${DEMO_YQ_BIN}" ]]; then echo "$DEMO_YQ_BIN"; return 0; fi
+    # An EXPLICIT override is honoured or it FAILS — it is never silently
+    # replaced by a different yq. Falling through used to mean that pointing
+    # DEMO_YQ_BIN at a typo'd path ran some other binary than the one asked
+    # for, which is the surprising direction for an override to fail in. It
+    # also made "no yq is reachable" untestable on any host carrying
+    # /usr/local/bin/yq (every CI runner), because the absolute-path sweep
+    # below always found one — see tests/unit/test-demo.bats ops#173.4.
+    if [[ -n "${DEMO_YQ_BIN:-}" ]]; then
+        [[ -x "${DEMO_YQ_BIN}" ]] && { echo "$DEMO_YQ_BIN"; return 0; }
+        return 1
+    fi
     if command -v yq >/dev/null 2>&1; then echo yq; return 0; fi
     local c
     for c in "$HOME/.local/bin/yq" /usr/local/bin/yq /snap/bin/yq; do

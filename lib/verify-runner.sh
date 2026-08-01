@@ -83,6 +83,7 @@ VERIFY_TESTS_WARNED=0
 declare -a VERIFY_FAILED_ITEMS=()
 declare -a VERIFY_PASSED_ITEMS=()
 declare -a VERIFY_WARNED_ITEMS=()
+declare -a VERIFY_SKIPPED_ITEMS=()
 
 ################################################################################
 # SECTION 1: Logging Functions
@@ -1024,6 +1025,7 @@ track_result() {
     local item_id="$2"
     local result="$3"
     local duration="${4:-0}"
+    local reason="${5:-}"
 
     VERIFY_TESTS_RUN=$((VERIFY_TESTS_RUN + 1))
 
@@ -1038,10 +1040,12 @@ track_result() {
             ;;
         skipped)
             VERIFY_TESTS_SKIPPED=$((VERIFY_TESTS_SKIPPED + 1))
+            # Keep the reason so JUnit/exports can say WHY (ops#159)
+            VERIFY_SKIPPED_ITEMS+=("$feature:$item_id:$reason")
             ;;
     esac
 
-    verify_log "INFO" "Result: $feature:$item_id = $result (${duration}s)"
+    verify_log "INFO" "Result: $feature:$item_id = $result (${duration}s)${reason:+ [$reason]}"
 }
 
 #######################################
@@ -1050,11 +1054,15 @@ track_result() {
 #   Pass rate (0-100)
 #######################################
 get_pass_rate() {
-    if [[ $VERIFY_TESTS_RUN -eq 0 ]]; then
+    # The denominator is the RUNNABLE subset: an item skipped because this
+    # runner cannot meet its requirement is not evidence either way and must
+    # not dilute (or inflate) the rate of the checks that ran.   (nwp/ops#159)
+    local runnable=$((VERIFY_TESTS_RUN - VERIFY_TESTS_SKIPPED))
+    if [[ $runnable -le 0 ]]; then
         echo "0"
         return
     fi
-    echo $((VERIFY_TESTS_PASSED * 100 / VERIFY_TESTS_RUN))
+    echo $((VERIFY_TESTS_PASSED * 100 / runnable))
 }
 
 #######################################
@@ -1103,6 +1111,11 @@ reset_verify_state() {
     VERIFY_FAILED_ITEMS=()
     VERIFY_PASSED_ITEMS=()
     VERIFY_WARNED_ITEMS=()
+    VERIFY_SKIPPED_ITEMS=()
+    # ops#165's site-skip bucket, mirrored out of run_machine_checks so the CI
+    # ledger can print it. Reset with the rest, or a second run in the same
+    # shell inherits the first run's unmeasured count.
+    VERIFY_SITE_SKIPPED=0
 }
 
 ################################################################################
@@ -1123,7 +1136,7 @@ generate_junit_xml() {
 
     cat > "$output_file" << XMLHEADER
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="NWP Verification" tests="$VERIFY_TESTS_RUN" failures="$VERIFY_TESTS_FAILED" time="0">
+<testsuites name="NWP Verification" tests="$VERIFY_TESTS_RUN" failures="$VERIFY_TESTS_FAILED" skipped="$VERIFY_TESTS_SKIPPED" time="0">
 XMLHEADER
 
     # Add test cases for passed items
@@ -1142,6 +1155,22 @@ XMLHEADER
         cat >> "$output_file" << EOF
   <testcase classname="$feature" name="$item_id" time="0">
     <failure message="Verification failed"/>
+  </testcase>
+EOF
+    done
+
+    # Add test cases for skipped-unrunnable items — as <skipped>, with the
+    # reason, so a check this runner cannot execute never reads as a failure
+    # nor as a silent pass. (nwp/ops#159; entries are feature:item:reason)
+    for item in "${VERIFY_SKIPPED_ITEMS[@]:-}"; do
+        [[ -z "$item" ]] && continue
+        local feature="${item%%:*}"
+        local rest="${item#*:}"
+        local item_id="${rest%%:*}"
+        local reason="${rest#*:}"
+        cat >> "$output_file" << EOF
+  <testcase classname="$feature" name="$item_id" time="0">
+    <skipped message="$reason"/>
   </testcase>
 EOF
     done

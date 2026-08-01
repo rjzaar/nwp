@@ -200,5 +200,54 @@ EOF
 @test "ops#155: execute path tries the project-root vendor fallback (three candidates)" {
   grep -q 'fallback2="cd ${remote_path} && ${sudo_prefix} -u www-data vendor/bin/drush${qargs}"' "$DRUSH"
   # and the run chain actually reaches it (not just the print)
-  grep -q '"\$fallback2" || {' "$DRUSH"
+  grep -q 'for _cand in "\$primary" "\$fallback" "\$fallback2"' "$DRUSH"
+}
+
+# ── candidate-probe noise (2026-08-01 papercut) ──────────────────────────────
+# The candidate chain tries a PATH drush first; on layouts where www-data has
+# no drush on PATH that probe printed `sudo: drush: command not found` to the
+# operator on EVERY live call before the working candidate ran. A failed
+# probe's stderr must be held, not shown, when a later candidate succeeds —
+# and replayed in full when ALL candidates fail (never swallow the final
+# failure). ssh is PATH-stubbed; no network.
+
+_install_ssh_stub() { # $1 = number of failing probes before success (3 = all fail... see stub)
+  STUB="$TEST_TMP/bin"; mkdir -p "$STUB"
+  export SSH_COUNT_FILE="$TEST_TMP/ssh-count"
+  export SSH_FAIL_BEFORE="$1"
+  cat > "$STUB/ssh" <<'EOF'
+#!/bin/bash
+n=$(cat "$SSH_COUNT_FILE" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$SSH_COUNT_FILE"
+if [ "$n" -le "$SSH_FAIL_BEFORE" ]; then
+  echo "sudo: drush: command not found" >&2
+  exit 1
+fi
+echo "remote drush ran"
+echo " [success] Cache rebuild complete." >&2
+exit 0
+EOF
+  chmod +x "$STUB/ssh"
+  export PATH="$STUB:$PATH" NWP_SSH_NO_MULTIPLEX=1
+}
+
+@test "execute: failed candidate-probe noise is suppressed when a later candidate succeeds" {
+  _install_ssh_stub 2   # candidates 1+2 fail, candidate 3 succeeds
+  run bash "$DRUSH" nwc --tier=live --execute -- cr
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"drush completed on live"* ]]
+  # the probe noise from the two failed candidates never reaches the operator
+  [[ "$output" != *"command not found"* ]]
+  # but the SUCCESSFUL candidate's own stderr (drush reports via stderr) is kept
+  [[ "$output" == *"Cache rebuild complete."* ]]
+  [ "$(cat "$SSH_COUNT_FILE")" -eq 3 ]
+}
+
+@test "execute: when ALL candidates fail the error is loud and probe stderr is replayed" {
+  _install_ssh_stub 99  # every candidate fails
+  run bash "$DRUSH" nwc --tier=live --execute -- cr
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Remote drush failed"* ]]
+  # the held probe stderr is replayed — the failure cause is never swallowed
+  [[ "$output" == *"command not found"* ]]
+  [ "$(cat "$SSH_COUNT_FILE")" -eq 3 ]
 }

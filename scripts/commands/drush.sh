@@ -379,12 +379,32 @@ run_live() {
         "run drush on live: drush ${DRUSH_ARGS[*]}" || exit 1
 
     print_header "Running drush on live"
-    ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$primary" || \
-        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$fallback" || \
-        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$fallback2" || {
-            print_error "Remote drush failed (tried PATH drush, webroot/../vendor and project-root vendor/bin paths)"
-            exit 1
-        }
+    # Candidate probing is EXPECTED to fail on some layouts (no PATH drush for
+    # www-data, no web/ dir), so each candidate's stderr is captured, not shown:
+    # before this, every live call on such a layout printed a noisy
+    # `sudo: drush: command not found` before the working candidate ran.
+    #   * a candidate that SUCCEEDS replays its own stderr (drush reports
+    #     [success]/[warning] via stderr — that is real output, keep it) and the
+    #     held noise from earlier failed probes is discarded;
+    #   * if ALL candidates fail, every probe's stderr is replayed so the final
+    #     failure stays loud — the cause is never swallowed.
+    local _cand _cand_err _held_err _ok="no"
+    _cand_err=$(mktemp); _held_err=$(mktemp)
+    for _cand in "$primary" "$fallback" "$fallback2"; do
+        if ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$_cand" 2>"$_cand_err"; then
+            _ok="yes"
+            cat "$_cand_err" >&2
+            break
+        fi
+        cat "$_cand_err" >> "$_held_err"
+    done
+    if [[ "$_ok" != "yes" ]]; then
+        cat "$_held_err" >&2
+        rm -f "$_cand_err" "$_held_err"
+        print_error "Remote drush failed (tried PATH drush, webroot/../vendor and project-root vendor/bin paths)"
+        exit 1
+    fi
+    rm -f "$_cand_err" "$_held_err"
     print_status "OK" "drush completed on live"
 }
 

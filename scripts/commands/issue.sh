@@ -181,6 +181,7 @@ cmd_create(){
 # add a comment:  pl issue comment <iid> "text"   (or pipe text on stdin)
 cmd_comment(){
   [ -n "$YQ" ] || die "yq required"
+  case "${1:-}" in -h|--help) printf 'usage: pl issue comment <iid> "text"   (or pipe text on stdin)\n'; return 0 ;; esac
   local iid="${1:-}"; [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue comment <iid> \"text\""
   shift
   local body="$*"
@@ -480,6 +481,7 @@ cmd_reconcile(){
 # add/remove labels:  pl issue label <iid> --add a,b --remove c
 cmd_label(){
   [ -n "$YQ" ] || die "yq required"
+  case "${1:-}" in -h|--help) printf 'usage: pl issue label <iid> --add a,b [--remove c]\n'; return 0 ;; esac
   local iid="${1:-}"; [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue label <iid> --add a,b [--remove c]"
   shift
   local add="" rem=""
@@ -489,6 +491,10 @@ cmd_label(){
       --add=*)     add="${1#*=}"; shift ;;
       --remove|-r) rem="${2:-}";  shift 2 ;;
       --remove=*)  rem="${1#*=}"; shift ;;
+      # a flag-like arg is never a label name — same class as the
+      # `pl issue create --help` bug (fixed in MR !282): `pl issue label 5
+      # --typo` must refuse, not PUT the label "--typo"
+      -*) die "unknown option: $1 (usage: pl issue label <iid> --add a,b [--remove c])" ;;
       *) [ -z "$add" ] && { add="$1"; shift; } || die "unexpected arg: $1" ;;
     esac
   done
@@ -510,8 +516,10 @@ cmd_submit(){
   local dryrun=0 iid="" msg=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      -h|--help)    printf 'usage: pl issue submit [<iid>] [-m "msg"] [--dry-run]\n'; return 0 ;;
       --dry-run|-n) dryrun=1; shift ;;
       -m|--message) msg="${2:-}"; shift 2 ;;
+      -*) die "unknown option: $1 (usage: pl issue submit [<iid>] [-m \"msg\"] [--dry-run])" ;;
       *) [ -z "$iid" ] && { iid="$1"; shift; } || die "unexpected arg: $1" ;;
     esac
   done
@@ -559,7 +567,9 @@ cmd_work(){
   local n="" base="" launch=1
   while [ $# -gt 0 ]; do
     case "$1" in
+      -h|--help) printf 'usage: pl issue work <issue-number> [base-ref] [--no-launch]\n'; return 0 ;;
       -n|--no-launch|--print) launch=0; shift ;;
+      -*) die "unknown option: $1 (usage: pl issue work <issue-number> [base-ref] [--no-launch])" ;;
       *) if [ -z "$n" ]; then n="$1"; elif [ -z "$base" ]; then base="$1"; fi; shift ;;
     esac
   done

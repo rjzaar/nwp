@@ -49,6 +49,18 @@
 #   first field is the principal; key type+blob = fields 1-2 of the sk .pub file)
 ################################################################################
 
+# The rotation-debt gate (operator ruling D8) rides on this same call for
+# target=prod — see deploy_gate_require below. Sourced by path relative to THIS
+# file so it resolves identically from a worktree, from CI and from a fresh
+# clone; if it is somehow absent, deploy_gate_require refuses rather than
+# proceeding without the check.
+if ! declare -F rotation_debt_guard >/dev/null 2>&1; then
+    _dg_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    # shellcheck source=lib/rotation-debt.sh
+    [ -f "$_dg_lib_dir/rotation-debt.sh" ] && source "$_dg_lib_dir/rotation-debt.sh"
+    unset _dg_lib_dir
+fi
+
 _dg_allowed_signers() { printf '%s' "${NWP_DEPLOY_ALLOWED_SIGNERS:-${PROJECT_ROOT:-$HOME/nwp}/keys/allowed_signers}"; }
 _dg_sk_key()          { printf '%s' "${NWP_DEPLOY_SK_KEY:-$HOME/.ssh/id_ed25519_sk}"; }
 
@@ -152,6 +164,23 @@ deploy_gate_require() {
     _dg_note "│  Target:  $target  (a LIVE/PRODUCTION write — not reversible cheaply)"
     _dg_note "│  Effect:  $summary"
     _dg_note "╰───────────────────────────────────────────────────────────"
+
+    # ── ROTATION-DEBT GATE (operator ruling D8) ───────────────────────────────
+    # A known-exposed credential must be rotated BEFORE a prod site starts. This
+    # sits here rather than in each prod verb on purpose: every path that writes
+    # to prod already funnels through this one call (stg2prod, live2prod, and any
+    # verb added later), so the gate cannot be acquired by one caller and missed
+    # by the next. Scoped to target=prod — an exposure is a work item on live,
+    # a blocker on prod. Fail-closed, including on an unreadable registry.
+    if [ "$target" = "prod" ]; then
+        if declare -F rotation_debt_guard >/dev/null 2>&1; then
+            rotation_debt_guard "this deploy to PROD ($site: $summary)" || return 1
+        else
+            _dg_err "Rotation-debt gate unavailable (lib/rotation-debt.sh not sourced) — cannot"
+            _dg_err "confirm no credential is awaiting rotation. Refusing the prod write."
+            return 1
+        fi
+    fi
 
     if ! deploy_gate_configured; then
         local rq=0

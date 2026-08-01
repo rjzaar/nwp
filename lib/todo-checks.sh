@@ -1075,6 +1075,64 @@ check_secret_expiry() {
     fi
 }
 
+# SEC: Known-EXPOSED credentials that still owe a rotation (operator ruling D8).
+#
+# "Exposures need to be logged in the todo list so they can be rotated when I
+#  get to it and must be done before prod site starts."  — operator, 2026-08-01
+#
+# This is the "logged in the todo list" half; lib/rotation-debt.sh's guard is
+# the "before prod starts" half, and both read the SAME registry field, so the
+# queue and the gate can never disagree about what is owed.
+#
+# Distinct from check_secret_expiry (a date passed) and check_token_liveness (the
+# provider says it is dead): an exposed credential can be perfectly valid and
+# perfectly in-date and still need replacing, because its value was SEEN. Nothing
+# in the estate could express that before — the three exposures found on
+# 2026-08-01 could only be written down as free-text GitLab issues.
+#
+# One HIGH item per open debt: category SEC + priority high is what makes
+# `pl rag` grade RED (lib/rag-render.py: SEC_CATS × high), so an exposure cannot
+# sit in a green fleet.
+check_exposed_secrets() {
+    is_category_enabled "exposed_secrets" || return 0
+
+    local registry="${NWP_SECRETS_REGISTRY:-$TODO_CHECKS_PROJECT_ROOT/private/secrets-registry.yml}"
+    # Absent registry = a fresh clone / CI checkout, not a claim of cleanliness;
+    # check_secret_expiry already raises the UNK for that, so raising a second
+    # one here would double-count the same blind spot.
+    [ -f "$registry" ] || return 0
+    if ! command -v yq &>/dev/null; then
+        todo_add_unknown "exposed_secrets" \
+            "yq is not installed, so known-exposed credentials could not be read" \
+            "" "pl doctor"
+        return 0
+    fi
+    if ! yq eval '.' "$registry" >/dev/null 2>&1; then
+        todo_add_unknown "exposed_secrets" \
+            "the secrets registry exists but does not parse — rotation debt could not be read" \
+            "" "pl secrets lint"
+        return 0
+    fi
+
+    local id at ref closed sev how n=0
+    while IFS=$'\t' read -r id at ref closed sev how; do
+        [ -n "$id" ] || continue
+        n=$((n+1))
+        # The item is embedded in hand-rolled JSON by todo_add_item, so strip the
+        # two characters that would break the envelope.
+        how="${how//\"/\'}"; how="${how//\\/ }"
+        [ "$closed" = "true" ] && closed="surface closed" || closed="surface OPEN"
+        todo_add_item "SEC" "exposed-$id" "high" \
+            "EXPOSED credential awaiting rotation: $id" \
+            "Exposed $at (${sev}, ${closed})${ref:+ | $ref} | $how | A closed surface is NOT a rotation. BLOCKS prod bring-up (ruling D8)." \
+            "" "pl secrets rotate $id"
+    done < <(yq eval '.secrets[] | .id as $id | (.exposure // [])[]
+                      | select((.rotated // false) != true)
+                      | [$id, (.at // "?"), (.ref // ""), ((.closed // false) | tostring),
+                         (.severity // "high"), (.how // "-")] | @tsv' "$registry" 2>/dev/null)
+    return 0
+}
+
 # check_token_liveness — LIVE token validity + REAL expiry (daily-cached).
 # Runs `pl secrets audit --quiet` at most once per ~20h (the only network in
 # `pl todo`), caches the result, and turns DEAD/expiring tokens into todo items.
@@ -2250,6 +2308,7 @@ TODO_CHECK_LIST=(
     "check_test_instances:Test instances"
     "check_token_rotation:Token rotation"
     "check_secret_expiry:Secret expiry"
+    "check_exposed_secrets:Exposed credentials (rotation owed)"
     "check_token_liveness:Token liveness (live probe)"
     "check_missing_backups:Missing backups"
     "check_live_backup_freshness:Live backup freshness"
@@ -2492,6 +2551,7 @@ export -f check_uncommitted_work
 export -f check_disk_usage
 export -f check_ssl_expiry
 export -f check_secret_expiry
+export -f check_exposed_secrets
 export -f check_token_liveness
 export -f check_agent_loop_cap
 export -f check_loop_liveness

@@ -229,8 +229,25 @@ and never guess a token's identity, scope, expiry, or storage location:
 | Put the registry under version control (nested private repo) | `pl secrets registry-track` |
 | Provision the daily audit by code, here or on a remote role | `pl secrets cron install [--host=<role>]` · `cron status` |
 | Would a rotation stamp honestly right now? (no prompt, no write) | `pl secrets rotate <#\|id> --dry-run` |
+| **A credential's VALUE was seen — record it, rotation becomes OWED** | `pl secrets expose <#\|id> --reason='…' [--where=…] [--ref=ops#N] [--closed] [--adopt=<provider>]` |
+| What is owed right now (what blocks going to prod) | `pl secrets debt [--all] [--json]` |
 
 Rules:
+- **An exposure is recorded against the CREDENTIAL, never only in an issue.**
+  Operator ruling D8 (2026-08-01): *"Exposures need to be logged in the todo list
+  so they can be rotated when I get to it and must be done before prod site
+  starts."* One command records it (`--adopt` covers credentials the registry
+  does not know yet — 3 of the first 4 real exposures were undeclared). It then
+  appears in `pl todo`, reddens `pl rag`, and **fails a prod bring-up closed**:
+  `pl canonical set <site> prod` and every prod write through the ADR-0028 gate
+  (`pl stg2prod`, `pl live2prod`) REFUSE while any debt is open, naming the
+  entries. `NWP_ROTATION_DEBT_OVERRIDE="<why>"` is the only way past and it is
+  ledgered to `private/rotation-debt-overrides.log`.
+- **A closed surface is NOT a rotation.** Redacting the doc / deleting the
+  transcript sets `closed:`; only `pl secrets rotate` / `pl secrets done` — which
+  already refuse to stamp while declared copies disagree — set `rotated:` and
+  discharge the debt. Hand-editing `rotated: true` fails `pl secrets lint` with
+  `EXPOSURE-UNBACKED` unless the entry's rotation history corroborates it.
 - **Every token has three names** — the `.secrets.yml` key, the registry `id`, and
   the live GitLab bot/token name. Use the crosswalk in the registry / `~/central/TOKEN-REGISTRY-*.md`; don't conflate them.
 - **`.secrets.yml:gitlab.api_token` is NOT the root admin PAT.** That claim is stale.

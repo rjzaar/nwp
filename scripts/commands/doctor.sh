@@ -8,6 +8,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/migrate-schema.sh"
+source "$PROJECT_ROOT/lib/rotation-debt.sh"   # known-exposed credentials / go-live gate (D8)
 
 # Expose NWP_DIR / NWP_VERSION to the schema check (needed by migrate-schema.sh).
 NWP_DIR="$PROJECT_ROOT"
@@ -549,6 +550,41 @@ check_server_schemas() {
 # producer and the CVE-response upgrade script. If that disk dies, the DR chain
 # and the security procedure die with it.
 ################################################################################
+################################################################################
+# Rotation debt — credentials known to be EXPOSED and not yet rotated (D8)
+#
+# `pl doctor` is where "is this estate fit to go to prod" gets asked out loud,
+# so the answer must include the credentials whose values have been seen. This
+# reports; lib/rotation-debt.sh's guard is what actually REFUSES (pl canonical
+# set <site> prod, and every prod write through the ADR-0028 deploy gate).
+################################################################################
+check_rotation_debt() {
+    local errors=0
+    print_header "Checking Credential Exposure / Rotation Debt"
+
+    local state; state="$(rotation_debt_state)"
+    case "$state" in
+        clear)
+            print_success "no credential is recorded as exposed-and-unrotated"
+            return 0 ;;
+        cannot-verify:*)
+            print_error "CANNOT VERIFY rotation debt: ${state#cannot-verify:}"
+            print_hint "a prod bring-up will REFUSE while this cannot be read — 'pl secrets lint'"
+            return 1 ;;
+    esac
+
+    local id at ref closed sev how
+    while IFS=$'\t' read -r id at ref closed sev how; do
+        [ -n "$id" ] || continue
+        print_error "EXPOSED, rotation OWED: $id (exposed $at, $sev, $(rotation_debt_surface_label "$closed")) ${ref:-}"
+        printf '      %s\n' "$how"
+        errors=$((errors + 1))
+    done < <(rotation_debt_open)
+    print_warning "These BLOCK a prod bring-up: pl canonical set <site> prod, pl stg2prod, pl live2prod."
+    print_hint "detail: pl secrets debt   ·   discharge: pl secrets rotate <id>"
+    return $errors
+}
+
 check_server_state() {
     local errors=0
 
@@ -835,6 +871,9 @@ main() {
     echo ""
 
     check_server_state || total_errors=$((total_errors + $?))
+    echo ""
+
+    check_rotation_debt || total_errors=$((total_errors + $?))
     echo ""
 
     check_mail_aliases || total_errors=$((total_errors + $?))

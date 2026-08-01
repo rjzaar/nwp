@@ -19,6 +19,7 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/yaml-write.sh"
 source "$PROJECT_ROOT/lib/canonical.sh"
+source "$PROJECT_ROOT/lib/rotation-debt.sh"   # D8 go-live gate on the → prod transition
 source "$PROJECT_ROOT/lib/git.sh" 2>/dev/null || true   # get_gitlab_url/token (best-effort protected-main check)
 
 show_help() {
@@ -136,6 +137,16 @@ cmd_set() {
     if ! yaml_site_exists "$site" "$config"; then
         print_error "Site '$site' not found in $config"
         return 1
+    fi
+
+    # ── GO-LIVE GATE (operator ruling D8) ────────────────────────────────────
+    # "…must be done before prod site starts." Declaring a site canonical: prod
+    # IS the moment it starts: from here on prod owns the content and everything
+    # downstream is a sanitized copy. So an owed rotation blocks the transition
+    # itself, not merely the next deploy — otherwise the site is already prod and
+    # the debt has become a production incident rather than a prerequisite.
+    if [ "$new_phase" = "prod" ]; then
+        rotation_debt_guard "the canonical:prod transition for '$site'" || return 1
     fi
 
     local cur; cur=$(canonical_get_phase "$site" "$config")

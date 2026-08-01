@@ -19,6 +19,8 @@ on one machine's disk. Captured 2026-08-01, after the 2026-07-31 box split.
 
 Three faults, all of them consequences of the split, all found while auditing
 something else. Each was invisible until the moment it would have mattered.
+A fourth item (§4) is not split damage — it is the one renewal that would have
+undone the fix to §2 by keeping `certbot.service` permanently red.
 
 ### 1. `nginx -t` FAILED — the box could not have rebooted
 
@@ -75,9 +77,65 @@ with nothing in the journal explaining why.
 **The equivalent hook on `nwpcode` is correct as written and must be left
 alone** — that box really does run GitLab's nginx.
 
+### 4. `cccrdf`'s renewal was the last thing that would have turned the service red
+
+Fixing faults 1–3 took the fleet dry-run to **14 success / 1 failure**. The one
+failure was `cccrdf.nwpcode.org`, and it was on a clock: that certificate
+expires 2026-10-12, so it enters its 30-day renewal window around **2026-09-12**
+and from then fails *every night*. A permanently-red `certbot.service` is
+precisely the condition that hid fault 2 for 19 days — one lineage nobody
+believes in makes the signal useless for the fourteen that matter.
+
+The cause was **DNS only**: `cccrdf.nwpcode.org` still resolves to
+`97.107.137.88` (the old box), so the webroot challenge is fetched from a
+machine that does not serve it and 404s. The renewal conf's `webroot_map` was
+**correctly populated** (`cccrdf.nwpcode.org = /var/www/cccrdf/web`) — an
+earlier note claiming it was empty was wrong.
+
+**Resolution: the lineage was deleted, not repaired** (2026-08-01,
+`certbot delete --cert-name cccrdf.nwpcode.org`). The evidence says this site is
+not meant to serve from here:
+
+- `PUBLIC-PRIVATE-STRATEGY.md` §2.10 classes cccrdf **PRIVATE-FOREVER**
+  (early-stage); the copyright inventory classes it 🔒 **DEV-ONLY**.
+- It is a Neo4j knowledge-graph browser over the **Catechism text**, which is
+  LEV/USCCB copyright — the operator's permission is AU/NZ-only and scoped to
+  `cathnet.org`, not to this hostname.
+- `SYSTEM-AUDIT-AND-PHASED-PLAN-2026-07-18.md` Phase 2 moves **neo4j + cccrdf
+  off this box to `met`**, then stops and disables them here. Its future is not
+  on `live`.
+- The stack is already switched off: `neo4j` inactive, `cccrdf-api.service`
+  inactive **and disabled**, vhost mothballed on both boxes since 2026-07-29
+  (deliberate, two days before the cutover). Restoring the vhost would publish a
+  site whose backend is down.
+- The Drupal has **0 nodes / 2 users** — no content — on 10.6.5 with **51 open
+  composer advisories** (`pl rag`: RED) and `drupal:drupal` DB credentials.
+
+Deleting a lineage is not deleting the ability to have one: if Phase 2 lands and
+cccrdf is wanted here (as a `proxy_pass` to met), certbot re-issues in seconds
+once DNS points at `live` and the ACME location exists. Nothing else was
+touched — the data, the DNS record, the declaration and the mothballed vhost all
+remain.
+
+Backup before deletion: **`/root/cccrdf-cert-retire-20260801/`** on the box —
+`live/`, `archive/` and `renewal/` copied verbatim, plus
+`letsencrypt-cccrdf-20260801.tar.gz` (relative symlinks preserved) with a
+`.sha256`.
+
+⚠️ `mothballed-20260729/cccrdf.conf` now references
+`/etc/letsencrypt/live/cccrdf.nwpcode.org/` which **no longer exists**. Restoring
+that file into `conf.d/` without first re-issuing the certificate will fail
+`nginx -t`. It also still carries the fault-1 bug
+(`include /opt/gitlab/embedded/conf/fastcgi_params`) and has **no ACME challenge
+location** — so a restore needs all three fixed, not just a `mv`.
+
+Fleet dry-run after: **14 success / 0 failure**, `certbot.service`
+`Result=success`. Fourteen lineages, fourteen served vhosts, no orphans.
+
 ## What is NOT here
 
 `conf.d/*.bak*`, `retired-*/` and `mothballed-*/` on the box are excluded:
 nginx loads `conf.d/*.conf` only, so they are history, not configuration.
-`cccrdf` is mothballed on both boxes while its A record still points at the old
-one — a repoint decision, not drift. See `DNS-JUNK-AUDIT-2026-08-01.md`.
+`cccrdf` is mothballed on both boxes and its A record still points at the old
+one; its certificate was retired on 2026-08-01 (see fault 4 above). See
+`DNS-JUNK-AUDIT-2026-08-01.md`.

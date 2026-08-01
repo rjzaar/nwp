@@ -1394,6 +1394,33 @@ cmd_plugin_drift() {
                 fi
             fi
         fi
+        # BACKUP-SUBPLUGIN CAPABILITY. Version equality is not sameness: a copy
+        # missing backup/moodle2/ has a byte-identical version.php to one that
+        # has it, so this verb reported "every compared copy agrees" for live
+        # ssc while every course backup it took silently dropped all 247
+        # depthcontent activities. Compare the CAPABILITY too, or the verb is
+        # blind to the one difference that loses data without erroring.
+        local cap blind_copies=0
+        for t in "${trees[@]}"; do
+            cap="$(moodle_plugin_backup_capable_local "$t" "$p")"
+            case "$cap" in
+                blind) printf '    %-52s %s\n' "${t}" "[BACKUP-BLIND: claims FEATURE_BACKUP_MOODLE2, ships no task class]"
+                       blind_copies=$((blind_copies+1)) ;;
+            esac
+        done
+        if [ "$want_live" = "true" ] && [ -n "${server_ip:-}" ]; then
+            cap="$(moodle_plugin_backup_capable_remote "${ssh_user}@${server_ip}" "$ssh_opts" "$sudo_prefix" "$remote_path" "$p")"
+            case "$cap" in
+                blind) printf '    %-52s %s\n' "LIVE ${remote_path}/${p}" "[BACKUP-BLIND: claims FEATURE_BACKUP_MOODLE2, ships no task class]"
+                       blind_copies=$((blind_copies+1)) ;;
+            esac
+        fi
+        if [ "$blind_copies" -gt 0 ]; then
+            print_error "  BACKUP-BLIND: ${blind_copies} copy(ies) of ${p} advertise Moodle2 backup with no backup/moodle2/ task class."
+            print_info  "  Moodle SKIPS such activities during backup without erroring — restores look clean and are empty."
+            total_problems=$((total_problems+1))
+        fi
+
         # "I found nothing" must NEVER read as "everything agrees" — that is the
         # vacuous-pass class this programme exists to eliminate.
         if [ "$copies" -lt 2 ]; then

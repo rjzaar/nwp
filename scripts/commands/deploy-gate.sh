@@ -37,7 +37,10 @@ Configuration (env overrides; see lib/deploy-gate.sh):
     NWP_DEPLOY_SK_KEY            default: ~/.ssh/id_ed25519_sk
     NWP_DEPLOY_GATE_REQUIRE      "true" => unconfigured gate fails CLOSED
     (REQUIRE can also be pinned by /etc/nwp/deploy-gate-require or
-     keys/deploy-gate.require — marker files survive env stripping.)
+     keys/deploy-gate.require — marker files survive env stripping. Their
+     directory must be SEARCHABLE by the unprivileged operator, so create it
+     0755: the marker is not a secret, its presence is the whole signal. If it
+     is unsearchable the gate cannot tell present from unreadable and ABORTS.)
 
 Examples:
     pl deploy-gate status    # Is the gate configured/enforced on this host?
@@ -83,36 +86,37 @@ cmd_status() {
         print_status "INFO" "Gate NOT configured — prod-write verbs proceed without it (no-op)"
     fi
 
-    # REQUIRE (fail-closed-when-unconfigured) enforcement, and via which mechanism.
-    #
-    # This walks _dg_marker_paths through _dg_marker_verdict — the same list and
-    # the same three-way discriminator the enforcement path uses — rather than
-    # keeping a private pair of `[ -e ]` probes. A blind probe here reported an
-    # UNREADABLE marker as "not enforced (fail-open)" while deploy_gate_require
-    # was aborting on that very host: the status verb contradicted the code it
-    # exists to report on, which is the reassurance an operator acts on.
-    local require_via="" require_blind="" marker
+    # REQUIRE (fail-closed-when-unconfigured) enforcement, and via which mechanism
+    local require_via=""
     if [ "${NWP_DEPLOY_GATE_REQUIRE:-false}" = "true" ]; then
         require_via="env var NWP_DEPLOY_GATE_REQUIRE=true"
     fi
+    # Ask the library's discriminator, not a bare `-e`. A `-e` on a marker inside
+    # an unsearchable directory is false whether or not the marker is there, so
+    # this display used to report the reassuring "not enforced" for the one host
+    # posture (0700 /etc/nwp) where enforcement now ABORTS. A status command that
+    # confidently answers a question it could not see is worse than the bug it
+    # describes, and it must never disagree with deploy_gate_require.
+    local blind="" marker label
     while IFS= read -r marker; do
+        case "$marker" in
+            /etc/*) label="marker file $marker" ;;
+            *)      label="marker file keys/deploy-gate.require" ;;
+        esac
         case "$(_dg_marker_verdict "$marker")" in
-            present)       require_via="${require_via:+$require_via, }marker file $marker" ;;
-            cannot-verify) require_blind="${require_blind:+$require_blind, }$marker" ;;
+            present)       require_via="${require_via:+$require_via, }$label" ;;
+            cannot-verify) blind="${blind:+$blind, }$marker" ;;
         esac
     done < <(_dg_marker_paths)
 
+    if [ -n "$blind" ]; then
+        print_status "FAIL" "REQUIRE state CANNOT BE VERIFIED — $blind sits in a directory not searchable as $(id -un)"
+        print_info "The marker's PRESENCE is the whole signal, so it must be readable unprivileged:"
+        print_info "  sudo chmod 0755 $(dirname -- "${blind%%,*}")"
+    fi
     if [ -n "$require_via" ]; then
         print_status "OK" "REQUIRE enforced (unconfigured gate fails CLOSED) via: $require_via"
-        # Still worth saying: a second location we cannot read is a latent surprise.
-        [ -n "$require_blind" ] && print_info "(also unreadable, not consulted: $require_blind)"
-    elif [ -n "$require_blind" ]; then
-        # Blind, not clear — and the permissive reading is the one that would be a
-        # guess. Report it as the enforcement path treats it: REQUIRED.
-        print_status "FAIL" "REQUIRE CANNOT VERIFY — marker location unreadable: $require_blind"
-        print_info "Treated as REQUIRED (never as absent): prod-write verbs will ABORT until this is readable."
-        print_info "The directory needs SEARCH (+x) for you, e.g.: sudo chmod 0755 $(dirname -- "${require_blind%%,*}")"
-    else
+    elif [ -z "$blind" ]; then
         print_status "INFO" "REQUIRE not enforced — an unconfigured gate is a no-op (fail-open)"
         print_info "On ver, pin fail-closed with: sudo mkdir -p -m 0755 /etc/nwp && sudo touch /etc/nwp/deploy-gate-require"
     fi
@@ -123,8 +127,8 @@ cmd_status() {
         print_status "OK" "Verdict: gate ACTIVE. Try it: pl deploy-gate test"
     elif [ -n "$require_via" ]; then
         print_status "FAIL" "Verdict: gate REQUIRED but unconfigured — prod-write verbs will ABORT"
-    elif [ -n "$require_blind" ]; then
-        print_status "FAIL" "Verdict: cannot tell whether the gate is REQUIRED — prod-write verbs will ABORT"
+    elif [ -n "$blind" ]; then
+        print_status "FAIL" "Verdict: gate unconfigured and REQUIRE unverifiable — prod-write verbs will ABORT"
     else
         print_status "INFO" "Verdict: gate inactive (test-tier default)"
     fi

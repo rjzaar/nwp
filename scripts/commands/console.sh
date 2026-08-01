@@ -17,6 +17,9 @@ set -euo pipefail
 #                                                          rsync + venv + unit + health
 #   pl console status [--host <ssh-host>]                  systemd + /health over mesh
 #   pl console user add <name> --role viewer|operator|owner
+#   pl console user addkey <name> [--no-open] [--no-wait] [--timeout <secs>]
+#                                                          scripted passkey enrolment ceremony;
+#                                                          +1 passkey, keeps the existing ones
 #   pl console user reset <name>                           break-glass re-enrol
 #   pl console user list | role <name> <role> | rm <name>
 #   pl console enroll                                      Headscale pre-auth key runbook
@@ -88,6 +91,10 @@ ${BOLD}USAGE:${NC}
     pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run] [--force-overwrite] [-y]
     pl console status [--host <ssh-host>]
     pl console user add <name> --role viewer|operator|owner [--project <pid> --project-role <r>]
+    pl console user addkey <name> [--no-open] [--no-wait] [--timeout <secs>]
+                                       (scripted passkey enrolment: health -> token -> browser ->
+                                        watch the host until the credential lands. Existing
+                                        passkeys are KEPT. --no-open when enrolling on a phone.)
     pl console user reset <name>       (break-glass: shell-only, revokes passkeys)
     pl console user list | show <name> | role <name> <role> | rm <name>
     pl console project list
@@ -589,6 +596,118 @@ cmd_project() {
 # rejected on its own merits, on any machine, configured or not. Ordering it the
 # other way round made the guards below dead code everywhere nwp.yml is absent —
 # e.g. every CI runner — so they were never actually exercised.
+# ---------------------------------------------------------------------------
+# Passkey enrolment ceremony — pl console user addkey <name>
+#
+# Two steps of a WebAuthn enrolment cannot be scripted: a browser has to run
+# the ceremony, and a finger has to touch the key. EVERYTHING around them can,
+# and was previously a hand-copied runbook: check the mesh is up, check a key
+# is even plugged in, issue the token, open the tab, and then WATCH the store
+# until the credential lands.
+#
+# That last step is the one worth having. Without it "did that work?" is
+# answered by a second command nobody runs, and a browser that silently saved
+# a PLATFORM passkey instead of using the security key looks exactly like a
+# success. Here the command does not return 0 until the passkey count on the
+# host actually went up.
+# ---------------------------------------------------------------------------
+_console_health() {
+    curl -fsS --max-time 8 --resolve "${CONSOLE_FQDN}:${CONSOLE_PORT}:${CONSOLE_TAILNET_IP}" \
+        "https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health" 2>/dev/null | grep -q '"ok"'
+}
+
+_passkey_count() { # $1 name -> integer on stdout, empty if the user is unknown
+    _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-show '$1' 2>/dev/null" \
+        2>/dev/null | awk '/^passkeys:/ {print $2; exit}'
+}
+
+_enrol_wait() { # $1 name, $2 baseline count, $3 timeout seconds
+    # ONE ssh holding a remote poll loop — not N ssh handshakes on a timer.
+    local name="$1" base="$2" rounds=$(( ${3:-300} / 3 ))
+    _ssh "cd ~/nwp-console/src && i=0; while [ \$i -lt $rounds ]; do
+            c=\$(~/nwp-console/venv/bin/python -m app.manage user-show '$name' 2>/dev/null \
+                 | awk '/^passkeys:/{print \$2; exit}');
+            if [ -n \"\$c\" ] && [ \"\$c\" -gt $base ] 2>/dev/null; then echo \"ENROLLED \$c\"; exit 0; fi;
+            i=\$((i+1)); sleep 3; done; echo TIMEOUT; exit 1"
+}
+
+cmd_addkey() {
+    local name="${1:-}"; shift || true
+    local do_open=1 do_wait=1 timeout=300
+    while [ $# -gt 0 ]; do case "$1" in
+        --no-open)   do_open=0; shift ;;
+        --no-wait)   do_wait=0; shift ;;
+        --timeout)   timeout="${2:-}"; shift 2 ;;
+        --timeout=*) timeout="${1#--timeout=}"; shift ;;
+        *) print_error "unknown flag: $1 (want --no-open | --no-wait | --timeout <secs>)"; return 1 ;;
+    esac; done
+    [ -n "$name" ] || { print_error "usage: pl console user addkey <name> [--no-open] [--no-wait] [--timeout <secs>]"; return 1; }
+    _name_ok "$name" || return 1
+    [[ "$timeout" =~ ^[0-9]+$ ]] && [ "$timeout" -ge 30 ] || { print_error "--timeout must be seconds, >= 30"; return 1; }
+    _require_configured || return 1
+
+    print_info "1/4 console reachable over the mesh"
+    _console_health || {
+        print_error "console unreachable at https://${CONSOLE_FQDN}:${CONSOLE_PORT}/ — is the VPN app connected?"
+        print_hint "diagnose with: pl console status"
+        return 1
+    }
+    print_success "healthy: https://${CONSOLE_FQDN}:${CONSOLE_PORT}/"
+
+    # Informational only — the key may be on the phone you are about to use.
+    if command -v fido2-token >/dev/null 2>&1; then
+        local keys; keys=$(fido2-token -L 2>/dev/null || true)
+        if [ -n "$keys" ]; then
+            print_info "FIDO2 device(s) on THIS machine:"; printf '    %s\n' "$keys"
+        else
+            print_hint "no FIDO2 device on this machine — plug the key in, or enrol on another device with --no-open"
+        fi
+    fi
+
+    print_info "2/4 issuing a one-time enrolment token (existing passkeys are KEPT)"
+    local before; before=$(_passkey_count "$name")
+    [ -n "$before" ] || { print_error "no such console user: $name"; print_hint "pl console user list"; return 1; }
+    local out link
+    out=$(_ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-addkey '$name'") || return 1
+    link=$(printf '%s\n' "$out" | grep -o "https://[^[:space:]]*enroll?token=[A-Za-z0-9_-]*" | head -1)
+    [ -n "$link" ] || { printf '%s\n' "$out"; print_error "could not parse an enrolment link out of that"; return 1; }
+    echo
+    echo "    $link"
+    echo
+    print_hint "single use, 48 h, stored hashed on the host — it cannot be re-shown"
+
+    if [ "$do_open" = 1 ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
+        print_info "3/4 opening it in your browser"
+        # The token sits in xdg-open's argv for the moment it runs. Accepted
+        # rather than worked around: it is single-use, 48 h, mesh-only, and is
+        # already printed on this terminal — unlike the API tokens the 0600
+        # curl-config pattern exists for.
+        xdg-open "$link" >/dev/null 2>&1 &
+    else
+        print_info "3/4 open that link on the device holding the key (it must be on the mesh)"
+    fi
+    print_hint "when the browser asks WHERE to save it, choose the SECURITY KEY — 'this device' makes a"
+    print_hint "platform passkey on this laptop instead of using the hardware key. Then touch the key."
+    print_hint "A key that is already enrolled is refused by the browser (excludeCredentials)."
+
+    if [ "$do_wait" = 0 ]; then
+        print_hint "not waiting (--no-wait). Confirm with: pl console user show $name"
+        return 0
+    fi
+
+    print_info "4/4 waiting for the credential to land on the host (up to ${timeout}s)"
+    print_hint "Ctrl-C is safe — it stops watching, it does not revoke anything, and the link stays valid"
+    local res
+    if res=$(_enrol_wait "$name" "$before" "$timeout"); then
+        print_success "enrolled — '$name' now has $(printf '%s' "$res" | awk '{print $2}') passkey(s), none revoked"
+        print_hint "verify any time: pl console user show $name"
+    else
+        print_error "timed out — '$name' is still on $before passkey(s). Nothing was revoked."
+        print_hint "the link above is still valid; re-open it, or re-run: pl console user addkey $name"
+        return 1
+    fi
+}
+
 cmd_user() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -628,6 +747,12 @@ cmd_user() {
             [ -n "${1:-}" ] || { print_error "usage: pl console user show <name>"; return 1; }
             _name_ok "$1" || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-show '$1'"
+            ;;
+        addkey)
+            # Second passkey (hardware key beside a phone, or a new device).
+            # Deliberately NOT reset: revoking the credential you are holding
+            # to add another one is the wrong trade for the everyday case.
+            cmd_addkey "$@"
             ;;
         reset)
             [ -n "${1:-}" ] || { print_error "usage: pl console user reset <name>"; return 1; }

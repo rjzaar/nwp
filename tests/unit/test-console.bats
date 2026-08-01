@@ -198,3 +198,57 @@ EOF
   [ -n "$manifest" ] && [ -n "$mkdir_line" ]
   [ "$manifest" -lt "$mkdir_line" ]
 }
+
+# --- passkey enrolment ceremony (user addkey) -------------------------------
+# Every assertion below is either a local-input guard (must fail BEFORE any
+# ssh) or a static ordering property. Nothing here touches the host.
+
+@test "user addkey rejects an invalid username locally (no ssh attempted)" {
+  run "$CONSOLE_SH" user addkey 'bad name;rm'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid username"* ]]
+}
+
+@test "user addkey rejects an unknown flag rather than passing it through" {
+  run "$CONSOLE_SH" user addkey rob --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown flag"* ]]
+}
+
+@test "user addkey rejects a non-numeric or absurdly short --timeout" {
+  run "$CONSOLE_SH" user addkey rob --timeout soon
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--timeout must be seconds"* ]]
+  run "$CONSOLE_SH" user addkey rob --timeout 5
+  [ "$status" -ne 0 ]
+}
+
+@test "user addkey with no name prints its usage" {
+  run "$CONSOLE_SH" user addkey
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage: pl console user addkey"* ]]
+}
+
+@test "addkey issues the token only AFTER the reachability check" {
+  # Burning a single-use token when the mesh is down would leave the operator
+  # holding a link they cannot open and a token they cannot re-show.
+  health=$(grep -n '_console_health || {' "$CONSOLE_SH" | head -1 | cut -d: -f1)
+  issue=$(grep -n 'app.manage user-addkey' "$CONSOLE_SH" | head -1 | cut -d: -f1)
+  [ -n "$health" ] && [ -n "$issue" ]
+  [ "$health" -lt "$issue" ]
+}
+
+@test "addkey waits by polling the host, not by declaring success" {
+  # The failure mode this guards: the browser saves a platform passkey instead
+  # of using the security key. Only the host's count can tell you.
+  grep -q '_enrol_wait' "$CONSOLE_SH"
+  grep -q 'ENROLLED' "$CONSOLE_SH"
+  grep -q 'still on \$before passkey' "$CONSOLE_SH"
+}
+
+@test "help documents addkey and its flags" {
+  run "$CONSOLE_SH" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"user addkey"* ]]
+  [[ "$output" == *"--no-open"* ]]
+}

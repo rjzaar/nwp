@@ -47,6 +47,8 @@ source "$PROJECT_ROOT/lib/host-capture.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/server-sync.sh"
 # shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/server-prune.sh"
+# shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/server-handoff.sh"
 
 if [[ -z "${NWP_VERSION:-}" ]]; then
@@ -925,6 +927,302 @@ cmd_sync() {
 }
 
 ################################################################################
+# Subcommand: prune <server>
+#
+# The LAST step of a box migration: remove from <server> the artefacts of the
+# sites that have moved off it. See lib/server-prune.sh for the gate set
+# ([P1]-[P6]) and why each exists.
+#
+# Dry-run by default; --execute is required to delete anything.
+################################################################################
+cmd_prune() {
+    local server="" execute=0 auto_yes=0 backup_within=24 do_certs=1 arg
+    for arg in "$@"; do
+        case "$arg" in
+            --execute)                execute=1 ;;
+            -y|--yes)                 auto_yes=1 ;;
+            --require-backup-within=*) backup_within="${arg#--require-backup-within=}" ;;
+            --no-backup-check)        backup_within="" ;;
+            --no-certs)               do_certs=0 ;;
+            -*)  echo "Unknown option: $arg" >&2; return 2 ;;
+            *)   if [[ -z "$server" ]]; then server="$arg";
+                 else echo "Unexpected argument: $arg" >&2; return 2; fi ;;
+        esac
+    done
+    if [[ -z "$server" ]]; then
+        echo "Usage: pl server prune <server> [--execute] [-y] [--require-backup-within=H] [--no-certs]" >&2
+        return 2
+    fi
+
+    local prefix
+    prefix=$(sync_ssh_prefix "$server") || { echo "ERROR: cannot resolve server '$server'" >&2; return 2; }
+    local ok; ok=$($prefix 'echo ok' </dev/null 2>/dev/null || true)
+    [[ "$ok" == "ok" ]] || { echo "ERROR: server '$server' unreachable over ssh." >&2; return 3; }
+
+    print_header "server prune: ${server}$( ((execute)) || echo '  (DRY RUN)')"
+
+    # --- [P6] a backup must exist ------------------------------------------
+    if [[ -n "$backup_within" ]]; then
+        local age
+        if ! age=$(prune_backup_age_hours "$prefix"); then
+            echo "REFUSING: no backup found on '$server' under /var/backups/nwp-pull." >&2
+            echo "          Prune destroys the last non-backup copy. Take a backup first," >&2
+            echo "          or pass --no-backup-check if you hold one elsewhere." >&2
+            return 1
+        fi
+        if [[ "$age" -gt "$backup_within" ]]; then
+            echo "REFUSING: newest backup on '$server' is ${age}h old (limit ${backup_within}h)." >&2
+            return 1
+        fi
+        print_success "backup present on '$server' (newest ${age}h old)"
+    fi
+
+    # --- [P2] build the KEEP set from what is DECLARED to this box ---------
+    # `|| true`: get_server_sites returns the exit status of its LAST loop
+    # iteration, so it reports failure whenever the last site it happens to
+    # inspect is not on this server — which is usually. Under the `set -e
+    # pipefail` this file runs with, that silently killed the whole command
+    # after the backup check. The keep-list must never be empty by accident,
+    # so this is guarded rather than trusted.
+    local kept_sites; kept_sites=$(get_server_sites "$server" 2>/dev/null | sed '/^$/d' || true)
+    if [[ -z "$kept_sites" ]]; then
+        echo "WARNING: no sites are declared to '$server' — the keep-list is empty." >&2
+        echo "         Every /var/www tree will be treated as prunable. Check" >&2
+        echo "         sites/*/.nwp.yml declares .live.server before continuing." >&2
+    fi
+    local -a keep_trees=() keep_names=()
+    local s p
+    # NB: every loop below ends in a plain statement, never a trailing
+    # `[[ ... ]] && cmd`. A loop takes the exit status of its last command, so
+    # a false test on the final iteration makes the LOOP fail, and under
+    # `set -e` that aborts the command with no message at all.
+    for s in $kept_sites; do
+        keep_names+=("$s")
+        p=$(get_site_remote_path "$s" 2>/dev/null || true)
+        if [[ -n "$p" ]]; then keep_trees+=("$(basename "$p")"); fi
+    done
+    for s in $PRUNE_NEVER_TOUCH; do keep_trees+=("$s"); done
+
+    # Infrastructure roots declared on the SERVER record are never site data —
+    # ACME webroots, proxy vhosts, the headscale control server. They have no
+    # sites/<n>/.nwp.yml by design, so the site-derived keep-list above cannot
+    # see them, and "not a site" must never read as "prunable".
+    #
+    # The key is `infrastructure_roots[]` at the top level with .path/.domain
+    # (see servers/<n>/.nwp-server.yml). Getting that path wrong fails SILENTLY
+    # — an empty keep-list looks exactly like "no infrastructure declared" —
+    # which is how the first cut of this put hs.<live-domain>'s certbot renewal
+    # on the delete list.
+    local srec="$NWP_DIR/servers/$server/.nwp-server.yml"
+    local -a infra_domains=()
+    local ipath idom
+    while read -r ipath; do
+        [[ -n "$ipath" ]] || continue
+        # /var/www/hs/html is the ACME webroot; the tree that must survive is
+        # /var/www/hs. Keep the FIRST component under /var/www, not the leaf.
+        local itree
+        if itree=$(prune_infra_tree "$ipath"); then keep_trees+=("$itree"); fi
+    done < <($YQ e '.infrastructure_roots[]?.path // ""' "$srec" 2>/dev/null | sed '/^$/d' || true)
+    while read -r idom; do
+        if [[ -n "$idom" ]]; then infra_domains+=("$idom"); fi
+    done < <($YQ e '.infrastructure_roots[]?.domain // ""' "$srec" 2>/dev/null | sed '/^$/d' || true)
+
+    # --- [P1] candidates: ONLY what is positively attributable to a site
+    #     that has MOVED. ------------------------------------------------------
+    #
+    # THE INVERSION THAT MATTERS. The obvious shape — "delete everything not on
+    # the keep-list" — is wrong, and dangerously so. It makes UNDECLARED mean
+    # PRUNABLE, when the whole point of [P2] is that unknown means keep. A
+    # dry-run of that shape against the live sites box proposed to delete:
+    #
+    #   * every *_moodledata directory on the box. A Moodle declares
+    #     remote_path: /var/www/ssc — its webroot — while its data lives in a
+    #     SEPARATE, undeclared /var/www/ssc_moodledata. Deleting those destroys
+    #     every Moodle on the host, irreversibly, while the webroot survives so
+    #     the site merely 500s instead of obviously vanishing.
+    #   * two live databases nothing happened to name.
+    #   * the certificate for rgv.<live-domain> — a site that is SERVING (HTTP
+    #     401, basic-auth gated) but has no sites/rgv/.nwp.yml at all.
+    #
+    # So the delete set is now BUILT UP from migrated sites rather than
+    # SUBTRACTED from everything present. A tree, database or certificate that
+    # cannot be traced to a specific site declared on another server is never a
+    # candidate, no matter how orphaned it looks.
+    local -a del_trees=() del_dbs=() del_vhosts=() del_certs=() keeps=()
+    local -a moved_sites=() moved_trees=() moved_domains=() moved_verified=()
+    local msrv
+    # Needed by the [P1] DNS check below, before the cert block resolves it.
+    local my_ip_early; my_ip_early=$(get_server_ip "$server" 2>/dev/null || true)
+    for cfg in "$NWP_DIR"/sites/*/.nwp.yml; do
+        [[ -f "$cfg" ]] || continue
+        s="$(basename "$(dirname "$cfg")")"
+        msrv="$($YQ e '.live.server // ""' "$cfg" 2>/dev/null || true)"
+        # Declared HERE, or declared nowhere -> not a candidate. Only an
+        # explicit declaration to a DIFFERENT server makes a site migrated.
+        [[ -n "$msrv" && "$msrv" != "$server" ]] || continue
+        p=$(get_site_remote_path "$s" 2>/dev/null || true)
+        [[ -n "$p" ]] || continue
+
+        # [P1] PROOF OF LIFE ELSEWHERE. A declaration states intent; DNS states
+        # what users actually reach. `cccrdf` is declared to the live server yet
+        # its A record still points at the OLD box — so on declarations alone
+        # this would have authorised deleting the only copy of a site no new box
+        # is serving. Require the site's own domain to resolve somewhere that is
+        # not this box before treating any of its assets as prunable.
+        local sdom sip
+        sdom=$(get_site_domain "$s" 2>/dev/null || true)
+        if [[ -z "$sdom" ]]; then
+            keeps+=("${server}: site '${s}' — declared on '${msrv}' but has no domain to verify against, KEPT")
+            continue
+        fi
+        sip=$(dig +short "$sdom" 2>/dev/null | tail -1)
+        if ! prune_points_elsewhere "$sdom" "$sip" "$my_ip_early"; then
+            keeps+=("${server}: site '${s}' — declared on '${msrv}' but ${sdom} still resolves ${sip:+to ${sip} }here (or not at all), KEPT")
+            continue
+        fi
+        moved_sites+=("$s")
+        moved_verified+=("${s}|${sdom}|${sip}")
+        # Companion data directories are never declared but always paired —
+        # see prune_companion_trees for why missing them is catastrophic.
+        local ct
+        while read -r ct; do
+            if [[ -n "$ct" ]]; then moved_trees+=("$ct"); fi
+        done < <(prune_companion_trees "$p")
+        local d; d=$(get_site_domain "$s" 2>/dev/null || true)
+        if [[ -n "$d" ]]; then moved_domains+=("$d"); fi
+    done
+
+    # Trees: present on disk AND attributable to a moved site AND not kept.
+    local tree base sz
+    while read -r sz base; do
+        [[ -n "$base" ]] || continue
+        if [[ " ${keep_trees[*]} " == *" $base "* ]]; then
+            keeps+=("${server}: /var/www/${base} — declared to this server, kept")
+            continue
+        fi
+        if [[ " ${moved_trees[*]:-} " != *" $base "* ]]; then
+            keeps+=("${server}: /var/www/${base} — not attributable to any migrated site, KEPT")
+            continue
+        fi
+        del_trees+=("/var/www/${base}|${sz} — belongs to a site now served from another box")
+    done < <($prefix "sudo du -sh /var/www/*/ 2>/dev/null | sed 's#/var/www/##; s#/\$##'" </dev/null 2>/dev/null || true)
+
+    # --- [P5] databases: only those a MOVED site's own config names ---------
+    # Read the db name out of each moved site's config as it still exists on
+    # THIS box. A database nothing points at is left alone: "orphaned" is a
+    # guess, and a wrong guess here is unrecoverable.
+    local -a moved_paths=()
+    for s in "${moved_sites[@]:-}"; do
+        p=$(get_site_remote_path "$s" 2>/dev/null || true)
+        if [[ -n "$p" ]]; then moved_paths+=("$p"); fi
+    done
+    local moved_dbs
+    moved_dbs=$(prune_probe_live_dbnames "$prefix" "${moved_paths[@]:-}" 2>/dev/null | sed '/^$/d' | sort -u || true)
+
+    local db
+    while read -r db sz; do
+        [[ -n "$db" ]] || continue
+        case "$db" in information_schema|performance_schema|mysql|sys) continue ;; esac
+        if [[ -z "$moved_dbs" ]] || ! printf '%s\n' "$moved_dbs" | grep -qx "$db"; then
+            keeps+=("${server}: database '${db}' — not named by any migrated site's config, KEPT")
+            continue
+        fi
+        del_dbs+=("${db}|${sz:-?} MB — named by a site now served from another box")
+    done < <($prefix "sudo mysql -N -e \"SELECT table_schema, ROUND(SUM(data_length+index_length)/1024/1024,1) FROM information_schema.tables GROUP BY table_schema;\" 2>/dev/null" </dev/null 2>/dev/null || true)
+
+    # --- handoff fronts + migrated vhosts ----------------------------------
+    # A handoff front is only removable when the name it fronts is one of the
+    # sites [P1] just PROVED is being served elsewhere. Removing a front whose
+    # site has not moved takes that site off the air instantly — the front is
+    # the only thing still answering for it on this box.
+    local v vname
+    while read -r v; do
+        [[ -n "$v" ]] || continue
+        vname="${v#handoff-}"; vname="${vname%.conf}"
+        if [[ " ${moved_domains[*]:-} " != *" $vname "* ]]; then
+            keeps+=("${server}: vhost ${v} — fronts '${vname}', which is not a verified-moved site, KEPT")
+            continue
+        fi
+        del_vhosts+=("${v}|proxy front for ${vname}, which is verified as served from another box")
+    done < <($prefix "sudo ls -1 ${HANDOFF_CONF_DIR:-/etc/nginx/conf.d} 2>/dev/null | grep -E '^handoff-.*\.conf$'" </dev/null 2>/dev/null || true)
+
+    # --- dead certbot renewals ---------------------------------------------
+    if ((do_certs)); then
+        # A certificate is only dead here if its name BOTH belongs to a site
+        # that moved AND no longer resolves to this box. DNS is the ground
+        # truth: a name still pointing here is still this box's to serve,
+        # whatever any declaration says, and rgv.<live-domain> proved that
+        # declarations can simply be missing for a site that is serving fine.
+        #
+        # A stale renewal is noise; deleting a live one takes a service off the
+        # air at the next expiry — silently, weeks later, long after anyone
+        # would connect it to this command.
+        local my_ip="$my_ip_early"
+        local c cip
+        while read -r c; do
+            [[ -n "$c" ]] || continue
+            if [[ " ${moved_domains[*]:-} " != *" $c "* ]]; then
+                keeps+=("${server}: certbot renewal ${c} — not a migrated site's name, KEPT")
+                continue
+            fi
+            cip=$(dig +short "$c" 2>/dev/null | tail -1)
+            if ! prune_cert_is_dead "$c" "$cip" "$my_ip"; then
+                keeps+=("${server}: certbot renewal ${c} — still resolves here (or unresolvable), KEPT")
+                continue
+            fi
+            del_certs+=("${c}|migrated site, and ${c} now resolves to ${cip}; renewal fails twice a day until removed")
+        done < <($prefix "sudo ls ${PRUNE_RENEWAL_DIR:-/etc/letsencrypt/renewal}/*.conf 2>/dev/null" </dev/null 2>/dev/null | sed 's#.*/##; s#\.conf$##' || true)
+    fi
+
+    keeps+=("Everything under /var/www NOT listed above")
+    keeps+=("GitLab, headscale and any service not derived from a site declaration")
+
+    if [[ ${#del_trees[@]} -eq 0 && ${#del_dbs[@]} -eq 0 && ${#del_vhosts[@]} -eq 0 && ${#del_certs[@]} -eq 0 ]]; then
+        print_success "nothing to prune on '$server'."
+        return 0
+    fi
+
+    # --- [P3] fate manifest, then [P4] dry-run stops here -------------------
+    if ! ((execute)); then
+        prune_render_and_confirm "$server" 1 del_trees del_dbs del_vhosts del_certs keeps
+        echo "DRY RUN — nothing was deleted. Re-run with --execute to apply."
+        return 0
+    fi
+    prune_render_and_confirm "$server" "$auto_yes" del_trees del_dbs del_vhosts del_certs keeps || {
+        echo "Aborted."; return 1; }
+
+    # --- apply --------------------------------------------------------------
+    local item rc=0
+    for item in "${del_vhosts[@]}"; do
+        v="${item%%|*}"
+        $prefix "sudo rm -f ${HANDOFF_CONF_DIR:-/etc/nginx/conf.d}/$v" </dev/null || rc=1
+        print_success "removed vhost $v"
+    done
+    if [[ ${#del_vhosts[@]} -gt 0 ]]; then
+        if handoff_nginx_test "$prefix"; then handoff_nginx_reload "$prefix"; else
+            echo "ERROR: nginx config test FAILED after vhost removal — not reloading." >&2; rc=1; fi
+    fi
+    for item in "${del_certs[@]}"; do
+        c="${item%%|*}"
+        $prefix "sudo rm -f /etc/letsencrypt/renewal/${c}.conf" </dev/null || rc=1
+        print_success "removed dead certbot renewal $c"
+    done
+    for item in "${del_dbs[@]}"; do
+        db="${item%%|*}"
+        $prefix "sudo mysql -e 'DROP DATABASE \`$db\`;'" </dev/null || rc=1
+        print_success "dropped database $db"
+    done
+    for item in "${del_trees[@]}"; do
+        tree="${item%%|*}"
+        # Belt and braces: refuse anything that is not a direct child of /var/www.
+        case "$tree" in /var/www/*/*|/var/www|/var/www/) echo "REFUSING unexpected path: $tree" >&2; rc=1; continue ;; esac
+        $prefix "sudo rm -rf '$tree'" </dev/null || rc=1
+        print_success "removed $tree"
+    done
+    return $rc
+}
+
+################################################################################
 # Subcommand: handoff <drain|front|restore|status> <server>
 #
 # Move traffic between boxes WITHOUT waiting for DNS. See lib/server-handoff.sh
@@ -1100,6 +1398,7 @@ case "$sub" in
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
     sync)    cmd_sync "$@" ;;
+    prune)   cmd_prune "$@" ;;
     handoff) cmd_handoff "$@" ;;
     schema)  cmd_schema "$@" ;;
     migrate) cmd_migrate "$@" ;;
@@ -1133,6 +1432,13 @@ Subcommands:
                         are read from each app's own config on BOTH boxes and
                         never guessed. Dry-run unless --execute.
                         [--sites=a,b --skip-missing --files --execute -y]
+  prune <server>        The LAST step of a migration: remove from <server> the
+                        webroots, databases, handoff fronts and dead certbot
+                        renewals of sites that now live on another box. Refuses
+                        unless a recent backup exists, keeps anything still
+                        DECLARED to this server, and never drops a database an
+                        app on this box still names. Dry-run unless --execute.
+                        [--execute -y --require-backup-within=H --no-certs]
   handoff <mode> <srv>  Move traffic between boxes without waiting for DNS.
                         drain = 503 (the only window with downtime, so the DB
                         copy has a still target); front = proxy to the new box

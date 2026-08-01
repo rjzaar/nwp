@@ -50,6 +50,7 @@ source "$REPO_ROOT/lib/demo-smoke.sh"
 source "$REPO_ROOT/lib/impact.sh"        # ops#47 impact contract (fate manifest)
 source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"     # paired golden/reset (ops#133 Phase 2)
+source "$REPO_ROOT/lib/demo-live-moodle.sh"  # Moodle half of the LIVE tier (ops#170)
 source "$REPO_ROOT/lib/deploy-gate.sh"   # deploy_gate_require (live tier only)
 
 # Names of the golden artifacts inside sites/<site>/demo-golden/.
@@ -723,6 +724,17 @@ demo_live_ctx() {
     return 0
 }
 
+# An ssh-prefix STRING for the live host, so lib helpers that take a prefix
+# (lib/demo-live-moodle.sh) can be reused unchanged against it. demo_rssh runs
+# a command; this hands out the invocation itself.
+demo_live_ssh_prefix() {
+    local site="$1"
+    [[ -n "$DEMO_LIVE_IP" ]] || demo_live_ctx "$site" || return 1
+    # shellcheck disable=SC2046
+    printf 'ssh %s -o BatchMode=yes -o ConnectTimeout=15 %s@%s' \
+        "$(nwp_ssh_opts "$site")" "$DEMO_LIVE_USER" "$DEMO_LIVE_IP"
+}
+
 demo_rssh() {
     local site="$1"; shift
     # shellcheck disable=SC2046  # nwp_ssh_opts intentionally word-splits
@@ -744,6 +756,25 @@ demo_rdrush() {
 # has not opted into nwc_demo_access with demo_mode:true is never resettable.
 demo_live_require_demo_mode() {
     local site="$1" val
+
+    # Moodle has no drush, and its demo marker lives in the mdl_config TABLE,
+    # not config.php — see lib/demo-live-moodle.sh for why reading the file
+    # gives the wrong answer. Same opt-in shape, different storage.
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        local prefix db
+        prefix="$(demo_live_ssh_prefix "$site")" || return 1
+        db="$(demo_moodle_cfg_scalar "$prefix" "$DEMO_LIVE_PATH" dbname)" || {
+            print_error "REFUSING: cannot read \$CFG->dbname from ${site} live config.php."
+            return 1
+        }
+        if demo_moodle_is_demo "$prefix" "$db"; then
+            return 0
+        fi
+        print_error "REFUSING: ${site} live does not report nwp_demo_mode=1 in mdl_config."
+        print_info  "Apply the demo posture first: scripts/demo/ssd-demo-posture.sh --site=${site} --tier=live"
+        return 1
+    fi
+
     val="$(demo_rdrush "$site" cget nwc_demo_access.settings demo_mode --format=string 2>/dev/null \
            | tr -d '[:space:]')" || val=""
     case "$val" in
@@ -834,6 +865,15 @@ demo_parity_check_local() {
 # again whether it succeeded or not.
 demo_parity_check_live() {
     local site="$1"
+    # ops#145 parity asks "was every module's SHIPPED CONFIG actually installed"
+    # — a Drupal config-management question with no Moodle equivalent (Moodle
+    # has no exported config tree to diverge from; its settings ARE the
+    # database). Say so out loud rather than run a Drupal probe through drush
+    # that does not exist on this host and report a confusing failure.
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        print_info "Config parity: not applicable to Moodle (no shipped-config tree) — skipped."
+        return 0
+    fi
     [[ -f "$DEMO_PARITY_PROBE" ]] || {
         print_error "Config-parity probe missing: $DEMO_PARITY_PROBE"
         return 1
@@ -1036,13 +1076,41 @@ demo_measure_local() {  # $1 proj  $2 files_parent  $3 since_epoch ("" to skip)
 demo_measure_live() {  # $1 site  $2 files_parent  $3 since_epoch ("" to skip)
     local site="$1" files_parent="$2" since="$3" raw
     DEMO_M_DB=""; DEMO_M_FILES=""; DEMO_M_ACCTS=""
+
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        # Moodle: no drush, and the data is in $CFG->dataroot, not under the
+        # docroot. Measure the same three facts by Moodle-native means so the
+        # fate manifest carries real figures — a manifest full of "?" is the
+        # shape of report an operator learns to scroll past.
+        local mprefix mdb mdataroot
+        if mprefix="$(demo_live_ssh_prefix "$site")"; then
+            mdb="$(demo_moodle_cfg_scalar "$mprefix" "$DEMO_LIVE_PATH" dbname 2>/dev/null)" || mdb=""
+            mdataroot="$(demo_moodle_cfg_scalar "$mprefix" "$DEMO_LIVE_PATH" dataroot 2>/dev/null)" || mdataroot=""
+            if [[ -n "$mdb" ]]; then
+                raw="$($mprefix "sudo mysql -N -e \"SELECT ROUND(SUM(data_length+index_length)/1048576,1) FROM information_schema.tables WHERE table_schema='${mdb}';\" 2>/dev/null" </dev/null 2>/dev/null)" || raw=""
+                DEMO_M_DB="$(_demo_clean_num "$raw")" || true
+                raw="$($mprefix "sudo mysql ${mdb} -N -e 'SELECT COUNT(*) FROM mdl_user WHERE deleted=0;' 2>/dev/null" </dev/null 2>/dev/null)" || raw=""
+                DEMO_M_ACCTS="$(_demo_clean_num "$raw")" || true
+            fi
+            if [[ -n "$mdataroot" ]]; then
+                DEMO_M_FILES="$($mprefix "sudo du -sh ${mdataroot} 2>/dev/null | cut -f1" </dev/null 2>/dev/null | tr -d '[:space:]')" || DEMO_M_FILES=""
+            fi
+        fi
+        return 0
+    fi
+
     raw="$(demo_rdrush "$site" sqlq "$DEMO_SQL_DBSIZE" 2>/dev/null)" || raw=""
-    DEMO_M_DB="$(_demo_clean_num "$raw")"
+    DEMO_M_DB="$(_demo_clean_num "$raw")" || true
     DEMO_M_FILES="$(demo_rssh "$site" "${DEMO_LIVE_SUDO} du -sh ${files_parent}/files 2>/dev/null | cut -f1" 2>/dev/null | tr -d '[:space:]')" || DEMO_M_FILES=""
     if [[ -n "$since" ]]; then
         raw="$(demo_rdrush "$site" sqlq "SELECT COUNT(*) FROM users_field_data WHERE created > $since" 2>/dev/null)" || raw=""
-        DEMO_M_ACCTS="$(_demo_clean_num "$raw")"
+        DEMO_M_ACCTS="$(_demo_clean_num "$raw")" || true
     fi
+    # A measurement helper must never decide the fate of the command that calls
+    # it: _demo_clean_num ends in a regex test, so a non-numeric (i.e. failed)
+    # probe made this function return 1 and, under `set -e`, aborted the whole
+    # reset after printing only its header. Unmeasurable is "?", not fatal.
+    return 0
 }
 
 # One field out of golden.manifest.json (jq when available, awk otherwise).
@@ -1106,7 +1174,10 @@ demo_measure_local_kind() {
 # Returns 0 always: the report never decides, it only informs.
 demo_reset_manifest_build() {
     local site="$1" tier="$2" gdir="$3" target="$4" dry_run="${5:-false}"
-    local files_path="${6:-${target}/sites/default/files}"
+    # An EMPTY 6th arg means "caller had nothing better" — fall back to Drupal's
+    # layout, as before. A caller that knows (Moodle) passes the real path.
+    local files_path="${6:-}"
+    [[ -n "$files_path" ]] || files_path="${target}/sites/default/files"
     local captured cap_epoch age db_sha gdb gfiles cfile live_codes
 
     captured="$(demo_golden_field "$gdir" captured_utc)"
@@ -1144,7 +1215,7 @@ demo_reset_manifest_build() {
     impact_keep "The golden image itself (${gdir}) — verified (sha256 + site match) before this report was built"
     impact_keep "Pre-wipe error digests — watchdog is harvested to demo-harvest/ BEFORE anything is destroyed"
     if demo_is_live "$tier"; then
-        impact_keep "Code, vendor/, settings.php, TLS certificates and DNS on the host — only the DB and sites/default/files are touched"
+        impact_keep "Code, vendor/, settings.php, TLS certificates and DNS on the host — only the DB and ${files_path} are touched"
     fi
 
     # The audit half of the contract: this line lands even when -y/cron skipped
@@ -1264,21 +1335,51 @@ cmd_golden_live() {
     local rdb="${stamp}.db.sql.gz" rfiles="${stamp}.files.tar.gz"
     local files_parent; files_parent="$(demo_live_files_parent)"
 
-    # 1. Remote DB dump.
-    print_info "Dumping database on the live host…"
-    if ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:dump --gzip 2>/dev/null > ~/${rdb}"; then
-        print_error "Remote drush sql:dump failed"
-        demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
-        return 1
-    fi
+    local gkind; gkind="$(demo_kind_of "$site")"
 
-    # 2. Remote files tar (as root: files/ is www-data-owned), then chown back
-    #    so scp can pull it without sudo.
-    print_info "Archiving files on the live host…"
-    if ! demo_rssh "$site" "${DEMO_LIVE_SUDO} tar czf ~/${rfiles} -C ${files_parent} files && ${DEMO_LIVE_SUDO} chown ${DEMO_LIVE_USER}:${DEMO_LIVE_USER} ~/${rfiles}"; then
-        print_error "Remote files tar failed (${files_parent}/files)"
-        demo_rssh "$site" "rm -f ~/${rdb} ~/${rfiles}" >/dev/null 2>&1 || true
-        return 1
+    if [[ "$gkind" == "moodle" ]]; then
+        # MOODLE. No drush, and the user data lives in $CFG->dataroot OUTSIDE
+        # the docroot — archiving the webroot would capture code and miss every
+        # course file. Both locations come from the site's OWN config.php.
+        local mprefix mdb mdataroot
+        mprefix="$(demo_live_ssh_prefix "$site")" || return 1
+        mdb="$(demo_moodle_cfg_scalar "$mprefix" "$DEMO_LIVE_PATH" dbname)" || {
+            print_error "Cannot read \$CFG->dbname from ${site} live config.php"; return 1; }
+        mdataroot="$(demo_moodle_cfg_scalar "$mprefix" "$DEMO_LIVE_PATH" dataroot)" || {
+            print_error "Cannot read \$CFG->dataroot from ${site} live config.php"; return 1; }
+        print_info "Database:  ${mdb}"
+        print_info "Moodledata: ${mdataroot}"
+
+        print_info "Dumping database on the live host…"
+        if ! demo_rssh "$site" "$(demo_moodle_dump_cmd "$mdb" "~/${rdb}")"; then
+            print_error "Remote mysqldump failed"
+            demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
+            return 1
+        fi
+
+        print_info "Archiving moodledata on the live host (excluding regenerable caches)…"
+        if ! demo_rssh "$site" "$(demo_moodle_files_tar_cmd "$mdataroot" "~/${rfiles}" "$DEMO_LIVE_USER")"; then
+            print_error "Remote moodledata tar failed (${mdataroot})"
+            demo_rssh "$site" "rm -f ~/${rdb} ~/${rfiles}" >/dev/null 2>&1 || true
+            return 1
+        fi
+    else
+        # 1. Remote DB dump.
+        print_info "Dumping database on the live host…"
+        if ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:dump --gzip 2>/dev/null > ~/${rdb}"; then
+            print_error "Remote drush sql:dump failed"
+            demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
+            return 1
+        fi
+
+        # 2. Remote files tar (as root: files/ is www-data-owned), then chown back
+        #    so scp can pull it without sudo.
+        print_info "Archiving files on the live host…"
+        if ! demo_rssh "$site" "${DEMO_LIVE_SUDO} tar czf ~/${rfiles} -C ${files_parent} files && ${DEMO_LIVE_SUDO} chown ${DEMO_LIVE_USER}:${DEMO_LIVE_USER} ~/${rfiles}"; then
+            print_error "Remote files tar failed (${files_parent}/files)"
+            demo_rssh "$site" "rm -f ~/${rdb} ~/${rfiles}" >/dev/null 2>&1 || true
+            return 1
+        fi
     fi
 
     # 3. Pull both back, sha-verified fail-closed.
@@ -1487,8 +1588,22 @@ cmd_reset_live() {
             print_error "Bad --if-idle duration: '$if_idle' (use e.g. 30m)"
             return 1
         }
-        newest="$(demo_rdrush "$site" sqlq 'SELECT COALESCE(MAX(timestamp),0) FROM sessions' 2>/dev/null \
-                  | tr -d '[:space:]')" || newest=""
+        if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+            # Moodle records session activity in mdl_sessions.timemodified.
+            # A failed query yields "" here exactly as the Drupal branch does,
+            # and demo_idle_ok treats "" as ACTIVE — the [G4] rule.
+            local iprefix idb
+            iprefix="$(demo_live_ssh_prefix "$site")" || return 1
+            idb="$(demo_moodle_cfg_scalar "$iprefix" "$DEMO_LIVE_PATH" dbname)" || idb=""
+            if [[ -n "$idb" ]]; then
+                newest="$(demo_moodle_last_session "$iprefix" "$idb" 2>/dev/null)" || newest=""
+            else
+                newest=""
+            fi
+        else
+            newest="$(demo_rdrush "$site" sqlq 'SELECT COALESCE(MAX(timestamp),0) FROM sessions' 2>/dev/null \
+                      | tr -d '[:space:]')" || newest=""
+        fi
         if ! demo_idle_ok "$newest" "$window"; then
             demo_log "$site" skip-active "tier=live window=${if_idle} newest=${newest:-query-failed}"
             print_status "WARN" "Session activity within ${if_idle} (newest=${newest:-query-failed}) — NOT resetting (exit ${DEMO_EXIT_ACTIVE})"
@@ -1503,7 +1618,19 @@ cmd_reset_live() {
     #    BEFORE being asked to touch it, and --dry-run leaves without one.
     local files_parent; files_parent="$(demo_live_files_parent)"
     demo_measure_live "$site" "$files_parent" "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
-    demo_reset_manifest "$site" live "$gdir" "https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}" "$dry_run"
+    # Name the data path this reset ACTUALLY destroys. The default is Drupal's
+    # sites/default/files; on Moodle that path does not exist and the real
+    # target is $CFG->dataroot. A fate manifest that names the wrong directory
+    # is worse than none — it is what an operator reads before consenting.
+    local mfiles_path=""
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        local _mp
+        if _mp="$(demo_live_ssh_prefix "$site")"; then
+            mfiles_path="$(demo_moodle_cfg_scalar "$_mp" "$DEMO_LIVE_PATH" dataroot 2>/dev/null)" || mfiles_path=""
+        fi
+        [[ -n "$mfiles_path" ]] || mfiles_path="${DEMO_LIVE_PATH}_moodledata"
+    fi
+    demo_reset_manifest "$site" live "$gdir" "https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}" "$dry_run" "$mfiles_path"
 
     if [[ "$dry_run" == "true" ]]; then
         print_status "OK" "[dry-run] nothing was touched — the report above is what a real reset would do."
@@ -1549,10 +1676,35 @@ cmd_reset_live() {
 
     local cleanup="rm -f ~/${rdb} ~/${rfiles}"
 
+    local rkind; rkind="$(demo_kind_of "$site")"
+    local rprefix rdb_name rdataroot
+    if [[ "$rkind" == "moodle" ]]; then
+        rprefix="$(demo_live_ssh_prefix "$site")" || return 1
+        rdb_name="$(demo_moodle_cfg_scalar "$rprefix" "$DEMO_LIVE_PATH" dbname)" || {
+            demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+            print_error "Cannot read \$CFG->dbname — refusing to restore."; return 1; }
+        rdataroot="$(demo_moodle_cfg_scalar "$rprefix" "$DEMO_LIVE_PATH" dataroot)" || {
+            demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+            print_error "Cannot read \$CFG->dataroot — refusing to restore."; return 1; }
+        # The one string that a recursive delete is aimed at, checked before use.
+        if ! demo_moodle_dataroot_is_safe "$rdataroot"; then
+            demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+            print_error "REFUSING: \$CFG->dataroot '${rdataroot}' does not look like a moodledata directory."
+            return 1
+        fi
+    fi
+
     # 8. Restore DB (drop then import — a plain import would leave orphan
     #    tables that the golden no longer has).
     print_info "Restoring database…"
-    if ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:drop -y >/dev/null 2>&1 && gunzip -c ~/${rdb} | ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:cli"; then
+    if [[ "$rkind" == "moodle" ]]; then
+        if ! demo_rssh "$site" "$(demo_moodle_droptables_cmd "$rdb_name") && $(demo_moodle_import_cmd "$rdb_name" "~/${rdb}")"; then
+            demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+            demo_log "$site" reset-failed "tier=live reason=import-db"
+            print_error "Remote database restore FAILED — the golden is still at $gdir; restore by hand before reopening the site."
+            return 1
+        fi
+    elif ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:drop -y >/dev/null 2>&1 && gunzip -c ~/${rdb} | ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:cli"; then
         demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
         demo_log "$site" reset-failed "tier=live reason=import-db"
         print_error "Remote database restore FAILED — the golden is still at $gdir; restore by hand before reopening the site."
@@ -1560,9 +1712,23 @@ cmd_reset_live() {
     fi
 
     # 9. Restore files (delete-then-untar so removed files don't linger), and
-    #    hand ownership back to the web user.
+    #    hand ownership back to the web user. For Moodle that is the whole of
+    #    $CFG->dataroot, which lives OUTSIDE the docroot.
     print_info "Restoring files…"
-    if ! demo_rssh "$site" "${DEMO_LIVE_SUDO} rm -rf ${files_parent}/files && ${DEMO_LIVE_SUDO} tar xzf ~/${rfiles} -C ${files_parent} && ${DEMO_LIVE_SUDO} chown -R www-data:www-data ${files_parent}/files"; then
+    if [[ "$rkind" == "moodle" ]]; then
+        # The destructive half is written HERE, beside the fate manifest that
+        # disclosed it (ops#47), not hidden in a helper a second caller could
+        # invoke with no disclosure. $rdataroot has already passed
+        # demo_moodle_dataroot_is_safe above — this string is the reason that
+        # guard exists.
+        local mclean="sudo find ${rdataroot} -mindepth 1 -maxdepth 1 -exec rm -rf {} +"
+        if ! demo_rssh "$site" "${mclean} && $(demo_moodle_unpack_files_cmd "$rdataroot" "~/${rfiles}")"; then
+            demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+            demo_log "$site" reset-failed "tier=live reason=files-untar"
+            print_error "Remote moodledata restore FAILED"
+            return 1
+        fi
+    elif ! demo_rssh "$site" "${DEMO_LIVE_SUDO} rm -rf ${files_parent}/files && ${DEMO_LIVE_SUDO} tar xzf ~/${rfiles} -C ${files_parent} && ${DEMO_LIVE_SUDO} chown -R www-data:www-data ${files_parent}/files"; then
         demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
         demo_log "$site" reset-failed "tier=live reason=files-untar"
         print_error "Remote files restore FAILED"
@@ -1572,7 +1738,13 @@ cmd_reset_live() {
     demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
 
     # 10. Reseed the demo account matrix. Deliberately NOT --force.
-    if [[ "$skip_seed" != "true" ]]; then
+    #     Moodle has no nwc:seed-demo: accounts on ssd arrive by SSO from nwd,
+    #     which is the provider and is seeded on its own half of the pair. There
+    #     is nothing to seed here, and calling drush would fail on a host that
+    #     has none — so this is skipped explicitly rather than by accident.
+    if [[ "$rkind" == "moodle" ]]; then
+        print_info "Reseed: not applicable to the Moodle half (accounts arrive by SSO from the provider) — skipped."
+    elif [[ "$skip_seed" != "true" ]]; then
         print_info "Reseeding demo accounts (drush nwc:seed-demo)…"
         if ! demo_rdrush "$site" nwc:seed-demo >/dev/null 2>&1; then
             demo_log "$site" reset-failed "tier=live reason=seed-demo"
@@ -1583,10 +1755,21 @@ cmd_reset_live() {
 
     # 11. Re-push the invite-code registry (the wipe erased the state entry;
     #     the local registry is the source of truth). Non-fatal.
-    demo_sync_codes_to_site "$site" live || true
+    #     Invite codes are a provider-side (nwc_demo_access) concept.
+    if [[ "$rkind" != "moodle" ]]; then
+        demo_sync_codes_to_site "$site" live || true
+    fi
 
-    # 12. Cache rebuild.
-    demo_rdrush "$site" cr >/dev/null 2>&1 || print_warning "remote drush cr failed (non-fatal)"
+    # 12. Cache rebuild. The restore replaced moodledata wholesale, so Moodle's
+    #     caches are not merely stale — their directories are GONE. Purging
+    #     recreates them now rather than leaving the first visitor to do it.
+    if [[ "$rkind" == "moodle" ]]; then
+        local mcliphp; mcliphp="$(get_site_config_value "$site" '.moodle.cli_php_version' '8.3')"
+        demo_rssh "$site" "$(demo_moodle_purge_caches_cmd "$DEMO_LIVE_PATH" "$mcliphp")" >/dev/null 2>&1 \
+            || print_warning "remote Moodle purge_caches failed (non-fatal)"
+    else
+        demo_rdrush "$site" cr >/dev/null 2>&1 || print_warning "remote drush cr failed (non-fatal)"
+    fi
 
     # 13. Post-restore smoke. RETRIED on purpose: the first request after a
     #     cache rebuild is a cold full render, and on a small shared host that
@@ -1603,13 +1786,20 @@ cmd_reset_live() {
         done
         if [[ "$code" == "200" ]]; then
             local jcode
-            jcode="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DEMO_LIVE_DOMAIN}/demo/join" 2>/dev/null || echo 000)"
+            # The route that proves the tester's NEXT step still works. On the
+            # provider that is the join form; on the Moodle half it is the login
+            # page carrying the "Log in using your account on" SSO button, which
+            # is where a tester actually lands. /demo/join does not exist there,
+            # so checking it would report every healthy Moodle reset as failed.
+            local jpath="/demo/join"
+            [[ "$rkind" == "moodle" ]] && jpath="/login/index.php"
+            jcode="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DEMO_LIVE_DOMAIN}${jpath}" 2>/dev/null || echo 000)"
             if [[ "$jcode" == "200" ]]; then
-                print_status "OK" "https://${DEMO_LIVE_DOMAIN}/ and /demo/join both serve 200"
+                print_status "OK" "https://${DEMO_LIVE_DOMAIN}/ and ${jpath} both serve 200"
             else
                 degraded=true
                 demo_log "$site" reset-degraded "tier=live join_http=${jcode}"
-                print_status "FAIL" "/demo/join returned ${jcode} after the restore — testers cannot join."
+                print_status "FAIL" "${jpath} returned ${jcode} after the restore — testers cannot proceed."
             fi
         else
             degraded=true
@@ -2100,12 +2290,30 @@ demo_schedule_key_cmd() {
     [[ -n "$host" ]] || { print_error "No live.server_ip / live.domain for '$site' — cannot schedule --via-key"; return 1; }
     user="$(get_ssh_user "$site")"
     key="${DEMO_KEY_PATH//<site>/$site}"
-    printf 'ssh -i %s -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=30 %s@%s' \
+    # -F /dev/null: IdentitiesOnly + IdentityAgent=none block the AGENT, but an
+    # `IdentityFile` in ~/.ssh/config for this host is still offered — and on a
+    # workstation that file usually names the ADMIN key. When that wins, the
+    # forced command never applies and the wrapper is bypassed entirely: the
+    # action word lands in a login shell instead ("status: command not found"),
+    # so the nightly silently stops resetting while cron reports success.
+    # Reading no config at all is the only way to guarantee this key, and only
+    # this key, is what authenticates. known_hosts still applies (it is not a
+    # config-file setting), so host verification is unaffected.
+    printf 'ssh -F /dev/null -i %s -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=30 %s@%s' \
         "$key" "$user" "$host"
 }
 
 cmd_schedule() {
     local site="$1" remove="$2" tier="${3:-dev}" via_key="${4:-false}"
+    # `pl demo schedule --help` parsed the FLAG as a site name and cheerfully
+    # installed a nightly cron for a site called "--help". A scheduler that
+    # accepts a name no site could ever have is writing a job that can only
+    # fail, nightly, into a crontab nobody re-reads.
+    if [[ -z "$site" || "$site" == -* ]]; then
+        print_error "Usage: pl demo schedule <site> [--tier=live] [--via-key] [--remove]"
+        [[ "$site" == -* ]] && print_hint "'$site' looks like an option, not a site name."
+        return 2
+    fi
     local marker="# NWP Demo Reset - $site"
     local current
     current="$(crontab -l 2>/dev/null || true)"

@@ -345,18 +345,28 @@ run_live() {
     local qargs
     qargs=$(_quote_drush_args)
 
-    # Two candidate remote commands, matching stg2live.sh (~:1297-1299): the
-    # project-root drush first, then the webroot/../vendor/bin/drush fallback.
+    # Three candidate remote commands. The first two match stg2live.sh
+    # (~:1297-1299): PATH drush from the project root, then the
+    # webroot/../vendor/bin/drush fallback. The third (ops#155) is the
+    # project-root composer layout, ${remote_path}/vendor/bin/drush — required
+    # for sites with NO local stg tree, where the webroot guess defaults to
+    # "web" but the live docroot is "html" (e.g. avctest, Open Social
+    # template): there the first command fails (no drush on PATH for www-data)
+    # and the second cd fails (no web/ dir), yet vendor/bin/drush exists at the
+    # project root regardless of what the webroot is called.
     local primary="cd ${remote_path} && ${sudo_prefix} -u www-data drush${qargs}"
     local fallback="cd ${remote_path}/${webroot} && ${sudo_prefix} -u www-data ../vendor/bin/drush${qargs}"
+    local fallback2="cd ${remote_path} && ${sudo_prefix} -u www-data vendor/bin/drush${qargs}"
 
     # Redact any --token value in the printed plan (never print a secret value).
-    local primary_disp fallback_disp
+    local primary_disp fallback_disp fallback2_disp
     primary_disp=$(printf '%s' "$primary" | sed -E 's/(--token[= ])[^ ]+/\1<redacted>/g')
     fallback_disp=$(printf '%s' "$fallback" | sed -E 's/(--token[= ])[^ ]+/\1<redacted>/g')
+    fallback2_disp=$(printf '%s' "$fallback2" | sed -E 's/(--token[= ])[^ ]+/\1<redacted>/g')
     print_info "Target: live ${ssh_user}@${server_ip}:${remote_path}"
     print_info "Remote command: ${primary_disp}"
     print_info "Fallback:       ${fallback_disp}"
+    print_info "Fallback 2:     ${fallback2_disp}"
 
     if [[ "$mode" != "execute" ]]; then
         print_status "OK" "[dry-run] nothing executed. Re-run with --execute to run this on live."
@@ -370,8 +380,9 @@ run_live() {
 
     print_header "Running drush on live"
     ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$primary" || \
-        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$fallback" || {
-            print_error "Remote drush failed (tried both project-root and webroot/../vendor paths)"
+        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$fallback" || \
+        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$fallback2" || {
+            print_error "Remote drush failed (tried PATH drush, webroot/../vendor and project-root vendor/bin paths)"
             exit 1
         }
     print_status "OK" "drush completed on live"

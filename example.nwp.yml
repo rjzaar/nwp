@@ -541,6 +541,12 @@ settings:
     tailnet_ip: 100.64.0.2          # the host's WireGuard/Headscale mesh IP (uvicorn binds ONLY this)
     port: 8600
     headscale_url: https://headscale.example.com   # control server URL for device enrolment
+    # The headscale CONTROL PLANE is usually NOT the console host — the console
+    # runs on a keyless dev-tier box, headscale on whatever box holds the public
+    # endpoint. `pl console enroll` ssh's here to mint a pre-auth key, so
+    # pointing it at the wrong host is a "headscale: command not found".
+    headscale_host: headscale-host   # ssh alias of the box RUNNING headscale
+    headscale_user: default          # headscale user (`headscale users list`) new nodes join as
 ################################################################################
 # Extension fields
 #

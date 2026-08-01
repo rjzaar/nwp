@@ -52,9 +52,13 @@ pl console cert            # issue/renew LE cert via DNS-01 locally, push cert+k
 pl console deploy          # rsync src -> host:~/nwp-console/src, venv, unit, restart, health
 pl console status          # systemd + /health over the mesh
 pl console user add <you> --role owner  # first-run bootstrap -> ONE-TIME enrolment link
+pl console user addkey <name>           # enrol ONE MORE passkey — keeps the existing ones
+pl console user keys <name>             # what passkeys exist, and what each one IS
+pl console user rmkey <name> <handle>   # revoke ONE passkey (refuses the last)
 pl console user reset <name>            # break-glass: revoke passkeys, fresh link (shell-only)
 pl console user list
-pl console enroll          # prints the Headscale pre-auth key runbook for a new device
+pl console enroll          # MINTS a Headscale pre-auth key for a new device (+ the steps)
+pl console enroll --runbook # the steps only, no network — for when the mesh is what is broken
 pl console logs            # tail the console log
 ```
 
@@ -62,6 +66,66 @@ First-run bootstrap: `pl console user add <you> --role owner` prints a one-time
 `/enroll?token=…` link (48 h, single use, token stored hashed). Open it on the
 device that holds the passkey. Further users can be added from `/users` (owner
 role) — but their device needs mesh access first (`pl console enroll`).
+
+### More than one passkey per account
+
+`add` and `reset` were the only token issuers until 2026-08-01, and `reset`
+**wipes every credential first** — so the ordinary case, putting a Solo
+hardware key beside a phone passkey, cost you the passkey you were signed in
+with. `addkey` issues the same single-use, 48 h, hashed-at-rest token *without
+touching credentials*, and runs the whole ceremony as a script:
+
+```
+pl console user addkey <name>                 # health -> token -> browser -> watch
+pl console user addkey <name> --no-open       # enrolling on a phone: print the link, still watch
+pl console user addkey <name> --no-wait       # just issue the link and exit
+pl console user addkey <name> --timeout 600   # default 300 s
+```
+
+1. **Health first**, so a single-use token is never burned while the mesh is
+   down. 2. `fido2-token -L` reports what is plugged into *this* machine —
+   advisory, since the key may be on the phone. 3. The link is printed and
+   opened. 4. It then **polls the host until the passkey count actually goes
+   up**, and returns non-zero if it doesn't — so an abandoned or failed
+   ceremony reports as a failure instead of leaving you to run `user show`
+   yourself. What it canNOT tell you is *which authenticator* answered: the
+   store keeps only the credential id, public key and sign count, so a
+   platform passkey saved on the laptop and a touch on the Solo both read as
+   "+1". Choosing the security key in the browser prompt is still on you.
+   Ctrl-C stops watching and revokes nothing.
+
+The owner-facing equivalent is the **add key** button on `/users`. Either way,
+redeem the link on the device holding the NEW key, on the mesh. For a phone,
+`--qr` prints the link as a QR code to scan (needs `qrencode`) and suppresses
+the local browser — opening it here would burn the single-use token on the
+wrong device.
+
+### Knowing which passkey is which, and revoking just one
+
+Each credential records what the authenticator said about itself at
+registration — `transports` from the browser's `getTransports()`, plus
+py_webauthn's device-type/backed-up pair — so an inventory can name it:
+
+```
+$ pl console user keys rob
+_2NnRQ6dRe  security key (usb), bound to that device            added=2026-08-01T07:00:42Z
+kFtOtqBjZi  unknown — enrolled before authenticator metadata was recorded  added=2026-07-25T00:11:07Z
+```
+
+That is deliberately *unattested self-report*: fine for "which of my keys is
+this", never a security control. Credentials enrolled before 2026-08-01 read
+as **unknown** rather than being guessed at — a passkey inventory that
+confidently mislabels a row is worse than one that admits the gap.
+
+`pl console user rmkey <name> <handle>` (or **revoke** on `/users`) removes one
+by id prefix. It refuses an ambiguous prefix, and it refuses the **last**
+passkey on an account: that is a lockout with no way back in, and the verb
+that means "I have lost everything" is `reset`, which hands back an enrolment
+link in the same breath. A key that is already enrolled is refused by the browser —
+registration sends `excludeCredentials`. One token outstanding per user, so
+re-issuing invalidates any unredeemed one; that also makes `addkey` the way to
+re-send an expired invite without revoking anything. `reset` stays the
+break-glass verb for *lost every key*.
 
 **Cert renewal is manual-ish:** Let's Encrypt certs last 90 days; re-run
 `pl console cert` (idempotent). A `pl todo` freshness check is a good follow-up.

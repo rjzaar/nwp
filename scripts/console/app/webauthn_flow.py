@@ -53,11 +53,33 @@ def verify_registration(credential_json: str, challenge_b64: str, origin: str, r
         expected_rp_id=rp_id,
         require_user_verification=False,  # UV preferred, not required (Solo w/o PIN ok)
     )
+    # The authenticator's self-description, recorded so a passkey list can say
+    # WHICH key each row is. `transports` is not part of the verified response
+    # — it comes from the client's getTransports() — so it is read from the
+    # payload alongside, and both are advisory: unattested self-report, fine
+    # for "which of my keys is this", never a security control.
+    meta = {
+        "aaguid": v.aaguid or "",
+        "device_type": getattr(v.credential_device_type, "value", str(v.credential_device_type or "")),
+        "backed_up": bool(v.credential_backed_up),
+        "transports": _client_transports(credential_json),
+    }
     return {
         "cred_id_b64": bytes_to_base64url(v.credential_id),
         "public_key_b64": bytes_to_base64url(v.credential_public_key),
         "sign_count": v.sign_count,
+        "meta": meta,
     }
+
+
+def _client_transports(credential_json: str) -> list:
+    """['usb','nfc'] / ['internal'] / [] — never raises, it is only a label."""
+    import json as _json
+    try:
+        got = (_json.loads(credential_json).get("response") or {}).get("transports") or []
+        return [str(x)[:16] for x in got if isinstance(x, str)][:8]
+    except Exception:  # noqa: BLE001 — a missing label must not fail an enrolment
+        return []
 
 
 def authentication_options(rp_id: str, allowed_cred_ids_b64: list[str]) -> tuple[str, str]:

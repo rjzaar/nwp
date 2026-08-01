@@ -45,6 +45,7 @@ from .gitlab_api import GitLab
 from .runner import run_pl, run_pl_cached
 from .scope import Scope, ScopeError, ScopeLeak
 from .store import AuditLog, ProjectStore, StoreError, UserStore
+from .store import credential_label as store_credential_label
 
 # Tab order = the whole UI: one full-screen pane at a time.
 PANES = [
@@ -355,7 +356,8 @@ def register_verify(request: Request, payload: dict):
         cred = webauthn_flow.verify_registration(
             json.dumps(payload.get("credential", {})), chal["c"], config.ORIGIN, config.RP_ID
         )
-        store.add_credential(name, cred["cred_id_b64"], cred["public_key_b64"], cred["sign_count"])
+        store.add_credential(name, cred["cred_id_b64"], cred["public_key_b64"], cred["sign_count"],
+                             meta=cred.get("meta"))
     except (StoreError, Exception) as e:  # noqa: BLE001 — surface, fail closed
         audit.append(name, "?", "enroll.fail", {"error": str(e)[:200]}, False)
         raise HTTPException(status_code=400, detail=f"registration failed: {str(e)[:200]}")
@@ -1469,9 +1471,13 @@ def users_page(request: Request, user: dict = Depends(require("owner"))):
 
 
 def _users_view(request: Request, user: dict, message: str, enrol_link: str | None = None) -> HTMLResponse:
+    users = store.list_users()
+    # Per-user passkey rows: a count alone cannot answer "which key is that?",
+    # which is the question you have when one of them goes missing.
+    keys = {u["name"]: store.credentials_view(u["name"]) for u in users}
     return templates.TemplateResponse(
         request, "users.html",
-        {"user": user, "users": store.list_users(), "message": message, "enrol_link": enrol_link,
+        {"user": user, "users": users, "keys": keys, "message": message, "enrol_link": enrol_link,
          "projects": projects.list_projects()},
     )
 
@@ -1501,6 +1507,45 @@ def users_add(request: Request, name: str = Form(...), role: str = Form("viewer"
     return _users_view(request, user,
                        f"user '{name.strip()}' created ({role}){where}. One-time enrolment link (shown ONCE):",
                        f"{config.ORIGIN}/enroll?token={token}")
+
+
+@app.post("/users/{name}/addkey", response_class=HTMLResponse)
+def users_addkey(request: Request, name: str, user: dict = Depends(require("owner"))):
+    """Enrol ONE MORE passkey on an account, keeping the ones it already has.
+
+    Separate from reset because the common case — putting a hardware key beside
+    a phone passkey — must not revoke the credential you are currently signed
+    in with. Same single-use, 48 h, hashed-at-rest token; the difference is
+    only what it costs you.
+    """
+    _guard_origin(request)
+    try:
+        token = store.add_key_token(name, config.ENROL_TOKEN_HOURS)
+    except StoreError as e:
+        return _users_view(request, user, f"error: {e}")
+    audit.append(user["name"], user["role"], "user.addkey", {"name": name}, True)
+    return _users_view(request, user,
+                       f"user '{name}': existing passkeys kept. One-time link to add ANOTHER (shown ONCE):",
+                       f"{config.ORIGIN}/enroll?token={token}")
+
+
+@app.post("/users/{name}/revoke", response_class=HTMLResponse)
+def users_revoke_key(request: Request, name: str, handle: str = Form(...),
+                     user: dict = Depends(require("owner"))):
+    """Revoke ONE passkey — the lost-key verb that keeps the others working.
+
+    The store refuses to remove the last credential (that is a lockout with no
+    enrolment link attached; `reset` is the verb that means that).
+    """
+    _guard_origin(request)
+    try:
+        gone = store.remove_credential(name, handle.strip())
+    except StoreError as e:
+        return _users_view(request, user, f"error: {e}")
+    audit.append(user["name"], user["role"], "user.revokekey",
+                 {"name": name, "handle": gone["id"][:10], "label": store_credential_label(gone)}, True)
+    return _users_view(request, user,
+                       f"revoked passkey {gone['id'][:10]} on '{name}' — their other passkeys still work")
 
 
 @app.post("/users/{name}/reset", response_class=HTMLResponse)

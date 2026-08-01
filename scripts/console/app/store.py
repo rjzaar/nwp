@@ -16,8 +16,8 @@ A v1 file (no schema_version, no projects) loads cleanly and reads as "no
 projects exist" — which the Scope layer turns into legacy, all-sites behaviour.
 
 Enrolment tokens are ONE-TIME: stored hashed, consumed on first successful use.
-The plaintext is printed exactly once by `pl console user add|reset` and never
-stored anywhere.
+The plaintext is printed exactly once by `pl console user add|addkey|reset` and
+never stored anywhere.
 
 LOCKING (this is a permission property, not a tidiness one). Every mutator does
 read-modify-write on ONE json file. Before projects that raced into a lost
@@ -55,6 +55,50 @@ SCHEMA_VERSION = 2
 
 class StoreError(Exception):
     pass
+
+
+# A credential id is ~43 base64url chars. Addressing one by a short prefix is
+# how a human names it on a command line; ambiguity is rejected, not resolved.
+CRED_HANDLE_LEN = 10
+CRED_HANDLE_MIN = 4
+
+# Transports that mean "this credential cannot leave the thing it lives in".
+_HARDWARE_TRANSPORTS = ("usb", "nfc", "ble", "smart-card")
+
+
+def credential_label(cred: dict) -> str:
+    """Plain-English description of ONE stored credential.
+
+    The authenticator describes itself at registration time (transports, plus
+    py_webauthn's device-type/backed-up pair). We record that verbatim and
+    interpret it only here — so the honest answer for a credential enrolled
+    before we recorded anything is "unknown", not a guess. Getting this wrong
+    in the confident direction is what makes a passkey inventory useless: you
+    would be reassured by a line that means nothing.
+    """
+    t = [str(x) for x in (cred.get("transports") or [])]
+    device_type = cred.get("device_type") or ""
+    if not t and not device_type:
+        return "unknown — enrolled before authenticator metadata was recorded"
+
+    if "internal" in t:
+        what = "platform passkey (built into that device)"
+    elif "hybrid" in t or "cable" in t:
+        what = "phone / cross-device passkey"
+    elif any(x in t for x in _HARDWARE_TRANSPORTS):
+        what = "security key (" + ", ".join(x for x in t if x in _HARDWARE_TRANSPORTS) + ")"
+    elif device_type:
+        what = "unrecognised transport"
+    else:
+        what = "unknown transport"
+
+    if device_type == "multi_device":
+        # It syncs. Which is a property worth saying out loud next to a key you
+        # might be treating as "the one that never leaves my keyring".
+        what += ", synced" + (" and backed up" if cred.get("backed_up") else "")
+    elif device_type == "single_device":
+        what += ", bound to that device"
+    return what
 
 
 def _now_iso() -> str:
@@ -169,6 +213,29 @@ class UserStore(_JsonStore):
             self._save(data)
         return token
 
+    def add_key_token(self, name: str, token_hours: int = 48) -> str:
+        """Issue a fresh one-time enrolment token, KEEPING existing credentials.
+
+        This is how a second passkey joins an account — a hardware key beside a
+        phone, a replacement laptop — and how an expired invite is re-issued.
+        `reset_user` is the break-glass twin: same token, but it wipes the
+        credentials first, which is the wrong trade when the point is to hold
+        two keys. Adding a key must never cost you the key you already have.
+
+        One token outstanding per user (the field is single), so re-issuing
+        invalidates any previous unredeemed one.
+        """
+        token = secrets.token_urlsafe(32)
+        with _locked(self.path):
+            data = self._load()
+            if name not in data["users"]:
+                raise StoreError(f"no such user: {name}")
+            data["users"][name]["enrol"] = {
+                "token_sha256": _hash_token(token), "expires": int(time.time()) + token_hours * 3600
+            }
+            self._save(data)
+        return token
+
     def set_role(self, name: str, role: str) -> None:
         if not is_valid_role(role):
             raise StoreError(f"invalid role: {role!r}")
@@ -237,7 +304,18 @@ class UserStore(_JsonStore):
         return None
 
     # -- credentials ---------------------------------------------------------
-    def add_credential(self, name: str, cred_id_b64: str, public_key_b64: str, sign_count: int) -> None:
+    def add_credential(self, name: str, cred_id_b64: str, public_key_b64: str, sign_count: int,
+                       meta: dict | None = None) -> None:
+        """Record a credential. `meta` is the authenticator's self-description.
+
+        Optional, and stored only when present, because credentials enrolled
+        before 2026-08-01 have none — an absent key must read as "unknown",
+        never as a confident wrong answer (see `credential_label`).
+        """
+        extra = {}
+        for k in ("aaguid", "transports", "device_type", "backed_up"):
+            if meta and meta.get(k) not in (None, "", []):
+                extra[k] = meta[k]
         with _locked(self.path):
             data = self._load()
             if name not in data["users"]:
@@ -247,9 +325,62 @@ class UserStore(_JsonStore):
                     if c["id"] == cred_id_b64:
                         raise StoreError("credential already registered")
             data["users"][name]["credentials"].append(
-                {"id": cred_id_b64, "public_key": public_key_b64, "sign_count": int(sign_count), "added": _now_iso()}
+                {"id": cred_id_b64, "public_key": public_key_b64, "sign_count": int(sign_count),
+                 "added": _now_iso(), **extra}
             )
             self._save(data)
+
+    def remove_credential(self, name: str, handle: str) -> dict:
+        """Revoke ONE passkey by id prefix. Returns the removed record.
+
+        Refuses to remove the last one: that is a lockout with no way back in,
+        and the verb that means "I have lost everything" is `reset_user`, which
+        issues a fresh enrolment link in the same breath. Refusing here costs a
+        second command; not refusing costs an account.
+        """
+        if len(handle or "") < CRED_HANDLE_MIN:
+            raise StoreError(f"credential handle too short: {handle!r} (need >= {CRED_HANDLE_MIN} chars)")
+        with _locked(self.path):
+            data = self._load()
+            if name not in data["users"]:
+                raise StoreError(f"no such user: {name}")
+            creds = data["users"][name].get("credentials", [])
+            hits = [c for c in creds if c["id"].startswith(handle)]
+            if not hits:
+                raise StoreError(f"no passkey on '{name}' starting {handle!r}")
+            if len(hits) > 1:
+                raise StoreError(f"ambiguous handle {handle!r} — matches {len(hits)} passkeys, use more characters")
+            if len(creds) == 1:
+                raise StoreError(
+                    f"refusing to remove the LAST passkey for '{name}' — that is a lockout. "
+                    "Use reset (revokes all AND issues a fresh enrolment link), or rm to delete the account."
+                )
+            data["users"][name]["credentials"] = [c for c in creds if c["id"] != hits[0]["id"]]
+            self._save(data)
+        return hits[0]
+
+    def credentials_view(self, name: str) -> list[dict]:
+        """Display rows: short handle, what it is, when, sign count.
+
+        The handle is grown until it is UNIQUE within the account. Two keys
+        from the same vendor really do share a long id prefix — the two Solo
+        credentials on this operator's account share their first 4 characters
+        — and a listing that prints the same handle twice would offer a revoke
+        command that can only ever answer "ambiguous".
+        """
+        u = self.get_user(name)
+        if u is None:
+            raise StoreError(f"no such user: {name}")
+        ids = [c["id"] for c in u.get("credentials", [])]
+        width = CRED_HANDLE_LEN
+        longest = max((len(i) for i in ids), default=CRED_HANDLE_LEN)
+        while width < longest and len({i[:width] for i in ids}) < len(ids):
+            width += 2
+        return [
+            {"handle": c["id"][:width], "label": credential_label(c),
+             "added": c.get("added", ""), "sign_count": c.get("sign_count", 0)}
+            for c in u.get("credentials", [])
+        ]
 
     def find_credential(self, cred_id_b64: str) -> tuple[str, dict] | None:
         for name, u in self._load()["users"].items():

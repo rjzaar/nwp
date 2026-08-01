@@ -21,8 +21,11 @@ set -euo pipefail
 #                                                          scripted passkey enrolment ceremony;
 #                                                          +1 passkey, keeps the existing ones
 #   pl console user reset <name>                           break-glass re-enrol
+#   pl console user keys <name>                            list passkeys (handle + what it is)
+#   pl console user rmkey <name> <handle>                  revoke ONE passkey (never the last)
 #   pl console user list | role <name> <role> | rm <name>
-#   pl console enroll                                      Headscale pre-auth key runbook
+#   pl console enroll [--expiry 1h] [--runbook]            mint a Headscale pre-auth key
+#                                                          on settings.console.headscale_host
 #   pl console dns                                         upsert console A record (Linode API)
 #   pl console cert                                        LE cert via DNS-01 (issued HERE,
 #                                                          only cert+key pushed to host)
@@ -71,6 +74,12 @@ CONSOLE_FQDN="${NWP_CONSOLE_FQDN:-$(_console_cfg fqdn console.example.com)}"
 CONSOLE_TAILNET_IP="${NWP_CONSOLE_TAILNET_IP:-$(_console_cfg tailnet_ip 100.64.0.2)}"
 CONSOLE_PORT="${NWP_CONSOLE_PORT:-$(_console_cfg port 8600)}"
 HEADSCALE_URL="${NWP_CONSOLE_HEADSCALE_URL:-$(_console_cfg headscale_url "https://<headscale-host>")}"
+# The control plane is its own box. It was assumed to be the console host until
+# 2026-08-01, when the printed runbook sent the operator to ssh a box with no
+# headscale on it: the console deliberately runs where no prod keys live, which
+# is exactly NOT where a public control endpoint runs.
+HEADSCALE_HOST="${NWP_CONSOLE_HEADSCALE_HOST:-$(_console_cfg headscale_host "")}"
+HEADSCALE_USER="${NWP_CONSOLE_HEADSCALE_USER:-$(_console_cfg headscale_user "")}"
 CONSOLE_SRC="$REPO_ROOT/scripts/console"
 SECRETS_FILE="${NWP_SECRETS_FILE:-$REPO_ROOT/.secrets.yml}"
 LINODE_DOMAIN_NAME="${CONSOLE_FQDN#*.}"   # apex derived from the console FQDN
@@ -96,6 +105,9 @@ ${BOLD}USAGE:${NC}
                                         watch the host until the credential lands. Existing
                                         passkeys are KEPT. --no-open when enrolling on a phone.)
     pl console user reset <name>       (break-glass: shell-only, revokes passkeys)
+    pl console user keys <name>        (list passkeys: handle, what each one IS, when)
+    pl console user rmkey <name> <handle>
+                                       (revoke ONE passkey; refuses the last — that is reset's job)
     pl console user list | show <name> | role <name> <role> | rm <name>
     pl console project list
     pl console project add|set <pid> [--name N] [--sites a b c] [--demo-sites a]
@@ -606,10 +618,15 @@ cmd_project() {
 # until the credential lands.
 #
 # That last step is the one worth having. Without it "did that work?" is
-# answered by a second command nobody runs, and a browser that silently saved
-# a PLATFORM passkey instead of using the security key looks exactly like a
-# success. Here the command does not return 0 until the passkey count on the
-# host actually went up.
+# answered by a second command nobody runs, so an abandoned ceremony and a
+# completed one look identical. Here the command does not return 0 until the
+# passkey count on the host actually went up.
+#
+# It does NOT prove WHICH authenticator answered — the store holds only the
+# credential id, public key and sign count, so a platform passkey saved on
+# this laptop counts the same as a touch on the hardware key. Recording the
+# AAGUID/transports at enrol time would fix that; today the browser prompt is
+# the only place that distinction is made.
 # ---------------------------------------------------------------------------
 _console_health() {
     curl -fsS --max-time 8 --resolve "${CONSOLE_FQDN}:${CONSOLE_PORT}:${CONSOLE_TAILNET_IP}" \
@@ -633,15 +650,16 @@ _enrol_wait() { # $1 name, $2 baseline count, $3 timeout seconds
 
 cmd_addkey() {
     local name="${1:-}"; shift || true
-    local do_open=1 do_wait=1 timeout=300
+    local do_open=1 do_wait=1 timeout=300 qr=0
     while [ $# -gt 0 ]; do case "$1" in
         --no-open)   do_open=0; shift ;;
         --no-wait)   do_wait=0; shift ;;
+        --qr)        qr=1; do_open=0; shift ;;   # phone enrolment: never open it here
         --timeout)   timeout="${2:-}"; shift 2 ;;
         --timeout=*) timeout="${1#--timeout=}"; shift ;;
-        *) print_error "unknown flag: $1 (want --no-open | --no-wait | --timeout <secs>)"; return 1 ;;
+        *) print_error "unknown flag: $1 (want --no-open | --qr | --no-wait | --timeout <secs>)"; return 1 ;;
     esac; done
-    [ -n "$name" ] || { print_error "usage: pl console user addkey <name> [--no-open] [--no-wait] [--timeout <secs>]"; return 1; }
+    [ -n "$name" ] || { print_error "usage: pl console user addkey <name> [--no-open|--qr] [--no-wait] [--timeout <secs>]"; return 1; }
     _name_ok "$name" || return 1
     [[ "$timeout" =~ ^[0-9]+$ ]] && [ "$timeout" -ge 30 ] || { print_error "--timeout must be seconds, >= 30"; return 1; }
     _require_configured || return 1
@@ -676,7 +694,17 @@ cmd_addkey() {
     echo
     print_hint "single use, 48 h, stored hashed on the host — it cannot be re-shown"
 
-    if [ "$do_open" = 1 ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
+    # Enrolling a PHONE means getting a 43-char token onto it. Typing it is the
+    # step people give up on, so offer the camera instead.
+    if [ "$qr" = 1 ]; then
+        if command -v qrencode >/dev/null 2>&1; then
+            print_info "3/4 scan this with the phone's camera (it is already on the mesh, yes?)"
+            qrencode -t ANSIUTF8 -m 2 "$link"
+        else
+            print_error "qrencode not installed — install it with: sudo apt install qrencode"
+            print_hint "or send yourself the link above; it stays valid for 48 h"
+        fi
+    elif [ "$do_open" = 1 ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
         print_info "3/4 opening it in your browser"
         # The token sits in xdg-open's argv for the moment it runs. Accepted
         # rather than worked around: it is single-use, 48 h, mesh-only, and is
@@ -686,8 +714,16 @@ cmd_addkey() {
     else
         print_info "3/4 open that link on the device holding the key (it must be on the mesh)"
     fi
-    print_hint "when the browser asks WHERE to save it, choose the SECURITY KEY — 'this device' makes a"
-    print_hint "platform passkey on this laptop instead of using the hardware key. Then touch the key."
+    # Which answer is RIGHT at the browser's "where do you want to save this?"
+    # prompt depends entirely on what you are enrolling, so say the one that
+    # matches the mode rather than a generic line that is wrong half the time.
+    if [ "$qr" = 1 ] || [ "$do_open" = 0 ]; then
+        print_hint "on that device, save it as a passkey ON the device (face/fingerprint) — that is the"
+        print_hint "right answer for a phone; 'security key' would ask you for a USB key it cannot reach."
+    else
+        print_hint "when the browser asks WHERE to save it, choose the SECURITY KEY — 'this device' makes a"
+        print_hint "platform passkey on this laptop instead of using the hardware key. Then touch the key."
+    fi
     print_hint "A key that is already enrolled is refused by the browser (excludeCredentials)."
 
     if [ "$do_wait" = 0 ]; then
@@ -743,6 +779,22 @@ cmd_user() {
                 print_hint "  pl console project assign $name <pid> --role viewer"
             fi
             ;;
+        keys)
+            [ -n "${1:-}" ] || { print_error "usage: pl console user keys <name>"; return 1; }
+            _name_ok "$1" || return 1
+            _require_configured || return 1
+            _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-keys '$1'"
+            ;;
+        rmkey)
+            # Revoke ONE passkey. The store refuses the last one — that is a
+            # lockout, and `reset` is the verb that means it (it hands back an
+            # enrolment link in the same breath).
+            [ -n "${2:-}" ] || { print_error "usage: pl console user rmkey <name> <handle>   (handles: pl console user keys <name>)"; return 1; }
+            _name_ok "$1" || return 1
+            [[ "$2" =~ ^[A-Za-z0-9_-]{4,64}$ ]] || { print_error "invalid handle: $2"; return 1; }
+            _require_configured || return 1
+            _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-rmkey '$1' '$2'"
+            ;;
         show)
             [ -n "${1:-}" ] || { print_error "usage: pl console user show <name>"; return 1; }
             _name_ok "$1" || return 1
@@ -781,23 +833,89 @@ cmd_user() {
     esac
 }
 
-cmd_enroll() {
+_enroll_steps() { # $1 optional pre-auth key
+    local key="${1:-}"
     cat <<EOF
-${BOLD}Enrolling a NEW DEVICE onto the mesh (once per device):${NC}
 
- 1. On ${CONSOLE_HOST} (headscale control host), create a pre-auth key:
-      ssh ${CONSOLE_HOST} 'sudo headscale preauthkeys create --user <headscale-user> --expiration 1h'
-    (For a second dev, also add an ACL restricting their node to
-     ${CONSOLE_TAILNET_IP}:${CONSOLE_PORT} only — console port, not ssh/mesh-wide.)
+${BOLD}On the device (phone or laptop), once:${NC}
 
- 2. On the device: install the Tailscale app, set the custom control server to
+ 1. Install the Tailscale app.
+ 2. Set the CUSTOM CONTROL SERVER to:
       ${HEADSCALE_URL}
-    and log in with the pre-auth key.
+    (Android/iOS: menu -> Settings -> Accounts -> "Use an alternate server".)
+ 3. Sign in with the pre-auth key$([ -n "$key" ] && printf ' above' || printf '').
+ 4. Verify: https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health -> {"ok":true}
 
- 3. Verify: open https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health — expect {"ok":true}.
-
-Then create their console account:  pl console user add <name> --role viewer
+Then give that device a passkey:
+    pl console user addkey <name> --no-open      # open the printed link ON the device
+New person rather than a new device of yours:
+    pl console user add <name> --role viewer     # then addkey for their device
 EOF
+}
+
+cmd_enroll() {
+    # Was a printed runbook that named the CONSOLE host as the headscale host.
+    # It was wrong, and a runbook nobody can execute is worse than no runbook —
+    # so this now mints the key itself, from the configured control-plane host.
+    local expiry="1h" runbook=0
+    while [ $# -gt 0 ]; do case "$1" in
+        --expiry)   expiry="${2:-1h}"; shift 2 ;;
+        --expiry=*) expiry="${1#--expiry=}"; shift ;;
+        --runbook)  runbook=1; shift ;;
+        *) print_error "unknown flag: $1 (want --expiry <dur> | --runbook)"; return 1 ;;
+    esac; done
+    [[ "$expiry" =~ ^[0-9]+[mhd]$ ]] || { print_error "--expiry wants a duration like 1h, 30m, 7d"; return 1; }
+
+    if [ "$runbook" = 1 ] || [ -z "$HEADSCALE_HOST" ] || [ -z "$HEADSCALE_USER" ]; then
+        if [ "$runbook" != 1 ]; then
+            print_error "settings.console.{headscale_host,headscale_user} not set in nwp.yml — cannot mint a key"
+            print_hint "headscale runs on the box holding the PUBLIC control endpoint, not necessarily ${CONSOLE_HOST}"
+            print_hint "find it with: headscale users list   (on that box)"
+        fi
+        print_info "Create the pre-auth key yourself on the headscale host:"
+        # headscale >= 0.26 takes a NUMERIC id here and rejects a name outright
+        # ("strconv.ParseUint"). The mint path resolves that for the operator;
+        # the manual path has to tell them, or the runbook fails the same way
+        # the old one did.
+        echo "    sudo headscale users list                 # note the numeric id"
+        echo "    sudo headscale preauthkeys create --user <numeric-user-id> --expiration ${expiry}"
+        _enroll_steps
+        [ "$runbook" = 1 ] && return 0 || return 1
+    fi
+
+    # headscale >= 0.26 takes a numeric user ID on --user and rejects the name
+    # outright ("strconv.ParseUint"). The config names a HUMAN user, so resolve
+    # it here rather than making the operator store an integer that changes if
+    # the user is ever recreated.
+    local uid="$HEADSCALE_USER"
+    if ! [[ "$uid" =~ ^[0-9]+$ ]]; then
+        uid=$(ssh -o ConnectTimeout=10 "$HEADSCALE_HOST" \
+                "sudo -n headscale users list -o json 2>/dev/null" \
+              | python3 -c "import json,sys;u='$HEADSCALE_USER';print(next((str(x['id']) for x in json.load(sys.stdin) if x.get('name')==u),''))" 2>/dev/null) || true
+        [ -n "$uid" ] || {
+            print_error "headscale user '${HEADSCALE_USER}' not found on ${HEADSCALE_HOST}"
+            print_hint "list them with: ssh ${HEADSCALE_HOST} 'sudo -n headscale users list'"
+            return 1
+        }
+    fi
+
+    print_info "minting a ${expiry} pre-auth key on ${HEADSCALE_HOST} (headscale user '${HEADSCALE_USER}' = id ${uid})"
+    local key
+    key=$(ssh -o ConnectTimeout=10 "$HEADSCALE_HOST" \
+            "sudo -n headscale preauthkeys create --user '$uid' --expiration '$expiry' 2>/dev/null" \
+          | tr -d '\r' | grep -oE '(hskey-auth-)?[A-Za-z0-9_-]{40,}' | tail -1) || true
+    if [ -z "$key" ]; then
+        print_error "no key came back from ${HEADSCALE_HOST}"
+        print_hint "check: ssh ${HEADSCALE_HOST} 'sudo -n headscale users list'  (passwordless sudo? right user?)"
+        return 1
+    fi
+    echo
+    echo "    $key"
+    echo
+    print_hint "single device, expires in ${expiry} — mint another any time with: pl console enroll"
+    _enroll_steps "$key"
+    print_hint "Second dev, not your own device? Also add a headscale ACL pinning their node to"
+    print_hint "${CONSOLE_TAILNET_IP}:${CONSOLE_PORT} only — console port, not ssh, not the whole mesh."
 }
 
 cmd_logs() {
@@ -815,13 +933,29 @@ main() {
             *) args+=("$1"); shift ;;
         esac
     done
+    # ${args[@]+"${args[@]}"} — NOT "${args[@]:-}". On an EMPTY array the latter
+    # expands to one empty-string argument, which every parser below reads as a
+    # flag it does not know.
+    #
+    # `enroll` had it worse still: it was dispatched with no arguments at all.
+    # So --runbook (the offline path, for when the mesh is the broken thing)
+    # silently took the NETWORK path, and --expiry never reached its validator —
+    # `pl console enroll --expiry forever` did not refuse, it minted a live
+    # pre-auth key on the production control plane with the default expiry.
+    # Reproduced on the workstation 2026-08-01; eight unredeemed keys from that
+    # and from the feature's own testing were expired by hand.
+    #
+    # CI never minted: the runner has no nwp.yml (gitignored), so HEADSCALE_HOST
+    # is empty there and enroll takes the fallback branch. That is why the two
+    # bats cases failed in CI with the FALLBACK text rather than by minting —
+    # they were red for the real defect, by a different route.
     case "$sub" in
         -h|--help|"") show_help ;;
-        deploy)  _require_configured && cmd_deploy "${args[@]:-}" ;;
+        deploy)  _require_configured && cmd_deploy ${args[@]+"${args[@]}"} ;;
         status)  _require_configured && cmd_status ;;
-        user)    cmd_user "${args[@]:-}" ;;      # gates itself AFTER validating input
-        project) cmd_project "${args[@]:-}" ;;   # ditto
-        enroll)  cmd_enroll ;;
+        user)    cmd_user ${args[@]+"${args[@]}"} ;;      # gates itself AFTER validating input
+        project) cmd_project ${args[@]+"${args[@]}"} ;;   # ditto
+        enroll)  cmd_enroll ${args[@]+"${args[@]}"} ;;
         dns)     _require_configured && cmd_dns ;;
         cert)    _require_configured && cmd_cert ;;
         logs)    _require_configured && cmd_logs ;;

@@ -379,8 +379,10 @@ SECTIONS: tuple = (
                "the VPN app is connected.",
                "There are no custom keyboard shortcuts. The tab bar is ordinary buttons, so "
                "Tab moves between them and Enter or Space activates one.",
-               "Sign-in needs the passkey to be on the device you are using. Losing every "
-               "passkey is an owner-issued reset, not a password reset."),
+               "Sign-in needs the passkey to be on the device you are using. An account can "
+               "hold several — a hardware key beside a phone — via the owner's \"add key\" "
+               "button, which keeps the ones already enrolled. Losing every passkey is an "
+               "owner-issued reset, not a password reset."),
         ),
     },
     {

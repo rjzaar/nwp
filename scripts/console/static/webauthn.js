@@ -47,6 +47,10 @@ async function nwpEnroll(token) {
     response: {
       clientDataJSON: bufToB64u(cred.response.clientDataJSON),
       attestationObject: bufToB64u(cred.response.attestationObject),
+      // How this authenticator can be reached ('usb','nfc' / 'internal' / 'hybrid').
+      // Recorded so /users can say WHICH key each row is; older browsers lack
+      // getTransports(), so an empty list must stay a valid enrolment.
+      transports: (cred.response.getTransports ? cred.response.getTransports() : []),
     },
     clientExtensionResults: cred.getClientExtensionResults(),
   };

@@ -75,6 +75,49 @@ _vfn() {
     [ "$output" = "live" ]
 }
 
+@test "infer: an ssh/scp REMOTE TARGET is what makes it live, with no estate domain" {
+    _vfn "verify_infer_requirement 'ssh deploy@buildhost uptime'"
+    [ "$output" = "live" ]
+    _vfn "verify_infer_requirement 'scp report.txt deploy@buildhost:/tmp/'"
+    [ "$output" = "live" ]
+    _vfn "verify_infer_requirement 'ssh box.example.net systemctl is-active cron'"
+    [ "$output" = "live" ]
+}
+
+# --- false-positive pins: NAMING ssh is not USING it ------------------------
+#
+# Measured regression. A bare ` ssh ` token classified live:4 ("Test SSH access
+# to provisioned server", whose basic commands are `which ssh` and a `test -f`)
+# as needing production: it went from PASSED on main to SKIPPED, i.e. coverage
+# silently removed from the denominator. These are the real command strings
+# from .verification.yml; every one of them must stay runnable.
+
+@test "REGRESSION live:4 — 'which ssh' is a binary probe, not production access" {
+    _vfn "verify_infer_requirement \"which ssh 2>&1 || echo 'ssh not found'\""
+    [ "$output" = "none" ]
+}
+
+@test "REGRESSION — 'ssh -V', grepping for ssh, and ~/.ssh are all local" {
+    _vfn "verify_infer_requirement 'ssh -V 2>&1 | head -1'"
+    [ "$output" = "none" ]
+    _vfn "verify_infer_requirement \"grep -qE 'ssh|SSH|server_ip' scripts/commands/live.sh\""
+    [ "$output" = "none" ]
+    _vfn "verify_infer_requirement 'test -d ~/.ssh && ls ~/.ssh/*.pub 2>/dev/null | head -1'"
+    [ "$output" = "none" ]
+    _vfn "verify_infer_requirement 'which rsync ssh curl 2>&1'"
+    [ "$output" = "none" ]
+    _vfn "verify_infer_requirement 'bash -n scripts/commands/setup-ssh.sh'"
+    [ "$output" = "none" ]
+}
+
+@test "REGRESSION — the whole live:4 item resolves runnable against the REAL registry" {
+    # The end-to-end form of the pin above: whatever the manifest says today,
+    # this item must not be classified into a capability a CI slot lacks.
+    run bash -c "source '$VERIFY' && verify_resolve_item_requirement live 4 basic"
+    [ "$status" -eq 0 ]
+    [ "$output" = "none" ]
+}
+
 @test "infer: generic outbound http is network, not live" {
     _vfn "verify_infer_requirement 'curl -s https://api.github.com/zen'"
     [ "$output" = "network" ]

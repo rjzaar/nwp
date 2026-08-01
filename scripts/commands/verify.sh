@@ -3164,11 +3164,45 @@ verify_requirement_rank() {
 # Word matches are space-delimited over a space-padded copy of the command, so
 # `ddev-site` does not read as `ddev` and `ripl install` does not read as
 # `pl install`.
+#
+# INFERENCE IS COSTLY WHEN WRONG, IN ONE DIRECTION ONLY. A false negative just
+# runs a check that then fails honestly. A false POSITIVE silently removes a
+# perfectly runnable check from the denominator — coverage lost without a red
+# line anywhere. So each pattern must match the command DOING the thing, not
+# merely NAMING it.
+#
+# Measured against the real registry (2026-08-02): a bare ` ssh ` token
+# classified `live:4` — whose whole basic check is `which ssh` plus a
+# `test -f` — as needing production, and it went from passed to skipped. There
+# is not one command in the manifest at any depth that actually opens a remote
+# shell; every `ssh` mention is local (`which ssh`, `ssh -V`, `grep 'ssh'
+# file`, `~/.ssh`). Hence: an ssh/scp invocation counts as `live` only when it
+# names a remote TARGET (`user@host`, or a dotted hostname argument).
 verify_infer_requirement() {
     local padded=" ${1:-} "
     case "$padded" in
+        # -- NEGATIVE FIRST: a tool-availability probe names tools, it does
+        # not use them. `which rsync ssh curl` needs no network, no server and
+        # no docker; classifying it by its argument list is the same mistake
+        # as the ` ssh ` token below, and it cost `which rsync ssh curl 2>&1`
+        # its place in the denominator. A compound that goes on to USE the
+        # tool carries a URL or a remote target, so it falls through.
+        " which "*|" command -v "*|" type ")
+            case "$padded" in
+                *"://"*|*@*) ;;              # compound — keep classifying
+                *) echo "none"; return 0 ;;
+            esac ;;
+    esac
+    case "$padded" in
         # -- live: touches a real server or a live tier --------------------
-        *nwpcode.org*|*" ssh "*|*" scp "*|*"--tier=live"*)
+        # `--tier=live` and an estate domain are unambiguous. For ssh/scp the
+        # test is a remote target, never the bare word: `ssh user@host …`,
+        # `scp f user@host:…`, or `ssh host.domain …`.
+        *"--tier=live"*|*nwpcode.org*)
+            echo "live" ;;
+        *" ssh "*@*|*" scp "*@*)
+            echo "live" ;;
+        *" ssh "[a-zA-Z0-9]*.[a-zA-Z]*|*" scp "*.*:*)
             echo "live" ;;
         # -- ddev: the ddev CLI, site creation, or the {site} placeholder --
         *" ddev "*|*"{site}"*|*" pl init "*|*" pl install "*|*"verify-test"*)

@@ -159,6 +159,12 @@ cmd_create(){
       --desc=*|--description=*) desc="${1#*=}"; shift ;;
       -l|--label|--labels) labels="${2:-}"; shift 2 ;;
       --label=*|--labels=*) labels="${1#*=}"; shift ;;
+      -h|--help)
+        echo "usage: pl issue create --title \"...\" [--desc \"...\"] [--label a,b]"
+        return 0 ;;
+      # An unknown flag must NEVER become the title: `pl issue create --help`
+      # once filed a real nwp/ops issue titled "--help" (#186).
+      -*) die "unknown option: $1 (usage: pl issue create --title \"...\" [--desc \"...\"] [--label a,b])" ;;
       *) [ -z "$title" ] && { title="$1"; shift; } || die "unexpected arg: $1" ;;
     esac
   done

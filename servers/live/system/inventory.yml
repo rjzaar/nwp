@@ -90,7 +90,7 @@ artifacts:
   - id: moodle-cron-scheduler
     kind: cmd
     remote: 'sudo -n crontab -l -u www-data 2>/dev/null'
-    why: "The ONLY Moodle cron on the box: ssc every 15 min under /usr/bin/php8.2 (this is what names the 8.2/cli floor). Note what is ABSENT: rgs, ss2, sso have no scheduler at all — captured so that gap is reviewable instead of assumed."
+    why: "The Moodle crons on the box: ssc and ssd (added 2026-08-02 — ssd had 112 tasks with lastruntime=0, cron had NEVER run), each every 15 min under /usr/bin/php8.2 (this is what names the 8.2/cli floor). Note what is ABSENT: rgs, ss2, sso have no scheduler at all — captured so that gap is reviewable instead of assumed."
   - id: operator-crontab
     kind: cmd
     remote: 'crontab -l'

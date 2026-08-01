@@ -1928,17 +1928,24 @@ YML
 live:
   domain: demo1.example.org
 EOF
-  # A PATH with NO yq on it at all — exactly the systemd user-service case.
-  run env -i HOME="$home" PATH="/usr/bin:/bin" PROJECT_ROOT="$PROJECT_ROOT" \
-      bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
+  # PATH must be CONTROLLED, not inherited-by-convention: `/usr/bin:/bin` holds
+  # a system yq on some runners (met-shell) and not on others (the console
+  # host / this laptop), which made this test runner-dependent — it failed on
+  # nwp!273's pipeline for exactly that reason. demo_invite_join_url needs only
+  # bash builtins plus yq itself, so an EMPTY PATH dir isolates the lookup
+  # completely: the only yq that can ever be found is the one in $HOME/.local/bin.
+  # bash is invoked by absolute path because env(1) cannot resolve it otherwise.
+  emptybin="${TEST_TMP}/emptybin"; mkdir -p "$emptybin"
+  run env -i HOME="$home" PATH="$emptybin" PROJECT_ROOT="$PROJECT_ROOT" \
+      /bin/bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
   [ "$status" -eq 0 ]
   [[ "$output" == "https://demo1.example.org/demo/join" ]]
   [[ "$output" != *"<YOUR-SITE-URL>"* ]]
 
   # NEGATIVE CONTROL: with no yq anywhere the placeholder still renders, because
   # a draft that fails to render is worse than one with a visible gap.
-  run env -i HOME="${TEST_TMP}/emptyhome" PATH="/usr/bin:/bin" PROJECT_ROOT="$PROJECT_ROOT" \
-      bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
+  run env -i HOME="${TEST_TMP}/emptyhome" PATH="$emptybin" PROJECT_ROOT="$PROJECT_ROOT" \
+      /bin/bash -c 'source "'"$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"'/lib/demo.sh"; demo_invite_join_url demo1'
   [ "$status" -eq 0 ]
   [[ "$output" == "<YOUR-SITE-URL>/demo/join" ]]
 }

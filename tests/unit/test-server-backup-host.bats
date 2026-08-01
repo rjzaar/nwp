@@ -214,3 +214,9 @@ teardown() { rm -rf "${TEST_ROOT}"; }
   [[ "$output" == *"--site-dir is required"* ]]
   [[ "$output" == *"--host"* ]]
 }
+
+@test "the staging directory is 0700 at BOTH levels" {
+  # It holds unencrypted database dumps for the seconds between mysqldump and
+  # restic, on a box with 15 sites and several service accounts.
+  grep -q 'install -d -m 700 "$(dirname "${staging:?}")" "$staging"' "$S"
+}

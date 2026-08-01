@@ -359,7 +359,10 @@ main_host(){
   if host_scope_has config; then
     print_header "Step 2 · Host state manifest"
     if [ "$EXECUTE" = y ]; then
-      mkdir -p "${staging:?}"; chmod 700 "$staging"
+      # 0700 on BOTH levels. This directory holds unencrypted database dumps
+      # for the seconds between mysqldump and restic; on a box with 15 sites and
+      # several service accounts, world-listable is not good enough.
+      install -d -m 700 "$(dirname "${staging:?}")" "$staging"
       # Clear yesterday's staged copy without a recursive rm: this file ships in
       # the prod artifact, and `rm -rf $VAR` on a prod host is a shape the impact
       # contract is right to refuse even when the variable is provably safe.
@@ -380,7 +383,7 @@ main_host(){
   if host_scope_has db; then
     print_header "Step 3 · Databases (raw, one dump per schema)"
     if [ "$EXECUTE" = y ]; then
-      mkdir -p "${staging:?}"; chmod 700 "$staging"; wrote_staging=y
+      install -d -m 700 "$(dirname "${staging:?}")" "$staging"; wrote_staging=y
       find "$staging/db" -mindepth 1 -delete 2>/dev/null || true
       sbh_dump_databases "$staging/db" || die "database dump failed — refusing to record a partial DR snapshot (fail-closed)"
       print_status "OK" "databases: $(find "$staging/db" -name '*.sql.gz' | wc -l | tr -d ' ') dumped and gzip-verified"

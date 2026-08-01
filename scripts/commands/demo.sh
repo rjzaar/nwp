@@ -140,6 +140,18 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   level blocks, paste into any mail client).
                                   Default levels: member, guild-leader,
                                   content-manager; --all adds both reviewers.
+    feedback-sync <site> [--tier=dev|live] [--dry-run]
+                                  Push pending tester Feedback entities to
+                                  GitLab issues through the module's own
+                                  nwc-feedback:sync-to-gitlab (which owns the
+                                  classifier, the doctrine body-withholding and
+                                  the agent-eligibility fence). Runs
+                                  automatically PRE-WIPE inside every
+                                  \`pl demo reset\`; this is the hand/scheduled
+                                  entrypoint. REFUSES to push from a site whose
+                                  deployed nwc_feedback cannot be proven to
+                                  carry the ops#140 minimisation — a payload
+                                  that still names the submitter never leaves.
     harvest-post <site> [--dry-run]
                                   Drain sites/<site>/demo-harvest/ into nwp/ops
                                   issues (labels ${DEMO_HARVEST_LABELS};
@@ -626,6 +638,17 @@ cmd_reset_paired() {
         demo_harvest_as "$prov" "$cons" "$tier" demo_harvest_collect_moodle "$cproj" || true
     else
         demo_harvest_as "$prov" "$cons" "$tier" demo_harvest_collect "$cproj" || true
+    fi
+
+    # --- 4b. Pre-wipe tester-feedback sync (fail-open, nwp/ops#161) ----------
+    # PROVIDER half only, and that is not an omission: the Feedback entity lives
+    # on the Drupal provider, and the Moodle consumer's local_feedback forwards
+    # each report to GitLab synchronously at submit time — it holds no pending
+    # set for this wipe to destroy. Cross-site reports raised on the Moodle half
+    # arrive here through /api/feedback/log, so they are covered by this call.
+    if [[ "$pkind" == "drupal" ]]; then
+        print_info "Syncing pending tester feedback from ${prov} before the wipe…"
+        demo_feedback_sync "$prov" "$tier" demo_drush "$pproj" || true
     fi
 
     # --- 5. Restore, PROVIDER FIRST (ADR-0031 D5) ----------------------------
@@ -1750,6 +1773,16 @@ cmd_reset() {
     print_info "Harvesting error signals before the wipe…"
     demo_harvest "$site" "$tier" demo_harvest_collect "$proj" || true
 
+    # 3.6 PRE-WIPE TESTER-FEEDBACK SYNC (fail-OPEN — nwp/ops#161).
+    #     The harvest above catches errors nobody reported. This catches the
+    #     reports testers DID file: Feedback entities live in the DB the next
+    #     line destroys. Interlocked with ops#140 — demo_feedback_sync refuses
+    #     to push from a site whose deployed payload is not provably minimised.
+    if [[ "$kind" == "drupal" ]]; then
+        print_info "Syncing pending tester feedback to GitLab before the wipe…"
+        demo_feedback_sync "$site" "$tier" demo_drush "$proj" || true
+    fi
+
     # 4. Restore DB.
     print_info "Restoring database from golden…"
     ( cd "$proj" && ddev import-db --file="$gdir/$GOLDEN_DB" ) >/dev/null || {
@@ -1899,6 +1932,16 @@ cmd_reset_live() {
     # 6. PRE-WIPE ERROR HARVEST (fail-OPEN — must never block the reset).
     print_info "Harvesting error signals before the wipe…"
     demo_harvest "$site" live demo_harvest_collect_live "$site" || true
+
+    # 6b. PRE-WIPE TESTER-FEEDBACK SYNC (fail-OPEN — nwp/ops#161).
+    #     Strictly before the sql:drop below: the Feedback entities are IN the
+    #     database this reset replaces, and on live there is no other copy of
+    #     them anywhere. Moodle halves are skipped — local_feedback forwards at
+    #     submit time, so it has no pending set for a wipe to destroy.
+    if [[ "$(demo_kind_of "$site")" == "drupal" ]]; then
+        print_info "Syncing pending tester feedback to GitLab before the wipe…"
+        demo_feedback_sync "$site" live demo_rdrush "$site" || true
+    fi
 
     # 7. GUARD 4 — push both artifacts and re-verify their sha256 ON THE REMOTE
     #    while the site is still intact. Nothing below this line is reversible.
@@ -2511,6 +2554,63 @@ cmd_invite() {
 
 DEMO_HARVEST_LABELS="demo-tester,auto-harvest"
 
+################################################################################
+# feedback-sync — push pending tester Feedback entities to GitLab (ops#161)
+#
+# The same function the reset calls pre-wipe, exposed as a verb so it can be
+# scheduled, or run by hand after a `feedback-sync-refused` / `-skipped` line
+# shows up in sites/<site>/demo-reset.log. Unlike the hook, a verb owes the
+# caller an exit status, so this one reads $DEMO_FEEDBACK_STATUS and fails on
+# refused/skipped/failed. The hook itself still always returns 0.
+################################################################################
+
+cmd_feedback_sync() {
+    local site="$1" tier="${2:-dev}" dry_run="${3:-false}"
+
+    print_header "Tester feedback → GitLab: ${site} (${tier})"
+
+    if [[ "$(demo_kind_of "$site")" != "drupal" ]]; then
+        print_info "'${site}' is not a Drupal site — it has no Feedback entities."
+        print_hint  "The Moodle half forwards each report at submit time (local_feedback), so it has no pending set."
+        return 0
+    fi
+
+    local -a run=()
+    if demo_is_live "$tier"; then
+        demo_live_ctx "$site" || return 1
+        run=( demo_rdrush "$site" )
+    else
+        local proj; proj="$(demo_project_dir "$site" "$tier")" || return 1
+        run=( demo_drush "$proj" )
+    fi
+
+    DEMO_FEEDBACK_DRY_RUN="$dry_run" demo_feedback_sync "$site" "$tier" "${run[@]}"
+
+    case "$DEMO_FEEDBACK_STATUS" in
+        ok)
+            if [[ "$dry_run" == "true" ]]; then
+                print_status "OK" "[dry-run] feedback IS pending and the deployed payload is minimised — a real run would push it."
+            else
+                print_status "OK" "Pending feedback synced (see sites/${site}/demo-reset.log)"
+            fi
+            return 0 ;;
+        empty)
+            print_status "OK" "Nothing pending — no token was read and nothing was sent."
+            return 0 ;;
+        refused)
+            print_status "FAIL" "REFUSED: the deployed nwc_feedback on '${site}' does not provably carry the ops#140 minimisation."
+            print_info   "A payload that still names the submitter would copy member identity into GitLab, which has a wider reader set and appears in no RoPA."
+            print_hint   "Deploy nwc main (MR nwp/nwc!50 or later) to ${site}, then re-run. Nothing was sent."
+            return 1 ;;
+        skipped)
+            print_status "FAIL" "No usable feedback-sync token in .secrets.yml (see demo_feedback_token in lib/demo.sh). Nothing was sent."
+            return 1 ;;
+        *)
+            print_status "FAIL" "Sync did not complete — see sites/${site}/demo-reset.log."
+            return 1 ;;
+    esac
+}
+
 cmd_harvest_post() {
     local site="$1" dry_run="${2:-false}"
     local hdir; hdir="$(demo_harvest_dir "$site")"
@@ -2890,6 +2990,7 @@ main() {
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" ;;
+        feedback-sync) cmd_feedback_sync "$site" "$tier" "$dry_run" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
         harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;

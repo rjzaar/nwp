@@ -247,6 +247,22 @@ ssh nwd-demo-reset status                # box-side log, from either machine
 6. **`met` was unreachable during this build**, so steps 2–6 of the handover are
    *untested on met itself*. They were tested end-to-end from the workstation
    using the identical key, options and action words.
+7. **The box wrapper cannot sync tester feedback — it can only warn** (nwp/ops#161).
+   Tester reports filed through `/feedback/submit` are Feedback entities in the
+   database the restore replaces. `pl demo reset` now syncs them to GitLab
+   pre-wipe (see §12), but the *nightly* on this path runs the restricted
+   wrapper, which holds no GitLab token and must not — a key that can push to
+   the tracker is no longer a key that can only reset. So the wrapper counts
+   what is pending and prints a `WARN` naming
+   `pl demo feedback-sync nwd --tier=live`, and the loss is logged rather than
+   silent. Closing it properly needs a decision between:
+   (a) staging a 0600 token on the box — an **operator** secret-placement call,
+       and a `private/secrets-registry.yml` entry with a scope probe; or
+   (b) routing met's cron through `pl demo nightly nwd --tier=live` instead of
+       the key, which keeps the token on met where it already lives and needs
+       no new secret — but gives up the "scheduler needs no repo checkout"
+       property this whole design was built for.
+   (b) is the pl-first answer; neither has been done.
 
 ---
 
@@ -452,3 +468,55 @@ REFUSED: this key may only run the ssd demo reset.        (exit 2)
 The last one is the one worth keeping: one half's key cannot reach the other
 half, because the forced command names the wrapper and the wrapper names the
 site.
+
+---
+
+## 12. Pre-wipe tester-feedback sync (nwp/ops#161, interlocked with ops#140)
+
+`pl demo reset` (and therefore `pl demo nightly`) runs a **pre-wipe feedback
+sync** immediately beside the existing error harvest, on all three reset paths
+(dev, live, paired). It delegates to the module's own
+`drush nwc-feedback:sync-to-gitlab`, which owns the classifier, the doctrine
+body-withholding and the agent-eligibility fence — nothing in `pl` renders an
+issue body.
+
+Same **fail-OPEN** contract as the harvest: `demo_feedback_sync` always returns
+`0`. A failed sync is logged to `sites/<site>/demo-reset.log` and the reset
+proceeds. Losing a night of feedback must never leave a demo site un-reset.
+
+**It is interlocked with ops#140 and that interlock is fail-CLOSED.** Before it
+pushes anything it probes the *deployed* code:
+
+```
+method_exists(\Drupal::service('nwc_feedback.gitlab_sync'), 'buildIssueDescription')
+```
+
+`buildIssueDescription()` is the pure renderer nwp/nwc!50 introduced when it
+took the submitter's name out of the payload; it does not exist on the
+pre-ops#140 service. A site that fails that probe — or that cannot answer it —
+is logged `feedback-sync-refused reason=minimisation-unverified` and **nothing
+is sent**. "I could not look" is not "it is safe": ops#161 and ops#140 were
+filed independently, and enabling the sync against unfixed code would have
+switched a member-identity leak back on.
+
+Log events, all in `sites/<site>/demo-reset.log`:
+
+| event | meaning |
+|---|---|
+| `feedback-sync-ok synced=N` | N reports became GitLab issues before the wipe |
+| `feedback-sync-empty` | nothing pending — **no token was even read** |
+| `feedback-sync-refused` | deployed payload not provably minimised; nothing sent |
+| `feedback-sync-skipped` | no usable token on this host; nothing sent |
+| `feedback-sync-failed` | drush/probe failed; reset continued regardless |
+| `feedback-pending-unsynced` | *box wrapper only* — N reports destroyed, see §9.7 |
+
+Hand/scheduled entrypoint, and what to run after a `refused` or `skipped` line:
+
+```bash
+pl demo feedback-sync nwd --tier=live --dry-run   # probe only, sends nothing
+pl demo feedback-sync nwd --tier=live
+```
+
+The Moodle half (`ssd`) is deliberately skipped: `local_feedback` forwards each
+report to GitLab synchronously at submit time, so it holds no pending set for a
+wipe to destroy. Its payload was minimised by `nwp/ss-moodle-plugins!11`.

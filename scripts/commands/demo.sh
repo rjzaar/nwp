@@ -82,7 +82,11 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   bound into one "cut" (pair.cut.json) —
                                   pairing is AUTOMATIC when the partner has an
                                   instance at this tier; --with-pair demands
-                                  it, --no-pair suppresses.
+                                  it, --no-pair suppresses. At --tier=live an
+                                  "instance" is a configured live HOST, and the
+                                  cut is written into demo-golden-live/ carrying
+                                  tier=live — a dev cut can never authorise a
+                                  live restore.
     reset <site> [--if-idle 30m] [--force] [--yes] [--skip-seed] [--dry-run]
           [--no-pair]
                                   Prints a FATE MANIFEST (what is destroyed,
@@ -102,6 +106,16 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   posture and course catalogue. Naming EITHER
                                   half runs the paired reset; --no-pair is the
                                   explicit single-site override and warns.
+                                  AT --tier=live the paired reset also: takes
+                                  the box's own nightly-wrapper pair lock plus a
+                                  local one-writer lock, pre-flights BOTH hosts
+                                  (reachable + demo_mode) before destroying
+                                  anything, stages BOTH goldens on the box and
+                                  re-verifies them there first, and — if the
+                                  second half still fails — RECORDS the split
+                                  pair in sites/<provider>/demo-pair-
+                                  INCONSISTENT.json, prints the repair command
+                                  and exits non-zero. Re-running repairs it.
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
                                   retrying every 30 min until the 04:00
                                   ${DEMO_TZ} floor, then skip + log.
@@ -307,6 +321,40 @@ demo_check_tier() {
 
 demo_is_live() { [[ "$1" == "live" ]]; }
 
+# demo_instance_exists <site> <tier> — "does this site have something to act on
+# at this tier?", quietly (0/1, no output, no ssh).
+#
+# WHY IT IS NOT demo_project_dir (nwp/ops#170). Every pair decision — main()'s
+# auto-upgrade and cmd_reset's unpaired-half refusal — asked `demo_project_dir
+# <partner> <tier>`, i.e. "is there a local DDEV project". At tier=live there
+# never is one for either half, so at live the pair was structurally invisible:
+# `pl demo reset ssd --tier=live` reset one half of a coupled pair with no
+# warning, and `--with-pair --tier=live` was refused for the wrong reason ("the
+# partner has no instance") before it could reach the real refusal.
+#
+# A live instance is a HOST, so that is what is checked: live.enabled is not
+# false and an address is resolvable from config. Deliberately config-only —
+# reachability is demo_live_ctx's job at the point of use, and a gate that
+# opens an ssh connection is a gate that turns a flaky link into "the pair does
+# not exist".
+demo_instance_exists() {
+    local site="$1" tier="$2"
+    if demo_is_live "$tier"; then
+        local enabled ip srv
+        enabled="$(get_site_config_value "$site" '.live.enabled' "")"
+        [[ "$enabled" == "false" ]] && return 1
+        srv="$(get_site_config_value "$site" '.live.server' "")"
+        ip=""
+        if [[ -n "$srv" ]] && declare -F get_server_config >/dev/null 2>&1; then
+            ip="$(get_server_config "$srv" "ip" "" 2>/dev/null)"
+        fi
+        [[ -z "$ip" ]] && ip="$(get_site_config_value "$site" '.live.server_ip' "")"
+        [[ -n "$ip" ]] || return 1
+        return 0
+    fi
+    demo_project_dir "$site" "$tier" >/dev/null 2>&1
+}
+
 ################################################################################
 # STACK-AWARE PLUMBING (ops#133 Phase 2)
 #
@@ -489,13 +537,36 @@ cmd_golden_paired() {
         print_error "REFUSED: $(basename "$DEMO_PAIR_CONTRACT") does not set demo.paired_golden: true"
         return 1
     }
-    if demo_is_live "$tier"; then
-        print_error "REFUSED: paired capture on --tier=live is not implemented (ops#133 Phase 2 is dev/stg)."
-        print_info  "The consumer half has no live host yet; capture the halves separately once it does."
+    # prod is refused HERE as well as in demo_check_tier: a library/direct caller
+    # never reaches main()'s parse, and this function's whole job is to aim two
+    # destructive verbs at two coupled sites.
+    if [[ "$tier" == "prod" ]]; then
+        print_error "REFUSED: --tier=prod — the demo tier never captures or resets a production site."
         return 1
     fi
 
     local prov="$DEMO_PAIR_PROVIDER" cons="$DEMO_PAIR_CONSUMER"
+
+    # LIVE (nwp/ops#170). This used to refuse. The refusal was NOT a safety
+    # judgement about atomicity — it was written on 2026-07-26 when the consumer
+    # half had no live host to capture ("capture the halves separately once it
+    # does"), and the paired path was DDEV-shaped throughout. Both facts have
+    # changed: the consumer half now HAS a live host, and cmd_golden already
+    # dispatches to cmd_golden_live per half. What was genuinely unsafe about
+    # running it twice in one process was the process-global live context — see
+    # demo_live_ctx. That is now site-keyed, and reset explicitly between the
+    # halves here, so each capture reads its OWN host, path and database.
+    if demo_is_live "$tier"; then
+        demo_instance_exists "$prov" live || {
+            print_error "REFUSED: provider '$prov' has no live host configured (sites/$prov/.nwp.yml live.*)."
+            return 1
+        }
+        demo_instance_exists "$cons" live || {
+            print_error "REFUSED: consumer '$cons' has no live host configured (sites/$cons/.nwp.yml live.*)."
+            return 1
+        }
+    fi
+
     print_header "Paired golden capture: ${DEMO_PAIR_LABEL} (${tier})"
     print_info "Provider: $prov     Consumer: $cons"
     print_info "Both halves are captured back-to-back and bound into ONE cut —"
@@ -503,7 +574,9 @@ cmd_golden_paired() {
 
     local cut_id; cut_id="$(demo_pair_cut_id)"
 
+    demo_is_live "$tier" && demo_live_ctx_reset
     cmd_golden "$prov" "$tier" "$allow_gaps" || { print_error "Provider capture failed — pair cut NOT written."; return 1; }
+    demo_is_live "$tier" && demo_live_ctx_reset
     cmd_golden "$cons" "$tier" "$allow_gaps" || { print_error "Consumer capture failed — pair cut NOT written."; return 1; }
 
     local pdir cdir cut
@@ -513,7 +586,7 @@ cmd_golden_paired() {
 
     demo_pair_cut_write "$cut" "$DEMO_PAIR_LABEL" "$DEMO_PAIR_CONTRACT" "$tier" "$cut_id" \
         "$prov" "$pdir" "$cons" "$cdir" || return 1
-    demo_pair_cut_verify "$cut" "$prov" "$pdir" "$cons" "$cdir" || {
+    demo_pair_cut_verify "$cut" "$prov" "$pdir" "$cons" "$cdir" "$tier" || {
         print_error "Post-capture pair verification failed — cut NOT usable."
         return 1
     }
@@ -542,9 +615,19 @@ cmd_reset_paired() {
         print_error "REFUSED: $(basename "$DEMO_PAIR_CONTRACT") does not set demo.paired_reset: true"
         return 1
     }
-    if demo_is_live "$tier"; then
-        print_error "REFUSED: paired reset on --tier=live is not implemented (ops#133 Phase 2 is dev/stg)."
+    if [[ "$tier" == "prod" ]]; then
+        print_error "REFUSED: --tier=prod — the demo tier never resets a production site."
         return 1
+    fi
+    # LIVE is a different machine shape entirely (two remote databases and two
+    # remote file trees over ssh, no ddev anywhere), so it is its own function
+    # rather than a thicket of branches through this one. It keeps every
+    # guarantee this path has and adds the ones only a live pair needs: one
+    # writer, the box's own pair lock, both halves staged before either is
+    # destroyed, and a recorded, repairable half-applied state (ops#170).
+    if demo_is_live "$tier"; then
+        cmd_reset_paired_live "$site" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run"
+        return $?
     fi
 
     local prov="$DEMO_PAIR_PROVIDER" cons="$DEMO_PAIR_CONSUMER"
@@ -566,7 +649,7 @@ cmd_reset_paired() {
         demo_log "$prov" reset-failed "tier=$tier reason=golden-verify pair=1"; return 1; }
     demo_golden_verify "$cdir" "$cons" || {
         demo_log "$cons" reset-failed "tier=$tier reason=golden-verify pair=1"; return 1; }
-    demo_pair_cut_verify "$cut" "$prov" "$pdir" "$cons" "$cdir" || {
+    demo_pair_cut_verify "$cut" "$prov" "$pdir" "$cons" "$cdir" "$tier" || {
         demo_log "$prov" reset-failed "tier=$tier reason=pair-cut-broken"; return 1; }
     print_status "OK" "Both goldens verify and share cut $(demo_pair_cut_id_of "$cut")"
 
@@ -730,12 +813,34 @@ cmd_reset_paired() {
 
 DEMO_LIVE_IP=""; DEMO_LIVE_USER=""; DEMO_LIVE_PATH=""; DEMO_LIVE_DOMAIN=""
 DEMO_LIVE_WEBROOT=""; DEMO_LIVE_SUDO=""; DEMO_LIVE_DRUSHSUDO=""
+# WHICH site the memo above is for (nwp/ops#170). Load-bearing, see below.
+DEMO_LIVE_SITE=""
+
+# Forget the memoised live target. Called between the halves of a paired live
+# operation, and by demo_live_ctx itself when the site changes.
+demo_live_ctx_reset() {
+    DEMO_LIVE_IP=""; DEMO_LIVE_USER=""; DEMO_LIVE_PATH=""; DEMO_LIVE_DOMAIN=""
+    DEMO_LIVE_WEBROOT=""; DEMO_LIVE_SUDO=""; DEMO_LIVE_DRUSHSUDO=""
+    DEMO_LIVE_SITE=""
+}
 
 # Resolve (and memoise) the live target for <site>. Fail-closed on a missing
 # server_ip: there is no host to act on.
+#
+# ⚠ THE MEMO IS KEYED BY SITE (nwp/ops#170), and that is not a tidiness point.
+# Before this, the memo was `[[ -n "$DEMO_LIVE_IP" ]] && return 0` — a
+# one-shot-per-process design that was correct while exactly one live verb ran
+# per process. A PAIRED live operation resolves TWO sites in one process, and
+# nwd and ssd sit on the SAME box: the second call would have returned the
+# FIRST site's DEMO_LIVE_PATH/DOMAIN with an IP that connects perfectly. The
+# consumer's "golden" would then have been a dump of the provider's database,
+# sha-verified end to end, manifest-stamped with the consumer's name, and
+# restored onto the consumer every night. Nothing downstream could have caught
+# it, because every check would have been checking the wrong site consistently.
 demo_live_ctx() {
     local site="$1"
-    [[ -n "$DEMO_LIVE_IP" ]] && return 0
+    [[ "$DEMO_LIVE_SITE" == "$site" && -n "$DEMO_LIVE_IP" ]] && return 0
+    demo_live_ctx_reset
 
     local enabled; enabled="$(get_site_config_value "$site" '.live.enabled' "")"
     if [[ "$enabled" == "false" ]]; then
@@ -764,8 +869,14 @@ demo_live_ctx() {
         DEMO_LIVE_DRUSHSUDO="sudo -u www-data"
     fi
 
+    # Claim the memo BEFORE the reachability probe: demo_rssh now asserts that
+    # the context it is about to use belongs to the site it was handed, and it
+    # resolves one if not — so without this the probe below would recurse.
+    DEMO_LIVE_SITE="$site"
+
     if ! demo_rssh "$site" "echo ok" >/dev/null 2>&1; then
         print_error "Cannot reach live host ${DEMO_LIVE_USER}@${DEMO_LIVE_IP}"
+        demo_live_ctx_reset
         return 1
     fi
 
@@ -785,7 +896,8 @@ demo_live_ctx() {
 # a command; this hands out the invocation itself.
 demo_live_ssh_prefix() {
     local site="$1"
-    [[ -n "$DEMO_LIVE_IP" ]] || demo_live_ctx "$site" || return 1
+    # Site-keyed, not "have I resolved anything at all" — see demo_live_ctx.
+    [[ "$DEMO_LIVE_SITE" == "$site" && -n "$DEMO_LIVE_IP" ]] || demo_live_ctx "$site" || return 1
     # shellcheck disable=SC2046
     printf 'ssh %s -o BatchMode=yes -o ConnectTimeout=15 %s@%s' \
         "$(nwp_ssh_opts "$site")" "$DEMO_LIVE_USER" "$DEMO_LIVE_IP"
@@ -793,6 +905,10 @@ demo_live_ssh_prefix() {
 
 demo_rssh() {
     local site="$1"; shift
+    # A remote command is NEVER aimed at whatever host the last call happened to
+    # resolve. Both halves of the demo pair live on one box, so a stale context
+    # connects perfectly and acts on the wrong site (ops#170).
+    [[ "$DEMO_LIVE_SITE" == "$site" ]] || demo_live_ctx "$site" || return 1
     # shellcheck disable=SC2046  # nwp_ssh_opts intentionally word-splits
     ssh $(nwp_ssh_opts "$site") -o BatchMode=yes -o ConnectTimeout=15 \
         "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}" "$@"
@@ -978,6 +1094,9 @@ demo_parity_check_live() {
 # caught BEFORE anything is destroyed.
 demo_push_verified() {
     local site="$1" local_path="$2" remote_name="$3"
+    # scp reads the globals directly, so it needs the same site-keyed assertion
+    # demo_rssh makes (ops#170).
+    [[ "$DEMO_LIVE_SITE" == "$site" ]] || demo_live_ctx "$site" || return 1
     local want; want="$(awk '{print $1}' "${local_path}.sha256" 2>/dev/null)"
     if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
         print_error "No usable sha256 sidecar for $(basename "$local_path")"
@@ -1003,6 +1122,7 @@ demo_push_verified() {
 # Fail-closed on mismatch (identical contract to backup_pull_verified).
 demo_pull_verified() {
     local site="$1" remote_name="$2" local_path="$3"
+    [[ "$DEMO_LIVE_SITE" == "$site" ]] || demo_live_ctx "$site" || return 1
     local remote_sha
     remote_sha="$(demo_rssh "$site" "sha256sum ~/${remote_name} 2>/dev/null | awk '{print \$1}'" 2>/dev/null)"
     if [[ ! "$remote_sha" =~ ^[0-9a-f]{64}$ ]]; then
@@ -1023,6 +1143,51 @@ demo_pull_verified() {
     fi
     printf '%s  %s\n' "$local_sha" "$(basename "$local_path")" > "${local_path}.sha256"
     return 0
+}
+
+# demo_live_newest_session <site> — epoch of the newest session activity on the
+# LIVE host, or "" on any failure (demo_idle_ok treats "" as ACTIVE — [G4]).
+#
+# Extracted from cmd_reset_live (ops#170) so the single-site live reset and the
+# PAIRED live reset cannot end up with two different definitions of "idle".
+# ops#163 already had to fix exactly that class of drift between the box wrapper
+# and this file: Moodle writes an mdl_sessions row for every ANONYMOUS request
+# (3931 anon : 1 authenticated, measured on live ssd), so an idle test over the
+# whole table asks "has a crawler touched the site?" and vetoes the wipe for
+# ever. demo_moodle_last_session counts `userid <> 0`.
+demo_live_newest_session() {
+    local site="$1" newest=""
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        local iprefix idb
+        iprefix="$(demo_live_ssh_prefix "$site")" || { printf ''; return 0; }
+        idb="$(demo_moodle_cfg_scalar "$iprefix" "$DEMO_LIVE_PATH" dbname)" || idb=""
+        if [[ -n "$idb" ]]; then
+            newest="$(demo_moodle_last_session "$iprefix" "$idb" 2>/dev/null)" || newest=""
+        fi
+    else
+        newest="$(demo_rdrush "$site" sqlq 'SELECT COALESCE(MAX(timestamp),0) FROM sessions' 2>/dev/null \
+                  | tr -d '[:space:]')" || newest=""
+    fi
+    printf '%s' "$newest"
+}
+
+# demo_live_manifest_files_path <site> — the data directory a LIVE reset of this
+# site actually destroys, for the fate manifest. Empty ⇒ let the manifest
+# builder use Drupal's <target>/sites/default/files default.
+#
+# A fate manifest that names the wrong directory is worse than none: it is what
+# an operator reads before consenting. On Moodle the Drupal default does not
+# even exist and the real target is $CFG->dataroot, read from the site's own
+# config.php. One definition, used by the single-site and the paired live paths
+# (ops#170) — two would drift and only one of them would be the truth.
+demo_live_manifest_files_path() {
+    local site="$1" p="" prefix
+    [[ "$(demo_kind_of "$site")" == "moodle" ]] || { printf ''; return 0; }
+    if prefix="$(demo_live_ssh_prefix "$site")"; then
+        p="$(demo_moodle_cfg_scalar "$prefix" "$DEMO_LIVE_PATH" dataroot 2>/dev/null)" || p=""
+    fi
+    [[ -n "$p" ]] || p="${DEMO_LIVE_PATH}_moodledata"
+    printf '%s' "$p"
 }
 
 demo_live_files_parent() {
@@ -1674,6 +1839,41 @@ cmd_golden_live() {
 # reset — verified restore of the golden image
 ################################################################################
 
+# demo_reset_pair_guard <site> <tier> <pair_ok>
+# A half of a demo PAIR must never be reset alone AT A TIER WHERE THE PAIR
+# EXISTS: the other half's SSO identities are locked against this one's
+# accounts. Refuse and point at the paired path. (--force is NOT an escape
+# hatch; re-capturing the pair is. ADR-0031 D9 both-or-nothing.)
+#
+# Scoped by "does the partner actually have an instance at this tier", so a tier
+# where only one half exists still resets single-site. At live that question is
+# "is a live host configured", not "is there a .ddev directory" — see
+# demo_instance_exists.
+#
+# 0 = carry on (not a pair here, or --no-pair given and logged); 1 = REFUSED.
+demo_reset_pair_guard() {
+    local site="$1" tier="$2" pair_ok="${3:-}"
+    demo_pair_resolve "$site" || return 0
+    demo_pair_reset_enabled "$DEMO_PAIR_CONTRACT" || return 0
+    demo_instance_exists "$(demo_pair_partner "$site" "$DEMO_PAIR_CONTRACT")" "$tier" || return 0
+
+    if [[ "$pair_ok" == "skip" ]]; then
+        # --no-pair: the operator asked for this explicitly. Do it, but say
+        # plainly what it costs, and leave a log line the next reader can find.
+        print_warning "--no-pair: resetting ONLY '$site', which is half of ${DEMO_PAIR_LABEL}."
+        print_warning "The other half keeps SSO locks against accounts this wipe destroys."
+        print_hint    "Re-capture the pair afterwards: pl demo golden ${DEMO_PAIR_PROVIDER} --with-pair --tier=${tier}"
+        demo_log "$site" reset-unpaired-override "tier=$tier pair=${DEMO_PAIR_LABEL}"
+        return 0
+    fi
+    # Reached only by a direct/library call that bypassed main()'s auto-upgrade.
+    # From the CLI, naming either half runs the paired path.
+    print_error "REFUSED: '$site' is half of the demo pair ${DEMO_PAIR_LABEL} at tier '$tier'."
+    print_hint  "Use: pl demo reset ${DEMO_PAIR_PROVIDER} --with-pair --tier=${tier}  (or --no-pair to override)"
+    demo_log "$site" reset-refused "tier=$tier reason=unpaired-half-of-demo-pair"
+    return 1
+}
+
 cmd_reset() {
     local site="$1" tier="$2" if_idle="$3" auto_yes="$4" skip_seed="$5" dry_run="${6:-false}"
     # 7th arg: "skip" suppresses the paired-half refusal. Only the paired path
@@ -1682,6 +1882,16 @@ cmd_reset() {
     # load-bearing (it gates the fate manifest and the early return), so the
     # pair flag moved to 7. Every call site below passes both positionally.
     local pair_ok="${7:-}"
+
+    # THE PAIRED-HALF GUARD RUNS BEFORE THE TIER SPLIT (nwp/ops#170).
+    # It used to sit below the live dispatch, so at --tier=live it was dead code:
+    # `pl demo reset ssd --tier=live` wiped one half of a coupled pair with no
+    # warning, no --no-pair, and no log line saying an unpaired reset had
+    # happened. The guard is about the PAIR, not about ddev, so it belongs above
+    # the split — and it now asks demo_instance_exists, which knows that a live
+    # instance is a host rather than a .ddev directory.
+    demo_reset_pair_guard "$site" "$tier" "$pair_ok" || return 1
+
     if demo_is_live "$tier"; then
         cmd_reset_live "$site" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run"
         return $?
@@ -1699,34 +1909,6 @@ cmd_reset() {
     gdir="$(demo_golden_dir "$site" "$tier")"
 
     print_header "Demo reset: $site ($tier)"
-
-    # A half of a demo PAIR must never be reset alone AT A TIER WHERE THE PAIR
-    # EXISTS: the other half's SSO identities are locked against this one's
-    # accounts. Refuse and point at the paired path. (--force is NOT an escape
-    # hatch; re-capturing the pair is. ADR-0031 D9 both-or-nothing.)
-    #
-    # The guard is deliberately scoped by "does the partner actually have an
-    # instance at this tier". nwd runs a LIVE demo tier today while ssd has no
-    # live host at all (ops#133 Phase 2 infra gap) — so `pl demo reset nwd
-    # --tier=live`, which is the shipped Phase-1 behaviour, must keep working.
-    if demo_pair_resolve "$site" && demo_pair_reset_enabled "$DEMO_PAIR_CONTRACT" \
-       && demo_project_dir "$(demo_pair_partner "$site" "$DEMO_PAIR_CONTRACT")" "$tier" >/dev/null 2>&1; then
-        if [[ "$pair_ok" == "skip" ]]; then
-            # --no-pair: the operator asked for this explicitly. Do it, but say
-            # plainly what it costs, and leave a log line the next reader can find.
-            print_warning "--no-pair: resetting ONLY '$site', which is half of ${DEMO_PAIR_LABEL}."
-            print_warning "The other half keeps SSO locks against accounts this wipe destroys."
-            print_hint    "Re-capture the pair afterwards: pl demo golden ${DEMO_PAIR_PROVIDER} --with-pair"
-            demo_log "$site" reset-unpaired-override "tier=$tier pair=${DEMO_PAIR_LABEL}"
-        else
-            # Reached only by a direct/library call that bypassed main()'s
-            # auto-upgrade. From the CLI, naming either half runs the paired path.
-            print_error "REFUSED: '$site' is half of the demo pair ${DEMO_PAIR_LABEL} at tier '$tier'."
-            print_hint  "Use: pl demo reset ${DEMO_PAIR_PROVIDER} --with-pair  (or --no-pair to override)"
-            demo_log "$site" reset-refused "tier=$tier reason=unpaired-half-of-demo-pair"
-            return 1
-        fi
-    fi
 
     # 1. Fail-closed golden verification (site match + sha256 both artifacts).
     demo_golden_verify "$gdir" "$site" || {
@@ -1836,6 +2018,21 @@ cmd_reset() {
 
 cmd_reset_live() {
     local site="$1" if_idle="$2" auto_yes="$3" skip_seed="$4" dry_run="${5:-false}"
+    # --- PAIRED-HALF MODE (ops#170), args 6-8 ---------------------------------
+    # arg 6 = the cut id this half belongs to; NON-EMPTY means "you are one half
+    #         of a paired live reset that has ALREADY rendered ONE fate manifest
+    #         covering both halves, passed the deploy gate once and taken one
+    #         typed confirmation". So this invocation must not render a second
+    #         report, ask a second time, or re-run the idle guard the pair
+    #         already ran across BOTH halves. Everything else — the demo_mode
+    #         assertion, the golden verification, the staged-artifact
+    #         re-verification, the harvest, the restore, the smoke — is
+    #         per-half and stays exactly as it is for a single site.
+    # args 7-8 = artifacts ALREADY pushed and sha-verified on the far side by
+    #         the paired caller, which stages BOTH halves before destroying
+    #         either. Empty ⇒ this call pushes its own (single-site behaviour).
+    local pair_cut="${6:-}" staged_db="${7:-}" staged_files="${8:-}"
+    local paired="false"; [[ -n "$pair_cut" ]] && paired="true"
     local gdir start_ts
     start_ts=$(date +%s)
     gdir="$(demo_golden_dir "$site" live)"
@@ -1864,22 +2061,7 @@ cmd_reset_live() {
             print_error "Bad --if-idle duration: '$if_idle' (use e.g. 30m)"
             return 1
         }
-        if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
-            # Moodle records session activity in mdl_sessions.timemodified.
-            # A failed query yields "" here exactly as the Drupal branch does,
-            # and demo_idle_ok treats "" as ACTIVE — the [G4] rule.
-            local iprefix idb
-            iprefix="$(demo_live_ssh_prefix "$site")" || return 1
-            idb="$(demo_moodle_cfg_scalar "$iprefix" "$DEMO_LIVE_PATH" dbname)" || idb=""
-            if [[ -n "$idb" ]]; then
-                newest="$(demo_moodle_last_session "$iprefix" "$idb" 2>/dev/null)" || newest=""
-            else
-                newest=""
-            fi
-        else
-            newest="$(demo_rdrush "$site" sqlq 'SELECT COALESCE(MAX(timestamp),0) FROM sessions' 2>/dev/null \
-                      | tr -d '[:space:]')" || newest=""
-        fi
+        newest="$(demo_live_newest_session "$site")" || newest=""
         if ! demo_idle_ok "$newest" "$window"; then
             demo_log "$site" skip-active "tier=live window=${if_idle} newest=${newest:-query-failed}"
             print_status "WARN" "Session activity within ${if_idle} (newest=${newest:-query-failed}) — NOT resetting (exit ${DEMO_EXIT_ACTIVE})"
@@ -1893,42 +2075,40 @@ cmd_reset_live() {
     #    gate on purpose: the operator sees what the Solo touch is authorising
     #    BEFORE being asked to touch it, and --dry-run leaves without one.
     local files_parent; files_parent="$(demo_live_files_parent)"
-    demo_measure_live "$site" "$files_parent" "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
-    # Name the data path this reset ACTUALLY destroys. The default is Drupal's
-    # sites/default/files; on Moodle that path does not exist and the real
-    # target is $CFG->dataroot. A fate manifest that names the wrong directory
-    # is worse than none — it is what an operator reads before consenting.
-    local mfiles_path=""
-    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
-        local _mp
-        if _mp="$(demo_live_ssh_prefix "$site")"; then
-            mfiles_path="$(demo_moodle_cfg_scalar "$_mp" "$DEMO_LIVE_PATH" dataroot 2>/dev/null)" || mfiles_path=""
+    if [[ "$paired" != "true" ]]; then
+        demo_measure_live "$site" "$files_parent" "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
+        demo_reset_manifest "$site" live "$gdir" "https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}" "$dry_run" \
+            "$(demo_live_manifest_files_path "$site")"
+
+        if [[ "$dry_run" == "true" ]]; then
+            print_status "OK" "[dry-run] nothing was touched — the report above is what a real reset would do."
+            return 0
         fi
-        [[ -n "$mfiles_path" ]] || mfiles_path="${DEMO_LIVE_PATH}_moodledata"
-    fi
-    demo_reset_manifest "$site" live "$gdir" "https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}" "$dry_run" "$mfiles_path"
 
-    if [[ "$dry_run" == "true" ]]; then
-        print_status "OK" "[dry-run] nothing was touched — the report above is what a real reset would do."
-        return 0
-    fi
-
-    # 4b. Deploy gate. Unconfigured (met/dev) → a printed notice and proceed, so
-    #    the nightly cron still runs; configured (ver) → a real Solo touch.
-    if declare -F deploy_gate_require >/dev/null 2>&1; then
-        deploy_gate_require "$site" "live" \
-            "restore the demo golden image over ${DEMO_LIVE_DOMAIN:-$site} (DB + uploads are ERASED and replaced)" || {
-            demo_log "$site" reset-failed "tier=live reason=deploy-gate"
-            return 1
-        }
+        # 4b. Deploy gate. Unconfigured (met/dev) → a printed notice and proceed,
+        #    so the nightly cron still runs; configured (ver) → a real Solo touch.
+        if declare -F deploy_gate_require >/dev/null 2>&1; then
+            deploy_gate_require "$site" "live" \
+                "restore the demo golden image over ${DEMO_LIVE_DOMAIN:-$site} (DB + uploads are ERASED and replaced)" || {
+                demo_log "$site" reset-failed "tier=live reason=deploy-gate"
+                return 1
+            }
+        fi
+    else
+        # The pair rendered ONE manifest for BOTH halves, took ONE deploy-gate
+        # touch and ONE typed confirmation before calling us. A dry run never
+        # gets this far: cmd_reset_paired_live returns after its own report.
+        print_info "Paired half of cut ${pair_cut} — the pair's manifest, gate and confirmation already covered this site."
     fi
 
     # 5. Confirm. A LIVE wipe destroys the LAST copy of everything the testers
     #    made (nothing else holds it), so this is the TYPED tier — a y/N reflex
     #    is not proportionate to erasing a site people are using. --force/--yes
     #    skips the prompt for the scheduler; the report above already ran.
-    impact_confirm typed "${DEMO_LIVE_DOMAIN:-$site}" "$auto_yes" \
-        || { print_info "Aborted."; return 1; }
+    if [[ "$paired" != "true" ]]; then
+        impact_confirm typed "${DEMO_LIVE_DOMAIN:-$site}" "$auto_yes" \
+            || { print_info "Aborted."; return 1; }
+    fi
 
     # 6. PRE-WIPE ERROR HARVEST (fail-OPEN — must never block the reset).
     print_info "Harvesting error signals before the wipe…"
@@ -1948,17 +2128,38 @@ cmd_reset_live() {
     #    while the site is still intact. Nothing below this line is reversible.
     local stamp="demo-restore-$$-$(date -u '+%Y%m%d%H%M%S')"
     local rdb="${stamp}.db.sql.gz" rfiles="${stamp}.files.tar.gz"
-    print_info "Uploading golden image to the live host (sha256 verified on arrival)…"
-    if ! demo_push_verified "$site" "$gdir/$GOLDEN_DB" "$rdb"; then
-        demo_log "$site" reset-failed "tier=live reason=push-db"
-        return 1
+    if [[ -n "$staged_db" && -n "$staged_files" ]]; then
+        # PAIRED: the caller pushed BOTH halves' artifacts and verified both
+        # sha256s on the far side BEFORE approving any destruction, so that a
+        # transfer failure — by far the likeliest way this fails — cannot happen
+        # with one half already wiped. Re-verify here anyway: this function is
+        # what destroys, so it checks its own restore source rather than
+        # trusting a claim in an argument.
+        rdb="$staged_db"; rfiles="$staged_files"
+        local wdb wfiles gdb_r gfiles_r
+        wdb="$(awk '{print $1}' "${gdir}/${GOLDEN_DB}.sha256" 2>/dev/null)"
+        wfiles="$(awk '{print $1}' "${gdir}/${GOLDEN_FILES}.sha256" 2>/dev/null)"
+        gdb_r="$(demo_rssh "$site" "sha256sum ~/${rdb} 2>/dev/null | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')"
+        gfiles_r="$(demo_rssh "$site" "sha256sum ~/${rfiles} 2>/dev/null | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')"
+        if [[ "$gdb_r" != "$wdb" || "$gfiles_r" != "$wfiles" || ! "$wdb" =~ ^[0-9a-f]{64}$ ]]; then
+            demo_log "$site" reset-failed "tier=live reason=prestaged-sha-mismatch"
+            print_error "Pre-staged golden on the live host does not match ${site}'s local golden — refusing to restore."
+            return 1
+        fi
+        print_status "OK" "Pre-staged golden re-verified on the live host (sha256)"
+    else
+        print_info "Uploading golden image to the live host (sha256 verified on arrival)…"
+        if ! demo_push_verified "$site" "$gdir/$GOLDEN_DB" "$rdb"; then
+            demo_log "$site" reset-failed "tier=live reason=push-db"
+            return 1
+        fi
+        if ! demo_push_verified "$site" "$gdir/$GOLDEN_FILES" "$rfiles"; then
+            demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
+            demo_log "$site" reset-failed "tier=live reason=push-files"
+            return 1
+        fi
+        print_status "OK" "Golden image staged on the live host and re-verified there"
     fi
-    if ! demo_push_verified "$site" "$gdir/$GOLDEN_FILES" "$rfiles"; then
-        demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
-        demo_log "$site" reset-failed "tier=live reason=push-files"
-        return 1
-    fi
-    print_status "OK" "Golden image staged on the live host and re-verified there"
 
     local cleanup="rm -f ~/${rdb} ~/${rfiles}"
 
@@ -2098,10 +2299,398 @@ cmd_reset_live() {
     if [[ "$degraded" == "true" ]]; then
         demo_log "$site" reset-ok-degraded "tier=live took=${took}s host=${DEMO_LIVE_IP}"
         print_warning "Data restored, but the site did not pass its smoke check — treat as FAILED."
+        # PAIRED: the data IS at the cut, so the other half must still be brought
+        # to the same cut — stopping here is what leaves the pair mismatched.
+        # DEMO_EXIT_DEGRADED says "restored but red" so the caller can finish the
+        # pair and still report the run as failed. Single-site keeps returning 1.
+        [[ "$paired" == "true" ]] && return "$DEMO_EXIT_DEGRADED"
         return 1
     fi
     demo_log "$site" reset-ok "tier=live took=${took}s host=${DEMO_LIVE_IP}"
     print_status "OK" "Live demo reset complete in ${took}s — ${DEMO_LIVE_DOMAIN:-$site} is back at the golden image"
+}
+
+################################################################################
+# reset (live, PAIRED) — one cut, two live hosts, no shared transaction
+#                                                          (nwp/ops#170)
+#
+# WHAT THE OLD REFUSAL WAS, AND WHY REPLACING IT IS NOT DELETING A GUARD
+# ---------------------------------------------------------------------
+# `cmd_reset_paired` used to answer `--tier=live` with
+#   "REFUSED: paired reset on --tier=live is not implemented (ops#133 Phase 2 is
+#    dev/stg)."
+# The commit that wrote it (2228088, 2026-07-26) is explicit about the reason in
+# the sibling refusal: *"The consumer half has no live host yet; capture the
+# halves separately once it does."* It was a NOT-BUILT marker, not a safety
+# judgement — the paired path was `ddev import-db`/`ddev mysql` from end to end
+# and there was no second live host for it to act on. Both facts have since
+# changed (the consumer half now has a live host; the Moodle live plumbing
+# landed in lib/demo-live-moodle.sh), and what the refusal was standing in front
+# of has been built here rather than removed.
+#
+# The one thing that WAS genuinely unsafe about running the live path twice in
+# one process is fixed at the root: demo_live_ctx memoised its target for the
+# life of the process, and both halves sit on the SAME box, so the second half
+# would have inherited the first half's path/domain/database with an IP that
+# connects perfectly. It is now site-keyed and every remote helper asserts it.
+#
+# WHAT IS AND IS NOT GUARANTEED
+# -----------------------------
+# NOT ATOMIC, and this function does not pretend otherwise: two databases, two
+# file trees, no shared transaction. What is guaranteed:
+#
+#   * ONE CUT. Both goldens verify AND still carry the sha256s the cut recorded,
+#     AND the cut declares tier=live, before anything is destroyed. A cut that
+#     binds only one half cannot exist (demo_pair_cut_write refuses to write one)
+#     and a half re-captured alone is caught here.
+#   * EVERY REFUSAL FIRST, FOR BOTH HALVES. live.enabled, reachability,
+#     demo_mode, golden, cut, idle — all of it, on BOTH sites, before the first
+#     destructive command. A pair with one unreachable half destroys nothing.
+#   * ONE MANIFEST, ONE GATE, ONE TYPED CONFIRM covering both halves. An
+#     operator cannot approve half a pair by accident.
+#   * BOTH ARTIFACT SETS STAGED AND RE-VERIFIED ON THE BOX BEFORE EITHER SITE IS
+#     TOUCHED. Transfer is the likeliest failure; this moves it entirely in front
+#     of the first wipe.
+#   * PROVIDER FIRST (ADR-0031 D5). The identity origin is restored first, so
+#     re-running repairs a partial run.
+#   * ONE WRITER + THE BOX'S OWN PAIR LOCK for the whole run, so this cannot
+#     interleave with the box-resident nightlies (which know nothing about it).
+#   * THE HALF-APPLIED STATE IS RECORDED AND REPAIRABLE — see below.
+#
+# THE HALF-APPLIED FAILURE MODE, STATED EXPLICITLY
+# ------------------------------------------------
+# Provider fails      → consumer NEVER TOUCHED. The pair is still on its old
+#                       matched state on the consumer side and a partially
+#                       restored provider; re-run to repair. No breadcrumb: the
+#                       pair was not split by us.
+# Consumer fails after
+# the provider was
+# restored            → THE PAIR IS SPLIT: nwd is at cut X, ssd is still at
+#                       whatever testers left. mdl_user.idnumber on ssd now
+#                       points at nwd accounts that no longer exist, which is
+#                       precisely what the pair exists to prevent. So:
+#                         - a breadcrumb file is written
+#                           (sites/<provider>/demo-pair-INCONSISTENT.json),
+#                         - both halves' logs get `pair-inconsistent`,
+#                         - the exact repair command is printed,
+#                         - `pl demo status` reports it until it is repaired,
+#                         - the run exits NON-ZERO,
+#                         - and the breadcrumb is cleared ONLY by a paired reset
+#                           in which both halves reached the same cut.
+#                       Re-running the same command is the repair, and it is safe
+#                       to re-run: restoring an already-restored half is a no-op
+#                       in effect.
+# Either half restores
+# but smokes red      → the OTHER half is still brought to the same cut (leaving
+#                       them on different cuts to report a 502 would be trading a
+#                       cosmetic failure for a data-consistency one), then the run
+#                       reports FAILED. DEMO_EXIT_DEGRADED carries that
+#                       distinction out of cmd_reset_live.
+################################################################################
+
+# The lock pair, acquired for the whole paired run. Returns 1 (having said why)
+# unless BOTH the local one-writer lock and the box's two wrapper locks are ours.
+# Sets DEMO_PAIR_BOX_HOLDER (the remote pid) when the box locks were taken.
+DEMO_PAIR_BOX_HOLDER=""
+DEMO_PAIR_LOCAL_LOCK_FD=""
+
+demo_pair_live_lock() {
+    local prov="$1" cons="$2" probe_only="${3:-false}"
+    local lock_file; lock_file="$(demo_pair_local_lock_file "$prov")"
+    mkdir -p "$(dirname "$lock_file")" 2>/dev/null || true
+    # touch-then-exec, not exec alone: a redirection error on `exec` kills a
+    # non-interactive bash outright (the `|| {…}` never runs), so the operator
+    # would get a bare exit with no reason. Fail closed, but say why.
+    if ! touch "$lock_file" 2>/dev/null; then
+        print_error "Cannot open the pair lock ${lock_file} — refusing."
+        return 1
+    fi
+    # 201: a fixed high fd, held for the life of the process. Fail-CLOSED — two
+    # paired restores of one pair must never interleave.
+    exec 201>>"$lock_file" || {
+        print_error "Cannot open the pair lock ${lock_file} — refusing."
+        return 1
+    }
+    if ! flock -n 201; then
+        print_error "REFUSED: another paired demo reset for ${prov}↔${cons} is already running (lock ${lock_file})."
+        return 1
+    fi
+    DEMO_PAIR_LOCAL_LOCK_FD=201
+
+    local la lb
+    la="$(demo_pair_box_lock_file "$prov")"
+    lb="$(demo_pair_box_lock_file "$cons")"
+
+    # --dry-run takes nothing on the box: it only reports. It still LOOKS, so the
+    # report can say that a nightly is mid-flight.
+    if [[ "$probe_only" == "true" ]]; then
+        local probe
+        probe="$(demo_rssh "$prov" "$(demo_pair_box_lock_probe_cmd "$la" "$lb")" 2>/dev/null)" || probe="UNKNOWN"
+        case "$probe" in
+            FREE)  print_status "OK" "Box pair locks are free (${la}, ${lb})" ;;
+            BUSY*) print_status "WARN" "Box pair lock BUSY — a box-resident nightly is running now: ${probe}" ;;
+            *)     print_status "WARN" "Could not probe the box pair locks — a real run would REFUSE here." ;;
+        esac
+        return 0
+    fi
+
+    local out
+    out="$(demo_rssh "$prov" "$(demo_pair_box_lock_cmd "$la" "$lb" "$DEMO_PAIR_BOX_LOCK_TTL")" 2>/dev/null)" || out="${out:-}"
+    case "$out" in
+        HOLDER*)
+            DEMO_PAIR_BOX_HOLDER="${out#HOLDER }"
+            DEMO_PAIR_BOX_HOLDER="${DEMO_PAIR_BOX_HOLDER//[^0-9]/}"
+            [[ -n "$DEMO_PAIR_BOX_HOLDER" ]] || {
+                print_error "Box pair lock returned a holder with no pid — refusing."
+                return 1
+            }
+            print_status "OK" "Box pair locks held for this run (pid ${DEMO_PAIR_BOX_HOLDER}, self-releasing after ${DEMO_PAIR_BOX_LOCK_TTL}s)"
+            ;;
+        BUSY*)
+            print_error "REFUSED: a box-resident demo reset holds the pair lock right now (${out#BUSY })."
+            print_hint  "The nightly wrappers run 01:00–03:30 Australia/Melbourne; retry outside that window."
+            return 1
+            ;;
+        NOTHELD*)
+            # The holder did not actually take the locks. Believing it would mean
+            # believing a lock we do not hold.
+            print_error "REFUSED: could not take the box pair lock (${out})."
+            return 1
+            ;;
+        *)
+            print_error "REFUSED: could not establish the box pair lock (got '${out:-<nothing>}')."
+            print_hint  "This gate is fail-closed on purpose: without it a workstation-driven paired reset can run at the same moment as the box nightly."
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+demo_pair_live_unlock() {
+    if [[ -n "$DEMO_PAIR_BOX_HOLDER" ]]; then
+        demo_rssh "$1" "$(demo_pair_box_unlock_cmd "$DEMO_PAIR_BOX_HOLDER")" >/dev/null 2>&1 || true
+        DEMO_PAIR_BOX_HOLDER=""
+    fi
+    if [[ -n "$DEMO_PAIR_LOCAL_LOCK_FD" ]]; then
+        flock -u 201 2>/dev/null || true
+        DEMO_PAIR_LOCAL_LOCK_FD=""
+    fi
+}
+
+# The front door: lock, run, unlock — whatever the body does. The body has many
+# early returns (that is the point of a fail-closed verb), so the release cannot
+# live inside it.
+cmd_reset_paired_live() {
+    local rc=0
+    # Normally reached through cmd_reset_paired, which has already resolved the
+    # contract and checked the opt-in. A direct caller (a test, a future verb)
+    # gets the same gates rather than an unset-variable crash: the opt-in is the
+    # only thing keeping the REAL ssc↔nwc pair out of a wipe, so it is asserted
+    # wherever the function can be entered.
+    if [[ -z "${DEMO_PAIR_CONTRACT:-}" || -z "${DEMO_PAIR_PROVIDER:-}" ]]; then
+        demo_pair_resolve "$1" || {
+            print_error "REFUSED: '$1' is not in a demo-enabled pair contract."
+            return 1
+        }
+        demo_pair_reset_enabled "$DEMO_PAIR_CONTRACT" || {
+            print_error "REFUSED: $(basename "$DEMO_PAIR_CONTRACT") does not set demo.paired_reset: true"
+            return 1
+        }
+    fi
+    local prov="$DEMO_PAIR_PROVIDER" cons="$DEMO_PAIR_CONSUMER"
+    demo_pair_live_lock "$prov" "$cons" "${5:-false}" || return 1
+    _cmd_reset_paired_live_body "$@" || rc=$?
+    demo_pair_live_unlock "$prov"
+    DEMO_LOG_EXTRA=""
+    return "$rc"
+}
+
+_cmd_reset_paired_live_body() {
+    local site="$1" if_idle="$2" auto_yes="$3" skip_seed="$4" dry_run="${5:-false}"
+    local start_ts; start_ts=$(date +%s)
+    local prov="$DEMO_PAIR_PROVIDER" cons="$DEMO_PAIR_CONSUMER" label="$DEMO_PAIR_LABEL"
+    local pdir cdir cut cut_id
+    pdir="$(demo_golden_dir "$prov" live)"
+    cdir="$(demo_golden_dir "$cons" live)"
+    cut="$(demo_pair_cut_file "$pdir")"
+
+    print_header "Paired demo reset: ${label} (live)"
+    print_info "Provider: ${prov}   Consumer: ${cons}   (restored in that order — ADR-0031 D5)"
+
+    # --- 1. ONE CUT, OR NOTHING ---------------------------------------------
+    demo_golden_verify "$pdir" "$prov" || {
+        demo_log "$prov" reset-failed "tier=live pair=1 reason=golden-verify"; return 1; }
+    demo_golden_verify "$cdir" "$cons" || {
+        demo_log "$cons" reset-failed "tier=live pair=1 reason=golden-verify"; return 1; }
+    demo_pair_cut_verify "$cut" "$prov" "$pdir" "$cons" "$cdir" live || {
+        demo_log "$prov" reset-failed "tier=live pair=1 reason=pair-cut-broken"; return 1; }
+    cut_id="$(demo_pair_cut_id_of "$cut")"
+    print_status "OK" "Both live goldens verify and share cut ${cut_id}"
+    # Tag every log line this run writes — including the ones written deep inside
+    # the per-half code, which knows nothing about the pair.
+    DEMO_LOG_EXTRA="pair=1 cut=${cut_id}"
+
+    # --- 2. EVERY REFUSAL, FOR BOTH HALVES, BEFORE ANY DESTRUCTION ----------
+    # This is the answer to "what happens if a half is unreachable mid-run": it
+    # is checked BEFORE the run, on both halves, so the common cases (host down,
+    # live.enabled false, demo posture missing) cannot split the pair at all.
+    local half hsite
+    for half in provider consumer; do
+        [[ "$half" == provider ]] && hsite="$prov" || hsite="$cons"
+        demo_live_ctx_reset
+        demo_live_ctx "$hsite" || {
+            print_error "Pre-flight FAILED for ${hsite} — nothing has been touched."
+            demo_log "$hsite" reset-failed "tier=live pair=1 reason=preflight-unreachable"
+            return 1
+        }
+        demo_live_require_demo_mode "$hsite" || {
+            demo_log "$hsite" reset-failed "tier=live pair=1 reason=not-demo-mode"
+            print_error "Pre-flight FAILED for ${hsite} — nothing has been touched."
+            return 1
+        }
+        print_status "OK" "${hsite}: live host reachable and reports demo_mode"
+    done
+
+    # --- 3. IDLE GUARD ACROSS BOTH HALVES (exit 3 on either) ----------------
+    if [[ -n "$if_idle" ]]; then
+        local window newest
+        window="$(demo_parse_duration "$if_idle")" || {
+            print_error "Bad --if-idle duration: '$if_idle' (use e.g. 30m)"; return 1; }
+        for half in provider consumer; do
+            [[ "$half" == provider ]] && hsite="$prov" || hsite="$cons"
+            demo_live_ctx_reset
+            demo_live_ctx "$hsite" || return 1
+            newest="$(demo_live_newest_session "$hsite")" || newest=""
+            if ! demo_idle_ok "$newest" "$window"; then
+                demo_log "$prov" skip-active "tier=live half=${hsite} window=${if_idle} newest=${newest:-query-failed}"
+                print_status "WARN" "Activity on ${hsite} within ${if_idle} (newest=${newest:-query-failed}) — NOT resetting the pair (exit ${DEMO_EXIT_ACTIVE})"
+                return "$DEMO_EXIT_ACTIVE"
+            fi
+        done
+        print_status "OK" "Both halves idle for ≥ ${if_idle}"
+    fi
+
+    # --- 4. ONE FATE MANIFEST FOR BOTH HALVES (ops#47) ----------------------
+    # Measurement is per-half and immediately precedes that half's block:
+    # DEMO_M_* are globals, and so is the live context they are measured through.
+    local pfiles cfiles ptarget ctarget
+    impact_reset
+    demo_live_ctx_reset; demo_live_ctx "$prov" || return 1
+    ptarget="https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}"
+    pfiles="$(demo_live_manifest_files_path "$prov")"
+    demo_measure_live "$prov" "$(demo_live_files_parent)" \
+        "$(demo_epoch_of "$(demo_golden_field "$pdir" captured_utc)")"
+    demo_reset_manifest_build "$prov" live "$pdir" "$ptarget" "$dry_run" "$pfiles"
+
+    demo_live_ctx_reset; demo_live_ctx "$cons" || return 1
+    ctarget="https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}"
+    cfiles="$(demo_live_manifest_files_path "$cons")"
+    demo_measure_live "$cons" "$(demo_live_files_parent)" \
+        "$(demo_epoch_of "$(demo_golden_field "$cdir" captured_utc)")"
+    demo_reset_manifest_build "$cons" live "$cdir" "$ctarget" "$dry_run" "$cfiles"
+
+    # The fates that exist ONLY because this is a live pair.
+    impact_warn "PAIRED LIVE WIPE: ${prov} (${ptarget}) AND ${cons} (${ctarget}) are both destroyed by this one command — approving it approves both."
+    impact_warn "${prov} is the SSO IDENTITY PROVIDER for ${cons}. ${cons}'s OIDC identities (mdl_user.idnumber == the nwd account uuid) are only valid after this because ${cons} is rolled back to the SAME cut (${label} cut ${cut_id})."
+    impact_warn "NOT ATOMIC: two databases and two file trees on one box. ${prov} is restored FIRST; if ${cons} then fails the pair is left SPLIT, recorded in $(demo_pair_inconsistent_file "$prov"), and repaired by re-running this exact command."
+    impact_warn "Both halves' goldens are staged and re-verified ON THE BOX before either site is touched, so a failed transfer cannot leave one half wiped."
+    impact_keep "The paired cut manifest (${cut}) and both live golden images — verified together, and against tier=live, before this report was built"
+    impact_keep "The box's own nightly wrappers cannot run during this: their pair lock is held for the duration (self-releasing after ${DEMO_PAIR_BOX_LOCK_TTL}s)"
+    impact_render
+
+    if [[ "$dry_run" == "true" ]]; then
+        print_status "OK" "[dry-run] nothing was touched — the report above is what a real paired live reset would do."
+        return 0
+    fi
+
+    # --- 5. ONE DEPLOY GATE, ONE TYPED CONFIRMATION -------------------------
+    if declare -F deploy_gate_require >/dev/null 2>&1; then
+        deploy_gate_require "$prov" "live" \
+            "restore the ${label} demo golden cut ${cut_id} over BOTH ${ptarget} and ${ctarget} (both DBs and both file trees are ERASED and replaced)" || {
+            demo_log "$prov" reset-failed "tier=live pair=1 reason=deploy-gate"
+            return 1
+        }
+    fi
+    print_warning "About to ERASE BOTH ${ptarget} and ${ctarget} and restore them to cut ${cut_id}."
+    impact_confirm typed "$label" "$auto_yes" || { print_info "Aborted."; return 1; }
+
+    # --- 6. STAGE BOTH HALVES BEFORE DESTROYING EITHER ----------------------
+    local stamp="demo-pair-${cut_id}-$$"
+    local prdb="${stamp}-${prov}.db.sql.gz"   prfiles="${stamp}-${prov}.files.tar.gz"
+    local crdb="${stamp}-${cons}.db.sql.gz"   crfiles="${stamp}-${cons}.files.tar.gz"
+    local staged_ok=true
+    print_info "Staging BOTH golden images on the box (sha256 verified there) before anything is destroyed…"
+    demo_live_ctx_reset; demo_live_ctx "$prov" || return 1
+    demo_push_verified "$prov" "$pdir/$GOLDEN_DB"    "$prdb"    || staged_ok=false
+    [[ "$staged_ok" == "true" ]] && { demo_push_verified "$prov" "$pdir/$GOLDEN_FILES" "$prfiles" || staged_ok=false; }
+    if [[ "$staged_ok" == "true" ]]; then
+        demo_live_ctx_reset; demo_live_ctx "$cons" || staged_ok=false
+    fi
+    [[ "$staged_ok" == "true" ]] && { demo_push_verified "$cons" "$cdir/$GOLDEN_DB"    "$crdb"    || staged_ok=false; }
+    [[ "$staged_ok" == "true" ]] && { demo_push_verified "$cons" "$cdir/$GOLDEN_FILES" "$crfiles" || staged_ok=false; }
+    if [[ "$staged_ok" != "true" ]]; then
+        demo_live_ctx_reset; demo_live_ctx "$prov" >/dev/null 2>&1 \
+            && demo_rssh "$prov" "rm -f ~/${prdb} ~/${prfiles} ~/${crdb} ~/${crfiles}" >/dev/null 2>&1 || true
+        demo_log "$prov" reset-failed "tier=live pair=1 reason=prestage"
+        print_error "Could not stage both goldens on the box — NOTHING was destroyed. Fix the transfer and re-run."
+        return 1
+    fi
+    print_status "OK" "Both goldens staged and verified on the box"
+
+    # --- 7. RESTORE, PROVIDER FIRST ------------------------------------------
+    local degraded=false prc=0 crc=0
+    demo_live_ctx_reset
+    cmd_reset_live "$prov" "" true "$skip_seed" false "$cut_id" "$prdb" "$prfiles" || prc=$?
+    if [[ "$prc" == "$DEMO_EXIT_DEGRADED" ]]; then
+        degraded=true
+        print_warning "${prov} restored but smoked RED — continuing to ${cons} so both halves reach cut ${cut_id}."
+    elif [[ "$prc" -ne 0 ]]; then
+        # The consumer was never touched: the pair is NOT split by us.
+        demo_live_ctx_reset; demo_live_ctx "$cons" >/dev/null 2>&1 \
+            && demo_rssh "$cons" "rm -f ~/${crdb} ~/${crfiles}" >/dev/null 2>&1 || true
+        demo_log "$prov" reset-failed "tier=live pair=1 reason=provider-restore half=provider rc=${prc}"
+        print_error "PROVIDER (${prov}) restore FAILED (rc=${prc}). ${cons} was NOT touched."
+        print_hint  "Re-run to repair: pl demo reset ${prov} --with-pair --tier=live"
+        return 1
+    fi
+
+    demo_live_ctx_reset
+    cmd_reset_live "$cons" "" true "$skip_seed" false "$cut_id" "$crdb" "$crfiles" || crc=$?
+    if [[ "$crc" == "$DEMO_EXIT_DEGRADED" ]]; then
+        degraded=true
+        print_warning "${cons} restored but smoked RED — both halves ARE on cut ${cut_id}."
+    elif [[ "$crc" -ne 0 ]]; then
+        # THE SPLIT STATE. Loud, recorded, repairable.
+        demo_pair_mark_inconsistent "$prov" "$cons" "$cut_id" consumer "cmd_reset_live rc=${crc}"
+        demo_log "$prov" pair-inconsistent "tier=live pair=1 failed_half=consumer cut=${cut_id}"
+        demo_log "$cons" pair-inconsistent "tier=live pair=1 failed_half=consumer cut=${cut_id}"
+        print_error "CONSUMER (${cons}) restore FAILED (rc=${crc}) AFTER ${prov} was restored."
+        print_error "THE PAIR IS SPLIT: ${prov} is at cut ${cut_id}, ${cons} is not. ${cons}'s SSO identities now point at ${prov} accounts that no longer exist."
+        print_hint  "REPAIR (safe to re-run, provider-first makes it idempotent): pl demo reset ${prov} --with-pair --tier=live"
+        print_hint  "Recorded in $(demo_pair_inconsistent_file "$prov") and reported by 'pl demo status ${prov} --tier=live' until repaired."
+        return 1
+    fi
+
+    # --- 8. CONSUMER-SIDE POST-RESTORE ASSERTIONS ---------------------------
+    # The same --check modes the build scripts expose: "the reset worked" is
+    # asserted by the code that set the site up, not by a second description.
+    local verify_ok=true
+    print_info "Verifying the restored consumer wiring…"
+    demo_consumer_checks "$cons" live || verify_ok=false
+
+    local took=$(( $(date +%s) - start_ts ))
+    if [[ "$verify_ok" != "true" || "$degraded" == "true" ]]; then
+        demo_log "$prov" reset-degraded "tier=live pair=1 took=${took}s cut=${cut_id} consumer_checks=${verify_ok} smoke_degraded=${degraded}"
+        demo_log "$cons" reset-degraded "tier=live pair=1 took=${took}s cut=${cut_id}"
+        print_status "FAIL" "Both halves are on cut ${cut_id}, but the pair did not pass its post-restore checks — treat as FAILED."
+        return 1
+    fi
+
+    # Both halves are on one cut: any earlier split is over.
+    demo_pair_clear_inconsistent "$prov"
+    demo_log "$prov" reset-ok "tier=live pair=1 cut=${cut_id} took=${took}s consumer=${cons}"
+    demo_log "$cons" reset-ok "tier=live pair=1 cut=${cut_id} took=${took}s provider=${prov}"
+    print_status "OK" "Paired LIVE demo reset complete in ${took}s — ${prov} + ${cons} are both at cut ${cut_id}"
 }
 
 ################################################################################
@@ -2179,13 +2768,20 @@ cmd_status() {
         echo "    contract: $(basename "$DEMO_PAIR_CONTRACT")"
         if [[ -f "$_cut" ]]; then
             echo "    cut:      $(demo_pair_cut_id_of "$_cut")  captured $(jq -r '.captured_utc // "?"' "$_cut" 2>/dev/null)"
-            if demo_pair_cut_verify "$_cut" "$_prov" "$_pdir" "$_cons" "$_cdir" >/dev/null 2>&1; then
-                print_status "OK" "Both halves share one logical cut"
+            if demo_pair_cut_verify "$_cut" "$_prov" "$_pdir" "$_cons" "$_cdir" "$tier" >/dev/null 2>&1; then
+                print_status "OK" "Both halves share one logical cut (tier ${tier})"
             else
-                print_status "FAIL" "PAIR CUT BROKEN — one half was re-captured alone. Re-run: pl demo golden $_prov --with-pair"
+                print_status "FAIL" "PAIR CUT BROKEN — one half was re-captured alone, or the cut is for another tier. Re-run: pl demo golden $_prov --with-pair --tier=${tier}"
             fi
         else
-            print_status "WARN" "No pair cut yet (pl demo golden $_prov --with-pair)"
+            print_status "WARN" "No pair cut yet (pl demo golden $_prov --with-pair --tier=${tier})"
+        fi
+        # A paired LIVE reset that died between the halves leaves the pair on two
+        # different cuts. The session that caused it is long gone; the breadcrumb
+        # is how the next reader finds out (nwp/ops#170).
+        local _split
+        if _split="$(demo_pair_inconsistent_summary "$_prov" 2>/dev/null)" && [[ -n "$_split" ]]; then
+            print_status "FAIL" "$_split"
         fi
     fi
 
@@ -3015,7 +3611,10 @@ main() {
     local use_pair="false"
     if [[ "$with_pair" != "no" ]] && demo_pair_resolve "$site"; then
         local _partner; _partner="$(demo_pair_partner "$site" "$DEMO_PAIR_CONTRACT")"
-        if demo_project_dir "$_partner" "$tier" >/dev/null 2>&1; then
+        # demo_instance_exists, not demo_project_dir: at --tier=live neither half
+        # has a local DDEV project, so the old test made the pair structurally
+        # invisible exactly where it matters most (nwp/ops#170).
+        if demo_instance_exists "$_partner" "$tier" >/dev/null 2>&1; then
             use_pair="true"
         elif [[ "$with_pair" == "yes" ]]; then
             print_error "REFUSED: --with-pair, but the partner '$_partner' has no instance at tier '$tier'."
@@ -3034,6 +3633,10 @@ main() {
                       # one product and one is never safe to wipe alone.
                       [[ "$site" != "$DEMO_PAIR_PROVIDER" ]] && \
                           print_info "'$site' is half of ${DEMO_PAIR_LABEL} — running the PAIRED reset (both halves)."
+                      # Say it out loud at live: this is a behaviour CHANGE for a
+                      # command that used to reset one host (nwp/ops#170).
+                      demo_is_live "$tier" && \
+                          print_info "LIVE PAIRED reset: BOTH ${DEMO_PAIR_PROVIDER} and ${DEMO_PAIR_CONSUMER} are restored to one cut. Use --no-pair for the old single-host behaviour."
                       # dry_run is arg 6 on BOTH reset verbs. Dropping it here
                       # turned `--with-pair --dry-run` into a real double wipe.
                       cmd_reset_paired "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run"

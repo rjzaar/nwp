@@ -1,5 +1,11 @@
 #!/usr/bin/env bats
-# F33 §4.2 — unit tests for the instance-dir resolver.
+# Unit tests for the instance-dir resolver (lib/common/find-instance-dir.sh).
+#
+# sites/ is the PRIMARY in-repo per-site location (F17/F23 layout). The
+# ~/nwp-instances overlay is an OPTIONAL operator overlay (role manifest,
+# _global, _servers) that takes precedence when present. F33/ADR-0021, which
+# planned to deprecate sites/, were superseded/rejected — resolving to sites/
+# must NOT print any deprecation warning.
 
 setup() {
   TEST_TMP=$(mktemp -d)
@@ -29,7 +35,7 @@ teardown() {
   [[ "${result}" == "${HOME}/nwp-instances" ]]
 }
 
-@test "falls back to ./sites when nwp-instances doesn't exist and sites has real content" {
+@test "resolves ./sites (primary in-repo location) when no overlay exists and sites has real content" {
   unset NWP_INSTANCES_DIR
   rm -rf "${HOME}/nwp-instances"
   mkdir -p "${SCRIPT_DIR}/sites/somereal"
@@ -38,7 +44,7 @@ teardown() {
   [[ "${result}" == "${SCRIPT_DIR}/sites" ]]
 }
 
-@test "does NOT fall back to ./sites when only README and example templates present" {
+@test "does NOT resolve ./sites when only README and example templates present" {
   unset NWP_INSTANCES_DIR
   rm -rf "${HOME}/nwp-instances"
   rm -rf "${SCRIPT_DIR}/sites"
@@ -49,12 +55,12 @@ teardown() {
   [[ -z "${result}" ]]
 }
 
-@test "prints deprecation warning to stderr when falling back to ./sites" {
+@test "resolving ./sites is SILENT — no deprecation warning (F33 superseded, ADR-0021 rejected)" {
   unset NWP_INSTANCES_DIR
   rm -rf "${HOME}/nwp-instances"
   mkdir -p "${SCRIPT_DIR}/sites/somereal"
   err=$(find_instance_dir 2>&1 >/dev/null)
-  [[ "${err}" == *DEPRECATION* ]]
+  [[ -z "${err}" ]]
 }
 
 @test "returns empty when no overlay is configured at all" {

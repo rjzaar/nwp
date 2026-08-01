@@ -44,10 +44,9 @@ source "$PROJECT_ROOT/lib/common.sh"
 # canonical.sh: canonicality phases for the PHASE column (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
 
-# F33 Phase 4 — surface where per-site config is being read from. When
-# the operator still has content in the legacy sites/ path, the helper
-# prints a deprecation notice on stderr; the full subcommand refactor to
-# `site_path` / `site_config_path` is tracked as F33 Phase 4b follow-up.
+# Surface where per-site config is being read from: sites/ in the repo is
+# the primary location; ~/nwp-instances is an optional operator overlay
+# that takes precedence when present (see lib/common/find-instance-dir.sh).
 if [ -f "$PROJECT_ROOT/lib/common/find-instance-dir.sh" ]; then
     __saved_script_dir="$SCRIPT_DIR"
     SCRIPT_DIR="$PROJECT_ROOT"

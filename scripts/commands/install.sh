@@ -332,15 +332,28 @@ main() {
         target="${positional_args[1]}"
     fi
 
-    # Validate the target site name BEFORE it is used anywhere (ops#165).
-    # install.sh never called validate_sitename: on 2026-08-01 the
-    # security_validation:17 verification check proved that
+    # Validate the target site name BEFORE it is used anywhere.
+    #
+    # install.sh has never called validate_sitename. The name flows straight
+    # into directory creation, DDEV project naming and an nwp.yml site key, all
+    # of which assume a plain identifier. Proven on 2026-08-01 (ops#165):
+    #
     #     pl install d 'test|cat /etc/passwd'
-    # sailed past every guard, created sites/'test|cat '/etc/passwd/ and
-    # registered a site named "passwd" in nwp.yml before hanging in composer.
-    # validate_sitename (lib/common.sh) allows only [a-zA-Z0-9._-]+, which is
-    # what every path/DDEV/yq consumer downstream assumes. Checked here, at the
-    # top of main, so it fails fast with no config file needed.
+    #
+    # was ACCEPTED — it created `sites/'test|cat '/etc/passwd/` (two nested
+    # directories from one argument, because the unquoted name was word-split
+    # on the path separator) and registered a site named `passwd` in nwp.yml,
+    # before hanging in composer. The verification check that asserts this is
+    # rejected ("Reject pipe character") had been failing for months inside a
+    # permanently-red gate, which is why nobody read it.
+    #
+    # validate_sitename (lib/common.sh) is the existing, shared predicate: it
+    # allows exactly [a-zA-Z0-9._-]+ and rejects empty names, absolute paths
+    # and `..` traversal. That set covers every real site name in the estate
+    # (avc-stg, ss2, dir1, nwc, rosaryforge, …) and every recipe id, so this
+    # tightens nothing operators actually use. Checked here, at the top of
+    # main(), so a hostile name is refused before any config file is read and
+    # before anything touches the filesystem.
     if [ -n "$target" ] && ! validate_sitename "$target" "target site name"; then
         exit 1
     fi

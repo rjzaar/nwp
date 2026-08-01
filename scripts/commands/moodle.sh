@@ -55,7 +55,7 @@ ${BOLD}USAGE:${NC}
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
     pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
-    pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--dry-run|--apply]
+    pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
     pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
@@ -1421,7 +1421,8 @@ cmd_plugin_drift() {
 # course restore — guarded bulk course import from .mbz backups
 #
 #   pl moodle course restore <site> --tier=live|dev --from=DIR
-#       [--category=NAME | --category-map=FILE] [--dry-run|--apply]
+#       [--category=NAME | --category-map=FILE] [--enable-self-enrol]
+#       [--dry-run|--apply]
 #
 # Replaces the hand idiom (scp *.mbz + ssh 'sudo -u www-data php
 # admin/cli/restore_backup.php …' per file) with one verb that keeps the
@@ -1445,6 +1446,14 @@ cmd_plugin_drift() {
 #     keyless self-enrolment (generalised from scripts/demo/ssd-seed-courses.php
 #     --check) — a course a tester cannot walk into is a restore that failed
 #     its purpose, and must say so;
+#   * --enable-self-enrol (EXPLICIT opt-in): restore_backup.php provably
+#     brings courses up WITHOUT an enabled self-enrolment (ssd rehearsal,
+#     2026-08-01 — every restored course ENTER-FAILed). With the flag, each
+#     course THIS run restored is made enterable exactly the way the ssd
+#     seeder does it (visible + enabled keyless self-enrol, same plugin
+#     settings) BEFORE the post-pass asserts. Never retrofits pre-existing
+#     (skipped) courses; without the flag behaviour is unchanged and the
+#     post-pass fails loudly;
 #   * --category-map=FILE maps shortname-prefix → category name (creating
 #     categories as needed), e.g. the four formation rails:
 #         b = Your Yes
@@ -1550,23 +1559,24 @@ _cr_push_verified() {
 }
 
 cmd_course_restore() {
-    local site="" tier="" from_dir="" category="" category_map="" mode="dry-run"
+    local site="" tier="" from_dir="" category="" category_map="" mode="dry-run" enable_self="false"
     for a in "$@"; do
         case "$a" in
             --tier=*)         tier="${a#*=}" ;;
             --from=*)         from_dir="${a#*=}" ;;
             --category=*)     category="${a#*=}" ;;
             --category-map=*) category_map="${a#*=}" ;;
+            --enable-self-enrol) enable_self="true" ;;
             --dry-run)        mode="dry-run" ;;
             --apply|--execute) mode="apply" ;;
             -h|--help)
-                print_info "usage: pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--dry-run|--apply]"
+                print_info "usage: pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]"
                 return 0 ;;
             -*) print_error "Unknown option: $a"; return 1 ;;
             *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
         esac
     done
-    [ -z "$site" ] && { print_error "usage: pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--apply]"; return 1; }
+    [ -z "$site" ] && { print_error "usage: pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--apply]"; return 1; }
     case "$tier" in
         live|dev) ;;
         "") print_error "--tier is required (live|dev)"; return 1 ;;
@@ -1691,6 +1701,13 @@ cmd_course_restore() {
         print_info "At --apply time, shortnames already present on the target are SKIPPED (idempotent),"
         print_info "categories are created as needed, and every restored course is asserted"
         print_info "visible + keyless-self-enrolable."
+        if [ "$enable_self" = "true" ]; then
+            print_info "--enable-self-enrol: WOULD enable a keyless self-enrolment (+ visibility) on each"
+            print_info "course restored by that run — restored courses only, never pre-existing ones."
+        else
+            print_info "(restore_backup.php brings courses up WITHOUT enabled self-enrol; the post-pass"
+            print_info " will fail loudly unless you pass --enable-self-enrol or fix enrolments yourself.)"
+        fi
         print_status "OK" "[dry-run] ${#files[@]} restore(s) planned — nothing executed. Re-run with --apply."
         return 0
     fi
@@ -1701,6 +1718,9 @@ cmd_course_restore() {
         impact_reset
         impact_overwrite "mdl_course" "up to ${#files[@]} NEW course(s) created by admin/cli/restore_backup.php (existing shortnames are skipped, never replaced)"
         impact_overwrite "mdl_course_categories" "categories created as needed: $(printf '%s\n' "${categories[@]}" | sort -u | paste -sd ', ' -)"
+        if [ "$enable_self" = "true" ]; then
+            impact_overwrite "mdl_enrol" "keyless self-enrolment ENABLED (+ visible=1) on each course THIS run restores — never on pre-existing courses"
+        fi
         impact_keep "existing courses, users and enrolments — restore only ADDS courses"
         impact_keep "config.php + moodledata config — untouched"
         impact_warn "restore_backup.php has no down-hook; removing a restored course afterwards is a manual course deletion."
@@ -1841,6 +1861,17 @@ cmd_course_restore() {
         fi
         restored=$((restored+1))
     done
+
+    # ---- opt-in: make THIS run's restored courses enterable -----------------
+    # restore_backup.php provably restores courses with no enabled self-enrol
+    # (ssd rehearsal 2026-08-01). Scoped to do_shortnames — exactly the courses
+    # restored above — so pre-existing (skipped) courses are never retrofitted.
+    if [ "$enable_self" = "true" ]; then
+        print_header "Enabling keyless self-enrol on ${#do_shortnames[@]} restored course(s)"
+        if ! _cr_run_helper --enable-self-enrol "${do_shortnames[@]}"; then
+            print_error "--enable-self-enrol FAILED (see ENROL-FAIL lines) — the post-pass below will show what is still closed."
+        fi
+    fi
 
     # ---- post-pass: every restored course must be enterable -----------------
     print_header "Post-restore assertion (visible + keyless self-enrol)"

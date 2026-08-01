@@ -14,6 +14,15 @@
 //   --ensure-category=NAME       Get-or-create a top-level course category by
 //                                name; prints `CATID <id>`. WRITE (create),
 //                                idempotent — an existing category is reused.
+//   --enable-self-enrol <sn>...  WRITE, explicit opt-in (--enable-self-enrol
+//                                on the verb). Makes each named course
+//                                enterable EXACTLY the way the ssd seeder
+//                                does: visible=1, plus an ENABLED, KEYLESS
+//                                self-enrolment (same plugin settings —
+//                                password '', customint1=0, customint6=1,
+//                                student role). Idempotent: an already-correct
+//                                course is untouched. The verb only ever
+//                                passes shortnames THIS run restored.
 //   --assert-enterable <sn>...   READ-ONLY post-pass. Generalises the
 //                                scripts/demo/ssd-seed-courses.php --check
 //                                logic: every named course must be visible=1
@@ -40,7 +49,7 @@ global $DB;
 
 $args = array_slice($argv, 1);
 if (!$args) {
-    fwrite(STDERR, "usage: course-restore-check.php --list-shortnames | --ensure-category=NAME | --assert-enterable <shortname>...\n");
+    fwrite(STDERR, "usage: course-restore-check.php --list-shortnames | --ensure-category=NAME | --enable-self-enrol <shortname>... | --assert-enterable <shortname>...\n");
     exit(2);
 }
 
@@ -70,6 +79,56 @@ if (strpos($args[0], '--ensure-category=') === 0) {
         cli_writeln('CATID ' . $cat->id);
     }
     exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// --enable-self-enrol <shortname>... (write, idempotent)
+//
+// Mirrors scripts/demo/ssd-seed-courses.php: the same fields, the same
+// values, the same fix-up branch for an existing-but-wrong instance. That
+// seeder is the known-good definition of "a tester can walk in".
+// ---------------------------------------------------------------------------
+if ($args[0] === '--enable-self-enrol') {
+    $shortnames = array_slice($args, 1);
+    if (!$shortnames) { fwrite(STDERR, "no shortnames given\n"); exit(2); }
+    $studentrole = $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST);
+    $selfplugin  = enrol_get_plugin('self');
+    $bad = 0;
+    foreach ($shortnames as $sn) {
+        $course = $DB->get_record('course', ['shortname' => $sn]);
+        if (!$course) {
+            cli_writeln('ENROL-FAIL ' . $sn . ':missing');
+            $bad++;
+            continue;
+        }
+        // -- visible (a hidden course rejects a student's require_login) -----
+        if (empty($course->visible)) {
+            $DB->set_field('course', 'visible', 1, ['id' => $course->id]);
+            $course->visible = 1;
+        }
+        // -- SELF enrolment, no key, enabled: the tester's way in ------------
+        $self = $DB->get_record('enrol', ['courseid' => $course->id, 'enrol' => 'self']);
+        if (!$self) {
+            $selfplugin->add_instance((object) $course, [
+                'status'     => ENROL_INSTANCE_ENABLED,
+                'password'   => '',
+                'customint1' => 0,   // no group key
+                'customint6' => 1,   // allow new enrolments
+                'roleid'     => $studentrole,
+            ]);
+        } else if ((int) $self->status !== ENROL_INSTANCE_ENABLED
+                || (int) $self->customint6 !== 1
+                || (string) $self->password !== '') {
+            $DB->set_field('enrol', 'status', ENROL_INSTANCE_ENABLED, ['id' => $self->id]);
+            $DB->set_field('enrol', 'customint6', 1, ['id' => $self->id]);
+            $DB->set_field('enrol', 'password', '', ['id' => $self->id]);
+        }
+        cli_writeln('ENROL-OK ' . $sn);
+    }
+    if (!$bad) {
+        purge_all_caches();
+    }
+    exit($bad ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------

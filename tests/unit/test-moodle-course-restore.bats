@@ -95,10 +95,13 @@ case "$cmd" in
   *sha256sum*)
     n="$(printf '%s' "$cmd" | grep -o '~/[A-Za-z0-9._-]*' | head -1)"; n="${n#\~/}"
     sha256sum "$CR_FAKEHOME/$n" 2>/dev/null | awk '{print $1}' ;;
-  *--list-shortnames*)   cat "$CR_EXISTING" ;;
-  *--ensure-category=*)  echo "CATID 42" ;;
-  *restore_backup.php*)  echo "RESTORE-DONE" ;;
-  *--assert-enterable*)  echo "ENTER-OK stub" ;;
+  *--list-shortnames*)    cat "$CR_EXISTING" ;;
+  *--ensure-category=*)   echo "CATID 42" ;;
+  *restore_backup.php*)   echo "RESTORE-DONE" ;;
+  *--enable-self-enrol*)  echo "ENROL-OK stub" ;;
+  *--assert-enterable*)
+    if [ -n "${CR_ENTER_FAIL:-}" ]; then echo "ENTER-FAIL stub:no-self-enrol"; exit 1; fi
+    echo "ENTER-OK stub" ;;
   *) : ;;
 esac
 exit 0
@@ -233,6 +236,8 @@ cr() {
   grep -q 'sha256sum' "$CR_TRACE"
   # post-pass ran
   grep -q -- '--assert-enterable' "$CR_TRACE"
+  # and WITHOUT the opt-in flag, no enrolment write happens
+  ! grep -q -- '--enable-self-enrol' "$CR_TRACE"
 }
 
 @test "r12: IDEMPOTENT — a second run against a fully-populated target plans 0 restores" {
@@ -241,6 +246,52 @@ cr() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"0 restores to perform"* ]]
   ! grep -q 'restore_backup.php' "$CR_TRACE"
+}
+
+# ── --enable-self-enrol (explicit opt-in; ssd rehearsal finding) ─────────────
+
+@test "r14: flag ABSENT — a failing enterability post-pass fails the verb loudly" {
+  # This is the rehearsal outcome pinned as a test: restore_backup.php brings
+  # courses up without enabled self-enrol; without the opt-in flag the verb
+  # must exit non-zero and say why, never quietly ship a locked demo.
+  export CR_ENTER_FAIL=1
+  run cr ssd --tier=live --from="$MBZ" --category-map="$MAP" --apply
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ENTER-FAIL"* ]]
+  [[ "$output" == *"enterability assertion FAILED"* ]]
+  ! grep -q -- '--enable-self-enrol' "$CR_TRACE"
+}
+
+@test "r15: flag PRESENT — the enable step runs on exactly the courses THIS run restored" {
+  echo "SHORTNAME B1" > "$CR_EXISTING"   # B1 pre-exists: must NOT be retrofitted
+  run cr ssd --tier=live --from="$MBZ" --category-map="$MAP" --apply --enable-self-enrol
+  [ "$status" -eq 0 ]
+  local line
+  line="$(grep -- '--enable-self-enrol' "$CR_TRACE")"
+  [ -n "$line" ]
+  [[ "$line" == *"C1"* ]]
+  [[ "$line" == *"D1"* ]]
+  [[ "$line" == *"E1"* ]]
+  [[ "$line" != *"B1"* ]]
+  # enable runs BEFORE the post-pass assertion
+  [ "$(grep -n -- '--enable-self-enrol' "$CR_TRACE" | cut -d: -f1)" \
+    -lt "$(grep -n -- '--assert-enterable' "$CR_TRACE" | cut -d: -f1)" ]
+}
+
+@test "r16: flag + dry-run — prints WOULD-enable, still executes nothing" {
+  run cr ssd --tier=live --from="$MBZ" --category-map="$MAP" --dry-run --enable-self-enrol
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WOULD enable"* ]]
+  [[ "$output" == *"[dry-run]"* ]]
+  [ ! -s "$CR_TRACE" ]
+}
+
+@test "r17: flag + fully-populated target — 0 restores means 0 enrol writes (no retrofit)" {
+  printf 'SHORTNAME B1\nSHORTNAME C1\nSHORTNAME D1\nSHORTNAME E1\n' > "$CR_EXISTING"
+  run cr ssd --tier=live --from="$MBZ" --category-map="$MAP" --apply --enable-self-enrol
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 restores to perform"* ]]
+  ! grep -q -- '--enable-self-enrol' "$CR_TRACE"
 }
 
 @test "r13: an unreadable shortname enumeration refuses to restore blind" {

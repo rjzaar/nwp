@@ -7,7 +7,9 @@
 // IDEMPOTENT. Applies the proposal §2.5 safety posture on the Moodle side:
 //   * noindex EVERYWHERE            ($CFG->allowindexing = 2)
 //   * outbound mail KILLED          ($CFG->noemailever = 1, divert as belt+braces)
-//   * a permanent "erased nightly" BANNER on every page, carrying the
+//   * a permanent "erased nightly" BANNER on every page (sticky, and with the
+//     matching offsets for Boost's viewport-anchored chrome — see the banner
+//     block below), carrying the
 //     "Report a problem" link back to the provider's feedback form (v1 of the
 //     cross-site report path — the proposal explicitly allows linking back)
 //   * self-registration OFF         (accounts arrive by SSO only)
@@ -40,17 +42,75 @@ if ($feedback === '') {
     $feedback = $provider . '/demo/feedback';
 }
 
-// The banner. Fixed to the top of the body on every page; the link opens the
+// The banner. Pinned to the top of every page; the link opens the
 // provider-side report form (same GitLab queue as nwd's own reports).
 // Kept as plain inline-styled HTML so it survives any theme.
-$banner = '<div id="nwp-demo-banner" role="status" style="'
-    . 'position:relative;z-index:9999;padding:.55rem 1rem;'
+//
+// LAYOUT — why this is not just a coloured div.
+// Moodle injects additionalhtmltopofbody immediately after <body>, and Boost's
+// main navigation is `position: fixed; top: 0` (`.navbar.fixed-top`, z-index
+// 1030). Both therefore occupy the same rectangle at the top of the viewport.
+// The first version of this banner answered that with `position: relative;
+// z-index: 9999`, which won the paint — and so the banner covered the ENTIRE
+// navigation bar at every width. On a phone that includes the drawer-toggle
+// hamburger, i.e. a tester could not open the navigation at all. (Hit-tested
+// on ssd 2026-08-01: five sample points across the navbar, none of them
+// reachable.)
+//
+// The fix is layout, not z-index, and deliberately NOT `position: fixed`:
+//   * `sticky` keeps the banner in NORMAL FLOW, so Boost's own `#page
+//     { margin-top: 60px }` is measured from below the banner and stays
+//     correct without a second magic number to keep in sync;
+//   * and it still pins the banner to the top of the viewport on scroll, so a
+//     disclosure that must always be readable always is.
+// What flow cannot fix is the chrome that is anchored to the VIEWPORT rather
+// than to the document — the navbar itself, the drawers and the drawer
+// togglers, all of which hard-code Boost's 60px navbar height. Each is offset
+// below by exactly the banner's height.
+//
+// That height is not a constant: the string wraps to two lines on a phone
+// (38px at 1280px wide, 59px at 390px), so it is carried in a custom property
+// that the script measures live. The CSS values are the no-JS fallback, and
+// are deliberately generous — too much space merely looks roomy, too little
+// puts the navigation back on top of the disclosure.
+$bannercss = '<style id="nwp-demo-banner-css">'
+    . ':root{--nwp-demo-banner-h:40px}'
+    . '@media (max-width:600px){:root{--nwp-demo-banner-h:62px}}'
+    . 'body .navbar.fixed-top{top:var(--nwp-demo-banner-h)}'
+    . 'body .drawer{top:var(--nwp-demo-banner-h);'
+    . 'height:calc(100vh - var(--nwp-demo-banner-h))}'
+    . '@media (min-width:992px){body .drawer-left,body .drawer-right{'
+    . 'top:calc(60px + var(--nwp-demo-banner-h));'
+    . 'height:calc(100vh - 60px - var(--nwp-demo-banner-h))}}'
+    . 'body .drawer-toggles .drawer-toggler{'
+    . 'top:calc(60px + 0.7rem + var(--nwp-demo-banner-h))}'
+    // Boost anchors the togglers to the BOTTOM of the viewport on small
+    // screens; the rule above would otherwise drag them back to the top.
+    . '@media (max-width:767.98px){body .drawer-toggles .drawer-right-toggle,'
+    . 'body .drawer-toggles .drawer-left-toggle{top:calc(99vh - 150px)}}'
+    . '</style>';
+
+$bannerjs = '<script>(function(){'
+    . 'var b=document.getElementById("nwp-demo-banner");if(!b){return;}'
+    . 'function s(){document.documentElement.style.setProperty('
+    . '"--nwp-demo-banner-h",b.offsetHeight+"px");}'
+    . 's();'
+    . 'if(window.ResizeObserver){new ResizeObserver(s).observe(b);}'
+    . 'else{window.addEventListener("resize",s);}'
+    . 'window.addEventListener("load",s);'
+    . '})();</script>';
+
+$banner = $bannercss
+    . '<div id="nwp-demo-banner" role="status" style="'
+    . 'position:-webkit-sticky;position:sticky;top:0;z-index:1040;'
+    . 'padding:.55rem 1rem;'
     . 'background:#7a1f1f;color:#fff;font:600 .95rem/1.35 system-ui,sans-serif;'
     . 'text-align:center;">'
     . 'Demo site — everything here is erased nightly. Nothing you enter is kept. '
     . '<a href="' . s($feedback) . '?source=ssd" target="_blank" rel="noopener" style="'
     . 'color:#fff;text-decoration:underline;font-weight:700;">Report a problem</a>'
-    . '</div>';
+    . '</div>'
+    . $bannerjs;
 
 $want = [
     // name                    => value

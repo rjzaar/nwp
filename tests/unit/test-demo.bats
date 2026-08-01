@@ -472,6 +472,87 @@ EOF
   [[ "$output" == *"placeholder"* ]]
 }
 
+# A demo pair contract for the fixture, so the email can read the SSO button
+# label the way the smoke verb does (A10) — from oidc.issuer_name, the one
+# place the member-facing button text is declared.
+demo_fixture_contract() {
+  mkdir -p "${TEST_TMP}/pairs"
+  cat > "${TEST_TMP}/pairs/demo1.pair-contract.yml" <<'EOF'
+pair: demo1-demo9
+provider: demo1
+consumer: demo9
+demo:
+  enabled: true
+oidc:
+  issuer_name: "Narrow Way Commons"
+EOF
+  export NWP_PAIR_CONTRACT_DIR="${TEST_TMP}/pairs"
+}
+
+@test "draft email names the SSO button exactly as the pair contract does" {
+  # The live button reads the contract's oidc.issuer_name. The email used to
+  # hardcode 'Log in using your account on: nwd' — a codename that appears on
+  # no button anywhere. The button text must come from the contract.
+  demo_fixture_contract
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  grep -qF 'Log in using your account on:' "$draft"   # the heading, still named
+  grep -qF '"Narrow Way Commons"' "$draft"            # the button, verbatim
+  ! grep -qF 'account on: nwd' "$draft"               # the old false promise
+}
+
+@test "draft email without a pair contract shows a visible button placeholder" {
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  grep -qF '<COMMUNITY-SITE-NAME>' "$draft"
+}
+
+@test "draft email warns about the examen BEFORE promising the community home" {
+  # The examen gate intercepts a tester's first click; an email that promises
+  # 'you'll land on the community home' with no warning sets up the very first
+  # confusion report of every session.
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  ex=$(grep -in 'examen' "$draft" | head -1 | cut -d: -f1)
+  home=$(grep -n 'community home' "$draft" | head -1 | cut -d: -f1)
+  [ -n "$ex" ]
+  [ -n "$home" ]
+  [ "$ex" -lt "$home" ]
+}
+
+@test "guild-leader block says the queues start empty — do the work-queue items first" {
+  run_invite --bundles tester-guild-leader
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  grep -qi 'start empty' "$draft"
+  grep -qi 'work-queue' "$draft"
+}
+
+@test "content-manager block scopes the editing promise to the community site only" {
+  # The bundle grants nothing on the courses side; promising course-item
+  # editing there is a promise the tester cannot keep.
+  run_invite --bundles tester-content-manager
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  grep -qi 'community site only' "$draft"
+  ! grep -qi 'course item' "$draft"
+}
+
+@test "the report-a-problem promise matches the surfaces that actually exist" {
+  # Truth today: the community's /feedback/submit wants a signed-in member;
+  # the courses site shows a floating 'Report a problem' widget. There is no
+  # ubiquitous link 'around both sites'.
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  ! grep -qi 'around both sites' "$draft"
+  grep -qi 'sign in' "$draft"
+  grep -qi 'floating' "$draft"
+}
+
 @test "invite --expiry is validated and reflected in the email" {
   run_invite --expiry 7d
   [ "$status" -eq 0 ]

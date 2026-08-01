@@ -2444,6 +2444,9 @@ cmd_invite() {
     done
 
     # ---- render the draft: stdout + 0600 file (it holds plaintext codes) ----
+    # The email resolves its pair-contract facts (courses URL, SSO button
+    # label) for THIS site — not for the library default.
+    DEMO_INVITE_PROVIDER_SITE="${DEMO_INVITE_PROVIDER_SITE:-$site}"
     local join_url invite_dir invite_file draft
     join_url="$(demo_invite_join_url "$site")"
     invite_dir="$(demo_site_dir "$site")/demo-invites"
@@ -2995,18 +2998,69 @@ cmd_harvest_pull() {
 # Read-only: every probe is a GET, which is what makes it safe against live and
 # runnable from CI. See lib/demo-smoke.sh for why claim-checking and not uptime.
 ################################################################################
+# The consumer half's OWN promises (A10, A14 + its login surface), runnable
+# from either direction: `pl demo smoke <consumer>` runs exactly this, and the
+# provider run includes it as its STEP 2 section. One implementation so the
+# two runs cannot drift.
+smoke_consumer_half() {
+    local csite="$1" contract="$2" ip="${3:-}" cdomain issuer own
+    cdomain="$(get_site_config_value "$csite" '.live.domain' "")"
+    if [[ -z "$cdomain" ]]; then
+        printf '  [warn] %-34s %s has no .live.domain — cannot smoke this half\n' \
+               "consumer half" "$csite"
+        SMOKE_WARN=$((SMOKE_WARN+1)); return 0
+    fi
+    local login="https://${cdomain}/login/index.php"
+    smoke_check_status   "consumer login"  "$login" "200" "$ip"
+    smoke_check_contains "SSO heading"     "$login" "Log in using your account on" "$ip"
+
+    # A10 — the button the email tells the tester to click, by its EXACT text.
+    # The heading check above passed for weeks while the email named the button
+    # wrongly: only equality against the contract's issuer_name catches that.
+    issuer="$(demo_pair_get "$contract" '.oidc.issuer_name')"
+    if [[ -n "$issuer" ]]; then
+        smoke_check_button_label "SSO button = contract issuer_name" "$login" \
+                                 "login-identityprovider-btn" "$issuer" "$ip"
+    else
+        printf '  [warn] %-34s no oidc.issuer_name in %s — cannot check the button text\n' \
+               "SSO button" "$(basename "$contract")"
+        SMOKE_WARN=$((SMOKE_WARN+1))
+    fi
+
+    # A14 — the consumer must present its PUBLIC name, and its machine
+    # shortname must not leak into the title (the nwd run was 9/9 green while
+    # ssd's own front page was titled "Home | ssd").
+    own="$(get_site_config_value "$csite" '.project.title' "")"
+    if [[ -n "$own" ]]; then
+        smoke_check_title_regex "consumer names ITSELF, not '${csite}'" \
+                                "https://${cdomain}/" "$own" "\\b${csite}\\b" "$ip"
+    else
+        printf '  [warn] %-34s no .project.title for %s — cannot check the name it claims\n' \
+               "consumer name" "$csite"
+        SMOKE_WARN=$((SMOKE_WARN+1))
+    fi
+}
+
 cmd_smoke() {
     local site="$1" tier="${2:-live}" ip="${3:-}"
 
-    # The routes below are the PROVIDER's (Drupal): /demo/join, /user/login,
-    # /nwc/achievements. Pointed at the consumer half they are meaningless —
-    # Moodle redirects unknown paths to its login page, which then returns 200
-    # and every check passes while testing nothing. So resolve to the provider,
-    # the same way `pl demo reset` promotes either half to the paired run.
+    # The consumer half (Moodle) gets its OWN assertion set, run directly.
+    # It used to bounce wholesale to the provider run — which is how
+    # `pl demo smoke nwd` stayed green while ssd's own surface was wrong.
     if demo_pair_resolve "$site" 2>/dev/null && [[ -n "${DEMO_PAIR_PROVIDER:-}" ]] \
        && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
-        print_info "'$site' is the consumer half of ${DEMO_PAIR_LABEL:-the pair} — smoking the provider '${DEMO_PAIR_PROVIDER}' (which checks this half as STEP 2)."
-        site="$DEMO_PAIR_PROVIDER"
+        print_header "demo smoke: ${site} (consumer half of ${DEMO_PAIR_LABEL:-the pair}) @ ${tier}${ip:+  (forced to ${ip})}"
+        smoke_reset_counters
+        # A RED check must never stop the run: under `set -e` the first honest
+        # failure would abort before the remaining checks and the tally — a
+        # red that silences the rest of the report is worse than no check.
+        set +e
+        echo "  -- this half's own promises --"
+        smoke_consumer_half "$site" "$DEMO_PAIR_CONTRACT" "$ip"
+        print_info "The provider half's promises: pl demo smoke ${DEMO_PAIR_PROVIDER}"
+        local crc; smoke_summary; crc=$?
+        set -e
+        return "$crc"
     fi
 
     local domain partner partner_domain
@@ -3026,6 +3080,10 @@ cmd_smoke() {
 
     print_header "demo smoke: ${site} @ ${tier}${ip:+  (forced to ${ip})}"
     smoke_reset_counters
+    # As above: a RED check reports and counts; only smoke_summary decides the
+    # exit code. `set -e` would otherwise abort at the first failure and hide
+    # every check after it.
+    set +e
 
     echo "  -- routes the invite email sends testers to --"
     smoke_check_status "front door"        "${base}/"                 "200"         "$ip"
@@ -3033,21 +3091,34 @@ cmd_smoke() {
     smoke_check_status "feedback"          "${base}/feedback/submit"  "200,302,303,307" "$ip"
     smoke_check_status "achievements"      "${base}/nwc/achievements" "200,302,303,403" "$ip"
 
+    # A11 — pages an anonymous visitor must be able to read: the legal terms
+    # the join flow points at, the help index, the application page, the
+    # examen, and the suggestions board. Each 200s or the email's story has a
+    # hole an uptime check would never see.
+    echo "  -- anonymous member-facing pages --"
+    smoke_check_status "terms"        "${base}/legal/terms"           "200" "$ip"
+    smoke_check_status "help index"   "${base}/nwc/help/all"          "200" "$ip"
+    smoke_check_status "apply"        "${base}/apply"                 "200" "$ip"
+    smoke_check_status "examen"       "${base}/examen"                "200" "$ip"
+    smoke_check_status "suggestions"  "${base}/community/suggestions" "200" "$ip"
+
     echo "  -- identity / SSO surface --"
     smoke_check_status "OIDC signing keys" "${base}/.well-known/jwks.json" "200"    "$ip"
     smoke_check_status "login"             "${base}/user/login"       "200"         "$ip"
+    # A12 — gated signup: self-registration must LAND on /apply, not render an
+    # open registration form (checked without following the redirect).
+    smoke_check_redirect "register routes to /apply" "${base}/user/register" "302" "/apply" "$ip"
 
     if [[ -n "${partner_domain:-}" ]]; then
         echo "  -- STEP 2: the partner half (${partner}) --"
-        smoke_check_status   "partner login"      "https://${partner_domain}/login/index.php" "200" "$ip"
-        # The email tells testers to click a button that says this. If the OIDC
-        # issuer is disabled or renamed, the page still 200s and the button is
-        # simply gone — which is invisible to any uptime check.
-        smoke_check_contains "partner SSO button" "https://${partner_domain}/login/index.php" \
-                             "Log in using your account on" "$ip"
+        smoke_consumer_half "$partner" "$DEMO_PAIR_CONTRACT" "$ip"
     fi
 
     echo "  -- claims that are true or false, never merely 'up' --"
+    # A13 — the two claims every invite email leads with must be on the join
+    # page itself: the nightly erase and the Sojourner start.
+    smoke_check_contains "join page: erased-nightly" "${base}/demo/join" "erased"    "$ip"
+    smoke_check_contains "join page: Sojourner"      "${base}/demo/join" "sojourner" "$ip"
     # A1-2: nwd shipped with system.site.name = "Saint School Demo" — the
     # PARTNER's name — on every page title while claiming to be the community.
     # Both halves of this are checked, because either alone is passable: the
@@ -3065,7 +3136,9 @@ cmd_smoke() {
         SMOKE_WARN=$((SMOKE_WARN+1))
     fi
 
-    smoke_summary
+    local rc; smoke_summary; rc=$?
+    set -e
+    return "$rc"
 }
 
 # Sourced by tests (bats) to exercise the manifest builders without

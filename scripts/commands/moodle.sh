@@ -41,6 +41,7 @@ source "$REPO_ROOT/lib/moodle-promote.sh"  # _mp_cfg, _moodle_is_moodle_site, mo
 source "$REPO_ROOT/lib/moodle-deploy.sh"
 source "$REPO_ROOT/lib/moodle-gate.sh"     # ops#137 Art.9 ship-together assertion
 source "$REPO_ROOT/lib/moodle-policy.sh"   # ops#174 tool_policy site-policy-handler invariant
+source "$REPO_ROOT/lib/moodle-mail.sh"     # D7 declared mail identity + deliverability gate
 
 show_help() {
     cat <<EOF
@@ -55,6 +56,7 @@ ${BOLD}USAGE:${NC}
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
     pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
+    pl moodle mail          <site> --tier=live [--dry-run|--apply] [--sync-golden]
     pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
@@ -1196,6 +1198,397 @@ cmd_policy() {
 }
 
 ################################################################################
+# mail — the site's DECLARED mail identity (operator ruling D7, 2026-08-02)
+#
+#   pl moodle mail <site> --tier=live [--dry-run|--apply] [--sync-golden]
+#
+# Declared in sites/<site>/.nwp.yml:
+#
+#   mail:
+#     support_email:   support@<estate-domain>     # $CFG->supportemail
+#     support_name:    Saint School Support    # $CFG->supportname
+#     noreply_address: <sitekey>@<estate-domain>          # $CFG->noreplyaddress
+#
+# Report-only by DEFAULT (like `policy`). --apply takes the ADR-0028 deploy
+# gate and a typed impact confirm, writes through admin/cli/cfg.php, and then
+# RE-READS every field to verify — a write this verb did not confirm is a
+# failure, not a success.
+#
+# THE REFUSAL IS THE POINT. Every declared address goes through
+# moodle_mail_validate BEFORE anything is written, so the two faults that
+# survived for months on live — `admin@<site>.<estate-domain>` (a domain with no MX)
+# and `noreply@<site>1.ddev.site` (a dev domain on a live site) — are now
+# unreachable states rather than things somebody has to notice.
+#
+# --- THE GOLDEN, for daily-reset demo sites ---------------------------------
+# ssd is restored from a golden image every night by a forced command on the
+# box (servers/live/demo/ssd-demo-reset-restricted). That path re-imports
+# mdl_config wholesale and re-asserts NOTHING: a value written to live ssd is
+# gone by 01:15. On a reset site the golden IS the durable configuration.
+#
+# So this verb also reads the golden, and `--sync-golden` appends an idempotent
+# re-assertion tail to it (INSERT … ON DUPLICATE KEY UPDATE, applied last by
+# `gunzip -c golden.db.sql.gz | mysql`). Appending is deliberate: it cannot
+# corrupt the dump the way an in-place rewrite of mysqldump output can, and it
+# leaves the 55-course catalogue and every other row untouched — which a
+# recapture would not guarantee.
+#
+# The tail is self-healing. A later `pl demo golden <site> --tier=live` drops
+# it, but by then live itself carries the declared values, so the recaptured
+# mdl_config has them natively.
+################################################################################
+
+MOODLE_MAIL_TAIL_BEGIN="-- >>> nwp:mail-identity"
+MOODLE_MAIL_TAIL_END="-- <<< nwp:mail-identity"
+
+# _moodle_mail_declared <site> <yq-key> — the declared value, or empty.
+_moodle_mail_declared() {
+    get_site_config_value "$1" ".mail.$2" "" 2>/dev/null || true
+}
+
+# _moodle_mail_golden_dir <site> — echo the live golden dir if it exists.
+_moodle_mail_golden_dir() {
+    local d="${PROJECT_ROOT:-$REPO_ROOT}/sites/$1/demo-golden-live"
+    [ -f "$d/golden.db.sql.gz" ] && printf '%s' "$d"
+}
+
+# _moodle_mail_golden_block <golden.db.sql.gz>
+# Echo the managed mail-identity block already inside a golden dump, or nothing.
+# awk, not grep: the markers begin with `--`, which grep reads as end-of-options
+# (the first cut of this check compared the block with `grep -qF "$marker"` and
+# died with "unrecognized option" — silently reporting GOLDEN-DRIFT on a golden
+# that was in fact correct).
+_moodle_mail_golden_block() {
+    local gz="$1"
+    [ -f "$gz" ] || return 0
+    gunzip -c "$gz" 2>/dev/null | awk -v b="$MOODLE_MAIL_TAIL_BEGIN" -v e="$MOODLE_MAIL_TAIL_END" '
+        index($0, b) == 1 { inblk = 1 }
+        inblk { print }
+        index($0, e) == 1 { inblk = 0 }
+    '
+}
+
+# _moodle_mail_tail <site> <declared-pairs...>  (each "cfgname=value")
+_moodle_mail_tail() {
+    local site="$1"; shift
+    printf '%s %s (managed by `pl moodle mail`) — do not edit by hand\n' \
+        "$MOODLE_MAIL_TAIL_BEGIN" "$site"
+    printf -- '-- Re-asserted after every nightly golden restore. See lib/moodle-mail.sh.\n'
+    local kv name value
+    for kv in "$@"; do
+        name="${kv%%=*}"; value="${kv#*=}"
+        # Single quotes are the only metacharacter that matters here, and every
+        # value has already passed moodle_mail_validate (no whitespace, no
+        # quotes in an address). supportname is free text, so escape anyway.
+        value="${value//\'/\'\'}"
+        printf "INSERT INTO mdl_config (name,value) VALUES ('%s','%s') ON DUPLICATE KEY UPDATE value=VALUES(value);\n" \
+            "$name" "$value"
+    done
+    printf '%s\n' "$MOODLE_MAIL_TAIL_END"
+}
+
+cmd_mail() {
+    local site="" tier="" mode="dry-run" sync_golden="false"
+    for a in "$@"; do
+        case "$a" in
+            --tier=*)          tier="${a#*=}" ;;
+            --dry-run|--check) mode="dry-run" ;;
+            --apply|--execute) mode="execute" ;;
+            --sync-golden)     sync_golden="true" ;;
+            -h|--help)
+                print_info "usage: pl moodle mail <site> --tier=live [--dry-run|--apply] [--sync-golden]"
+                print_info "  (no flags = report only. --apply writes and re-reads to verify.)"
+                print_info "  --sync-golden re-asserts the identity in the demo golden image."
+                return 0 ;;
+            -*) print_error "Unknown option: $a"; return 1 ;;
+            *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle mail <site> --tier=live [--dry-run|--apply]"; return 1; }
+    case "$tier" in
+        live) ;;
+        "")   print_error "--tier is required (live)"; return 1 ;;
+        *)    print_error "--tier must be live (stg is a local ddev tier for Moodle)"; return 1 ;;
+    esac
+    _resolve_moodle_site "$site" || return 1
+
+    local root="${PROJECT_ROOT:-$REPO_ROOT}"
+
+    print_header "Moodle mail identity: ${BASE}@live"
+
+    # --- 1. READ THE DECLARATION --------------------------------------------
+    local -a want_names=() want_values=() want_keys=()
+    local f key cfgname value declared_any="false"
+    for f in "${MOODLE_MAIL_FIELDS[@]}"; do
+        key="${f%%|*}"; cfgname="${f##*|}"
+        value="$(_moodle_mail_declared "$BASE" "$key")"
+        want_keys+=("$key"); want_names+=("$cfgname"); want_values+=("$value")
+        [ -n "$value" ] && declared_any="true"
+    done
+
+    if [ "$declared_any" != "true" ]; then
+        print_error "No mail: block declared in sites/${BASE}/.nwp.yml — nothing to enforce."
+        print_info  "Declare it (see example.nwp.yml → sites.<name>.mail):"
+        print_info  "    mail:"
+        print_info  "      support_email:   support@<estate-domain>"
+        print_info  "      support_name:    <Site> Support"
+        print_info  "      noreply_address: ${BASE}@<estate-domain>"
+        return 1
+    fi
+
+    # --- 2. GATE THE DECLARATION (before anything is written) ----------------
+    print_info "Declared identity (sites/${BASE}/.nwp.yml → mail:)"
+    local i refusals=0 unverifiable=0 reason rc
+    for i in "${!want_names[@]}"; do
+        cfgname="${want_names[$i]}"; value="${want_values[$i]}"
+        [ -z "$value" ] && { printf '  %-16s %s\n' "$cfgname:" "(not declared — left alone)"; continue; }
+        printf '  %-16s %s\n' "$cfgname:" "$value"
+        if moodle_mail_field_is_address "$cfgname"; then
+            reason="$(moodle_mail_validate "$value" "$root")"; rc=$?
+        else
+            # Free text: still refuse a dev-domain leak hiding in a display name.
+            reason="OK: free text"; rc=0
+            if moodle_mail_is_dev_domain "$(moodle_mail_domain_of "$value")"; then
+                reason="REFUSE: ${cfgname} carries a development domain"; rc=1
+            fi
+        fi
+        case $rc in
+            0) printf '                   %s\n' "$reason" ;;
+            2) print_warning "  $reason"; unverifiable=$((unverifiable + 1)) ;;
+            *) print_error   "  $reason"; refusals=$((refusals + 1)) ;;
+        esac
+    done
+    echo ""
+
+    if [ "$refusals" -gt 0 ]; then
+        print_error "REFUSING: ${refusals} declared address(es) cannot receive mail."
+        print_info  "Fix the declaration, or alias the address and re-track the baseline:"
+        print_info  "    pl email add <localpart> --forward-only <target> -y --host=<server>"
+        print_info  "    pl email baseline <server>"
+        return 1
+    fi
+
+    # --- 3. READ LIVE --------------------------------------------------------
+    local server_ip ssh_user remote_path ssh_opts ssh_target sudo_prefix="" php_bin php_opts
+    server_ip=$(get_live_config "$BASE" "server_ip")
+    [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE' (empty server_ip)."; return 1; }
+    ssh_user=$(get_ssh_user "$BASE")
+    remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+    [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+    ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+    php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+    php_opts="$(moodle_cli_php_opts "$CONFIG_FILE")"
+    moodle_cli_assert "$php_bin" "$php_opts" || return 1
+
+    local cfg="${remote_path%/}/admin/cli/cfg.php"
+    local run="cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${cfg}"
+
+    print_info "Target:  ${ssh_target}:${remote_path}"
+    echo ""
+
+    local -a have_values=()
+    local drift=0 verdict
+    for i in "${!want_names[@]}"; do
+        cfgname="${want_names[$i]}"
+        # shellcheck disable=SC2029
+        value="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${run} --name=${cfgname} --no-eol" 2>/dev/null)"; rc=$?
+        if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+            print_error "Could not read ${cfgname} from ${BASE} live (ssh/cfg.php status ${rc})."
+            print_info  "Refusing to report a verdict on a reading that did not happen."
+            return 1
+        fi
+        have_values+=("$value")
+    done
+
+    print_info "Live vs declared"
+    for i in "${!want_names[@]}"; do
+        cfgname="${want_names[$i]}"
+        verdict="$(moodle_mail_verdict "${want_values[$i]}" "${have_values[$i]}")" || true
+        case "$verdict" in
+            OK)    printf '  %-16s %-34s OK\n'    "$cfgname:" "${have_values[$i]:-(empty)}" ;;
+            UNSET) printf '  %-16s %-34s (not declared)\n' "$cfgname:" "${have_values[$i]:-(empty)}" ;;
+            DRIFT) printf '  %-16s %-34s DRIFT -> %s\n' "$cfgname:" "${have_values[$i]:-(empty)}" "${want_values[$i]}"
+                   drift=$((drift + 1)) ;;
+        esac
+    done
+    echo ""
+
+    # --- 4. THE GOLDEN (daily-reset demo sites) ------------------------------
+    local golden_dir golden_drift=0
+    golden_dir="$(_moodle_mail_golden_dir "$BASE")" || true
+    local -a tail_pairs=()
+    for i in "${!want_names[@]}"; do
+        [ -n "${want_values[$i]}" ] && tail_pairs+=("${want_names[$i]}=${want_values[$i]}")
+    done
+    if [ -n "$golden_dir" ]; then
+        local want_tail have_tail
+        want_tail="$(_moodle_mail_tail "$BASE" "${tail_pairs[@]}")"
+        have_tail="$(_moodle_mail_golden_block "$golden_dir/golden.db.sql.gz")"
+        if [ -z "$have_tail" ]; then
+            print_warning "GOLDEN-DRIFT: ${BASE} is restored from a golden nightly, and that golden does NOT"
+            print_warning "              re-assert the mail identity — a live write here is undone by 01:15."
+            golden_drift=1
+        elif [ "$have_tail" != "$want_tail" ]; then
+            print_warning "GOLDEN-DRIFT: the golden's mail-identity block does not match the declaration"
+            golden_drift=1
+        else
+            print_status "OK" "golden image re-asserts the declared identity after every reset"
+        fi
+        [ "$golden_drift" -eq 1 ] && print_info "Fix it: add --sync-golden"
+        echo ""
+    fi
+
+    # --- 5. REPORT-ONLY ------------------------------------------------------
+    if [ "$mode" != "execute" ]; then
+        if [ "$drift" -eq 0 ] && [ "$golden_drift" -eq 0 ]; then
+            [ "$unverifiable" -gt 0 ] && { print_warning "clean, but ${unverifiable} address(es) could not be verified."; return 2; }
+            print_status "OK" "${BASE} live matches its declared mail identity."
+            return 0
+        fi
+        print_info "Fix it:      pl moodle mail ${BASE} --tier=live --apply$([ "$golden_drift" -eq 1 ] && printf ' --sync-golden')"
+        return 1
+    fi
+
+    # --- 6. APPLY ------------------------------------------------------------
+    if [ "$unverifiable" -gt 0 ]; then
+        print_error "REFUSING to write: ${unverifiable} declared address(es) could not be verified as deliverable."
+        print_info  "A CANNOT-VERIFY is not a pass — install a resolver (dig) and re-run."
+        return 1
+    fi
+    if [ "$drift" -eq 0 ] && [ "$golden_drift" -eq 0 ]; then
+        print_status "OK" "already matches — idempotent no-op."
+        return 0
+    fi
+
+    local live_enabled; live_enabled=$(get_live_config "$BASE" "enabled")
+    [ "$live_enabled" = "false" ] && { print_error "Live disabled for '$BASE' (live.enabled: false)."; return 1; }
+
+    if [ "$drift" -gt 0 ]; then
+        deploy_gate_require "$BASE" "live" "set the mail identity on live ${BASE}" || return 1
+        impact_reset
+        for i in "${!want_names[@]}"; do
+            verdict="$(moodle_mail_verdict "${want_values[$i]}" "${have_values[$i]}")" || true
+            [ "$verdict" = "DRIFT" ] && impact_overwrite "mdl_config" \
+                "${want_names[$i]}: '${have_values[$i]:-(empty)}' -> '${want_values[$i]}' on LIVE ${BASE}"
+        done
+        impact_warn "Automated mail from ${BASE} changes its From:/support address at the next send."
+        impact_keep "\$CFG->noemailever and \$CFG->divertallemailsto — NOT touched by this verb"
+        impact_keep "courses, users, moodledata — not touched by this verb"
+        impact_render
+        impact_confirm typed "$BASE" "${AUTO_CONFIRM:-false}" || { print_error "aborted."; return 1; }
+
+        print_header "Writing the mail identity on live"
+        for i in "${!want_names[@]}"; do
+            verdict="$(moodle_mail_verdict "${want_values[$i]}" "${have_values[$i]}")" || true
+            [ "$verdict" = "DRIFT" ] || continue
+            cfgname="${want_names[$i]}"; value="${want_values[$i]}"
+            # shellcheck disable=SC2029
+            if ! ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+                    "${run} --name=${cfgname} --set=$(printf '%q' "$value")"; then
+                print_error "cfg.php write FAILED for ${cfgname} — stopping."
+                return 1
+            fi
+        done
+        # shellcheck disable=SC2029
+        ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+            "cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_path%/}/admin/cli/purge_caches.php" >/dev/null 2>&1 \
+            || print_warning "purge_caches failed — run: pl moodle cli ${BASE} --tier=live --execute -- admin/cli/purge_caches.php"
+
+        # VERIFY BY RE-READ. A write this verb did not confirm is a failure.
+        local after fail=0
+        for i in "${!want_names[@]}"; do
+            [ -n "${want_values[$i]}" ] || continue
+            cfgname="${want_names[$i]}"
+            # shellcheck disable=SC2029
+            after="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${run} --name=${cfgname} --no-eol" 2>/dev/null || true)"
+            if [ "$after" != "${want_values[$i]}" ]; then
+                print_error "VERIFY FAILED: ${cfgname} reads '${after:-(empty)}', expected '${want_values[$i]}'."
+                fail=1
+            else
+                print_status "OK" "${cfgname} = '${after}' (verified by re-read)"
+            fi
+        done
+        [ "$fail" -eq 0 ] || return 1
+    fi
+
+    # --- 7. THE GOLDEN -------------------------------------------------------
+    if [ "$sync_golden" = "true" ]; then
+        if [ -z "$golden_dir" ]; then
+            print_error "--sync-golden: no golden image at sites/${BASE}/demo-golden-live/"
+            return 1
+        fi
+        _moodle_mail_sync_golden "$BASE" "$golden_dir" "${tail_pairs[@]}" || return 1
+    elif [ "$golden_drift" -eq 1 ]; then
+        print_warning "The golden still does NOT carry this identity — the nightly reset will undo it."
+        print_info    "Run: pl moodle mail ${BASE} --tier=live --apply --sync-golden"
+        return 1
+    fi
+
+    return 0
+}
+
+# _moodle_mail_sync_golden <site> <golden_dir> <pairs...>
+# Strip any previous tail, append the current one, re-checksum, re-manifest.
+# Everything is done on a COPY and moved into place only once every step has
+# succeeded — a half-written golden is a site that cannot be restored.
+_moodle_mail_sync_golden() {
+    local site="$1" dir="$2"; shift 2
+    local gz="$dir/golden.db.sql.gz"
+
+    print_header "Re-asserting the mail identity in the golden image"
+
+    # No RETURN trap here: a RETURN trap also fires for the command
+    # substitutions below, which would delete the workspace mid-function. Clean
+    # up explicitly on every exit path instead.
+    local tmp; tmp="$(mktemp -d)" || return 1
+    _mmsg_cleanup() { rm -rf "$tmp"; }
+
+    if ! gunzip -c "$gz" > "$tmp/golden.sql" 2>/dev/null; then
+        print_error "Cannot decompress $gz"
+        _mmsg_cleanup; return 1
+    fi
+    local before_bytes; before_bytes=$(wc -c < "$tmp/golden.sql")
+
+    # Drop any previous managed block (idempotent re-runs).
+    awk -v b="$MOODLE_MAIL_TAIL_BEGIN" -v e="$MOODLE_MAIL_TAIL_END" '
+        index($0, b) == 1 { skip = 1 }
+        skip != 1 { print }
+        index($0, e) == 1 { skip = 0 }
+    ' "$tmp/golden.sql" > "$tmp/stripped.sql"
+
+    _moodle_mail_tail "$site" "$@" >> "$tmp/stripped.sql"
+
+    if ! gzip -c "$tmp/stripped.sql" > "$tmp/golden.db.sql.gz"; then
+        print_error "Recompression failed — golden left untouched."
+        _mmsg_cleanup; return 1
+    fi
+    # Sanity: the rewritten dump must still decompress and still be the same
+    # order of magnitude. A truncated golden is worse than a stale one.
+    local after_bytes
+    after_bytes=$(gunzip -c "$tmp/golden.db.sql.gz" | wc -c) || { print_error "Rewritten golden will not decompress."; _mmsg_cleanup; return 1; }
+    if [ "$after_bytes" -lt "$before_bytes" ]; then
+        print_error "Rewritten golden SHRANK (${before_bytes} -> ${after_bytes} bytes) — refusing."
+        _mmsg_cleanup; return 1
+    fi
+
+    local sum; sum="$(sha256sum "$tmp/golden.db.sql.gz" | awk '{print $1}')"
+    cp "$tmp/golden.db.sql.gz" "$gz" || { _mmsg_cleanup; return 1; }
+    ( cd "$dir" && sha256sum golden.db.sql.gz > golden.db.sql.gz.sha256 ) || { _mmsg_cleanup; return 1; }
+
+    # Keep the manifest honest — install-box.sh re-verifies it on staging.
+    local man="$dir/golden.manifest.json"
+    if [ -f "$man" ] && command -v jq >/dev/null 2>&1; then
+        local newman; newman="$(jq --arg s "$sum" '.db_sha256 = $s' "$man")" || { _mmsg_cleanup; return 1; }
+        printf '%s\n' "$newman" > "$man"
+    fi
+    _mmsg_cleanup
+
+    print_status "OK" "golden re-asserts the mail identity (+$((after_bytes - before_bytes)) bytes, db_sha256 ${sum:0:12}…)"
+    print_info  "Stage it to the box:  bash servers/live/demo/install-box.sh ${site} --stage-golden"
+    return 0
+}
+
+################################################################################
 # core-patch — declared Moodle CORE patches (item 9)
 #
 # DECLARATION RESOLUTION (first hit wins):
@@ -1969,6 +2362,7 @@ case "$SUB" in
         ;;
     gate-status) cmd_gate_status "$@" ;;
     policy)    cmd_policy   "$@" ;;
+    mail)      cmd_mail     "$@" ;;
     upgrade)   cmd_upgrade  "$@" ;;
     backup)    cmd_backup   "$@" ;;
     rollback)  cmd_rollback "$@" ;;

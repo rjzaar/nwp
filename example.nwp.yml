@@ -176,6 +176,45 @@ sites:
     paired_with: example-drupal
     project:
       type: moodle # routes the Moodle promotion substrate
+    # ── Mail identity (operator ruling D7, 2026-08-02) ────────────────────────
+    # The addresses a Moodle site SHOWS members and SENDS AS, declared here so
+    # they are a checkable fact instead of something set by hand once and never
+    # read back. Applied and verified by:
+    #     pl moodle mail <site> --tier=live            # report only (default)
+    #     pl moodle mail <site> --tier=live --apply    # writes, then re-reads
+    #
+    # Every declared address is gated BEFORE it can be written
+    # (lib/moodle-mail.sh): it must parse, must not be a development or
+    # reserved domain, must have an MX (or A), and — for a domain the estate
+    # itself serves — must appear in BOTH
+    # servers/<server>/email/referenced-addresses.txt and the tracked
+    # postfix-virtual baseline. An address with no alias line is a silent black
+    # hole, so "declared but unaliased" is a refusal, not a warning.
+    #
+    # This gate exists because live Moodle ran for months with
+    # supportemail=admin@<subdomain> (a domain with NO MX, undeliverable by
+    # construction) and noreplyaddress=noreply@<site>.ddev.site (a local dev
+    # domain on a public site). Both are now unreachable states.
+    #
+    # ESTATE CONVENTION:
+    #   noreply_address  <sitekey>@<maildomain> — the site's own from-address,
+    #                    matching the Drupal half's system.site:mail. Per-site
+    #                    so a bounce says WHICH system produced it.
+    #   support_email    a ROLE address (support@…), not a site key: members
+    #                    read it, and it should say what it is for. A demo tier
+    #                    gets its OWN role address so demo reports triage apart
+    #                    from real ones.
+    #   support_name     displayed beside the address. Leave Moodle's installer
+    #                    default ("Admin User") and an institutional address
+    #                    still reads like a stray personal one.
+    #
+    # NOTE for daily-reset demo sites: the nightly restore re-imports mdl_config
+    # wholesale, so a live write alone is undone. `--sync-golden` re-asserts the
+    # identity inside the golden image, which is what actually survives.
+    mail:
+      support_email: support@<example-mail-domain>
+      support_name: "Example LMS Support"
+      noreply_address: example-moodle@<example-mail-domain>
     # ── Moodle promotion substrate (ADR-0031 D8 / ops D) ──────────────────────
     # Per-tier values the Moodle settings-writer (lib/moodle-promote.sh, via
     # `pl moodle-promote`) uses to rewrite config.php when this site is promoted

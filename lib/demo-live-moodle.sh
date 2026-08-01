@@ -156,7 +156,24 @@ demo_moodle_idle_ok() {
 # Nothing is lost. The box wrapper harvests the errors it cares about BEFORE
 # the wipe (servers/live/demo/ssd-demo-reset-restricted), and that digest — not
 # the golden's copy of the table — is the record.
-DEMO_MOODLE_NODATA_TABLES="${DEMO_MOODLE_NODATA_TABLES:-mdl_logstore_standard_log mdl_task_log}"
+# `mdl_sessions` was MISSED by the first cut of this list, and it was the worse
+# offender of the two. Measured on the ssd golden captured immediately after
+# ops#168 landed: logstore was gone, and the dump still carried 3,940
+# `mdl_sessions` rows holding 306 distinct public visitor IPs — because Moodle
+# writes a session row for EVERY anonymous request (the same fact that forced
+# [G4] of the box wrapper to count `userid <> 0`). So the artifact still made
+# visitor IPs immortal by nightly restore; only the table they sat in changed.
+#
+# Restoring session rows is meaningless on top of that: the reset wipes
+# moodledata including the session files, and the wrapper's own fate manifest
+# already promises "every live session, so everyone signed in is signed out".
+# Rows pointing at session files that no longer exist are not state, they are
+# just the IPs.
+#
+# This also restores PARITY with the Drupal half, which has excluded `sessions`
+# from the first commit (watchdog,sessions,flood). The two halves disagreeing
+# about what a golden may contain is how this was missed.
+DEMO_MOODLE_NODATA_TABLES="${DEMO_MOODLE_NODATA_TABLES:-mdl_logstore_standard_log mdl_task_log mdl_sessions}"
 
 # ---------------------------------------------------------------------------
 # demo_moodle_dump_cmd <dbname> <out-path>

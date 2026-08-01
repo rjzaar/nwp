@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # scripts/commands/dns.sh
 #
-# `pl dns` — READ-ONLY enumeration of the estate's DNS, reconciled against what
-# NWP declares.
+# `pl dns` — enumeration of the estate's DNS, reconciled against what NWP
+# declares, plus a guarded removal path for records PROVEN dead.
 #
 # Usage:
-#   pl dns list                 Every zone the DNS token can see
+#   pl dns list                 Every zone the DNS token can see (READ-ONLY)
 #   pl dns list <domain>        One zone
 #   pl dns list --json          Machine-readable (the same classification)
+#   pl dns rm <domain> <id>...  Remove records BY ID — dry-run unless --execute
 #
 # WHY THIS VERB EXISTS
 # --------------------
@@ -22,15 +23,33 @@
 #
 # This verb answers, in one screen: WHAT POINTS WHERE, AND IS IT DECLARED?
 #
-# It writes nothing. Every request it makes is a GET. It will never print a
+# `list` writes nothing. Every request it makes is a GET. It will never print a
 # removal command, because the DECLARED/UNDECLARED column is not a delete list —
 # see lib/dns-inventory.sh design rule 4, and `pl server prune`, whose first cut
 # built its delete set by subtracting a keep-list and proposed deleting two live
 # databases and a serving site's certificate.
 #
+# `rm` (nwp/ops#176) is the apply path `list` deliberately is not. Before it,
+# removing a proven-dead record meant hand-rolled curl against the API — the
+# exact idiom the standing order forbids — so 54 fixture records outlived two
+# handovers and a full audit. Its guards, in order:
+#   - records are named BY ID, never by name or pattern: the caller must have
+#     enumerated first (`pl dns list --json`) and must mean each one.
+#   - only A / AAAA / CNAME are deletable. NS is an offboarding decision
+#     (delegations belong to coders), and MX/TXT/CAA/SRV/SOA + the apex are
+#     zone policy — this verb refuses all of them, always.
+#   - a record whose FQDN any declaration names is refused. `rm` will not be
+#     the verb that deletes a declared site's record; that is `pl live --delete`.
+#   - ALL-OR-NOTHING: one refused ID aborts the whole set before any DELETE.
+#     A partially applied delete list is drift with a receipt.
+#   - dry-run by default; --execute asks for the zone domain typed back; every
+#     record's verbatim recreation row (type name target ttl) is appended to
+#     private/dns-rollback.log BEFORE its DELETE is sent.
+#
 # Exit codes (the `pl server roots` convention — an unknown is never a clean):
-#   0  reconciled — no shadowed record, no mispointed declaration
-#   1  SHADOWED-BY-NS and/or MISPOINTED found
+#   0  list: reconciled · rm: dry-run complete, or every record deleted
+#   1  list: SHADOWED-BY-NS / MISPOINTED · rm: a refusal, a failed confirm,
+#      or a DELETE that did not succeed
 #   2  usage error
 #   3  CANNOT-VERIFY — blindness. No token, no answer from the API, an
 #      unparseable body, a zone the token cannot see, a partial page, or zero
@@ -286,6 +305,152 @@ EOF
 }
 
 ################################################################################
+# Subcommand: rm <domain> <record-id>... [--execute] [--yes]
+################################################################################
+# The guarded apply path. See the header block for the guard rationale; the
+# shape of every check is "prove the record is one this verb is allowed to
+# touch, or refuse the WHOLE set".
+cmd_rm() {
+    local domain="" execute=0 yes=0 arg
+    local -a want_ids=()
+    for arg in "$@"; do
+        case "$arg" in
+            --execute) execute=1 ;;
+            --yes)     yes=1 ;;
+            -*)        echo "Unknown option: $arg" >&2; return 2 ;;
+            *)
+                if [ -z "$domain" ]; then
+                    domain="${arg,,}"
+                elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+                    want_ids+=("$arg")
+                else
+                    echo "Records are removed BY NUMERIC ID, not by name: '$arg'." >&2
+                    echo "Enumerate first: pl dns list ${domain} --json" >&2
+                    return 2
+                fi
+                ;;
+        esac
+    done
+    if [ -z "$domain" ] || [ "${#want_ids[@]}" -eq 0 ]; then
+        echo "Usage: pl dns rm <domain> <record-id>... [--execute] [--yes]" >&2
+        return 2
+    fi
+
+    # Same credential path as cmd_list: the token travels only inside
+    # lib/linode.sh's 0600 curl config, never argv, never output.
+    local secrets_file token
+    secrets_file="${NWP_SECRETS_FILE:-$PROJECT_ROOT/.secrets.yml}"
+    export NWP_SECRETS_FILE="$secrets_file"
+    token=$(get_linode_token "$(dirname "$secrets_file")")
+    if [ -z "$token" ]; then
+        echo "CANNOT-VERIFY: no linode.api_token in .secrets.yml (and no LINODE_API_TOKEN)."
+        return 3
+    fi
+
+    local zones zid zdom
+    zones=$(dns_inv_domains "$token") || return 3
+    IFS=$'\t' read -r zid zdom < <(printf '%s\n' "$zones" | awk -F'\t' -v d="$domain" 'tolower($2)==d')
+    if [ -z "${zid:-}" ]; then
+        printf 'CANNOT-VERIFY: this token cannot see the zone %s.\n' "$domain"
+        return 3
+    fi
+
+    local records
+    records=$(dns_inv_records "$token" "$zid") || return 3
+
+    local -A DNS_DECL_SRC=() DNS_DECL_IP=() DNS_DECL_KIND=()
+    dns_inv_declarations "$NWP_DIR"
+
+    # Every requested ID must be found, of a deletable type, and undeclared.
+    # Refusals do not shrink the set — they abort it.
+    local -a refusals=() rollback=()
+    local rid found id type name target ttl fqdn
+    for rid in "${want_ids[@]}"; do
+        found=""
+        while IFS=$'\t' read -r id type name target ttl; do
+            [ "$id" = "$rid" ] && { found="$id"$'\t'"$type"$'\t'"$name"$'\t'"$target"$'\t'"$ttl"; break; }
+        done <<< "$records"
+        if [ -z "$found" ]; then
+            refusals+=("  REFUSED  id ${rid}: not in zone ${zdom} — already gone, or the wrong zone. Refusing to guess.")
+            continue
+        fi
+        IFS=$'\t' read -r id type name target ttl <<< "$found"
+        fqdn=$(dns_inv_fqdn "${name,,}" "$zdom")
+        case "$type" in
+            A|AAAA|CNAME) ;;
+            NS)
+                refusals+=("  REFUSED  id ${rid} (NS ${fqdn}): a delegation is an offboarding decision, not a prune. Not this verb.")
+                continue ;;
+            *)
+                refusals+=("  REFUSED  id ${rid} (${type} ${fqdn}): zone policy. \`pl monitor mail\` validates these; nothing deletes them.")
+                continue ;;
+        esac
+        if [ "$name" = "@" ] || [ -z "$name" ]; then
+            refusals+=("  REFUSED  id ${rid}: the apex is the zone, not a host.")
+            continue
+        fi
+        if [ -n "${DNS_DECL_SRC[$fqdn]+x}" ]; then
+            refusals+=("  REFUSED  id ${rid} (${type} ${fqdn}): DECLARED in ${DNS_DECL_SRC[$fqdn]}. A declared site's record is \`pl live --delete\`'s to remove, with its declaration.")
+            continue
+        fi
+        rollback+=("$id"$'\t'"$type"$'\t'"$name"$'\t'"$target"$'\t'"${ttl:-0}")
+    done
+
+    if [ "${#refusals[@]}" -gt 0 ]; then
+        printf 'ALL-OR-NOTHING: %d of %d requested records refused — NOTHING was deleted.\n\n' \
+            "${#refusals[@]}" "${#want_ids[@]}"
+        printf '%s\n' "${refusals[@]}"
+        return 1
+    fi
+
+    printf 'zone %s (id %s): %d record(s) selected for removal\n\n' "$zdom" "$zid" "${#rollback[@]}"
+    printf '  %-10s %-6s %-24s %-32s %s\n' ID TYPE NAME TARGET TTL
+    local row
+    for row in "${rollback[@]}"; do
+        IFS=$'\t' read -r id type name target ttl <<< "$row"
+        printf '  %-10s %-6s %-24s %-32s %s\n' "$id" "$type" "$name" "$target" "$ttl"
+    done
+
+    if [ "$execute" -eq 0 ]; then
+        printf '\nDRY RUN — nothing deleted. The rows above are the verbatim recreation data;\n'
+        printf 're-run with --execute to apply.\n'
+        return 0
+    fi
+
+    if [ "$yes" -eq 0 ]; then
+        local typed
+        printf '\nType the zone domain (%s) to confirm deletion of %d record(s): ' "$zdom" "${#rollback[@]}"
+        read -r typed
+        if [ "$typed" != "$zdom" ]; then
+            echo "Confirmation did not match — NOTHING was deleted."
+            return 1
+        fi
+    fi
+
+    # The ledger row is written BEFORE the DELETE is sent: a deletion that
+    # cannot be recreated verbatim is not allowed to happen.
+    local ledger="$NWP_DIR/private/dns-rollback.log"
+    mkdir -p "$(dirname "$ledger")"
+    local now failed=0 deleted=0
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    for row in "${rollback[@]}"; do
+        IFS=$'\t' read -r id type name target ttl <<< "$row"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$now" "$zdom" "$zid" "$id" "$type" "$name" "$target" "$ttl" >> "$ledger"
+        if linode_delete_dns_record "$token" "$zid" "$id"; then
+            deleted=$((deleted + 1))
+        else
+            failed=$((failed + 1))
+            echo "  FAILED   id ${id} (${type} ${name}) — NOT deleted; ledger row stands for the attempt." >&2
+        fi
+    done
+
+    printf '\n%d deleted, %d failed — rollback rows in %s\n' "$deleted" "$failed" "$ledger"
+    [ "$failed" -eq 0 ] || return 1
+    return 0
+}
+
+################################################################################
 # Dispatcher
 ################################################################################
 sub="${1:-}"
@@ -293,6 +458,7 @@ shift || true
 
 case "$sub" in
     list) cmd_list "$@" ;;
+    rm)   cmd_rm "$@" ;;
     ""|help|--help|-h)
         cat <<'EOF'
 Usage: pl dns <subcommand> [args]
@@ -306,8 +472,20 @@ Subcommands:
                            Exit 3 = CANNOT-VERIFY (no token, no answer, partial
                            read) — never treated as a clean zone.
 
-This command writes nothing: every request it makes is a GET. The
-DECLARED/UNDECLARED column is a reconciliation, not a delete list.
+  rm <domain> <id>... [--execute] [--yes]
+                           Remove records BY NUMERIC ID (enumerate first with
+                           `pl dns list <domain> --json`). Dry-run by default.
+                           Refuses, and refuses the WHOLE set: NS records, zone
+                           policy (MX/TXT/CAA/SRV/SOA, the apex), any DECLARED
+                           record, any ID not in the zone. --execute asks for
+                           the domain typed back (--yes skips); every record's
+                           recreation row is appended to private/dns-rollback.log
+                           BEFORE its DELETE is sent.
+
+`list` writes nothing: every request it makes is a GET, and its
+DECLARED/UNDECLARED column is a reconciliation, not a delete list. `rm` is the
+one apply path, and it only accepts records the caller has already enumerated
+and proven — see nwp/ops#176.
 EOF
         ;;
     *)

@@ -1,0 +1,5 @@
+ssh-ed25519 <key-redacted> gitlab@<fqdn-redacted>
+command="/usr/bin/rrsync -ro /var/backups/nwp-pull",restrict ssh-ed25519 <key-redacted> met-stick-backup-pull
+command="rrsync -ro /var/backups/nwp-pull",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 <key-redacted> nwp-dr-pull@met
+command="/usr/local/bin/nwd-demo-reset-restricted",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 <key-redacted> nwd-demo-reset@met
+command="/usr/local/bin/ssd-demo-reset-restricted",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 <key-redacted> ssd-demo-reset@met

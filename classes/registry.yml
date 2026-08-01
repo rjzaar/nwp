@@ -117,6 +117,28 @@ classes:
         No real person's formation data is present, so there is no
         special-category processing to consent to. The claim is checkable: every
         account must be seeded/synthetic.
+      # DEMO-SHAPED EVIDENCE (ops#162). The generic none-stored block below was
+      # designed for rgs (member-standalone): member cap + attestation + expiry.
+      # A demo is synthetic BY DESIGN, so on class=demo the evidence is:
+      #   - probe_cmd                REQUIRED  (anti-vacuity stands: NO-PROBE)
+      #   - demo_mode_probe_cmd     REQUIRED  — REPLACES the member cap. A
+      #     command that POSITIVELY checks the site is in demo mode (e.g.
+      #     nwc_demo_access.settings demo_mode on Drupal, the Moodle
+      #     equivalent on ssd). Unset => NO-DEMO-PROBE.
+      #   - attestation             at/by/formation_rows required
+      #     (NO-ATTESTATION); formation_rows must be 0 (EVIDENCE-CONTRADICTS);
+      #     demo_mode must be exactly true, as read by demo_mode_probe_cmd
+      #     (DEMO-MODE-OFF — a demo whose demo_mode is off is NOT a demo;
+      #     fail closed).
+      #   - max_age_days            staleness clock still applies
+      #     (STALE-ATTESTATION).
+      #   - member_count/max_members NOT required: seeded accounts are not
+      #     capped real members; demanding a cap here would either
+      #     misrepresent them or gut the cap's meaning on rgs.
+      #   - expires                 NOT required: demo is a STANDING class
+      #     property, not an expiring exemption. An expires that IS declared
+      #     is still honoured (EXEMPTION-EXPIRED) — a declared bound may not
+      #     rot.
     invariants:
       art9_consent_gate: NOT_APPLICABLE    # asserted via none-stored evidence
       erasure_channel: NOT_APPLICABLE      # asserted: no real data subject
@@ -196,3 +218,13 @@ art9_postures:
       at max_age_days / expires): the reading is self-attested, so between
       attestations the cap depends on the probe being re-run — the 30-day
       staleness clock is what bounds that window, not magic.
+    demo_variant:
+      note: >-
+        class=demo uses a DEMO-SHAPED variant of this posture (ops#162; see the
+        demo class art9 block above). A positive demo-mode assertion
+        (demo_mode_probe_cmd + attestation.demo_mode: true) REPLACES the member
+        cap, and expires is not required — a demo is a standing class property,
+        not an expiring exemption. probe_cmd, the attestation, formation_rows==0
+        and the staleness clock apply unchanged. The member-standalone/service
+        requirements above are NOT relaxed by this variant.
+      failure_tokens: [NO-DEMO-PROBE, DEMO-MODE-OFF]

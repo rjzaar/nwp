@@ -94,6 +94,27 @@ teardown() { rm -rf "$TEST_TMP"; }
   [[ "$output" == *"NOT IMPLEMENTED"* ]]
 }
 
+@test "class set <site> demo scaffolds the demo-shaped Art.9 evidence skeleton (ops#162)" {
+  run bash "$CLASS_SH" set demoscaffold demo
+  [ "$status" -eq 0 ]
+  f="${NWP_SITECLASS_DIR}/demoscaffold.class.yml"
+  grep -q 'posture: none-stored' "$f"          # demo permits exactly this posture
+  grep -q 'probe_cmd' "$f"
+  grep -q 'demo_mode_probe_cmd' "$f"           # the cap-replacing assertion
+  grep -q 'demo_mode' "$f"
+  grep -q 'formation_rows' "$f"
+  # scaffolding is not attestation: the skeleton must FAIL until filled in
+  run bash "$CLASS_SH" check demoscaffold
+  [ "$status" -ne 0 ]
+}
+
+@test "class set for a NON-demo class does not scaffold the demo evidence block" {
+  run bash "$CLASS_SH" set plainsite member-standalone
+  [ "$status" -eq 0 ]
+  run grep demo_mode_probe_cmd "${NWP_SITECLASS_DIR}/plainsite.class.yml"
+  [ "$status" -ne 0 ]
+}
+
 @test "class set writes NO user@hostname into the tracked declaration" {
   run bash "$CLASS_SH" set newsite demo
   [ "$status" -eq 0 ]

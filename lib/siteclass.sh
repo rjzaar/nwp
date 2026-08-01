@@ -32,7 +32,8 @@
 # to the wrong source is refused. `none-stored`, the only posture that ships
 # an artifact with no gate call at all, is backed by evidence that itself
 # fails closed on absence, staleness, expiry, a non-zero formation row count,
-# or an exceeded member cap.
+# or an exceeded member cap. (On class=demo the cap and expiry are replaced by
+# a positive demo-mode assertion — see the none-stored branch and ops#162.)
 #
 # Modelled directly on `pl contracts key-rotation` (scripts/commands/contracts.sh),
 # where `consumer_verifies_signature: false` REQUIRES a positive scan proving no
@@ -363,8 +364,24 @@ siteclass_art9_check() {
 
         none-stored)
             # ---------------------------------------------------------------
-            # The bounded, evidenced, expiring exemption. SIX obligations.
+            # The bounded, evidenced exemption. TWO SHAPES (ops#162):
+            #
+            #   rgs shape (member-standalone, service): member cap +
+            #     attestation + EXPIRY. Six obligations, exactly as before.
+            #
+            #   demo shape (class=demo only): a demo is synthetic BY DESIGN.
+            #     Its honest checkable assertion is not "member_count <= cap"
+            #     — seeded accounts are not capped real members — but
+            #     "demo_mode is ON and formation_rows == 0". The member cap
+            #     is REPLACED by a positive demo-mode assertion
+            #     (demo_mode_probe_cmd + attestation.demo_mode: true), and
+            #     art9.expires is NOT required: demo is a STANDING class
+            #     property, not an expiring exemption. An expires that IS
+            #     declared is still honoured — a declared bound may not rot.
             # ---------------------------------------------------------------
+            local demo_shape=0
+            [ "$class" = "demo" ] && demo_shape=1
+
             local probe max_members max_age att_at att_by rows members expires
 
             probe="$(_sc_yq "$decl" '.art9.evidence.probe_cmd')"
@@ -375,11 +392,37 @@ siteclass_art9_check() {
                 bad=1
             fi
 
+            if [ "$demo_shape" -eq 1 ]; then
+                # The cap-replacing assertion: HOW is demo mode checked?
+                local demo_probe
+                demo_probe="$(_sc_yq "$decl" '.art9.evidence.demo_mode_probe_cmd')"
+                if [ -z "$demo_probe" ]; then
+                    _sc_err "[$site] NO-DEMO-PROBE: class=demo but art9.evidence.demo_mode_probe_cmd is"
+                    _sc_err "                       unset. The demo-mode assertion REPLACES the member cap;"
+                    _sc_err "                       a demo that cannot say how demo_mode would be checked"
+                    _sc_err "                       has not asserted it."
+                    bad=1
+                fi
+            fi
+
             att_at="$(_sc_yq "$decl" '.art9.evidence.attestation.at')"
             att_by="$(_sc_yq "$decl" '.art9.evidence.attestation.by')"
             rows="$(_sc_yq   "$decl" '.art9.evidence.attestation.formation_rows')"
             members="$(_sc_yq "$decl" '.art9.evidence.attestation.member_count')"
-            if [ -z "$att_at" ] || [ -z "$att_by" ] || [ -z "$rows" ] || [ -z "$members" ]; then
+            if [ "$demo_shape" -eq 1 ]; then
+                # member_count is NOT required on a demo: seeded accounts are
+                # not capped real members, and demanding a cap here would
+                # either misrepresent them or gut the cap's meaning on rgs.
+                if [ -z "$att_at" ] || [ -z "$att_by" ] || [ -z "$rows" ]; then
+                    _sc_err "[$site] NO-ATTESTATION: class=demo posture=none-stored requires"
+                    _sc_err "                        art9.evidence.attestation with at/by/formation_rows."
+                    _sc_err "                        Got at='${att_at:-<unset>}' by='${att_by:-<unset>}'"
+                    _sc_err "                        formation_rows='${rows:-<unset>}'."
+                    _sc_err "                        An unevidenced exemption is just --allow-ungated with"
+                    _sc_err "                        extra steps."
+                    return 1
+                fi
+            elif [ -z "$att_at" ] || [ -z "$att_by" ] || [ -z "$rows" ] || [ -z "$members" ]; then
                 _sc_err "[$site] NO-ATTESTATION: posture=none-stored requires"
                 _sc_err "                        art9.evidence.attestation with at/by/formation_rows/"
                 _sc_err "                        member_count. Got at='${att_at:-<unset>}'"
@@ -390,11 +433,29 @@ siteclass_art9_check() {
                 return 1
             fi
 
-            if ! _sc_is_uint "$rows" || ! _sc_is_uint "$members"; then
+            # rows always; member_count wherever it is PRESENT (a garbage
+            # reading that was declared must refuse, whatever the shape).
+            if ! _sc_is_uint "$rows" || { [ -n "$members" ] && ! _sc_is_uint "$members"; }; then
                 _sc_err "[$site] CANNOT-VERIFY: attestation readings must be non-negative integers"
                 _sc_err "                       (got formation_rows='$rows' member_count='$members')."
                 _sc_err "                       A garbage reading is not a reading."
                 return 2
+            fi
+
+            if [ "$demo_shape" -eq 1 ]; then
+                # The recorded reading of demo_mode_probe_cmd must be exactly
+                # `true`. Off, absent, or anything else fails closed: a demo
+                # whose demo_mode is off is NOT a demo — real signups could
+                # land in it.
+                local demo_mode
+                demo_mode="$(_sc_yq "$decl" '.art9.evidence.attestation.demo_mode')"
+                if [ "$demo_mode" != "true" ]; then
+                    _sc_err "[$site] DEMO-MODE-OFF: attestation.demo_mode='${demo_mode:-<unset>}' — the"
+                    _sc_err "                      recorded demo-mode reading must be exactly 'true'."
+                    _sc_err "                      A demo whose demo_mode is off is NOT a demo; real"
+                    _sc_err "                      accounts could exist. Fail closed."
+                    bad=1
+                fi
             fi
 
             max_age="$(_sc_yq "$decl" '.art9.evidence.max_age_days')"
@@ -429,26 +490,36 @@ siteclass_art9_check() {
                 bad=1
             fi
 
-            max_members="$(_sc_yq "$decl" '.art9.evidence.max_members')"
-            [ -n "$max_members" ] || max_members=0
-            if ! _sc_is_uint "$max_members"; then
-                _sc_err "[$site] CANNOT-VERIFY: max_members='$max_members' is not a non-negative"
-                _sc_err "                       integer, so the member cap cannot be applied."
-                return 2
-            fi
-            if [ "$members" -gt "$max_members" ]; then
-                _sc_err "[$site] MEMBER-CAP-EXCEEDED: member_count=$members exceeds max_members=$max_members."
-                _sc_err "                            ops#153: the exposure 'becomes real the day rgs takes"
-                _sc_err "                            a member'. That day is today. The exemption is void —"
-                _sc_err "                            ship a gated artifact or build a local consent source."
-                bad=1
+            if [ "$demo_shape" -eq 0 ]; then
+                # The member cap — rgs shape only. On class=demo the cap is
+                # replaced by the demo-mode assertion above.
+                max_members="$(_sc_yq "$decl" '.art9.evidence.max_members')"
+                [ -n "$max_members" ] || max_members=0
+                if ! _sc_is_uint "$max_members"; then
+                    _sc_err "[$site] CANNOT-VERIFY: max_members='$max_members' is not a non-negative"
+                    _sc_err "                       integer, so the member cap cannot be applied."
+                    return 2
+                fi
+                if [ "$members" -gt "$max_members" ]; then
+                    _sc_err "[$site] MEMBER-CAP-EXCEEDED: member_count=$members exceeds max_members=$max_members."
+                    _sc_err "                            ops#153: the exposure 'becomes real the day rgs takes"
+                    _sc_err "                            a member'. That day is today. The exemption is void —"
+                    _sc_err "                            ship a gated artifact or build a local consent source."
+                    bad=1
+                fi
             fi
 
             expires="$(_sc_yq "$decl" '.art9.expires')"
             if [ -z "$expires" ]; then
-                _sc_err "[$site] EXEMPTION-EXPIRED: art9.expires is unset. An open-ended exemption is"
-                _sc_err "                          the ritual this axis exists to abolish; set a date."
-                bad=1
+                # class=demo: expiry NOT required. A demo is a standing class
+                # property, not an expiring exemption (ops#162; documented in
+                # classes/registry.yml). Every other none-stored declarer
+                # (rgs shape) must still expire — unchanged.
+                if [ "$demo_shape" -eq 0 ]; then
+                    _sc_err "[$site] EXEMPTION-EXPIRED: art9.expires is unset. An open-ended exemption is"
+                    _sc_err "                          the ritual this axis exists to abolish; set a date."
+                    bad=1
+                fi
             elif ! _sc_is_date "$expires" || ! date -u -d "$expires" +%s >/dev/null 2>&1; then
                 # Two distinct holes, one refusal: garbage must not read as "not
                 # yet expired" (_sc_is_past returns non-zero for it, silently

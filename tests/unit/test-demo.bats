@@ -529,9 +529,14 @@ EOF
   [[ "$block" == *"return 1"* ]]
 }
 
-@test "live smoke checks /demo/join too — testers must be able to join" {
+@test "live smoke checks the tester's NEXT step, per site kind" {
+  # The post-restore smoke must probe the route the tester actually uses next.
+  # On the Drupal provider that is the join form. On the Moodle half /demo/join
+  # does not exist, so probing it would report every healthy Moodle reset as a
+  # failure — the check must follow the kind.
   grep -q '/demo/join' "$DEMO_CMD"
-  grep -q 'testers cannot join' "$DEMO_CMD"
+  grep -q '/login/index.php' "$DEMO_CMD"
+  grep -q 'testers cannot proceed' "$DEMO_CMD"
 }
 
 @test "the live deploy gate is actually sourced, not silently skipped" {

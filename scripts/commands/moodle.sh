@@ -1532,6 +1532,17 @@ _cr_map_category() {
     return 1
 }
 
+# _cr_sha256 <file> — the hash field of sha256sum output, nothing else.
+#
+# `cut -d' ' -f1`, NOT `awk '{print $1}'`, on purpose. This is sha256sum output,
+# not YAML — but lint:yq-first's file-scoped heuristic learns that `f` is a YAML
+# variable from `_moodle_core_patches_decl` (f="…/${base}.yml") and then flags
+# any awk invocation whose arguments mention any `$f`, including the unrelated
+# .mbz loop variable in the staging path below. The awk-free form is the honest
+# fix rather than a baseline row: `cut -d' ' -f1` is already the sibling idiom
+# in lib/verify-runner.sh, lib/console-deploy.sh and lib/golden-hygiene.sh.
+_cr_sha256() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+
 # _cr_push_verified <ssh_target> <ssh_opts> <local_path> <remote_name>
 # The demo_push_verified contract, parameterised for this verb's target: scp to
 # the remote HOME, verify the sha256 ON THE REMOTE against the locally computed
@@ -1539,7 +1550,7 @@ _cr_map_category() {
 _cr_push_verified() {
     local ssh_target="$1" ssh_opts="$2" local_path="$3" remote_name="$4"
     local want got
-    want="$(sha256sum "$local_path" 2>/dev/null | awk '{print $1}')"
+    want="$(_cr_sha256 "$local_path")"
     if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
         print_error "Cannot compute a local sha256 for $(basename "$local_path")"; return 1
     fi
@@ -1548,7 +1559,7 @@ _cr_push_verified() {
         print_error "Failed to push $(basename "$local_path") to the target"; return 1
     fi
     # shellcheck disable=SC2086
-    got="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "sha256sum ~/${remote_name} 2>/dev/null | awk '{print \$1}'" 2>/dev/null)"
+    got="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "sha256sum ~/${remote_name} 2>/dev/null | cut -d' ' -f1" 2>/dev/null)"
     if [ "$got" != "$want" ]; then
         print_error "sha256 MISMATCH after push for ${remote_name} (local=${want} remote=${got:-none}) — aborting BEFORE restore."
         # shellcheck disable=SC2086
@@ -1792,7 +1803,7 @@ cmd_course_restore() {
         cp "$CR_HELPER" "${dev_root}/${dev_stage_rel}/course-restore-check.php" || { _cr_cleanup; return 1; }
         for f in "${files[@]}"; do
             cp "$f" "${dev_root}/${dev_stage_rel}/" || { _cr_cleanup; return 1; }
-            if ! sha256sum -c <(printf '%s  %s\n' "$(sha256sum "$f" | awk '{print $1}')" "${dev_root}/${dev_stage_rel}/$(basename "$f")") >/dev/null 2>&1; then
+            if [ "$(_cr_sha256 "${dev_root}/${dev_stage_rel}/$(basename "$f")")" != "$(_cr_sha256 "$f")" ]; then
                 print_error "sha256 MISMATCH staging $(basename "$f") into the dev tier."; _cr_cleanup; return 1
             fi
         done

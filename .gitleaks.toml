@@ -411,7 +411,10 @@ id = "operator-public-ip"
 description = "Operator's real public server IP leak. Use an RFC-5737 example IP (203.0.113.10 / 192.0.2.x) in docs; resolve at runtime via the private manifest in code."
 # Known operator prod/live IPs. RFC-5737 (203.0.113.x, 192.0.2.x, 198.51.100.x)
 # and RFC-1918/6598 private ranges are safe and NOT matched here.
-regex = '''\b(97\.107\.137\.88|45\.33\.94\.133)\b'''
+# 45.33.76.180 is the sites1 live box from the 2026-07-31 box split (read off
+# DNS for sites1/nwc/ssc.nwpcode.org, 2026-08-02). When the estate gains a
+# box, add its IP here — an unlisted serving IP is an undetected leak.
+regex = '''\b(97\.107\.137\.88|45\.33\.94\.133|45\.33\.76\.180)\b'''
 tags = ["leak", "ip", "infra"]
 
 [[rules.allowlists]]
@@ -718,3 +721,29 @@ regexTarget = "line"
 regexes = [
   '''git\.nwpcode\.org/[\w./-]+/-/(issues|merge_requests|blob|tree)/''',
 ]
+
+# ops#182 item 3 (2026-08-01): a 23-char prefix of a LIVE bearer token was
+# found printed in a private doc as an inline code span, in prose saying "the
+# live value is `…`". Nothing in this config would have caught that class in
+# this repo: the inherited default rules only know vendor-prefixed shapes
+# (glpat-, AKIA, …) and a raw high-entropy value carries no prefix. This rule
+# catches the SHAPE of that leak — a high-entropy inline-code token right
+# after leak-announcing prose — in prose/doc files.
+#
+# Deliberately credential-class: NO path exemptions, not even the
+# SHARED-EXEMPTIONS block (RULE 1 reasoning — a pasted live credential is
+# never acceptable in any tree, operator-bound or not). The entropy floor of
+# 4.0 bits keeps ordinary identifiers in code spans from firing: measured
+# Shannon entropy of typical spans (`pl_secrets_rotate_all` 3.20,
+# `composer_registry_token` 3.64, `NWP_RESOLVED_INSTANCE_DIR` 3.75) sits well
+# under it, while real random tokens of >=20 chars measure >=4.2.
+# tests/unit/test-leakage-gate.bats carries the red/green fixtures.
+[[rules]]
+id = "doc-leaked-bearer-token"
+description = "High-entropy inline-code token adjacent to 'live value'/'bearer'/'token' prose in a doc — the shape of a real credential pasted into documentation."
+regex = '''(?i)(?:live value|bearer|token)(?:[^\n`]{0,40})`([0-9A-Za-z_\-]{20,})`'''
+secretGroup = 1
+entropy = 4.0
+path = '''(?i).*\.(md|markdown|rst|txt)$'''
+tags = ["leak", "credential", "docs"]
+keywords = ["bearer", "token", "live value"]

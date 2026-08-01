@@ -894,6 +894,188 @@ demo_harvest_as() {
 }
 
 ################################################################################
+# Pre-wipe TESTER-FEEDBACK sync (fail-OPEN by contract) — nwp/ops#161,
+# interlocked with nwp/ops#140
+#
+# WHAT WAS BROKEN (ops#161). The nwc_feedback → GitLab sync was proven working
+# on nwd, but nothing ran it for nwd on any schedule: the only */15 cron targets
+# the real nwc, and the pre-wipe harvest above collects watchdog rows, not
+# Feedback entities. So a tester's report filed through /feedback/submit was
+# destroyed by the nightly golden restore before it could become an issue —
+# unless a human remembered to drain it. The harvest is the safety net for
+# errors nobody reported; it is not the channel for reports people DID file.
+#
+# WHY IT LIVES HERE, BESIDE THE HARVEST. The one moment at which "have we kept
+# the tester's report?" is answerable is immediately before the wipe. Putting
+# the sync on a separate schedule leaves a window in which a report can arrive
+# after the last sync and before the restore; putting it in the reset closes
+# that window by construction. Same placement, same contract as demo_harvest.
+#
+# THE ops#140 INTERLOCK — the reason this function is not three lines.
+# GitLabSyncService used to interpolate "**Submitter:** <display name>" into
+# the issue body, and the Moodle forwarder sent username + e-mail. GitLab is
+# self-hosted but has a WIDER reader set than the member site, and appears in no
+# RoPA. So switching this sync on against a site whose deployed code predates
+# the ops#140 minimisation would switch ON a member-identity leak — the two
+# issues were filed independently and neither referenced the other. Therefore:
+# this function PROBES the deployed code and refuses to push from a site it
+# cannot PROVE is minimised. "I could not look" is not "it is safe".
+#
+# The interlock is fail-CLOSED on the leak and fail-OPEN on the reset: a refusal
+# is logged and returns 0. Losing one night of feedback is recoverable; copying
+# member identity into a tracker is not.
+#
+# CONTRACT (identical to demo_harvest): ALWAYS returns 0. A failed sync must
+# NEVER block or fail a reset. Callers use `|| true` as belt-and-braces against
+# set -e. The outcome is in $DEMO_FEEDBACK_STATUS for the standalone verb, which
+# DOES need an exit status.
+################################################################################
+
+# The drush command that owns the push, the classifier, the doctrine
+# body-withholding and the agent-eligibility fence. This function never builds
+# an issue body itself — that logic has exactly one home (nwc_feedback), and a
+# second renderer here is how ops#140 would come back.
+DEMO_FEEDBACK_SYNC_CMD="nwc-feedback:sync-to-gitlab"
+DEMO_FEEDBACK_LIMIT="${DEMO_FEEDBACK_LIMIT:-100}"
+
+# The sentinel the drush command prints when the pending set is empty. If this
+# string ever changes upstream we fail OPEN on the probe (treat it as "might be
+# pending") and let the real sync no-op — never the other way round.
+DEMO_FEEDBACK_NONE_MARKER="No feedback items pending GitLab sync"
+
+# ops#140 minimisation marker. buildIssueDescription() is the pure renderer that
+# MR nwp/nwc!50 introduced; it does not exist on the pre-ops#140 service.
+# renderIssueBody() is deliberately NOT the marker — it exists on both sides of
+# the fix, so probing for it would always say "minimised".
+DEMO_FEEDBACK_MIN_METHOD="buildIssueDescription"
+DEMO_FEEDBACK_MIN_PROBE='echo method_exists(\Drupal::service("nwc_feedback.gitlab_sync"), "buildIssueDescription") ? "MINIMISED-OK" : "MINIMISATION-MISSING";'
+
+# Set by demo_feedback_sync: ok | empty | refused | skipped | failed
+DEMO_FEEDBACK_STATUS=""
+
+# demo_feedback_redact <text> <secret>
+# A token must not reach a log, a terminal or an issue body even when the tool
+# that received it echoes it back in an error.
+demo_feedback_redact() {
+    local text="${1:-}" secret="${2:-}"
+    if [[ -n "$secret" ]]; then
+        text="${text//"$secret"/<redacted>}"
+    fi
+    printf '%s' "$(printf '%s' "$text" | sed -E 's/(--token[= ])[^[:space:]]+/\1<redacted>/g')"
+}
+
+# demo_feedback_token → the token on stdout, or 1 if there is none.
+#
+# gitlab.api_token is the NON-ADMIN group bot (group_9_bot / nwp-automation-dev,
+# Developer) — the identity ops#161 verified the sync with. Not
+# gitlab.ops_note_token: that one is walled to nwp/ops and cannot create an
+# issue in nwp/nwc, which is where a classified feedback signal is routed.
+# A dedicated gitlab.feedback_sync_token is honoured first if one is ever
+# registered, so downscoping later needs no code change.
+demo_feedback_token() {
+    local f="${DEMO_FEEDBACK_SECRETS:-${SECRETS_FILE:-${PROJECT_ROOT:-}/.secrets.yml}}"
+    [[ -s "$f" ]] || return 1
+    local y; y="$(demo_yq)" || return 1
+    local t
+    t="$("$y" e '.gitlab.feedback_sync_token // .gitlab.api_token // ""' "$f" 2>/dev/null \
+         | grep -v '^null$')" || return 1
+    [[ -n "$t" ]] || return 1
+    printf '%s' "$t"
+}
+
+# demo_feedback_minimised <runner> [runner-args...]
+# 0 only when the DEPLOYED nwc_feedback provably carries the ops#140
+# minimisation. Any other answer — including no answer — is 1.
+demo_feedback_minimised() {
+    local -a run=( "$@" )
+    (( ${#run[@]} > 0 )) || return 1
+    local out rc=0
+    out="$("${run[@]}" php:eval "$DEMO_FEEDBACK_MIN_PROBE" 2>/dev/null)" || rc=$?
+    (( rc == 0 )) || return 1
+    [[ "$out" == *MINIMISED-OK* ]]
+}
+
+# demo_feedback_sync <site> <tier> <runner> [runner-args...]
+#
+# The RUNNER is an injected drush invoker, called as
+#   "$runner" "${runner_args[@]}" <drush-arg>…
+# so the dev path passes `demo_drush "$proj"` and the live path
+# `demo_rdrush "$site"`. Injecting it is what makes this unit-testable offline
+# and what keeps lib/demo.sh free of ddev and ssh.
+#
+# Set DEMO_FEEDBACK_DRY_RUN=true to probe and report without pushing.
+demo_feedback_sync() {
+    local site="${1:-}" tier="${2:-}"; shift 2 || true
+    DEMO_FEEDBACK_STATUS="failed"
+    if (( $# == 0 )); then
+        demo_log "$site" feedback-sync-failed "tier=$tier reason=no-runner"
+        return 0
+    fi
+    local -a run=( "$@" )
+    local out rc=0
+
+    # --- 1. Is anything pending? ---------------------------------------------
+    # --dry-run needs NO token and makes no network call, so a night with no
+    # tester activity never reads a secret at all.
+    out="$("${run[@]}" "$DEMO_FEEDBACK_SYNC_CMD" --dry-run --limit=1 2>/dev/null)" || rc=$?
+    if (( rc != 0 )); then
+        demo_log "$site" feedback-sync-failed "tier=$tier stage=probe rc=$rc"
+        return 0
+    fi
+    if [[ "$out" == *"$DEMO_FEEDBACK_NONE_MARKER"* ]]; then
+        DEMO_FEEDBACK_STATUS="empty"
+        demo_log "$site" feedback-sync-empty "tier=$tier"
+        return 0
+    fi
+
+    # --- 2. ops#140 INTERLOCK — minimised, or nothing leaves ------------------
+    if ! demo_feedback_minimised "${run[@]}"; then
+        DEMO_FEEDBACK_STATUS="refused"
+        demo_log "$site" feedback-sync-refused "tier=$tier reason=minimisation-unverified"
+        return 0
+    fi
+
+    if [[ "${DEMO_FEEDBACK_DRY_RUN:-false}" == "true" ]]; then
+        DEMO_FEEDBACK_STATUS="ok"
+        demo_log "$site" feedback-sync-dry-run "tier=$tier pending=yes minimised=yes"
+        return 0
+    fi
+
+    # --- 3. Token (read only once there is something to send) -----------------
+    local token=""
+    token="$(demo_feedback_token)" || {
+        DEMO_FEEDBACK_STATUS="skipped"
+        demo_log "$site" feedback-sync-skipped "tier=$tier reason=no-token"
+        return 0
+    }
+
+    # --- 4. Push through the module's own command ----------------------------
+    # KNOWN EXPOSURE, stated rather than hidden: `--token=` puts the value in
+    # the drush process's argv, so it is visible to `ps` for the life of the
+    # call on a shared host. This is the estate's existing convention — the
+    # sanctioned `pl drush` verb takes `--token` too and redacts it only from
+    # what it PRINTS — and the identity is a non-admin Developer bot, so the
+    # blast radius is bounded. It is not printed, not logged, and not written to
+    # any file here; anything the tool echoes back is redacted below.
+    rc=0
+    out="$("${run[@]}" "$DEMO_FEEDBACK_SYNC_CMD" \
+            "--limit=${DEMO_FEEDBACK_LIMIT}" "--token=${token}" 2>&1)" || rc=$?
+    out="$(demo_feedback_redact "$out" "$token")"
+    token=""
+    if (( rc != 0 )); then
+        demo_log "$site" feedback-sync-failed "tier=$tier stage=push rc=$rc"
+        printf '%s\n' "$out"
+        return 0
+    fi
+    local n
+    n="$(printf '%s\n' "$out" | grep -c '\[OK\] feedback #' || true)"
+    DEMO_FEEDBACK_STATUS="ok"
+    demo_log "$site" feedback-sync-ok "tier=$tier synced=${n}"
+    printf '%s\n' "$out"
+    return 0
+}
+
+################################################################################
 # Golden manifest
 ################################################################################
 

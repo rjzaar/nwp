@@ -449,6 +449,45 @@ harvest() {
 }
 harvest || true
 
+# Pre-wipe TESTER-FEEDBACK notice (fail-OPEN — nwp/ops#161).
+#
+# The harvest above keeps the errors nobody reported. The reports testers DID
+# file are Feedback entities in the database the next block replaces, and this
+# wrapper CANNOT push them: it holds no GitLab token, and it must not — the
+# restricted forced command exists precisely so that a key on the scheduler
+# cannot do anything but reset. `pl demo reset` (and `pl demo nightly`) run the
+# real pre-wipe sync from a host that does hold the token.
+#
+# So the one honest thing this path can do is refuse to destroy them SILENTLY.
+# It counts what is about to go, logs it, and names the verb that recovers it.
+# The count is a read-only --dry-run of the module's own sync command: no token,
+# no network call, and any failure is swallowed.
+#
+# THIS IS A KNOWN GAP, NOT A DESIGN: closing it needs either a staged 0600
+# token on this box (an operator secret-placement decision, and a
+# private/secrets-registry.yml entry) or the scheduler's cron routed through
+# `pl demo nightly` instead of this key. See nwp/ops#161.
+feedback_pending() {
+    local out
+    out="$( cd "$SITE_ROOT" \
+            && "${DRUSH_SUDO[@]}" "$DRUSH_BIN" nwc-feedback:sync-to-gitlab \
+                 --dry-run --limit=100 2>/dev/null )" || return 0
+    [[ -n "$out" ]] || return 0
+    case "$out" in
+        *"No feedback items pending GitLab sync"*)
+            log "feedback-none-pending" "nothing to lose"
+            return 0 ;;
+    esac
+    local n
+    n="$(printf '%s\n' "$out" | grep -c '\[DRY\] feedback #' 2>/dev/null)" || n="?"
+    log "feedback-pending-unsynced" "count=${n} (DESTROYED by this reset — this wrapper holds no token)"
+    echo "WARN  ${n} tester feedback report(s) are pending GitLab sync and this reset DESTROYS them."
+    echo "WARN  This restricted wrapper cannot push them (no token, by design). Recover before the next reset with:"
+    echo "WARN      pl demo feedback-sync ${SITE} --tier=live"
+    return 0
+}
+feedback_pending || true
+
 echo "..  restoring database from golden"
 if ! ( cd "$SITE_ROOT" \
         && "${DRUSH_SUDO[@]}" "$DRUSH_BIN" sql:drop -y >/dev/null 2>&1 \

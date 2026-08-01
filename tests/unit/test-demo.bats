@@ -2154,3 +2154,233 @@ _dcd_fixture() {  # $1 = root; creates a site with a registry
   run bash "$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/scripts/commands/todo.sh" --help
   [[ "$output" == *"DCD"* ]]
 }
+
+################################################################################
+# PRE-WIPE TESTER-FEEDBACK SYNC (nwp/ops#161, interlocked with nwp/ops#140)
+#
+# ops#161: nwd Feedback entities were never synced to GitLab, so the nightly
+# golden restore destroyed a tester's report before it could become an issue.
+# ops#140: the payload the sync sends used to carry the submitter's NAME, so
+# switching #161 on before #140 landed would have switched ON a member-identity
+# leak. These two were filed independently and neither referenced the other.
+#
+# Everything below is offline: `demo_feedback_sync` takes its drush invoker as
+# an injected RUNNER, so the tests drive it with stubs and no site is touched.
+################################################################################
+
+# A stub runner. $FB_MODE decides what the fake drush does; $FB_CALLS records
+# every invocation so a test can prove a push did or did not happen.
+_fb_runner() {
+  printf '%s\n' "$*" >> "$FB_CALLS"
+  case "$1" in
+    php:eval)
+      case "$FB_MODE" in
+        not-minimised) echo "MINIMISATION-MISSING" ;;
+        probe-broken)  return 1 ;;
+        *)             echo "MINIMISED-OK" ;;
+      esac
+      ;;
+    nwc-feedback:sync-to-gitlab)
+      case "$FB_MODE" in
+        empty)      echo "No feedback items pending GitLab sync." ;;
+        probe-fails) return 4 ;;
+        push-fails)
+          [[ "$*" == *--dry-run* ]] && { echo "Processing 1 feedback item(s) (DRY-RUN)."; return 0; }
+          echo "  [FAIL] feedback #7: boom"; return 2 ;;
+        *)
+          [[ "$*" == *--dry-run* ]] && { echo "Processing 2 feedback item(s) (DRY-RUN)."; return 0; }
+          printf 'Processing 2 feedback item(s).\n  [OK] feedback #7 -> project=16 issue=91 tier=T3 labels=[demo-tester,feedback]\n  [OK] feedback #8 -> project=16 issue=92 tier=T2 labels=[demo-tester,feedback]\nDone. ok=2 fail=0\n' ;;
+      esac
+      ;;
+  esac
+  return 0
+}
+
+_fb_setup() {
+  FB_CALLS="${TEST_TMP}/fb-calls"
+  : > "$FB_CALLS"
+  FB_MODE="${1:-ok}"
+  export DEMO_FEEDBACK_SECRETS="${TEST_TMP}/.secrets.yml"
+  printf 'gitlab:\n  api_token: "fixture-not-a-real-token-ops161"\n' > "$DEMO_FEEDBACK_SECRETS"
+}
+
+_fb_pushed() { grep -q 'nwc-feedback:sync-to-gitlab --limit' "$FB_CALLS"; }
+
+@test "ops#161 pending feedback is synced pre-wipe and the result is logged" {
+  _fb_setup ok
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-ok" "$(demo_log_file demo1)"
+  grep -q "synced=2" "$(demo_log_file demo1)"
+}
+
+@test "ops#161 NOTHING is sent when nothing is pending (and no token is even read)" {
+  _fb_setup empty
+  # No secrets file at all: proving the empty path never reaches the token read.
+  rm -f "$DEMO_FEEDBACK_SECRETS"
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-empty" "$(demo_log_file demo1)"
+  run _fb_pushed
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#140 INTERLOCK: the sync REFUSES to push to a site whose payload is not minimised" {
+  # This is the test that would have caught the ops#140 sequencing trap. If the
+  # deployed nwc_feedback still interpolates the submitter's name, turning the
+  # sync on leaks member identity into a tracker with a wider reader set. So a
+  # site that cannot be PROVEN minimised is never pushed from.
+  _fb_setup not-minimised
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-refused" "$(demo_log_file demo1)"
+  grep -q "minimisation-unverified" "$(demo_log_file demo1)"
+  run _fb_pushed
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#140 INTERLOCK: a minimisation probe that CANNOT ANSWER counts as not minimised" {
+  # "I could not look" is not "it is safe". Fail-closed on the leak; still
+  # fail-open on the reset (status 0).
+  _fb_setup probe-broken
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-refused" "$(demo_log_file demo1)"
+  run _fb_pushed
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#161 the minimisation probe asks for the method ops#140 actually added" {
+  # The interlock is only worth anything if the marker it looks for is the one
+  # MR nwp/nwc!50 introduced. buildIssueDescription() does not exist on the
+  # pre-ops#140 service, and renderIssueBody() exists on BOTH, so the marker
+  # must be the former.
+  [[ "$DEMO_FEEDBACK_MIN_METHOD" == "buildIssueDescription" ]]
+  [[ "$DEMO_FEEDBACK_MIN_PROBE" == *"nwc_feedback.gitlab_sync"* ]]
+  [[ "$DEMO_FEEDBACK_MIN_PROBE" != *"renderIssueBody"* ]]
+}
+
+@test "ops#161 a FAILING feedback sync never blocks the reset (fail-OPEN, logged)" {
+  _fb_setup push-fails
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-failed" "$(demo_log_file demo1)"
+}
+
+@test "ops#161 a feedback PROBE that fails never blocks the reset either" {
+  _fb_setup probe-fails
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-failed" "$(demo_log_file demo1)"
+  run _fb_pushed
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#161 no runner at all is a logged no-op, not a failed reset" {
+  _fb_setup ok
+  run demo_feedback_sync demo1 dev
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-failed" "$(demo_log_file demo1)"
+}
+
+@test "ops#161 a missing token is a logged SKIP, not a reset failure" {
+  _fb_setup ok
+  rm -f "$DEMO_FEEDBACK_SECRETS"
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  grep -q "feedback-sync-skipped" "$(demo_log_file demo1)"
+  grep -q "no-token" "$(demo_log_file demo1)"
+}
+
+@test "ops#161 the token value never reaches the reset log or stdout" {
+  _fb_setup ok
+  run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"fixture-not-a-real-token"* ]]
+  run grep -c "fixture-not-a-real-token" "$(demo_log_file demo1)"
+  [ "$output" = "0" ]
+}
+
+@test "ops#161 drush output that echoes the token back is redacted before it is shown" {
+  _fb_setup ok
+  tok="$(demo_feedback_token)"
+  run demo_feedback_redact "boom --token=${tok} in the tail" "$tok"
+  [[ "$output" != *"fixture-not-a-real-token"* ]]
+  [[ "$output" == *"redacted"* ]]
+}
+
+@test "ops#161 demo_feedback_sync reports its outcome in DEMO_FEEDBACK_STATUS" {
+  # The verb needs an exit status even though the HOOK must always return 0.
+  _fb_setup empty
+  demo_feedback_sync demo1 dev _fb_runner
+  [ "$DEMO_FEEDBACK_STATUS" = "empty" ]
+  _fb_setup ok
+  demo_feedback_sync demo1 dev _fb_runner
+  [ "$DEMO_FEEDBACK_STATUS" = "ok" ]
+  _fb_setup not-minimised
+  demo_feedback_sync demo1 dev _fb_runner
+  [ "$DEMO_FEEDBACK_STATUS" = "refused" ]
+}
+
+@test "ops#161 --dry-run syncs NOTHING (probe only)" {
+  _fb_setup ok
+  DEMO_FEEDBACK_DRY_RUN=true run demo_feedback_sync demo1 dev _fb_runner
+  [ "$status" -eq 0 ]
+  run _fb_pushed
+  [ "$status" -ne 0 ]
+}
+
+# --- wiring: the sync must run BEFORE the wipe, on every reset path -----------
+
+@test "ops#161 STATIC: dev reset syncs feedback BEFORE the DB restore" {
+  body=$(sed -n '/^cmd_reset()/,/^}/p' "$DEMO_CMD")
+  sync_line=$(printf '%s\n' "$body" | grep -n 'demo_feedback_sync' | head -1 | cut -d: -f1)
+  import_line=$(printf '%s\n' "$body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$sync_line" ] && [ -n "$import_line" ]
+  [ "$sync_line" -lt "$import_line" ]
+}
+
+@test "ops#161 STATIC: live reset syncs feedback BEFORE the remote sql:drop" {
+  sync=$(grep -n 'demo_feedback_sync "\$site" live' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$sync" ] && [ -n "$drop" ]
+  [ "$sync" -lt "$drop" ]
+}
+
+@test "ops#161 STATIC: the PAIRED reset syncs the provider's feedback before the wipe" {
+  body=$(sed -n '/^cmd_reset_paired()/,/^}/p' "$DEMO_CMD")
+  sync_line=$(printf '%s\n' "$body" | grep -n 'demo_feedback_sync' | head -1 | cut -d: -f1)
+  import_line=$(printf '%s\n' "$body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$sync_line" ] && [ -n "$import_line" ]
+  [ "$sync_line" -lt "$import_line" ]
+}
+
+@test "ops#161 STATIC: every reset hook swallows failure (|| true), like the harvest" {
+  n=$(grep -c 'demo_feedback_sync .* || true' "$DEMO_CMD")
+  [ "$n" -ge 3 ]
+}
+
+@test "ops#161 pl demo feedback-sync is a real verb, documented in help" {
+  run bash "$DEMO_CMD" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feedback-sync <site>"* ]]
+}
+
+@test "ops#161 pl demo feedback-sync is dispatched (not an unknown subcommand)" {
+  run bash "$DEMO_CMD" feedback-sync demo1 --dry-run
+  [[ "$output" != *"Unknown subcommand"* ]]
+}
+
+@test "ops#161 the box wrapper WARNS about feedback it is about to destroy, pre-wipe" {
+  # The nightly on met drives the RESTRICTED box wrapper, which holds no GitLab
+  # token and so cannot push. It must at least say, before the restore, that N
+  # tester reports are about to go — a silent loss is what ops#161 was.
+  w="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/servers/live/demo/nwd-demo-reset-restricted"
+  grep -q 'feedback_pending' "$w"
+  fb=$(grep -n 'feedback_pending || true' "$w" | head -1 | cut -d: -f1)
+  drop=$(grep -n 'sql:drop' "$w" | head -1 | cut -d: -f1)
+  [ -n "$fb" ] && [ -n "$drop" ]
+  [ "$fb" -lt "$drop" ]
+  # …and it must name the verb that recovers them.
+  grep -q 'pl demo feedback-sync' "$w"
+}

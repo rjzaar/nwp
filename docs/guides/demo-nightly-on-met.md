@@ -1,7 +1,21 @@
-# nwd nightly demo reset — restricted key + met handover
+# Nightly demo reset — restricted keys + the met schedule
 
-**Status:** box side LIVE (2026-07-25) · laptop cron INTERIM · met handover PENDING (met away)
-**Issue:** ops#133 · **Branch:** `feat/demo-nightly-restricted-key`
+**Status (2026-08-01):** BOTH halves live and scheduled on **met**.
+`nwd` (Drupal) fires at minutes 0,30 · `ssd` (Moodle) at 15,45 · 01:00–03:30
+Australia/Melbourne, 04:00 floor. The laptop's interim cron is gone.
+**Issues:** ops#133 (nwd) · ops#170 (ssd)
+
+> **Two wrappers, two keys, one box.** Each wrapper hard-wires its own site
+> ([G2]); there is deliberately no way to install one and aim it at the other.
+> A key for one half is refused by the other — proven, see §11.
+
+> **The scheduler moved twice, and the log is the record of it.** The nightly ran
+> from the LAPTOP's crontab on 27, 28 and 29 July (`reset-ok` each night in the
+> box log) and then stopped, because that cron only fires while the laptop is
+> awake and the demo pair moved boxes on 31 July. It has been on met since
+> 2026-08-01. If the nightly ever goes quiet again, read
+> `/var/log/nwp-demo/<site>-demo-reset.log` on the box FIRST — it is the only
+> record that spans schedulers.
 
 ---
 
@@ -115,7 +129,13 @@ The cron lines spell the options out explicitly so they do not depend on
 
 ---
 
-## 6. Interim schedule (laptop) — active NOW
+## 6. The schedule — HISTORY, and why the laptop cron is gone
+
+> **Superseded.** The block below is what ran on the LAPTOP from 25–29 July. It
+> is kept because it explains the three `reset-ok` nights in the box log and the
+> silence after them, which otherwise reads as "the nightly never ran". The live
+> schedule is on met — see §7 and §11.
+
 
 ```
 # NWP Demo Reset - nwd (restricted key; see docs/guides/demo-nightly-on-met.md)
@@ -262,3 +282,150 @@ scp: Received message too long …                          (/tmp/pwn does not e
 $ ssh -N -L 9999:127.0.0.1:22 <restricted key> gitlab@git.nwpcode.org
 channel 2: open failed: administratively prohibited: open failed
 ```
+
+---
+
+## 11. The Moodle half — `ssd` (ops#170)
+
+Everything in §1–§10 applies. This section records only what is **different**,
+and why.
+
+### 11.1 Why a second wrapper rather than a parameter
+
+`nwd-demo-reset-restricted` hard-wires nwd by design — [G2] says there must be
+no way to name another site, and a `--site` flag would be exactly that way. So
+the Moodle half gets its own file, its own forced command and its own key.
+The cost is two files to keep in step; the alternative is a hole in the one
+guarantee that stops a restricted key reaching a non-demo site.
+
+### 11.2 What is installed where
+
+| Where | What |
+|---|---|
+| box `/usr/local/bin/ssd-demo-reset-restricted` | the wrapper (versioned at `servers/live/demo/ssd-demo-reset-restricted`) |
+| box `/var/lib/nwp-demo/ssd/golden/` | golden DB + moodledata tar + sha256 sidecars + manifest |
+| box `/var/lib/nwp-demo/ssd/last-reset` | idempotence stamp |
+| box `/var/lib/nwp-demo/ssd/harvest/` | pre-wipe digests (failed tasks + logstore errors) |
+| box `/var/log/nwp-demo/ssd-demo-reset.log` | one line per invocation |
+| **met** `~/.ssh/ssd_demo_reset` | the private key — **generated on met and never copied off it** |
+| workstation `~/.ssh/ssd_demo_reset.pub` | the public half only, for `install-box.sh` |
+
+There is no `codes-payload.json`: invite codes are a provider-side
+(`nwc_demo_access`) concept. `install-box.sh ssd --stage-codes` **refuses**
+rather than quietly doing nothing.
+
+### 11.3 Install / re-install
+
+```bash
+bash servers/live/demo/install-box.sh ssd --stage-golden   # wrapper + dirs + golden + key
+bash servers/live/demo/install-box.sh ssd --no-key         # wrapper only, after an edit
+```
+
+The site is the first bare word; `nwd` remains the default, so every existing
+command line in this guide still means what it always did.
+
+### 11.4 Three Moodle traps this wrapper is built around
+
+1. **The demo flag is in the `mdl_config` TABLE, not `config.php`.** Reading
+   `config.php` with `ABORT_AFTER_CONFIG` shows `nwp_demo_mode` unset on a site
+   where it is very much set, because that stops before Moodle loads DB-stored
+   config. The guard reads the table, deliberately and only.
+2. **`config.php` is checked, never followed.** The dataroot and dbname are
+   constants in the wrapper; `config.php` is read to confirm they agree. A
+   disagreement is a refusal — following the file would clear a directory the
+   site is not using, report success, and leave the real data intact. A reset
+   that erases nothing while the banner promises nightly erasure is worse than
+   one that stops.
+3. **Moodle writes an `mdl_sessions` row for every ANONYMOUS request.** Measured
+   on 2026-08-01: 3931 anonymous rows against 1 authenticated. An idle guard
+   keyed on `MAX(timemodified)` over the whole table therefore asks "has any
+   robot touched the site in 30 minutes?" — and any crawler on a sub-30-minute
+   cadence silently vetoes the nightly for ever, every run exiting 3 "ACTIVE,
+   retry". So [G4] counts `userid <> 0`: a tester on ssd is signed in (they
+   arrive by SSO from nwd). The anonymous figure is still measured and logged
+   beside the decision, so a wipe is never recorded as happening on a "quiet"
+   site when the site was only quiet of humans. `lib/demo-live-moodle.sh` was
+   changed to match, so `pl demo reset ssd --tier=live` and the nightly cannot
+   disagree about what "idle" means.
+
+### 11.5 Scheduling — the 15-minute offset
+
+Both halves now live on the same box, so `pl demo schedule` fires the
+**consumer** half of a demo pair at minutes `15,45` instead of `0,30`. Same
+window, same 30-minute retry cadence, never the same minute. It is derived from
+the pair contract rather than passed as a flag, because a collision-avoidance
+measure an operator has to remember is one they will forget.
+
+```
+# NWP Demo Reset - ssd (restricted key; see docs/guides/demo-nightly-on-met.md)
+CRON_TZ=Australia/Melbourne
+15,45 1-3 * * * ssh -F /dev/null -i $HOME/.ssh/ssd_demo_reset -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=30 gitlab@<box> nightly >> /home/rob/nwp/logs/demo-nightly-ssd.log 2>&1
+```
+
+⚠ **`pl demo schedule ssd --tier=live --via-key` cannot run ON met**, because met
+has no `sites/` config and the verb resolves the box host from
+`sites/<site>/.nwp.yml`. The block above was generated by running the verb on
+the workstation against a stub crontab and installed on met verbatim; it matches
+`cmd_schedule`'s output exactly, including the marker, so
+`pl demo schedule ssd --remove` still manages it from met. Same limitation, same
+workaround, as the nwd block. Worth closing properly.
+
+`-F /dev/null` is load-bearing for the same reason as §5: `IdentitiesOnly` and
+`IdentityAgent=none` block the AGENT, but an `IdentityFile` in `~/.ssh/config`
+for this host is still offered — and on a workstation that names the admin key.
+
+### 11.6 The pair lock
+
+The ssd wrapper takes the **nwd wrapper's** lock as well as its own, so the two
+halves never restore simultaneously on a small shared box. It is **advisory**:
+the nwd wrapper knows nothing about this one, so failing closed on an
+unavailable pair lock would let a permissions change on the other site's file
+silently stop ssd's nightly for ever. Taken if possible, logged as
+`pair-lock-unavailable` if not, never a refusal. Both use `flock -n`, so the
+worst case is one of them skipping and cron retrying in 30 minutes.
+
+The two halves are **serialised, not atomic** — they are two databases and two
+file trees. The window in which nwd is back at its golden and ssd is not is a
+couple of minutes on an idle site. It is not zero and nothing here claims it is.
+
+### 11.7 Proof captured 2026-08-01 (from met, through the restricted key)
+
+Canaries planted first: a table the golden does not have (`mdl_zz_canary`) and a
+file in `moodledata` (`filedir/ZZ-CANARY.txt`). Both must be gone, or the reset
+is an import over the top rather than a wipe.
+
+```
+$ <restricted key> status
+site:        ssd (ssd.nwpcode.org)   [Moodle]
+demo_mode:   1
+
+$ <restricted key> dry-run
+OK  dataroot /var/www/ssd_moodledata has the shape of a moodledata directory
+OK  live config.php agrees: dataroot=/var/www/ssd_moodledata dbname=ssd
+OK  golden image verified (manifest site=ssd + sha256 x2)
+OK  site reports nwp_demo_mode=1
+OK  no signed-in session for >= 30 min (newest_user=1785081795, newest_anon=1785569189)
+FATE MANIFEST — ssd (ssd.nwpcode.org) Moodle demo reset, action=dry-run
+…
+OK  DRY RUN — all guards passed. Nothing was changed.
+
+$ <restricted key> nightly
+..  dropping every table in ssd and reloading from golden
+..  clearing /var/www/ssd_moodledata and unpacking the golden moodledata
+OK  https://ssd.nwpcode.org/ and /login/index.php both serve 200
+OK  ssd demo reset complete in 9s — back at the golden image.
+
+after: mdl_zz_canary GONE · filedir/ZZ-CANARY.txt GONE
+       502 tables · 4 users · 4 courses · nwp_demo_mode=1
+       /var/www/ssd_moodledata drwx------ www-data (directory itself never removed)
+
+$ <restricted key> 'id'
+REFUSED: this key may only run the ssd demo reset.        (exit 2)
+
+$ <restricted key> 'nwd nightly'
+REFUSED: this key may only run the ssd demo reset.        (exit 2)
+```
+
+The last one is the one worth keeping: one half's key cannot reach the other
+half, because the forced command names the wrapper and the wrapper names the
+site.

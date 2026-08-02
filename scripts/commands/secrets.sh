@@ -3668,7 +3668,7 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
                                  [--sync] write live expiry back · [--quiet] for cron
   pl secrets sync <#|id>         propagate the canonical value to every declared location (repair
                    [--dry-run]   verb). Exits 1 if any declared location could not be written —
-                                 `audit` points here, so a silent no-op would leave the finding
+                                 'audit' points here, so a silent no-op would leave the finding
                                  standing while reporting success.
   pl secrets adopt <dotted.key>  register a .secrets.yml key that lint reported as undeclared
   pl secrets discover-copies     find copies of a known credential the registry does NOT declare

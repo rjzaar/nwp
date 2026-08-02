@@ -210,18 +210,32 @@ cmd_close(){
   # Closing it makes the tracker assert completion while the code is unlanded —
   # the exact shape that produced "ops#133 closed 2026-07-25 with Phase 2
   # unlanded" and "ops#98 closed while its implementing commit never merged".
+  #
+  # ops#235: for its whole life this guard asked project 21 with a token walled
+  # to project 21, and GitLab answered `[]` instead of 403 — so it could only
+  # ever say "0 open MRs". Every close since it was written was unguarded.
+  # `issue_open_mrs` escalates the READ to a token that can see the code
+  # projects and, crucially, distinguishes 0 from BLIND (rc 3).
   if [ "$force" = "0" ] && [[ "$iid" =~ ^[0-9]+$ ]]; then
-    local open_mrs
-    open_mrs=$(_api_get "/projects/$PROJECT_ID/issues/$iid/related_merge_requests" 2>/dev/null || echo '[]')
-    local n
-    n=$(printf '%s' "$open_mrs" | "$YQ" e -p=json '[.[] | select(.state == "opened")] | length' - 2>/dev/null || echo 0)
-    [[ "$n" =~ ^[0-9]+$ ]] || n=0
-    if [ "$n" -gt 0 ]; then
-      print_error "refusing to close nwp/ops#$iid: $n open merge request(s) still reference it"
-      printf '%s' "$open_mrs" | "$YQ" e -p=json '.[] | select(.state == "opened") | "  !" + (.iid|tostring) + "  " + .title' - 2>/dev/null || true
-      print_hint "land the MR first, or: pl issue close $iid --force"
-      exit 1
-    fi
+    local open_list rc=0
+    open_list=$(issue_open_mrs "$iid") || rc=$?
+    case "$rc" in
+      1)
+        print_error "refusing to close nwp/ops#$iid: open merge request(s) still reference it"
+        printf '%s\n' "$open_list" | sed 's/^/  /'
+        print_hint "land the MR first, or: pl issue close $iid --force"
+        exit 1
+        ;;
+      3)
+        # CANNOT-VERIFY. Refusing here is the whole lesson of ops#235: a guard
+        # that cannot look must not report a pass. rc 3 mirrors `pl server health`.
+        print_error "refusing to close nwp/ops#$iid: CANNOT VERIFY whether an MR is open"
+        echo "  No available token can read the declared code project(s): $(_code_projects | tr '\n' ' ' | sed 's/ *$//')"
+        echo "  An empty related-MR list from a walled token is blindness, not evidence (ops#235)."
+        print_hint "fix the token scope, or override deliberately: pl issue close $iid --force"
+        exit 3
+        ;;
+    esac
   fi
   _set_state "$iid" close
 }
@@ -368,16 +382,38 @@ cmd_reconcile(){
     git -C "$_r" rev-parse --git-dir >/dev/null 2>&1 && n_repos=$((n_repos + 1))
   done
 
+  # ops#235: MR VISIBILITY IS PART OF THE SCOPE. Two of the three classes this
+  # command reports depend on being able to SEE merge requests in the code
+  # projects, and the walled ops token cannot — GitLab returns [] rather than
+  # 403. Probe once (memoised in the lib) and SAY SO, because a reconcile run
+  # that silently cannot see MRs prints a clean-looking report that is wrong in
+  # both directions.
+  local mr_blind=false mr_key_desc="code projects: $(_code_projects | tr '\n' ' ' | sed 's/ *$//')"
+  _mr_read_key >/dev/null 2>&1 || mr_blind=true
+
   if [ "$as_json" = false ]; then
     print_header "Issue ↔ code reconciliation (project $PROJECT_ID)"
-    printf '  scope: %d issue(s) · %d git repo(s) searched for cited refs%s\n\n' \
+    printf '  scope: %d issue(s) · %d git repo(s) searched for cited refs%s\n' \
       "$(printf '%s' "$issues_tsv" | grep -c .)" "$n_repos" \
       "$([ "$scan_notes" = true ] && echo ' · notes included' || echo ' · notes SKIPPED (--no-notes)')"
+    if [ "$mr_blind" = true ]; then
+      printf '  \033[33mMR VISIBILITY: BLIND\033[0m — no token can read %s.\n' "$mr_key_desc"
+      printf '  MERGED-BUT-OPEN and CLOSED-BUT-OPEN-MR are NOT REPORTED this run (ops#235).\n\n'
+    else
+      printf '  MR visibility: OK (%s)\n\n' "$mr_key_desc"
+    fi
   else
     printf '[\n'
+    if [ "$mr_blind" = true ]; then
+      printf '  {"class":"MR-VISIBILITY-BLIND","detail":"%s","advice":"MERGED-BUT-OPEN / CLOSED-BUT-OPEN-MR not reported"}' \
+        "$mr_key_desc"
+    fi
   fi
 
+  # The blindness row is a real element, so the comma bookkeeping must know it
+  # was emitted — otherwise --json produces `[ {...} {...} ]` and no consumer parses.
   local first=true findings=0
+  [ "$as_json" = true ] && [ "$mr_blind" = true ] && first=false
   local iid state title desc merged_in open_mr_n repo
   while IFS=$'\t' read -r iid state title desc; do
     [ -z "$iid" ] && continue
@@ -411,9 +447,22 @@ cmd_reconcile(){
       fi
     done
 
-    open_mr_n=$(_api_get "/projects/$PROJECT_ID/issues/$iid/related_merge_requests" 2>/dev/null \
-                | "$YQ" e -p=json '[.[] | select(.state == "opened")] | length' - 2>/dev/null || echo 0)
-    [[ "$open_mr_n" =~ ^[0-9]+$ ]] || open_mr_n=0
+    # ops#235: same walled-token blindness as the close guard, and here it is
+    # worse in BOTH directions. `open_mr_n` was pinned at 0, so CLOSED-BUT-OPEN-MR
+    # was unreachable (false negative) AND MERGED-BUT-OPEN fired on any issue with
+    # a merge in history regardless of open MRs, advising `pl issue close` on work
+    # that was still in flight (false positive, acted on by a human).
+    local mr_rc=0 mr_lines=""
+    if [ "$mr_blind" = true ]; then
+      open_mr_n=-1
+    else
+      mr_lines=$(issue_open_mrs "$iid") || mr_rc=$?
+      case "$mr_rc" in
+        0) open_mr_n=0 ;;
+        1) open_mr_n=$(printf '%s\n' "$mr_lines" | grep -c . || true) ;;
+        *) open_mr_n=-1 ;;   # went blind mid-run; treated as unknown below
+      esac
+    fi
 
     # STALE-REF: branch-shaped tokens in the issue text that resolve nowhere.
     # Notes are scanned too (ops#70's phantom is in a note, not the body); pass
@@ -436,7 +485,12 @@ cmd_reconcile(){
     done < <(_refs_in_text "$text")
 
     local class="" advice=""
-    if [ "$state" = "opened" ] && [ -n "$merged_in" ] && [ "$open_mr_n" = "0" ]; then
+    # open_mr_n = -1 means UNKNOWN. Neither MR-dependent class may be asserted
+    # from an unknown, in either direction — that is the ops#235 lesson applied
+    # to the reporting half. The run-level banner above already says we are blind.
+    if [ "$open_mr_n" -lt 0 ]; then
+      :
+    elif [ "$state" = "opened" ] && [ -n "$merged_in" ] && [ "$open_mr_n" = "0" ]; then
       class="MERGED-BUT-OPEN"; advice="pl issue close $iid"
     elif [ "$state" = "closed" ] && [ "$open_mr_n" -gt 0 ]; then
       class="CLOSED-BUT-OPEN-MR"; advice="pl issue reopen $iid"
@@ -471,10 +525,17 @@ cmd_reconcile(){
     return 0
   fi
   echo ""
-  if [ "$findings" -eq 0 ]; then
-    print_success "tracker and code agree (no merged-but-open or closed-with-open-MR issues)"
-  else
+  if [ "$findings" -gt 0 ]; then
     print_warning "$findings issue(s) disagree with what landed — nothing was changed; act with the commands above"
+  elif [ "$mr_blind" = true ]; then
+    # ops#235 again, at the summary line. "tracker and code agree" is a POSITIVE
+    # assertion, and two of the three classes behind it were not evaluated. A
+    # clean-looking summary over unread data is the whole failure this issue is
+    # about; do not print one. rc 3 = could not look, per pl server health.
+    print_warning "PARTIAL: no findings in the classes this run could evaluate — MR-dependent classes were NOT checked (blind)"
+    return 3
+  else
+    print_success "tracker and code agree (no merged-but-open or closed-with-open-MR issues)"
   fi
 }
 
@@ -647,8 +708,12 @@ pl issue — the nwp/ops work board (read + write) + per-issue worktrees
     pl issue create --title "..." [--desc "..."] [--label a,b]
                                    open a new nwp/ops issue
     pl issue comment <iid> "text"  add a comment (or pipe text on stdin)
-    pl issue close <iid>           close an issue (refuses while an MR referencing
-                                   it is still open; --force overrides)
+    pl issue close <iid>           close an issue. Exit 1 = an MR referencing it
+                                   is still OPEN. Exit 3 = CANNOT VERIFY (no
+                                   token can read the code projects) — refused,
+                                   because an empty related-MR list from a walled
+                                   token is blindness, not evidence (ops#235).
+                                   --force overrides both.
     pl issue reconcile [<iid>] [--no-notes] [--json]
                                    report issues that disagree with what landed:
                                    MERGED-BUT-OPEN · CLOSED-BUT-OPEN-MR · STALE-REF
@@ -656,7 +721,10 @@ pl issue — the nwp/ops work board (read + write) + per-issue worktrees
                                    searched). Paginates the whole tracker.
                                    Read-only. --no-notes skips the per-issue note
                                    fetch (roughly twice as fast, misses refs that
-                                   only appear in comments).
+                                   only appear in comments). Exit 3 = MR
+                                   visibility BLIND: the two MR-dependent classes
+                                   were not evaluated and no clean bill of health
+                                   is printed.
     pl issue reopen <iid>          reopen an issue
     pl issue label <iid> --add a,b [--remove c]
                                    add and/or remove labels

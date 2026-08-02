@@ -66,6 +66,136 @@ GOLDEN_SENTINEL_DOMAINS_RE='^(localhost|(.+\.)?(invalid|test|example|localhost)|
 # forever, and a guard that cries wolf every night is a guard that gets ignored.
 GOLDEN_VENDOR_FIXTURE_MAILBOXES='^(test@test\.com|random@random\.com)$'
 
+# Bumped whenever a RULE is added or its verdict changes. It is part of the
+# memoisation key: without it, a golden whose bytes have not changed would keep
+# serving a verdict computed by an OLDER ruleset — stale-NEGATIVE, the one
+# direction lib/golden-hygiene.sh's cache contract promises never to go. A new
+# rule that silently does not run on existing goldens is not a new rule.
+GOLDEN_HYGIENE_RULESET_VERSION=2
+
+################################################################################
+# RULE 3 — the demo SEED FENCE must hold INSIDE the golden.
+#
+# RULE 1 asks "is anybody's identity baked into this golden?". RULE 3 asks a
+# different question about the same bytes: "can the nightly reset still SEED
+# from this golden, or have we just built one that aborts?"
+#
+# They are not the same question, and on 2026-08-01 the gap between them cost a
+# reset. `nwc:seed-demo` fences the demo tier on ONE domain — @demo.invalid —
+# and NwcPrivacyDemoCommands::guardAgainstRealMembers() treats ANY account above
+# uid 1 that is off it as "a real member", refusing to seed. RULE 1's sentinel
+# set is deliberately much wider (every RFC 2606/6761 reserved domain), because
+# for the PRIVACY question .example is just as undeliverable as .invalid.
+#
+# So an account at `applicant@nwd.example` is invisible to RULE 1 — correctly,
+# it leaks nothing — while being fatal to the reset. It was captured into the
+# nwd golden, and servers/live/demo/*-demo-reset-restricted runs seed-demo
+# fail-CLOSED (`die "reset-failed" "reason=seed-demo"`), so the next restore
+# would have aborted, then retried hourly to the 04:00 floor and failed every
+# time. A golden that cannot be reset FROM is a booby-trapped golden.
+#
+# Mirrors the seeder's predicate exactly, including its uid>1: root's address is
+# irrelevant to whether a reset can proceed, so flagging it would be a false
+# positive, and a guard that cries wolf is a guard that gets ignored.
+################################################################################
+GOLDEN_DEMO_FENCE_DOMAIN='demo.invalid'
+
+# Mailboxes that are DELIBERATELY off the fence, whitespace/comma separated.
+#
+# EMPTY BY DEFAULT, and adding one is the same decision as passing seed-demo's
+# `--force`: it asserts "this account is not a real member, and I accept that
+# every future reset must special-case it". Exemptions are EXACT ADDRESSES, never
+# domains — exempting a domain would blind the check to a real person who
+# happened to have an address there, which is the mistake RULE 1 already avoids
+# with GOLDEN_VENDOR_FIXTURE_MAILBOXES.
+#
+# Note there is currently no such persona. The one account that looked like a
+# candidate (demo_applicant, the synthetic safeguarding-register subject) turned
+# out to carry .example by style-inheritance from ten sibling personas, not by
+# design — its ten siblings are all on the fence — so it was corrected rather
+# than exempted. Prefer that resolution: an exemption is a permanent carve-out
+# in a safety interlock.
+GOLDEN_DEMO_FENCE_EXEMPT_MAILBOXES=''
+
+# Accounts in a golden that would make `nwc:seed-demo` refuse.
+# Prints one `uid=<n> <domain>` per offending account (deduplicated). Empty = ok.
+#
+# Reports the DOMAIN only, never the mailbox — same discipline as RULES 1 and 2.
+# If a real member ever does reach a golden, the finding must be reportable,
+# loggable and mailable without republishing that person's address.
+#
+# SCOPE: anchored on Drupal's `users_field_data`, so it is a deliberate no-op on
+# a Moodle golden (ssd) — which is correct, not a blind spot: `nwc:seed-demo` is
+# a Drupal Drush command and only the provider half's reset ever runs it. If a
+# Moodle half ever grows an equivalent seed step, it needs its own rule; do not
+# assume this one covered it. RULE 1 already scans both halves for leaks.
+#
+# Args: $1 = artifact path, $2 = exempt mailboxes (default: the constant above)
+golden_demo_fence_violations() {
+    local artifact="$1"
+    local exempt="${2-$GOLDEN_DEMO_FENCE_EXEMPT_MAILBOXES}"
+
+    # Users only exist in the DB dump; streaming the files tarball as well would
+    # add a third full decompression per golden for a table it cannot contain,
+    # and `pl todo check` budgets 45s for every check it runs.
+    case "$artifact" in
+        *.sql|*.sql.gz|*.db.sql.gz) ;;
+        *) return 0 ;;
+    esac
+
+    golden_hygiene_stream "$artifact" | awk \
+        -v fence="@${GOLDEN_DEMO_FENCE_DOMAIN}" \
+        -v exempt="$exempt" '
+    BEGIN { nex = split(exempt, ex, /[ ,\t\n]+/) }
+
+    # One offending account, reported once.
+    function handle(r,   uid, mail, dom, k) {
+        if (match(r, /^[0-9]+/) == 0) return           # column list, not a row
+        uid = substr(r, RSTART, RLENGTH) + 0
+        if (uid <= 1) return                           # seeder ignores 0 and 1
+        # First quoted field carrying "@" is the mail column: uid, langcode,
+        # preferred_*, name, pass all precede it and none can contain one.
+        if (match(r, /\x27[^\x27]*@[^\x27]*\x27/) == 0) return
+        mail = tolower(substr(r, RSTART + 1, RLENGTH - 2))
+        if (index(mail, fence) == length(mail) - length(fence) + 1) return
+        for (k = 1; k <= nex; k++)
+            if (ex[k] != "" && tolower(ex[k]) == mail) return
+        if (uid in seen) return
+        seen[uid] = 1
+        dom = mail; sub(/^[^@]*@/, "", dom)
+        print "uid=" uid " " dom
+    }
+
+    # Split a VALUES list into top-level (...) groups, honouring quotes and
+    # backslash escapes. Splitting on "),(" would tear any row whose text
+    # happens to contain that sequence.
+    function emit_rows(s,   i, c, n, depth, instr, start) {
+        n = length(s); depth = 0; instr = 0
+        for (i = 1; i <= n; i++) {
+            c = substr(s, i, 1)
+            if (instr) {
+                if (c == "\\") { i++; continue }
+                if (c == "\x27") instr = 0
+                continue
+            }
+            if (c == "\x27") { instr = 1; continue }
+            if (c == "(") { depth++; if (depth == 1) start = i + 1 }
+            else if (c == ")") {
+                depth--
+                if (depth == 0) handle(substr(s, start, i - start))
+            }
+        }
+    }
+
+    !cap && /^INSERT INTO `users_field_data`/ { cap = 1; buf = "" }
+    cap {
+        buf = buf $0 "\n"
+        if (/;[[:space:]]*$/) { cap = 0; emit_rows(buf); buf = "" }
+    }
+    END { if (cap && buf != "") emit_rows(buf) }
+    '
+}
+
 # Where the optional personal-name tokens live. Untracked by construction.
 golden_hygiene_denylist_file() {
     printf '%s/private/golden-identity-denylist.txt' "${1:-$PWD}"
@@ -170,8 +300,9 @@ golden_hygiene_denylisted_tokens() {
 # either input, is a different key and forces a fresh scan — the cache can go
 # stale-positive but never stale-negative.
 #
-# Prints:  MAIL <domain>   (one per line)
-#          NAME <masked>   (one per line)
+# Prints:  MAIL  <domain>          (one per line)
+#          NAME  <masked>          (one per line)
+#          FENCE uid=<n> <domain>  (one per line)
 # Args: $1=artifact  $2=declared domains  $3=denylist file  $4=cache dir
 golden_hygiene_scan() {
     local artifact="$1" declared="$2" list="$3" cache_dir="$4"
@@ -179,10 +310,12 @@ golden_hygiene_scan() {
 
     local key="" cache=""
     if [ -n "$cache_dir" ] && command -v sha256sum >/dev/null 2>&1; then
-        key=$(printf '%s|%s|%s' \
+        key=$(printf '%s|%s|%s|%s|%s' \
                 "$(sha256sum -- "$artifact" 2>/dev/null | cut -d' ' -f1)" \
                 "$([ -f "$list" ] && sha256sum -- "$list" 2>/dev/null | cut -d' ' -f1)" \
                 "$(printf '%s' "$declared" | sha256sum 2>/dev/null | cut -d' ' -f1)" \
+                "$GOLDEN_HYGIENE_RULESET_VERSION" \
+                "$(printf '%s' "$GOLDEN_DEMO_FENCE_EXEMPT_MAILBOXES" | sha256sum 2>/dev/null | cut -d' ' -f1)" \
               | sha256sum | cut -d' ' -f1)
         cache="$cache_dir/golden-hygiene/$key"
         if [ -f "$cache" ]; then cat -- "$cache"; return 0; fi
@@ -196,6 +329,10 @@ golden_hygiene_scan() {
     while IFS= read -r m; do
         [ -n "$m" ] && out+="NAME $m"$'\n'
     done <<< "$(golden_hygiene_denylisted_tokens "$artifact" "$list")"
+    local v
+    while IFS= read -r v; do
+        [ -n "$v" ] && out+="FENCE $v"$'\n'
+    done <<< "$(golden_demo_fence_violations "$artifact")"
 
     if [ -n "$cache" ]; then
         mkdir -p "$(dirname "$cache")" 2>/dev/null && printf '%s' "$out" > "$cache" 2>/dev/null

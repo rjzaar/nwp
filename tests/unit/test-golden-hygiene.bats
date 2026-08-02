@@ -238,6 +238,155 @@ INSERT INTO u VALUES ('noreply@bounce.mx.estate-under-test.org');"
 }
 
 ################################################################################
+# RULE 3 — the demo SEED FENCE must hold INSIDE the golden (ops#213)
+#
+# Defect this locks down: on 2026-08-01 an account (uid 19, demo_applicant) was
+# created on live nwd with an `@nwd.example` address. `.example` is RFC 2606
+# reserved, so RULE 1 above passes it — it is not a privacy leak. But
+# NwcPrivacyDemoCommands::guardAgainstRealMembers() fences the demo tier on the
+# NARROWER `@demo.invalid`, and treats any uid>1 off that domain as "a real
+# member", refusing to seed. The nightly recapture baked the account into the
+# golden, and servers/live/demo/nwd-demo-reset-restricted runs
+# `drush nwc:seed-demo` fail-CLOSED — so the next restore would have aborted the
+# whole reset, then retried hourly to the 04:00 floor and failed every time.
+#
+# A golden that cannot be reset FROM is a booby-trapped golden. Nothing looked.
+# This is the looking: the property is asserted BEFORE a golden is accepted.
+################################################################################
+
+# Build a fake golden carrying a real-shaped users_field_data INSERT.
+# Args: one "uid|name|mail" triple per argument.
+_users_golden() {
+  local body='INSERT INTO `users_field_data` VALUES' first=1 row uid name mail
+  for row in "$@"; do
+    IFS='|' read -r uid name mail <<< "$row"
+    [ "$first" -eq 1 ] && first=0 || body+=','
+    body+=$'\n'"($uid,'en','en',NULL,'$name','\$2y\$10\$abc','$mail','UTC',1,1753000000,1753000000,0,0,'$mail',1)"
+  done
+  printf '%s;\n' "$body" | gzip -c > "$GOLDEN/golden.db.sql.gz"
+}
+
+@test "fence: a golden whose accounts are all on @demo.invalid is clean" {
+  _users_golden "1|admin|admin@example.com" \
+                "12|nwcdemo_consenting|nwcdemo_consenting@demo.invalid" \
+                "17|Sebastian-1572|user1572@demo.invalid"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "fence: an account above uid 1 off @demo.invalid is a violation" {
+  _users_golden "1|admin|admin@example.com" \
+                "19|demo_applicant|applicant@nwd.example"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz"
+  [[ "$output" == *"uid=19"* ]]
+  [[ "$output" == *"nwd.example"* ]]
+}
+
+@test "fence: THE ops#213 CASE — .example passes RULE 1 but still breaks the seeder" {
+  _users_golden "19|demo_applicant|applicant@nwd.example"
+  _source_lib
+  # RULE 1 is silent: .example is an RFC 2606 sentinel, so this is NOT a leak…
+  run golden_hygiene_foreign_mail_domains "$GOLDEN/golden.db.sql.gz" "$(_declared)"
+  [ -z "$output" ]
+  # …and yet the reset would die. That gap is the whole point of RULE 3.
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"uid=19"* ]]
+}
+
+@test "fence: uid 1 is ignored, exactly as guardAgainstRealMembers() ignores it" {
+  # The seeder's query is ->condition('uid', 1, '>'). Root's address is
+  # therefore irrelevant to whether a reset can proceed; flagging it would be a
+  # false positive that trains the operator to ignore this check.
+  _users_golden "0|| " "1|admin|admin@example.com" \
+                "12|nwcdemo_consenting|nwcdemo_consenting@demo.invalid"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz"
+  [ -z "$output" ]
+}
+
+@test "fence: the finding never republishes the mailbox — local-part is masked" {
+  _users_golden "19|demo_applicant|applicant@nwd.example"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz"
+  [ "$status" -eq 0 ]
+  # The finding must be actionable…
+  [[ "$output" == *"uid=19"* && "$output" == *"nwd.example"* ]]
+  # …without republishing the address. Same discipline as RULE 1/2.
+  [[ "$output" != *"applicant@"* ]]
+}
+
+@test "fence: a deliberate exemption can be declared, and is honoured" {
+  _users_golden "19|demo_applicant|applicant@nwd.example"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz" "applicant@nwd.example"
+  [ -z "$output" ]
+}
+
+@test "fence: an exemption is exact — it does not blanket the whole domain" {
+  _users_golden "19|demo_applicant|applicant@nwd.example" \
+                "20|someone_else|other@nwd.example"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz" "applicant@nwd.example"
+  [[ "$output" == *"uid=20"* ]]
+  [[ "$output" != *"uid=19"* ]]
+}
+
+@test "fence: a golden with no users table at all is silent, not a false positive" {
+  _golden "INSERT INTO config VALUES ('system.site','mail@demo.invalid');"
+  _source_lib
+  run golden_demo_fence_violations "$GOLDEN/golden.db.sql.gz"
+  [ -z "$output" ]
+}
+
+@test "fence: a violation surfaces through the scan as a FENCE line" {
+  _users_golden "19|demo_applicant|applicant@nwd.example"
+  _source_lib
+  run golden_hygiene_scan "$GOLDEN/golden.db.sql.gz" "$(_declared)" \
+      "$TMP/private/none.txt" "$TMP/cache"
+  [[ "$output" == *"FENCE uid=19"* ]]
+}
+
+@test "fence: adding a rule invalidates old cache entries (ruleset version)" {
+  # A cache keyed only on CONTENT would serve a pre-RULE-3 verdict for an
+  # unchanged golden forever — stale-NEGATIVE, the one direction the cache
+  # contract forbids. The ruleset version must be part of the key.
+  _users_golden "19|demo_applicant|applicant@nwd.example"
+  _source_lib
+  run golden_hygiene_scan "$GOLDEN/golden.db.sql.gz" "$(_declared)" \
+      "$TMP/private/none.txt" "$TMP/cache"
+  [[ "$output" == *"FENCE"* ]]
+
+  local before after
+  before="$(find "$TMP/cache/golden-hygiene" -type f | head -1)"
+  GOLDEN_HYGIENE_RULESET_VERSION="$(( GOLDEN_HYGIENE_RULESET_VERSION + 1 ))"
+  run golden_hygiene_scan "$GOLDEN/golden.db.sql.gz" "$(_declared)" \
+      "$TMP/private/none.txt" "$TMP/cache"
+  after="$(find "$TMP/cache/golden-hygiene" -type f | wc -l)"
+  [ "$after" -eq 2 ]
+  [ -n "$before" ]
+}
+
+@test "fence: a violation surfaces as SEC/high — pl rag grades that RED" {
+  _users_golden "19|demo_applicant|applicant@nwd.example"
+  run _run_check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"category":"SEC"'* ]]
+  [[ "$output" == *'"priority":"high"'* ]]
+  [[ "$output" == *"seed-demo"* ]]
+}
+
+@test "fence: a clean golden raises no fence finding" {
+  _users_golden "1|admin|admin@example.com" \
+                "12|nwcdemo_consenting|nwcdemo_consenting@demo.invalid"
+  run _run_check
+  [[ "$output" != *"goldenfence"* ]]
+}
+
+################################################################################
 # The guard must not itself become the leak (P61 / .gitleaks.toml)
 ################################################################################
 

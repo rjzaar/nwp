@@ -1912,7 +1912,7 @@ check_demo_golden_hygiene() {
     local declared; declared=$(golden_hygiene_declared_domains "$config_file")
     local denylist; denylist=$(golden_hygiene_denylist_file "$root")
 
-    local site tier artifact scan foreign masked
+    local site tier artifact scan foreign masked offfence
     for d in "$root"/sites/*/demo-golden "$root"/sites/*/demo-golden-live; do
         [ -d "$d" ] || continue
         site=$(basename "$(dirname "$d")")
@@ -1926,6 +1926,19 @@ check_demo_golden_hygiene() {
             scan=$(golden_hygiene_scan "$artifact" "$declared" "$denylist" "$TODO_CACHE_DIR" 2>/dev/null)
             foreign=$(printf '%s\n' "$scan" | sed -n 's/^MAIL //p')
             masked=$(printf '%s\n' "$scan"  | sed -n 's/^NAME //p')
+            offfence=$(printf '%s\n' "$scan" | sed -n 's/^FENCE //p')
+
+            # RULE 3 — the golden must still be RESETTABLE. Distinct from the
+            # two above: this is not a leak, it is a booby trap. seed-demo runs
+            # fail-closed in the box wrapper, so an account off @demo.invalid
+            # inside the image aborts the whole nightly reset and every hourly
+            # retry after it, until someone notices the site is stale.
+            if [ -n "$offfence" ]; then
+                todo_add_item "SEC" "goldenfence-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)" "high" \
+                    "Demo golden for ${site} (${tier}) would ABORT the nightly reset (seed-demo fence)" \
+                    "$(basename "$artifact") contains account(s) above uid 1 that are off the demo fence @${GOLDEN_DEMO_FENCE_DOMAIN}: $(echo "$offfence" | tr '\n' ' '). nwc:seed-demo treats any such account as a real member and REFUSES; the box wrapper runs it fail-closed (die reason=seed-demo), so restoring this golden aborts the reset and every hourly retry to the 04:00 floor. Reported as uid + domain only, never the address. Fix the LIVE site (correct the mailbox to @${GOLDEN_DEMO_FENCE_DOMAIN}), prove it with 'pl drush ${site} --tier=live --execute -- nwc:seed-demo', then recapture: pl demo golden ${site} --tier=live" \
+                    "$site" "pl demo golden ${site} --tier=live"
+            fi
 
             if [ -n "$foreign" ]; then
                 todo_add_item "SEC" "goldenid-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)-mail" "high" \

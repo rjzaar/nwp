@@ -353,7 +353,12 @@ _mr_lift_hold(){
 _mr_release_record(){
   local iid="$1" head_sha="$2" author="$3"
   local notes bodies approved commit
-  notes=$(_mr_notes "$iid") || return 1
+  # rc 2 = COULD NOT LOOK (no token, API error). rc 1 = looked, found nothing.
+  # Collapsing these was a real defect: a tokenless CI job reported "no release
+  # record for this head" and told the operator to run `pl mr release`, which
+  # could never help because the job could not read the note it would create.
+  # A negative you could not verify is not a negative.
+  notes=$(_mr_notes "$iid") || return 2
   # Notes come back newest-first; take the first that validates.
   #
   # The bodies are flattened into one stream with an explicit BOUNDARY between
@@ -363,7 +368,7 @@ _mr_release_record(){
   # of two innocent comments. A release must be one note, entire.
   local BOUNDARY='@@NWP-NOTE-BOUNDARY@@'
   bodies=$(B="$BOUNDARY" "$YQ" e -p=json -r \
-             '.[] | select(.system == false) | .body + "\n" + strenv(B)' - <<<"$notes" 2>/dev/null) || return 1
+             '.[] | select(.system == false) | .body + "\n" + strenv(B)' - <<<"$notes" 2>/dev/null) || return 2
   local block=""
   while IFS= read -r line; do
     if [ "$line" = "$BOUNDARY" ]; then

@@ -327,3 +327,21 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
   run bash -c "'$ROOT/pl' commands --json 2>/dev/null | grep -c '\"name\":\"mr\"'"
   [ "$output" = "1" ]
 }
+
+# --- "could not look" is not "nothing there" (2026-08-02, found on !314) -------
+
+@test "guard exits 2 CANNOT VERIFY when there is no token — not 1 'unreleased'" {
+    # !314's own pipeline reported "no release record for this head" and told
+    # the operator to run `pl mr release`. It had already been run. The job was
+    # tokenless, so it could not read the note it was asking for — a negative
+    # asserted about something never examined. Both outcomes refuse, so this is
+    # about what the operator is told to do next, not about safety.
+    cd "$ROOT" || return 1
+    run env -u NWP_MR_TOKEN -u GITLAB_TOKEN NWP_SECRETS_FILE=/nonexistent-$$ \
+        CI_MERGE_REQUEST_IID=314 CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main \
+        ./scripts/commands/mr.sh guard --ci
+    [ "$status" -eq 2 ]
+    echo "$output" | grep -q 'CANNOT VERIFY'
+    # and it must NOT send the reader to a command that cannot help
+    echo "$output" | grep -q "will not clear it"
+}

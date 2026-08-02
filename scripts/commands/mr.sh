@@ -387,15 +387,42 @@ cmd_guard(){
   fi
 
   # 3. IS IT RELEASED? Only a record bound to the CURRENT head counts.
+  #
+  # If the release check CANNOT RUN — no token, or the notes API errors — this
+  # is "cannot verify" (exit 2), NOT "held because unreleased" (exit 1). Both
+  # refuse, so the safety is identical; the difference is what the operator is
+  # told to do next. Reporting "no release record" to someone who has already
+  # released it sends them to re-run a command that cannot work, which is
+  # exactly what happened on !314 on 2026-08-02.
+  if [ -n "$iid" ] && ! _mr_have_token; then
+    echo ""
+    echo "CANNOT VERIFY — no MR-capable token in this environment, so this job"
+    echo "  could not check whether a release record exists for this head."
+    echo "  Refusing (fail closed), but note this is 'could not look', NOT"
+    echo "  'no release exists'. Running \`pl mr release\` again will not clear it."
+    echo ""
+    echo "  To make this checkable, set the masked CI variable NWP_MR_TOKEN"
+    echo "  (Settings > CI/CD > Variables; needs api scope on this project)."
+    echo "  Until then EVERY sensitive-path MR is unmergeable, by design."
+    return 2
+  fi
   if [ -n "$iid" ] && _mr_have_token; then
     local sha author approver
     [ -n "$mr_json" ] || mr_json=$(_mr_fetch "$iid") || mr_json=""
     if [ -n "$mr_json" ]; then
       sha=$(_mr_head_sha "$mr_json"); author=$(_mr_author "$mr_json")
-      if approver=$(_mr_release_record "$iid" "$sha" "$author"); then
+      local rr_rc=0
+      approver=$(_mr_release_record "$iid" "$sha" "$author") || rr_rc=$?
+      if [ "$rr_rc" -eq 0 ]; then
         echo ""
         echo "RELEASED by @$approver for head ${sha:0:12} — allowing."
         return 0
+      elif [ "$rr_rc" -eq 2 ]; then
+        echo ""
+        echo "CANNOT VERIFY — the notes API could not be read, so the release"
+        echo "  record could not be checked. Refusing (fail closed). This is"
+        echo "  'could not look', not 'no release exists'."
+        return 2
       fi
     fi
   fi

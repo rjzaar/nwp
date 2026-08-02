@@ -344,6 +344,38 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
   [ "$output" = "1" ]
 }
 
+
+# _sensitive_repo — a throwaway repo whose branch REALLY touches a CLAUDE.md
+# sensitive path, echoed as its path.
+#
+# WHY THIS EXISTS (2026-08-02, and it turned main RED). The two cases below used
+# to run the guard with `cd "$ROOT"` — the real checkout. The guard prefers the
+# git range `origin/main...HEAD`, so what it graded was WHATEVER THE RUNNER'S
+# BRANCH HAPPENED TO CONTAIN. They passed while !314 was in flight, because
+# !314's own diff touched `.gitlab-ci.yml` and the guard therefore reached the
+# token/host branch these cases are about. On main the range is empty; on any MR
+# that touches no sensitive path the range is non-empty but clean. Either way the
+# guard exits 0 at "nothing to hold" long before the code under test, and the
+# case fails having never reached its subject.
+#
+# Result: `test:unit` went red on main and on EVERY merge request, and the whole
+# queue stopped. A test that reads its environment is testing the environment.
+#
+# The fixture makes the precondition true by construction, in every checkout.
+_sensitive_repo() {
+  local d="$BATS_TEST_TMPDIR/sensrepo"
+  rm -rf "$d"; mkdir -p "$d"
+  git -C "$d" init -q -b main
+  git -C "$d" config user.email t@example.invalid
+  git -C "$d" config user.name  Tester
+  echo base > "$d/README.md"
+  git -C "$d" add -A; git -C "$d" commit -q -m base
+  git -C "$d" checkout -q -b feature
+  printf 'stages: [test]\n' > "$d/.gitlab-ci.yml"     # CLAUDE.md sensitive path
+  git -C "$d" add -A; git -C "$d" commit -q -m "touch a sensitive path"
+  printf '%s' "$d"
+}
+
 # --- "could not look" is not "nothing there" (2026-08-02, found on !314) -------
 
 @test "guard exits 2 CANNOT VERIFY when there is no token — not 1 'unreleased'" {
@@ -352,14 +384,16 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
     # tokenless, so it could not read the note it was asking for — a negative
     # asserted about something never examined. Both outcomes refuse, so this is
     # about what the operator is told to do next, not about safety.
-    cd "$ROOT" || return 1
-    # CI_SERVER_HOST is supplied deliberately: without it the guard now stops at
-    # the earlier "host unresolved" refusal and this case would pass without
-    # ever reaching the token path it claims to test.
+    # The fixture guarantees the guard reaches the token path: its branch really
+    # does touch a sensitive path, in every checkout, on every runner.
+    local d; d="$(_sensitive_repo)"
+    # CI_SERVER_HOST is supplied deliberately: without it the guard stops at the
+    # earlier "host unresolved" refusal and this case would pass without ever
+    # reaching the token path it claims to test.
     run env -u NWP_MR_TOKEN -u GITLAB_TOKEN NWP_SECRETS_FILE=/nonexistent-$$ \
-        CI_SERVER_HOST=example.invalid \
-        CI_MERGE_REQUEST_IID=314 CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main \
-        ./scripts/commands/mr.sh guard --ci
+        CI_SERVER_HOST=example.invalid CI_PROJECT_ID=9 \
+        CI_MERGE_REQUEST_IID=314 \
+        bash -c "cd '$d' && '$ROOT/scripts/commands/mr.sh' guard --ci --base=main --head=HEAD"
     [ "$status" -eq 2 ]
     echo "$output" | grep -q 'CANNOT VERIFY'
     # and it must NOT send the reader to a command that cannot help
@@ -385,10 +419,80 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
         bash -c "source '$ROOT/lib/gitlab-mr.sh'; _mr_host_ok"
     [ "$status" -ne 0 ]
 
+    local d; d="$(_sensitive_repo)"
     run env -u CI_SERVER_HOST -u NWP_GITLAB_HOST -u NWP_MR_TOKEN -u GITLAB_TOKEN \
-        NWP_SECRETS_FILE=/nonexistent-$$ CI_MERGE_REQUEST_IID=314 \
-        CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main \
-        "$ROOT/scripts/commands/mr.sh" guard --ci
+        NWP_SECRETS_FILE=/nonexistent-$$ CI_MERGE_REQUEST_IID=314 CI_PROJECT_ID=9 \
+        bash -c "cd '$d' && '$ROOT/scripts/commands/mr.sh' guard --ci --base=main --head=HEAD"
     [ "$status" -eq 2 ]
     echo "$output" | grep -q 'forge host could not be determined'
+}
+
+
+# --- an EMPTY change set is not a clean bill of health (2026-08-02) -----------
+#
+# This is the production half of the same bug. The guard preferred the git range
+# because it needs no credentials, and when that range came back empty it printed
+#     files changed: 0
+#     OK — no CLAUDE.md sensitive path touched, no standing hold.
+# and exited 0. For a real merge request that is a vacuous pass: an MR with no
+# changed files is not a thing. A shallow clone, a stale origin/main, or a HEAD
+# identical to the target all produce it.
+
+@test "PRECONDITION: the fixture branch really does touch a sensitive path" {
+  # Without this the two cases above could go green again for the old wrong
+  # reason — a fixture that stopped being sensitive would send the guard back to
+  # "nothing to hold", and "status 2" would then mean something else entirely.
+  local d; d="$(_sensitive_repo)"
+  run git -C "$d" diff --name-only main...HEAD
+  [[ "$output" == *".gitlab-ci.yml"* ]]
+  run bash -c "source '$ROOT/lib/sensitive-paths.sh'; printf '.gitlab-ci.yml\n' | nwp_sensitive_filter"
+  [[ "$output" == *".gitlab-ci.yml"* ]]
+}
+
+@test "an EMPTY change set with an MR iid is CANNOT VERIFY (exit 2), not a pass" {
+  local d="$BATS_TEST_TMPDIR/emptyrepo"
+  rm -rf "$d"; mkdir -p "$d"
+  git -C "$d" init -q -b main
+  git -C "$d" config user.email t@example.invalid
+  git -C "$d" config user.name Tester
+  echo x > "$d/README.md"; git -C "$d" add -A; git -C "$d" commit -q -m base
+  run env -u NWP_MR_TOKEN -u GITLAB_TOKEN -u CI_SERVER_HOST -u NWP_GITLAB_HOST \
+      NWP_SECRETS_FILE=/nonexistent-$$ CI_MERGE_REQUEST_IID=314 \
+      bash -c "cd '$d' && '$ROOT/scripts/commands/mr.sh' guard --ci --base=main --head=HEAD"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"came back EMPTY"* ]]
+  [[ "$output" != *"Nothing to hold"* ]]
+}
+
+@test "NEGATIVE CONTROL: an empty range with NO MR context is honestly 'nothing to review'" {
+  # The refusal above must not become "refuse whenever the diff is empty" — a
+  # branch identical to its target, outside any MR, has genuinely nothing to
+  # gate, and turning that into a failure would break every non-MR pipeline.
+  local d="$BATS_TEST_TMPDIR/emptyrepo2"
+  rm -rf "$d"; mkdir -p "$d"
+  git -C "$d" init -q -b main
+  git -C "$d" config user.email t@example.invalid
+  git -C "$d" config user.name Tester
+  echo x > "$d/README.md"; git -C "$d" add -A; git -C "$d" commit -q -m base
+  run env -u NWP_MR_TOKEN -u GITLAB_TOKEN -u CI_MERGE_REQUEST_IID \
+      NWP_SECRETS_FILE=/nonexistent-$$ \
+      bash -c "cd '$d' && '$ROOT/scripts/commands/mr.sh' guard --base=main --head=HEAD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to review"* ]]
+}
+
+@test "a NON-sensitive change is still cleanly allowed (the gate is not a wall)" {
+  local d="$BATS_TEST_TMPDIR/benign"
+  rm -rf "$d"; mkdir -p "$d"
+  git -C "$d" init -q -b main
+  git -C "$d" config user.email t@example.invalid
+  git -C "$d" config user.name Tester
+  echo x > "$d/README.md"; git -C "$d" add -A; git -C "$d" commit -q -m base
+  git -C "$d" checkout -q -b feature
+  echo y >> "$d/README.md"; git -C "$d" commit -qam "benign"
+  run env -u NWP_MR_TOKEN -u GITLAB_TOKEN -u CI_MERGE_REQUEST_IID \
+      NWP_SECRETS_FILE=/nonexistent-$$ \
+      bash -c "cd '$d' && '$ROOT/scripts/commands/mr.sh' guard --base=main --head=HEAD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no CLAUDE.md sensitive path touched"* ]]
 }

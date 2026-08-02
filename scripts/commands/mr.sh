@@ -337,11 +337,37 @@ cmd_guard(){
   if [ -n "$base" ] && git rev-parse --verify --quiet "$base" >/dev/null 2>&1; then
     files=$(git diff --name-only "${base}...${head_ref}" 2>/dev/null)
     source="git ${base}...${head_ref}"
-  elif [ -n "$iid" ] && _mr_have_token; then
+  fi
+  # AN EMPTY RANGE IS NOT "NOTHING SENSITIVE".
+  #
+  # The git range is preferred because it needs no credentials, but it is
+  # computed against whatever refs this checkout happens to have. A shallow
+  # clone, a stale `origin/main`, or a HEAD that IS the target all produce an
+  # empty list — and the gate then printed "files changed: 0 / OK — nothing to
+  # hold" and exited 0. For a real merge request that is a vacuous pass: a merge
+  # request with no changed files is not a thing.
+  #
+  # So when the range comes back empty and there IS an MR to ask about, ask.
+  if [ -z "$files" ] && [ -n "$iid" ] && _mr_have_token; then
     files=$(_mr_changed_files "$iid") || files=""
     source="GitLab !$iid"
-    [ -n "$files" ] || { echo "ERROR: could not read the diff for !$iid — failing closed."; return 2; }
-  else
+  fi
+  if [ -z "$files" ]; then
+    if [ -n "$iid" ]; then
+      echo "ERROR: the change set for !$iid came back EMPTY (tried: ${source:-no usable source})."
+      echo "       A merge request with no changed files is not a thing, so this is"
+      echo "       'could not look', NOT 'nothing sensitive'. Failing closed."
+      echo "       Usual causes: a shallow clone, a stale origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main},"
+      echo "       or a HEAD identical to the target."
+      return 2
+    fi
+    if [ -n "$base" ] && git rev-parse --verify --quiet "$base" >/dev/null 2>&1; then
+      # No MR context and a genuinely empty range: there is nothing to review,
+      # and saying so is honest rather than vacuous.
+      echo "diff source: $source"
+      echo "files changed: 0 — this ref is identical to $base; nothing to review."
+      return 0
+    fi
     echo "ERROR: cannot determine what this change touches (no usable base ref, no MR iid + token)."
     echo "       Failing closed rather than reporting a vacuous pass."
     return 2

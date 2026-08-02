@@ -13,7 +13,39 @@ This file provides specific instructions for Claude Code when working on this pr
 
 **NWP — Narrow Way Project.** This is the permanent name of the project. It will never be renamed. NWP is a Drupal hosting, deployment, and infrastructure automation tool. Any proposals to rename the project (e.g., P52) are permanently rejected.
 
+## ⚠️ LIVE IS NOT PROD — you may work on live freely
+
+**Operator instruction, 2026-08-02, stated twice and asked to be made permanent:**
+
+> *"You have full access on live. Prod doesn't exist yet."*
+> *"this is live not prod … so you can touch it since no actual user data is involved."*
+
+**LIVE = today.** `nwd`, `ssd`, `nwc` and `ss` all run on the live box. They serve real HTTP
+to real browsers but hold **no real user data** (measured 2026-08-02: nwc 1 non-admin
+account, ss 4 — fixtures). **Work on them freely.** Do not refuse a task on nwc/ss because it
+"looks like production"; that reasoning is stale and blocks legitimate work. The care that
+still applies is ordinary care: back up first, record old values, write a rollback row, go
+through a `pl` verb.
+
+**PROD = does not exist yet.** It is created in **Phase 2**, provisioned from `ver` running
+nwp code with **no AI**, and is the first moment real users and real user data exist. The
+mons/`ver` boundary and the retraction of AI write access become real **then** — everything
+below in this Threat Model describes that future state and remains correct for it.
+
+**The rule for any guard or automation you write:** key off the **per-site canonical phase**
+(`pl canonical`, `dev|live|prod` — ops#33), **never off a site's name**. "Refuse nwc and ss"
+is wrong today (it blocks real work) and wrong later (it would miss a new prod site). "Refuse
+a site whose canonical phase is prod" is inert today, correct forever, and arms itself the
+moment `pl canonical set <site> prod` runs. Give such a guard a test proving it REFUSES
+against a fixture marked prod — an inert guard nobody has seen fire is the
+"check that has never been proven to fail" class (ops#214).
+
+Programme phases: `~/central/PROGRAMME-PHASES-2026-08-02.md` · ops#203.
+
 ## Threat Model
+
+> **Read the section above first.** This Threat Model describes the posture for **prod**,
+> which does not exist yet. It is not a reason to refuse work on the live tier today.
 
 NWP operates under a **paranoid + open-source + local-first** threat model. When suggesting tools, architectures, or workflows, defer to these assumptions rather than reasoning from generic industry defaults.
 
@@ -35,7 +67,8 @@ NWP operates under a **paranoid + open-source + local-first** threat model. When
 | mmt (met + mini team) | home | yes | no | Combined build/test/sign tier |
 | mons (offline-by-default laptop) | home | **no** | **yes** | Verifies signed artifacts, deploys to prod via dedicated WireGuard tunnel, creates bug reports back to mmt |
 | git.nwpcode.org | au-mel Linode | no | no | Code + artifact distribution (GitLab + Packages) |
-| prod servers (avc, ss, dir1, …) | us-iad Linode | no | yes (from mons only) | User-facing sites |
+| **live box** (nwd, ssd, nwc, ss) | us-iad Linode | n/a | **n/a — not prod** | **Today's live tier. No real user data. AI may work on it freely — see the section above.** |
+| prod servers (future) | us-iad Linode | no | yes (from mons only) | Created in Phase 2 from `ver`; the row above becomes this once `pl canonical set <site> prod` runs |
 
 ### Practical Implications for AI Suggestions
 

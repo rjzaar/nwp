@@ -582,6 +582,11 @@ settings:
       rag_sync: true
       # Ages the last proven `pl notify health` canary.
       notify_health: true
+      # Credentials recorded as EXPOSED in private/secrets-registry.yml whose
+      # rotation is still OWED (operator ruling D8). One high-priority item per
+      # open debt — the same records that refuse a prod bring-up. Turning this
+      # off hides the queue; it does NOT clear the gate (see: pl secrets debt).
+      exposed_secrets: true
     notifications:
       enabled: false
       email:

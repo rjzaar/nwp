@@ -18,6 +18,10 @@ set -uo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
+# rotation-debt: the exposure/pending-rotation reader + the prod go-live gate
+# (operator ruling D8). Shared with lib/deploy-gate.sh, lib/todo-checks.sh and
+# pl canonical, so all four agree on what "a debt is open" means.
+source "$PROJECT_ROOT/lib/rotation-debt.sh"
 
 # The ESTATE root — the main checkout, not whichever worktree we happen to be
 # running from. `.secrets.yml`, `private/` and the `sites/**/auth.json` copies
@@ -263,11 +267,23 @@ cmd_status(){
       elif [ "${d:-0}" -le 14 ]  2>/dev/null; then col="$YELLOW"
       else col="$GREEN"; fi
     fi
-    printf "  ${BOLD}%-3s${NC} ${col}%-24s${NC} %-7s ${col}%-7s${NC} %-12s %-12s\n" "$((i+1))" "$id" "$via" "$dtxt" "$exp" "$rot"
+    # A credential can be perfectly in-date and still owe a rotation because its
+    # value was SEEN. That fact belongs on the same line as the expiry, or the
+    # table quietly reports a green row for a burnt token.
+    local dbt=""
+    [ "$("$YQ" e ".secrets[$i].exposure // [] | map(select((.rotated // false) != true)) | length" "$REGISTRY" 2>/dev/null)" != "0" ] \
+      && dbt=" ${RED}EXPOSED — rotation OWED${NC}"
+    printf "  ${BOLD}%-3s${NC} ${col}%-24s${NC} %-7s ${col}%-7s${NC} %-12s %-12s%b\n" "$((i+1))" "$id" "$via" "$dtxt" "$exp" "$rot" "$dbt"
   done
   echo
   print_info "ROTATED '—' = not recorded here yet (the registry only knows what you tell it)."
   print_hint "Guided rotate: pl secrets rotate <#|id>   ·   Record one you did by hand: pl secrets done <#|id> [YYYY-MM-DD]"
+  local ndebt; ndebt=$(rotation_debt_count 2>/dev/null || echo 0)
+  if [ "${ndebt:-0}" -gt 0 ] 2>/dev/null; then
+    echo
+    print_error "$ndebt open rotation DEBT record(s) — these block a prod bring-up (ruling D8)."
+    print_hint "detail: pl secrets debt   ·   record one: pl secrets expose <id> --reason='…'"
+  fi
 }
 
 ################################################################################
@@ -500,7 +516,14 @@ post_rotate(){ # idx id cadence [partial-marker]
   read -r -p "  new expiry date [default $def]: " exp </dev/tty
   [ -z "$exp" ] && exp="$def"
   stamp_registry "$idx" "$exp"
-  log_rotation "$id" "$exp" "$partial"
+  # A rotation is the ONLY thing that discharges a recorded exposure (D8). It
+  # happens here, after the same propagation gate that guards `last_rotated`, so
+  # the debt can never be cleared by a rotation this command refused to stamp.
+  # A PARTIAL rotation leaves the debt standing: some copy still holds the value
+  # that was seen.
+  local cleared=""
+  if [ -z "$partial" ]; then cleared=$(exposure_discharge "$idx" "$(date +%F)"); fi
+  log_rotation "$id" "$exp" "${partial:-${cleared:+cleared exposure debt: $cleared}}"
   if [ -n "$partial" ]; then
     print_warning "rotated $id — expiry recorded $exp, logged as $partial"
   else
@@ -643,8 +666,14 @@ mark_done(){ # idx when
     fi
   fi
   "$YQ" e -i ".secrets[$idx].last_rotated = \"$when\" | .secrets[$idx].expires = \"$exp\"" "$REGISTRY"
+  # Same discharge as `rotate` (D8): this verb is the "I rotated it by hand"
+  # path and it passes the SAME propagation gate above, so it earns the same
+  # right to clear a recorded exposure. Doing it in only one of the two verbs
+  # would leave a debt standing forever for anyone who rotates at the provider.
+  local cleared; cleared=$(exposure_discharge "$idx" "$when")
   [ -f "$ROT_LOG" ] || printf '# Credential rotation — %s\n\nDates only; never paste values.\n\n' "$(date +%Y-%m)" > "$ROT_LOG"
-  printf -- "- [x] %s — rotated %s, next expiry %s\n" "$id" "$when" "$exp" >> "$ROT_LOG"
+  printf -- "- [x] %s — rotated %s, next expiry %s%s\n" "$id" "$when" "$exp" \
+    "${cleared:+ — cleared exposure debt: $cleared}" >> "$ROT_LOG"
   print_success "marked $id rotated $when → expires $exp"
 }
 cmd_done(){
@@ -665,6 +694,267 @@ cmd_done(){
     { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
     mark_done "$idx" "$when"
   fi
+}
+
+################################################################################
+# expose / debt — KNOWN-EXPOSED credentials and the rotation DEBT they create
+#
+# Operator ruling D8 (2026-08-01): "I'm not worried about token exposure.
+# Exposures need to be logged in the todo list so they can be rotated when I get
+# to it and must be done before prod site starts."
+#
+# Before this, an exposure could only be written down as free-text prose in a
+# GitLab issue. Three were found in one night (ops#182/#183/#194) plus a token
+# value in a local transcript, and prose in a tracker is exactly the shape that
+# gets forgotten: nothing reads it, nothing counts it, nothing refuses because
+# of it. Now the fact lives on the CREDENTIAL, in the registry that `status`,
+# `audit`, `lint`, `pl todo`, `pl rag` and the prod deploy gate all already read.
+#
+# THE ONE DISTINCTION THAT MATTERS: closing the leak SURFACE (redacting the doc)
+# is NOT rotating. `closed:` and `rotated:` are independent booleans and only
+# the second discharges the debt — see lib/rotation-debt.sh for the schema and
+# the `where:` grammar.
+################################################################################
+EXPOSURE_SEVERITIES="low medium high critical"
+
+# where_parse <loc> -> 0 if it matches the `where:` grammar, 1 otherwise.
+# Same reasoning as loc_parse for stored_in: a location the tooling cannot parse
+# is a location it silently stops checking.
+where_parse(){
+  local w="$1"
+  case "$w" in
+    doc:?*|repo:?*|issue:?*|transcript:?*|log:?*|ci:?*|external:?*) return 0 ;;
+    host=*:*)
+      # Separate statements, not one `local a=… b=${a}`: bash expands every word
+      # of a `local` BEFORE assigning any of them, so the second would read an
+      # unbound `rest` and die under `set -u` (measured — it aborted a real
+      # backfill mid-command).
+      local rest h p
+      rest="${w#host=}"; h="${rest%%:*}"; p="${rest#*:}"
+      { [ -n "$h" ] && [ -n "$p" ] && [ "$p" != "$rest" ]; } && return 0
+      return 1 ;;
+  esac
+  return 1
+}
+where_grammar_help(){
+  print_hint "  where: grammar — doc:<path> · repo:<project>:<path> · issue:<project>#<n> ·"
+  print_hint "                   host=<role>:<path> · transcript:<path> · log:<path> ·"
+  print_hint "                   ci:<text> · external:<text>"
+}
+
+is_iso_date(){ [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; }
+
+# exposure_discharge <idx> <when> — flip every OPEN exposure on this entry to
+# rotated. Called ONLY from the rotation paths (rotate/done), never from
+# `expose`, so a debt cannot be cleared by anything other than an actual
+# rotation that already passed the propagation gate those verbs enforce.
+# Echoes the refs it cleared (for the rotation log); silent when there were none.
+exposure_discharge(){
+  local idx="$1" when="$2" open refs
+  open=$("$YQ" e ".secrets[$idx].exposure // [] | map(select((.rotated // false) != true)) | length" "$REGISTRY" 2>/dev/null)
+  [ "${open:-0}" -gt 0 ] 2>/dev/null || return 0
+  refs=$("$YQ" e ".secrets[$idx].exposure // [] | map(select((.rotated // false) != true)) | map(.ref // \"unref'd\") | join(\",\")" "$REGISTRY" 2>/dev/null)
+  NWP_EXP_WHEN="$when" "$YQ" e -i \
+    "(.secrets[$idx].exposure[] | select((.rotated // false) != true)) |= (.rotated = true | .rotated_at = strenv(NWP_EXP_WHEN))" \
+    "$REGISTRY" || return 1
+  # Human line to stderr, refs to stdout: callers capture the refs for the
+  # rotation log, and a captured success message would end up inside it.
+  print_success "  discharged $open exposure rotation-debt record(s) [$refs]" >&2
+  printf '%s' "$refs"
+}
+
+cmd_expose(){
+  need_yq; need_registry
+  local arg="" reason="" ref="" sev="high" at="" notes="" closed=false close_only=false
+  local adopt="" list=false
+  local -a wheres=() stored=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --reason=*)   reason="${1#*=}" ;;
+      --reason)     shift; reason="${1:-}" ;;
+      --where=*)    wheres+=("${1#*=}") ;;
+      --ref=*)      ref="${1#*=}" ;;
+      --severity=*) sev="${1#*=}" ;;
+      --at=*)       at="${1#*=}" ;;
+      --notes=*)    notes="${1#*=}" ;;
+      --closed)     closed=true ;;
+      --close)      close_only=true ;;
+      --adopt=*)    adopt="${1#*=}" ;;
+      --adopt)      adopt="unknown" ;;
+      --stored-in=*) stored+=("${1#*=}") ;;
+      --list|-l)    list=true ;;
+      -h|--help)    cmd_expose_help; return 0 ;;
+      -*)           die "unknown option: $1  (try: pl secrets expose --help)" ;;
+      *)            [ -z "$arg" ] && arg="$1" || die "unexpected argument: $1" ;;
+    esac
+    shift
+  done
+  [ "$list" = true ] && { cmd_debt --all; return $?; }
+  [ -n "$arg" ] || { cmd_expose_help; die "an id (or #) is required"; }
+  [ -n "$at" ] || at=$(date +%F)
+  is_iso_date "$at" || die "--at must be YYYY-MM-DD (got: $at)"
+
+  local idx id
+  if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+
+  # ── adopt-on-record ──────────────────────────────────────────────────────
+  # 3 of the 4 exposures found on 2026-08-01 were of credentials the registry
+  # did not know about AT ALL — which is a large part of why they could be
+  # exposed unnoticed. If recording one required a separate "first add the
+  # entry" step, the sweep that finds them would keep filing prose instead.
+  if [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; then
+    [ -n "$adopt" ] || die "no such secret: $arg (see: pl secrets status)
+  If this credential is not in the registry yet, record it AND the exposure in one go:
+    pl secrets expose $arg --adopt=<provider> --stored-in='external:…' --reason='…'"
+    [[ "$arg" =~ ^[a-z0-9_]+$ ]] || die "--adopt needs a registry-shaped id ([a-z0-9_]+), got: $arg"
+    [ "${#stored[@]}" -gt 0 ] || die "--adopt needs at least one --stored-in=<location> (stored_in grammar)"
+    local sloc skind
+    for sloc in "${stored[@]}"; do
+      IFS=$'\x1f' read -r skind _ _ _ < <(loc_parse "$sloc")
+      [ "$skind" = "bad" ] && die "--stored-in does not parse: '$sloc' (see: pl secrets help, stored_in grammar)"
+    done
+    NWP_EXP_ID="$arg" NWP_EXP_PROV="$adopt" "$YQ" e -i \
+      ".secrets += [{\"id\": strenv(NWP_EXP_ID), \"provider\": strenv(NWP_EXP_PROV),
+                     \"type\": \"TODO — describe what this credential is for\",
+                     \"scopes\": [], \"stored_in\": [], \"rotate_via\": \"manual\",
+                     \"rotate_url\": \"\", \"cadence_days\": 365, \"expires\": \"unknown\",
+                     \"last_rotated\": \"\", \"owner\": \"operator\",
+                     \"status\": \"needs-classification\",
+                     \"notes\": \"Adopted by 'pl secrets expose --adopt' when an exposure was recorded against it.\"}]" \
+      "$REGISTRY" || die "failed to adopt $arg into the registry"
+    idx=$(registry_index_of "$arg")
+    for sloc in "${stored[@]}"; do
+      NWP_EXP_LOC="$sloc" "$YQ" e -i ".secrets[$idx].stored_in += [strenv(NWP_EXP_LOC)]" "$REGISTRY"
+    done
+    print_success "adopted new registry entry: $arg (status: needs-classification)"
+  fi
+  id=$(field "$idx" id)
+
+  # ── --close: the SURFACE is remediated. The debt is NOT. ─────────────────
+  if [ "$close_only" = true ]; then
+    local nopen
+    nopen=$("$YQ" e ".secrets[$idx].exposure // [] | map(select((.closed // false) != true)) | length" "$REGISTRY" 2>/dev/null)
+    [ "${nopen:-0}" -gt 0 ] 2>/dev/null || die "$id: no exposure record with an open surface to close"
+    NWP_EXP_AT="$at" "$YQ" e -i \
+      "(.secrets[$idx].exposure[] | select((.closed // false) != true)) |= (.closed = true | .closed_at = strenv(NWP_EXP_AT))" \
+      "$REGISTRY" || die "failed to update $REGISTRY"
+    print_success "$id: marked $nopen exposure surface(s) CLOSED as of $at"
+    print_warning "the rotation debt is UNCHANGED — a closed surface is not a rotated credential."
+    print_hint "discharge it: pl secrets rotate $id   (or, if you rotated by hand: pl secrets done $id)"
+    return 0
+  fi
+
+  # ── record a new exposure ────────────────────────────────────────────────
+  [ -n "$reason" ] || { cmd_expose_help; die "--reason='<one line: how it leaked>' is required"; }
+  case " $EXPOSURE_SEVERITIES " in *" $sev "*) ;; *) die "--severity must be one of: $EXPOSURE_SEVERITIES" ;; esac
+  # A ref alone is a legitimate `where` — the issue itself is a surface holding
+  # the description, and requiring more would push people back to prose.
+  if [ "${#wheres[@]}" -eq 0 ] && [ -n "$ref" ]; then wheres+=("issue:$ref"); fi
+  [ "${#wheres[@]}" -gt 0 ] || { where_grammar_help; die "at least one --where=<loc> (or a --ref=) is required — 'where did it leak to' is the whole record"; }
+  local w
+  for w in "${wheres[@]}"; do
+    where_parse "$w" || { where_grammar_help; die "--where does not parse: '$w'"; }
+  done
+
+  local wlist; wlist=$(printf '%s\n' "${wheres[@]}")
+  NWP_EXP_AT="$at" NWP_EXP_HOW="$reason" NWP_EXP_WHERE="$wlist" \
+  NWP_EXP_REF="$ref" NWP_EXP_SEV="$sev" NWP_EXP_NOTES="$notes" \
+  "$YQ" e -i ".secrets[$idx].exposure = ((.secrets[$idx].exposure // []) + [{
+        \"at\": strenv(NWP_EXP_AT),
+        \"how\": strenv(NWP_EXP_HOW),
+        \"where\": (strenv(NWP_EXP_WHERE) | split(\"\n\")),
+        \"closed\": $closed,
+        \"rotated\": false,
+        \"ref\": strenv(NWP_EXP_REF),
+        \"severity\": strenv(NWP_EXP_SEV),
+        \"notes\": strenv(NWP_EXP_NOTES)
+      }])" "$REGISTRY" || die "failed to write $REGISTRY"
+  # Drop the optional fields that were left empty rather than record "".
+  "$YQ" e -i "del(.secrets[$idx].exposure[-1].ref | select(. == \"\")) | del(.secrets[$idx].exposure[-1].notes | select(. == \"\"))" "$REGISTRY" 2>/dev/null || true
+
+  print_success "recorded exposure on $id (at $at, severity $sev, surface $([ "$closed" = true ] && echo CLOSED || echo OPEN))"
+  print_warning "ROTATION IS NOW OWED on $id. It will appear in 'pl todo', redden 'pl rag',"
+  print_warning "and REFUSE any prod bring-up until 'pl secrets rotate $id' discharges it."
+  print_hint "review the queue: pl secrets debt"
+}
+
+cmd_expose_help(){
+  cat <<EOF
+${BOLD}pl secrets expose${NC} — record that a credential's VALUE was exposed (rotation becomes OWED)
+
+  pl secrets expose <#|id> --reason='<one line: how it leaked>'
+                    [--where=<loc>]...   where it leaked to (repeatable; grammar below)
+                    [--ref=ops#182]      tracker reference (also usable AS a --where)
+                    [--closed]           the leak SURFACE is already remediated
+                    [--severity=low|medium|high|critical]   default: high
+                    [--at=YYYY-MM-DD]    default: today
+                    [--notes='…']
+                    [--adopt=<provider> --stored-in=<loc>]  credential not in the
+                                         registry yet? adopt + record in ONE command
+  pl secrets expose <#|id> --close [--at=DATE]   the SURFACE is now closed (debt UNCHANGED)
+  pl secrets expose --list                        same as: pl secrets debt --all
+
+  A CLOSED SURFACE IS NOT A ROTATION. Only 'pl secrets rotate <id>' / 'pl secrets
+  done <id>' discharge the debt, and both already refuse to stamp while any
+  declared copy still holds a different value.
+
+$(where_grammar_help 2>&1)
+EOF
+}
+
+################################################################################
+# debt — the open rotation-debt queue (what blocks a prod bring-up)
+################################################################################
+cmd_debt(){
+  need_yq; need_registry
+  local all=false json=false a
+  for a in "$@"; do
+    case "$a" in
+      --all) all=true ;;
+      --json) json=true ;;
+      -h|--help) echo "usage: pl secrets debt [--all] [--json]   (--all also lists discharged records)"; return 0 ;;
+    esac
+  done
+
+  if [ "$json" = true ]; then
+    "$YQ" e -o=json '[.secrets[] | .id as $id | (.exposure // [])[]
+        | select('"$([ "$all" = true ] && echo 'true' || echo '(.rotated // false) != true')"')
+        | {"id": $id, "at": .at, "how": .how, "where": (.where // []),
+           "closed": (.closed // false), "rotated": (.rotated // false),
+           "ref": (.ref // ""), "severity": (.severity // "high")}]' "$REGISTRY"
+    return 0
+  fi
+
+  print_header "Rotation debt — credentials known to be EXPOSED and not yet rotated"
+  local n=0 id at ref closed sev how
+  while IFS=$'\t' read -r id at ref closed sev how; do
+    [ -n "$id" ] || continue
+    n=$((n+1))
+    printf "  ${RED}●${NC} ${BOLD}%-28s${NC} exposed %s  [%s, %s]  %s\n" "$id" "$at" "$sev" "$(rotation_debt_surface_label "$closed")" "${ref:--}"
+    printf "      %s\n" "$how"
+    local idx; idx=$(registry_index_of "$id")
+    "$YQ" e ".secrets[$idx].exposure // [] | map(select((.rotated // false) != true)) | .[].where[]?" "$REGISTRY" 2>/dev/null \
+      | sed 's/^/      ↳ /'
+  done < <(rotation_debt_open)
+
+  if [ "$all" = true ]; then
+    echo
+    print_info "Discharged (rotation completed):"
+    "$YQ" e '.secrets[] | .id as $id | (.exposure // [])[] | select((.rotated // false) == true)
+             | "  ✓ " + $id + "  exposed " + (.at // "?") + ", rotated " + (.rotated_at // "?") + "  " + (.ref // "-")' \
+      "$REGISTRY" 2>/dev/null
+  fi
+
+  echo
+  if [ "$n" -eq 0 ]; then
+    print_success "no open rotation debt — a prod bring-up is not blocked by this gate"
+    return 0
+  fi
+  print_error "$n open rotation debt record(s)."
+  print_warning "These BLOCK a prod bring-up (pl canonical set <site> prod, and every prod"
+  print_warning "write through the ADR-0028 deploy gate: pl stg2prod / pl live2prod)."
+  print_hint "discharge: pl secrets rotate <id>   ·   surface remediated only: pl secrets expose <id> --close"
+  return 1
 }
 
 ################################################################################
@@ -1051,6 +1341,86 @@ cmd_lint(){
         issues=$((issues+1))
       fi
     fi
+  fi
+
+  # 10. EXPOSURE records — schema + the one integrity property that matters.
+  #     A malformed exposure is worse than none: `pl todo`, `pl rag` and the
+  #     prod deploy gate all read this block, so a record they cannot parse is a
+  #     rotation debt that silently stops blocking anything. Hence a strict
+  #     grammar, exactly as for stored_in.
+  #
+  #     UNBACKED is the integrity property: `rotated: true` asserts the
+  #     credential was replaced, and the registry ALREADY records when that
+  #     happened (`last_rotated`, stamped only by rotate/done, which refuse
+  #     while declared copies disagree). If a record claims a discharge the
+  #     rotation history does not corroborate, the debt was cleared by editing
+  #     the file — which is the one way to defeat this whole mechanism.
+  local expbad=0 expopen=0
+  for ((i=0;i<n;i++)); do
+    local xid nx j
+    xid=$(field "$i" id); [ -z "$xid" ] && continue
+    local xtag; xtag=$("$YQ" e ".secrets[$i].exposure | tag" "$REGISTRY" 2>/dev/null)
+    case "$xtag" in
+      '!!null'|"") continue ;;
+      '!!seq') ;;
+      *) print_error "EXPOSURE-SHAPE: $xid: exposure: must be a LIST of records (found $xtag)"
+         expbad=$((expbad+1)); issues=$((issues+1)); continue ;;
+    esac
+    nx=$("$YQ" e ".secrets[$i].exposure | length" "$REGISTRY" 2>/dev/null); [ "$nx" = "null" ] && nx=0
+    for ((j=0;j<nx;j++)); do
+      local p="secrets[$i].exposure[$j]" tag
+      local xat xhow xclosed xrot xsev xnw xrotat xclat
+      xat=$("$YQ" e ".$p.at // \"\"" "$REGISTRY" 2>/dev/null)
+      xhow=$("$YQ" e ".$p.how // \"\"" "$REGISTRY" 2>/dev/null)
+      xsev=$("$YQ" e ".$p.severity // \"high\"" "$REGISTRY" 2>/dev/null)
+      xrotat=$("$YQ" e ".$p.rotated_at // \"\"" "$REGISTRY" 2>/dev/null)
+      xclat=$("$YQ" e ".$p.closed_at // \"\"" "$REGISTRY" 2>/dev/null)
+      xnw=$("$YQ" e ".$p.where // [] | length" "$REGISTRY" 2>/dev/null)
+
+      is_iso_date "$xat" || { print_error "EXPOSURE: $xid[$j]: at: must be YYYY-MM-DD (got: '${xat:-<missing>}')"; expbad=$((expbad+1)); issues=$((issues+1)); }
+      [ -n "$xhow" ] || { print_error "EXPOSURE: $xid[$j]: how: is required — one line on how it leaked"; expbad=$((expbad+1)); issues=$((issues+1)); }
+      [ "${xnw:-0}" -gt 0 ] 2>/dev/null || { print_error "EXPOSURE: $xid[$j]: where: needs at least one location"; expbad=$((expbad+1)); issues=$((issues+1)); }
+      case " $EXPOSURE_SEVERITIES " in *" $xsev "*) ;; *) print_error "EXPOSURE: $xid[$j]: severity: '$xsev' not one of: $EXPOSURE_SEVERITIES"; expbad=$((expbad+1)); issues=$((issues+1)) ;; esac
+      for tag in closed rotated; do
+        local btag; btag=$("$YQ" e ".$p.$tag | tag" "$REGISTRY" 2>/dev/null)
+        [ "$btag" = "!!bool" ] || { print_error "EXPOSURE: $xid[$j]: $tag: must be an explicit true/false (found ${btag:-missing}) — an unstated answer is not a 'no debt'"; expbad=$((expbad+1)); issues=$((issues+1)); }
+      done
+      for tag in "$xrotat" "$xclat"; do
+        [ -z "$tag" ] && continue
+        is_iso_date "$tag" || { print_error "EXPOSURE: $xid[$j]: date '$tag' must be YYYY-MM-DD"; expbad=$((expbad+1)); issues=$((issues+1)); }
+      done
+      local wloc
+      while IFS= read -r wloc; do
+        [ -z "$wloc" ] && continue
+        where_parse "$wloc" || { print_error "EXPOSURE-WHERE: $xid[$j]: unparseable location — '$wloc'"; expbad=$((expbad+1)); issues=$((issues+1)); }
+      done < <("$YQ" e ".$p.where[]?" "$REGISTRY" 2>/dev/null)
+
+      xclosed=$("$YQ" e ".$p.closed // false" "$REGISTRY" 2>/dev/null)
+      xrot=$("$YQ" e ".$p.rotated // false" "$REGISTRY" 2>/dev/null)
+      if [ "$xrot" = "true" ]; then
+        local lastrot; lastrot=$(field "$i" last_rotated)
+        if [ -z "$lastrot" ]; then
+          print_error "EXPOSURE-UNBACKED: $xid[$j]: claims rotated: true but the entry has no last_rotated — no rotation was ever recorded"
+          expbad=$((expbad+1)); issues=$((issues+1))
+        elif [ -n "$xrotat" ] && [ "$lastrot" \< "$xrotat" ]; then
+          print_error "EXPOSURE-UNBACKED: $xid[$j]: rotated_at $xrotat is AFTER the last recorded rotation ($lastrot)"
+          expbad=$((expbad+1)); issues=$((issues+1))
+        fi
+      else
+        expopen=$((expopen+1))
+      fi
+    done
+  done
+  if [ "$expbad" -gt 0 ]; then
+    print_hint "record one properly:  pl secrets expose <id> --reason='…' --where=… [--closed]"
+    where_grammar_help
+  else
+    print_success "every exposure record parses (or there are none)"
+  fi
+  if [ "$expopen" -gt 0 ]; then
+    # NOT a lint issue: the record is well-formed, the DEBT is real work. It is
+    # counted by `pl todo`, reddens `pl rag`, and refuses a prod bring-up.
+    print_warning "EXPOSURE-DEBT: $expopen credential exposure(s) still owe a rotation — 'pl secrets debt'"
   fi
 
   echo
@@ -3248,6 +3618,8 @@ case "$sub" in
   surfaces)       cmd_surfaces "$@" ;;
   rotate)         cmd_rotate "$@" ;;
   done)           cmd_done "$@" ;;
+  expose|exposed) cmd_expose "$@" ;;
+  debt|debts)     cmd_debt "$@" ;;
   get)            cmd_get "$@" ;;
   whose)          cmd_whose "$@" ;;
   audit)          cmd_audit "$@" ;;
@@ -3275,6 +3647,16 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
                                  the rotation log, and exits 1. [--force] records a PARTIAL.
   pl secrets rotate --due        rotate everything expiring within 14 days / untracked
   pl secrets done <#|id> [date]  record a rotation you did by hand (stamps expiry + log)
+  pl secrets expose <#|id> --reason='…' [--where=…] [--ref=ops#N] [--closed] [--adopt=<provider>]
+                                 record that this credential's VALUE was EXPOSED. Rotation
+                                 becomes OWED: it appears in 'pl todo', reddens 'pl rag', and
+                                 REFUSES every prod bring-up until rotate/done discharges it
+                                 (operator ruling D8). --closed means the leak SURFACE is
+                                 remediated — that does NOT clear the rotation debt.
+                                 --adopt lets you record an exposure of a credential the
+                                 registry does not know about yet, in ONE command.
+  pl secrets expose <#|id> --close   the surface is now closed (debt unchanged)
+  pl secrets debt [--all] [--json]   the open rotation-debt queue — what blocks going to prod
   pl secrets get <dotted.key>    copy a value to the clipboard (never printed)
   pl secrets whose <#|id>        ask GitLab which user/bot/project owns the token
   pl secrets audit [--days N]    LIVE probe of EVERY declared location: valid? real expiry? drift?

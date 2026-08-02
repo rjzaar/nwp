@@ -229,7 +229,15 @@ get_todo_setting() {
 
     local value=""
     if command -v yq &>/dev/null; then
-        value=$(yq eval ".settings.todo.${key_path} // \"\"" "$config_file" 2>/dev/null | grep -v '^null$')
+        # `// ""` is yq's ALTERNATIVE operator, and it treats `false` as an
+        # absent value. So `categories.rag_sync: false` read back as "" and then
+        # as the default "true": no todo category could actually be switched
+        # off, and the config block documenting "set false to silence" was
+        # inert. Found while proving which gate controls the (ops#204) surviving
+        # rag-sync freshness check — a gate you cannot demonstrate closing is
+        # not a gate. Read the raw value and normalise `null` by hand instead.
+        value=$(yq eval ".settings.todo.${key_path}" "$config_file" 2>/dev/null)
+        [ "$value" = "null" ] && value=""
     else
         # Simple AWK fallback for basic paths
         value=$(awk -v path="$key_path" '
@@ -1278,65 +1286,6 @@ check_loop_liveness() {
     fi
 }
 
-# LOOP: rag-sync freshness — did stage 1 of the loop actually complete?
-#
-# Reads the cron wrapper's own log rather than trusting its exit code: the
-# wrapper exits 0 both when it syncs and when it skips. AMBER past
-# thresholds.rag_sync_warn_days (2), RED past thresholds.rag_sync_alert_days (7).
-check_rag_sync_freshness() {
-    is_category_enabled "loop_liveness" || return 0
-
-    local rt="${NWP_ROOT:-$TODO_CHECKS_PROJECT_ROOT}"
-    local log="$rt/logs/rag-sync.log"
-    local warn_days alert_days
-    warn_days=$(get_todo_setting "thresholds.rag_sync_warn_days" "2")
-    alert_days=$(get_todo_setting "thresholds.rag_sync_alert_days" "7")
-
-    # No cron installed at all is a different (and quieter) fact than a dead one.
-    if [ ! -f "$log" ]; then
-        if crontab -l 2>/dev/null | grep -q 'rag-sync\.sh'; then
-            todo_add_item "LOOP" "rag-sync-nolog" "medium" \
-                "rag-sync is scheduled but has never written a log" \
-                "Expected: $log — the cron may be failing before it can log." \
-                "" "pl loop"
-        fi
-        return 0
-    fi
-
-    # The ONLY line that proves a real sync happened.
-    local last_done last_epoch now_epoch age_days
-    last_done=$(grep 'rag-sync done' "$log" 2>/dev/null | tail -1 | awk '{print $1}')
-
-    if [ -z "$last_done" ]; then
-        todo_add_item "LOOP" "rag-sync-never" "high" \
-            "rag-sync has never completed a run" \
-            "No 'rag-sync done' line in $log. Skipped runs also exit 0, so cron looks green." \
-            "" "pl loop"
-        return 0
-    fi
-
-    last_epoch=$(date -d "$last_done" +%s 2>/dev/null || echo 0)
-    [ "$last_epoch" = "0" ] && return 0
-    now_epoch=$(date +%s)
-    age_days=$(( (now_epoch - last_epoch) / 86400 ))
-
-    local skipped=""
-    grep -q 'disabled\|paused' <(tail -5 "$log" 2>/dev/null) && \
-        skipped=" Recent runs logged 'disabled/paused' — the loop is switched off, not broken."
-
-    if [ "$age_days" -ge "$alert_days" ]; then
-        todo_add_item "LOOP" "rag-sync-stale" "high" \
-            "rag-sync last completed ${age_days}d ago (threshold ${alert_days}d)" \
-            "Last successful sync: $last_done.$skipped While this is stale, RED fleet state files no issues." \
-            "" "pl loop"
-    elif [ "$age_days" -ge "$warn_days" ]; then
-        todo_add_item "LOOP" "rag-sync-stale" "medium" \
-            "rag-sync last completed ${age_days}d ago (threshold ${warn_days}d)" \
-            "Last successful sync: $last_done.$skipped" \
-            "" "pl loop"
-    fi
-}
-
 # LOOP: agent-host auth freshness.
 #
 # The host that runs the loop authenticates with an OAuth credential file that
@@ -1448,7 +1397,10 @@ check_forge_freshness() {
             continue
         fi
         local last_iso last_epoch age_days
-        last_iso=$(awk 'NR==1{print $1}' "$stamp" 2>/dev/null)
+        # `read` rather than `awk 'NR==1{print $1}'`: same result, no subprocess,
+        # and it keeps lint:yq-first's multi-line awk scanner out of a stamp file
+        # that was never YAML to begin with (ADR-0015 gate, ops#230).
+        last_iso=""; read -r last_iso _ < "$stamp" 2>/dev/null || true
         last_epoch=$(date -d "$last_iso" +%s 2>/dev/null || echo 0)
         [ "$last_epoch" = "0" ] && continue
         age_days=$(( (now_epoch - last_epoch) / 86400 ))
@@ -1773,66 +1725,79 @@ check_paused_automation() {
     fi
 }
 
-# RSY: rag-sync freshness.
+# RSY: rag-sync freshness — HAS THE OVERSIGHT ITSELF STOPPED? (ops#230, ops#204)
 #
 # The tracker's WRITE half. `pl rag` reading the fleet is useless if nothing
 # turns that state into issues — and rag-sync failing is silent by construction,
 # because "skipping" is a successful exit. Age the last SUCCESSFUL run, not the
-# last log line: 8 nights of "skipping" is 8 nights of no writes, and the log
+# last log line: 16 nights of "skipping" is 16 nights of no writes, and the log
 # file's mtime looks fresh the whole time.
+#
+# ops#204 — THE DUPLICATE, AND WHICH BODY SURVIVED.
+# There were TWO `check_rag_sync_freshness` definitions in this file and two
+# entries in TODO_CHECK_LIST. Bash binds the LAST definition, so the one that
+# actually ran was this one: gated on category `rag_sync`, filing `RSY-*` items
+# and `UNK-rag_sync`. The earlier one — gated on `loop_liveness`, filing
+# `LOOP-rag-sync-*` — had been dead code since the day it was shadowed, and
+# `loop_liveness` was therefore a category that gated nothing here. Deleting the
+# WRONG one would have silently swapped which category switch controls this
+# check and renamed every item id, so: the dead `loop_liveness`/`LOOP-*` body was
+# removed, this `rag_sync`/`RSY-*` body kept (it is also the category declared in
+# example.nwp.yml), and the two unique behaviours the dead body had — noticing a
+# scheduled-but-never-logged wrapper, and distinguishing "switched off" from
+# "broken" — are folded in below via lib/oversight-freshness.sh.
+#
+# The probe itself is shared (lib/oversight-freshness.sh) with `pl rag`'s
+# self-liveness banner and the `pl loop` dashboard. Four independent inline
+# implementations of "when did rag-sync last complete?" is how the answer got to
+# be "2026-07-17" without anything saying so.
 check_rag_sync_freshness() {
     is_category_enabled "rag_sync" || return 0
 
-    local log="$TODO_CHECKS_PROJECT_ROOT/logs/rag-sync.log"
-    if [ ! -f "$log" ]; then
+    # The probe lives beside THIS file, not under the tree being inspected:
+    # TODO_CHECKS_PROJECT_ROOT can point at a fixture directory (or another
+    # host's tree) that has logs but no lib/.
+    local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local root="${NWP_ROOT:-$TODO_CHECKS_PROJECT_ROOT}"
+    local lib="$here/oversight-freshness.sh"
+    if [ ! -f "$lib" ]; then
         todo_add_unknown "rag_sync" \
-            "no rag-sync log at $log — cannot tell whether the RAG→issues writer has ever run on this host" \
-            "" "pl loop status"
+            "lib/oversight-freshness.sh is missing — whether the oversight loop is still running is UNMEASURED" \
+            "" "pl loop schedule status"
         return 0
     fi
+
+    # loop-parts.sh gives the probe the capability/kill picture; without it the
+    # probe still works, it just cannot say "switched off" vs "broken".
+    local parts="$here/loop-parts.sh"
+    # shellcheck source=/dev/null
+    [ -f "$parts" ] && NWP_ROOT="$root" . "$parts" 2>/dev/null || true
+    # shellcheck source=/dev/null
+    . "$lib" 2>/dev/null || {
+        todo_add_unknown "rag_sync" \
+            "could not source lib/oversight-freshness.sh — oversight liveness is UNMEASURED" \
+            "" "pl loop schedule status"
+        return 0
+    }
 
     local warn_days alert_days
     warn_days=$(get_todo_setting "thresholds.rag_sync_warn_days" "2")
     alert_days=$(get_todo_setting "thresholds.rag_sync_alert_days" "7")
 
-    # A "done" line is the only evidence a sync actually ran. "skipping" lines
-    # are explicitly NOT evidence — they are the failure mode.
-    local last_done
-    last_done=$(grep -E 'rag-sync done' "$log" 2>/dev/null | tail -1 | awk '{print $1}')
+    NWP_ROOT="$root" oversight_probe "$warn_days" "$alert_days"
 
-    local now; now=$(date +%s)
-    local age_days
-    if [ -z "$last_done" ]; then
-        local skips
-        skips=$(grep -cE 'skipping' "$log" 2>/dev/null || echo 0)
-        todo_add_item "RSY" "never" "high" \
-            "rag-sync has NEVER completed a run on this host" \
-            "Log: $log | ${skips} 'skipping' line(s) and no completed run. A skipped run exits 0, so cron looks healthy while nothing is written to the tracker." \
-            "" "pl loop status"
-        return 0
-    fi
-
-    local done_epoch
-    done_epoch=$(date -d "$last_done" +%s 2>/dev/null || echo 0)
-    if [ "$done_epoch" = "0" ]; then
-        todo_add_unknown "rag_sync" \
-            "could not parse a timestamp from the last rag-sync 'done' line ('$last_done')" \
-            "" "pl loop status"
-        return 0
-    fi
-
-    age_days=$(( (now - done_epoch) / 86400 ))
-    if [ "$age_days" -ge "$alert_days" ]; then
-        todo_add_item "RSY" "stale" "high" \
-            "rag-sync has not completed for ${age_days} day(s)" \
-            "Log: $log | Last completed run: $last_done | Threshold: $alert_days days. The fleet's RAG state is not reaching nwp/ops." \
-            "" "pl loop status"
-    elif [ "$age_days" -ge "$warn_days" ]; then
-        todo_add_item "RSY" "stale" "medium" \
-            "rag-sync has not completed for ${age_days} day(s)" \
-            "Log: $log | Last completed run: $last_done | Threshold: $warn_days days." \
-            "" "pl loop status"
-    fi
+    case "$OVERSIGHT_STATE" in
+        LIVE) return 0 ;;
+        UNKNOWN|DELEGATED)
+            todo_add_unknown "rag_sync" "$OVERSIGHT_DETAIL" "" "$OVERSIGHT_ACTION" ;;
+        *)
+            local prio=medium
+            [ "$OVERSIGHT_GRADE" = "RED" ] && prio=high
+            todo_add_item "RSY" "$(printf '%s' "$OVERSIGHT_STATE" | tr 'A-Z' 'a-z')" "$prio" \
+                "oversight $OVERSIGHT_STATE — rag-sync is not turning the fleet RAG grade into issues" \
+                "$OVERSIGHT_DETAIL" \
+                "" "$OVERSIGHT_ACTION" ;;
+    esac
 }
 
 # DCD: demo invite-code drift (nwp/ops#173).
@@ -2292,7 +2257,7 @@ TODO_CHECK_LIST=(
     "check_gitlab_issues:GitLab issues"
     "check_agent_loop_cap:Agent-loop cap"
     "check_loop_liveness:Loop liveness (self-report)"
-    "check_rag_sync_freshness:rag-sync freshness"
+    "check_rag_sync_freshness:Oversight liveness (rag-sync freshness)"
     "check_agent_host_auth:Agent host auth"
     "check_site_registry_drift:Site registry drift"
     "check_forge_freshness:Forge patch cadence"
@@ -2302,7 +2267,6 @@ TODO_CHECK_LIST=(
     "check_uncommitted_work:Uncommitted work"
     "check_unpushed_commits:Unpushed commits"
     "check_paused_automation:Paused automation"
-    "check_rag_sync_freshness:RAG-sync freshness"
     "check_notify_health:Notification path health"
     "check_demo_golden_hygiene:Demo golden identity hygiene"
     "check_demo_code_drift:Demo invite-code drift"
@@ -2539,7 +2503,6 @@ export -f check_unpushed_commits
 export -f _gwk_site_of
 export -f check_live_backup_freshness
 export -f check_paused_automation
-export -f check_rag_sync_freshness
 export -f check_notify_health
 export -f check_demo_golden_hygiene
 export -f check_demo_code_drift

@@ -62,7 +62,9 @@ SEC column: a number means measured. '-' means UNSCANNED — nothing was measure
 which is NOT the same as zero. TODO column '?N' = N checks could not run.
 A site that cannot be scanned can never grade GREEN.
 
-Sources: pl audit records ($AUDIT_DIR), pl todo check --json. Exit 3 if any RED.
+Sources: pl audit records ($AUDIT_DIR), pl todo check --json. Exit 3 if any RED —
+including the (global) row, which goes RED when the oversight loop itself has
+stopped (ops#230). Schedule state: pl loop schedule status.
 EOF
 }
 
@@ -93,59 +95,48 @@ _rag_eligible_sites(){
     done
 }
 
-# SELF-LIVENESS BANNER (item 4).
+# SELF-LIVENESS BANNER (item 4; rewired for ops#230).
 #
 # WHY: for 8 nights `pl rag` graded the fleet 12 red / 10 amber / 0 green while
 # the machinery that turns those grades into issues was switched off. Every
 # component reported success: the rag-sync cron exited 0 ("part disabled —
 # skipping"), the agent-loop exited 0 ("globally disabled"), and `pl rag` itself
 # printed a perfectly accurate table. Nothing anywhere said the pipeline
-# downstream of the table was dark.
+# downstream of the table was dark. Then it happened again and ran to 16 nights.
 #
 # An oversight surface that cannot report on its own liveness is asserting more
 # than it knows. This banner makes `pl rag` state, every time it runs, whether
 # the thing that acts on its output is alive.
+#
+# ops#230 changed two things. (1) The probe is no longer inline here: it is
+# lib/oversight-freshness.sh, shared with `pl todo` and `pl loop`, so the three
+# surfaces cannot drift into three different answers. (2) It now also catches
+# the case that actually happened second — the part is enabled and unpaused and
+# there is simply NO CRON, so nothing will ever wake it. "Not paused" was being
+# rendered as "alive".
 _rag_self_banner() {
     local rt="${NWP_ROOT:-$HOME/nwp}"
-    local killed="" last_sync="" age="?"
 
     if [ -f "$PROJECT_ROOT/lib/loop-parts.sh" ]; then
         # shellcheck source=/dev/null
         NWP_ROOT="$rt" source "$PROJECT_ROOT/lib/loop-parts.sh" 2>/dev/null || true
     fi
-    if [ -f "$rt/.loop-paused" ]; then
-        killed=".loop-paused"
-    elif command -v loop_part_raw >/dev/null 2>&1 && [ "$(loop_part_raw all 2>/dev/null)" = "disabled" ]; then
-        killed="parts.state all=disabled"
-    fi
-
-    local log="$rt/logs/rag-sync.log"
-    if [ -f "$log" ]; then
-        last_sync=$(grep 'rag-sync done' "$log" 2>/dev/null | tail -1 | awk '{print $1}')
-        if [ -n "$last_sync" ]; then
-            local e n
-            e=$(date -d "$last_sync" +%s 2>/dev/null || echo 0)
-            n=$(date +%s)
-            [ "$e" != "0" ] && age=$(( (n - e) / 86400 ))
-        fi
-    fi
-
-    if [ -n "$killed" ]; then
-        printf '  %sLOOP ● DARK%s   the self-healing loop is disabled (%s) — this table will NOT become issues.\n' \
-            "${RED}" "${NC}" "$killed"
-        printf '               re-arm: pl loop enable all   ·   detail: pl loop\n'
-    elif [ -z "$last_sync" ]; then
-        printf '  %sLOOP ● UNKNOWN%s  rag-sync has never completed a run — grades are not reaching the tracker.\n' \
+    if [ ! -f "$PROJECT_ROOT/lib/oversight-freshness.sh" ]; then
+        printf '  %sLOOP ● UNKNOWN%s  lib/oversight-freshness.sh is missing — cannot tell whether this table reaches the tracker.\n\n' \
             "${YELLOW}" "${NC}"
-    elif [ "$age" != "?" ] && [ "$age" -ge 7 ]; then
-        printf '  %sLOOP ● STALE%s   rag-sync last completed %sd ago (%s) — grades are not reaching the tracker.\n' \
-            "${RED}" "${NC}" "$age" "$last_sync"
-    elif [ "$age" != "?" ] && [ "$age" -ge 2 ]; then
-        printf '  %sLOOP ● AGING%s   rag-sync last completed %sd ago (%s).\n' \
-            "${YELLOW}" "${NC}" "$age" "$last_sync"
-    else
-        printf '  %sLOOP ● live%s    rag-sync last completed %s\n' "${GREEN}" "${NC}" "${last_sync:-?}"
+        return 0
     fi
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/oversight-freshness.sh"
+    NWP_ROOT="$rt" oversight_probe
+
+    local colour="${GREEN}"
+    case "$OVERSIGHT_GRADE" in RED) colour="${RED}" ;; AMBER) colour="${YELLOW}" ;; esac
+    printf '  %sLOOP ● %-10s%s %s\n' "$colour" "$OVERSIGHT_STATE" "${NC}" "$OVERSIGHT_DETAIL"
+    [ "$OVERSIGHT_GRADE" = "GREEN" ] || printf '               fix: %s   ·   detail: pl loop\n' "$OVERSIGHT_ACTION"
+    # The grade itself is what makes this load-bearing rather than decorative:
+    # pl todo files an RSY item off the same probe, and lib/rag-render.py grades
+    # a high RSY item RED, so a dead oversight loop makes `pl rag` exit 3.
     echo ""
 }
 
@@ -163,98 +154,14 @@ cmd_sync_issues(){
     local existing; existing=$(_api_get "/projects/$PROJECT_ID/issues?labels=rag-auto&state=opened&per_page=100")
     [ -n "$existing" ] || existing='[]'
 
-    # Plan the upserts/closes purely from data (python); execution stays in bash.
+    # Plan the upserts/closes purely from data; execution stays in bash. The
+    # planner lives in lib/rag-sync-plan.py (ops#230) rather than a heredoc so
+    # it can be unit-tested — it is where the "site absent from the run" bug
+    # lived, silently, for as long as the file existed.
     local plan
     plan=$(STATE="$state" EXISTING="$existing" ELIGIBLE="$eligible" \
-           PID="$PROJECT_ID" NOW="$(date -u +%FT%TZ)" python3 - <<'PY'
-import os, json, re
-state=json.load(open(os.environ["STATE"]))
-existing=json.loads(os.environ["EXISTING"] or "[]")
-eligible=set(filter(None, os.environ["ELIGIBLE"].split(",")))
-pid=os.environ["PID"]; now=os.environ["NOW"]
-
-def site_of(iss):
-    for l in iss.get("labels",[]):
-        if l.startswith("site::"): return l[6:]
-    return None
-def marker(body):
-    m=re.search(r'<!-- rag-auto:v1 (.*?) -->', body or "")
-    d={}
-    if m:
-        for kv in m.group(1).split():
-            if "=" in kv: k,v=kv.split("=",1); d[k]=v
-    return d
-
-bysite={}
-for iss in existing:
-    s=site_of(iss)
-    if s: bysite[s]=iss
-
-rows={r["site"]:r for r in state.get("sites",[])}
-actions=[]
-for site in sorted(eligible):
-    r=rows.get(site)
-    if not r:   # eligible but absent from this RAG run — leave any issue as-is
-        continue
-    grade=r["rag"]; sec=int(r.get("security",0)); iss=bysite.get(site)
-    h,m_,l=r.get("todo_high",0),r.get("todo_med",0),r.get("todo_low",0)
-    top=(r.get("top","") or "").strip() or "(no high/med todo item)"
-    if grade=="GREEN":
-        if iss:
-            iid=iss["iid"]
-            actions.append({"act":"comment","summary":f"close #{iid} {site} (now GREEN)",
-                "method":"POST","path":f"/projects/{pid}/issues/{iid}/notes",
-                "payload":json.dumps({"body":f"✅ Cleared by `pl rag` {now} — no advisories, no todo items. Auto-closing."})})
-            actions.append({"act":"close","summary":f"  └ set #{iid} state=closed",
-                "method":"PUT","path":f"/projects/{pid}/issues/{iid}",
-                "payload":json.dumps({"state_event":"close"})})
-        continue
-    # --- non-green: desired issue content ---
-    dot="\U0001f534 RED" if grade=="RED" else "\U0001f7e0 AMBER"
-    mk=f"<!-- rag-auto:v1 site={site} grade={grade} sec={sec} -->"
-    body=("%s\n**RAG: %s** — auto-tracked by `pl rag --sync-issues`.\n\n"
-          "- Security advisories (composer audit): **%d**\n"
-          "- Top todo: %s\n"
-          "- Todo (high/med/low): %d/%d/%d\n\n"
-          "Opened/updated automatically from `private/rag/state.json`; "
-          "**auto-closes** when the site goes \U0001f7e2 green. Triage item for a "
-          "human — _not_ `agent-eligible` by default.\n\n"
-          "**To hand the fix to the agent-loop** (a deliberate human act — the "
-          "A14 gate): confirm the fix is dev-repo-bounded + low-risk, then add "
-          "`kind::security-bump` (or `kind::config` / `kind::docs`) plus "
-          "`agent-eligible`. The `site::` label routes the MR to that site's "
-          "code repo via `scripts/agent-loop/fix-repo-map.json`; merge stays "
-          "human.\n\n"
-          "_Last synced: %s_") % (mk,dot,sec,top,h,m_,l,now)
-    title="[RAG] %s: %s" % (site, "security advisories" if grade=="RED" else "needs attention")
-    want = ["rag-auto", f"site::{site}"] + (["priority::high","security"] if grade=="RED" else ["priority::medium"])
-    if not iss:
-        actions.append({"act":"create","summary":f"CREATE {site} ({grade}, sec={sec}, todo {h}/{m_}/{l})",
-            "method":"POST","path":f"/projects/{pid}/issues",
-            "payload":json.dumps({"title":title,"description":body,"labels":",".join(want)})})
-        continue
-    iid=iss["iid"]; prev=marker(iss.get("description",""))
-    state_changed = prev.get("grade")!=grade or prev.get("sec")!=str(sec)
-    title_stale   = iss.get("title","") != title   # e.g. red→amber left a stale "security advisories" title
-    if not (state_changed or title_stale):
-        actions.append({"act":"noop","summary":f"noop  #{iid} {site} (unchanged: {grade}/{sec})"})
-        continue
-    cur=set(iss.get("labels",[]))
-    add=[x for x in want if x not in cur]
-    rem=[x for x in (["priority::medium"] if grade=="RED" else ["priority::high","security"]) if x in cur]
-    payload={"title":title,"description":body}   # title MUST be in the payload so red→amber corrects it
-    if add: payload["add_labels"]=",".join(add)
-    if rem: payload["remove_labels"]=",".join(rem)
-    reason = (f"{prev.get('grade','?')}/{prev.get('sec','?')} → {grade}/{sec}" if state_changed else "title/label refresh")
-    actions.append({"act":"update","summary":f"UPDATE #{iid} {site} ({reason})",
-        "method":"PUT","path":f"/projects/{pid}/issues/{iid}","payload":json.dumps(payload)})
-    if state_changed:   # only comment on a real posture change, not a cosmetic title refresh
-        actions.append({"act":"comment","summary":f"  └ comment material change on #{iid}",
-            "method":"POST","path":f"/projects/{pid}/issues/{iid}/notes",
-            "payload":json.dumps({"body":f"\U0001f504 `pl rag` {now}: now {grade}, {sec} advisor%s, todo {h}/{m_}/{l} (was {prev.get('grade','?')}/{prev.get('sec','?')})." % ("y" if sec==1 else "ies")})})
-print(json.dumps(actions))
-PY
-)
+           PID="$PROJECT_ID" NOW="$(date -u +%FT%TZ)" \
+           python3 "$PROJECT_ROOT/lib/rag-sync-plan.py")
     [ -n "$plan" ] || { print_error "sync planner produced no output"; return 1; }
 
     local n; n=$("$YQ" e -p=json 'length' - <<<"$plan" 2>/dev/null || echo 0)
@@ -262,12 +169,22 @@ PY
     print_info "eligible fleet: $eligible"
     if [ "${n:-0}" -eq 0 ]; then print_success "nothing to do — all eligible sites already in sync"; return 0; fi
 
-    local i act summary method path payload writes=0
+    local i act summary method path payload writes=0 absent=0
     for ((i=0; i<n; i++)); do
         act=$("$YQ"     e -p=json ".[$i].act // \"\""     - <<<"$plan")
         summary=$("$YQ" e -p=json ".[$i].summary // \"\"" - <<<"$plan")
         if [ "$act" = "noop" ]; then
             printf '  %s%s%s\n' "${DIM:-}" "$summary" "${NC}"
+            continue
+        fi
+        # `absent` is a REPORT, not a write: an eligible site that produced no
+        # RAG row. It carries no method/path, and it prints in execute mode too
+        # — the whole point of ops#230 item 4 is that a site dropping out of the
+        # run stops being invisible. Any writes that record it (the marker stamp
+        # and the note) follow as their own actions.
+        if [ "$act" = "absent" ]; then
+            printf '  %s%s%s\n' "${YELLOW:-}" "$summary" "${NC}"
+            absent=$((absent+1))
             continue
         fi
         if [ "$execute" != true ]; then
@@ -287,6 +204,7 @@ PY
             print_error "FAILED: $summary${msg:+ — $msg}"
         fi
     done
+    [ "$absent" -gt 0 ] && print_warning "$absent eligible site(s) produced no RAG row in this run — their issues are left OPEN with a STALE grade, and the absence is recorded on each"
     [ "$execute" = true ] && print_success "applied $writes write(s) to nwp/ops" \
         || print_hint "re-run with --execute to apply the $n planned action(s)"
 }

@@ -1,6 +1,16 @@
 # NWC agent-loop cron schedule
 #
-# Install with:
+# THE RAG-SYNC LINE IS NOW OWNED BY A VERB — DO NOT HAND-INSTALL IT (ops#230).
+#   pl loop schedule status                    what owns the schedule here?
+#   pl loop schedule install --execute         install/refresh (idempotent, backed up)
+#   pl loop schedule remove  --execute         take it out again
+#   pl loop schedule install --host <role>     declare it on another machine
+# The verb writes a MARKER-DELIMITED managed block, so re-installing rewrites
+# rather than duplicates and removing takes out exactly what it put in. A
+# hand-edited crontab is one nobody can verify or move: on 2026-08-02 this
+# machine's crontab was simply EMPTY and the estate had been blind for 16 nights.
+#
+# The remaining lines below are installed by hand for now:
 #   crontab -l > /tmp/cron.bak
 #   cat /home/rob/nwp/scripts/agent-loop/crontab.entry >> /tmp/cron.bak
 #   crontab /tmp/cron.bak
@@ -14,12 +24,20 @@
 #   pl loop disable respawn-drain   # stop the power-user instant re-spawn only
 #   pl loop disable rag-sync        # stop RAG->issues (stage 1) only
 #   pl loop disable webhook         # make the webhook receiver inert
-#   pl loop disable all             # GLOBAL kill-switch (every part)
-#   pl loop enable <part|all>       # re-arm; pl loop / pl loop parts show state
+#   pl loop disable all             # WRITE kill-switch (every part that CHANGES things)
+#   pl loop disable oversight       # OVERSIGHT kill-switch (the read-only parts)
+#   pl loop enable <part|all|oversight>   # re-arm; pl loop parts shows state
+#
+# TWO KILLS, NOT ONE (ops#230). `all` stops the parts that can change the
+# estate; it does NOT stop rag-sync, which only reads and files issues. A switch
+# meaning "do not let agents write" must never also mean "stop looking" — that
+# conflation blinded the estate for 16 nights while every cron exited 0.
+#
 # State is host-local at ~/.config/nwp-loop/parts.state (each host is separate).
-# The legacy whole-loop sentinels still work and still mean "off":
-#   touch /home/rob/nwp/.loop-paused        (global);  rm to resume
-#   touch /home/rob/nwp/.rag-sync-paused    (rag-sync); rm to resume
+# The legacy sentinels still work and still mean "off":
+#   touch /home/rob/nwp/.loop-paused        (WRITE kill);      rm to resume
+#   touch /home/rob/nwp/.oversight-paused   (OVERSIGHT kill);  rm to resume
+#   touch /home/rob/nwp/.rag-sync-paused    (rag-sync only);   rm to resume
 #
 # Secrets handling
 # ----------------
@@ -40,10 +58,14 @@
 
 # Stage 1 of the §6 self-healing loop (ops#6): turn the live RAG state into
 # tracked nwp/ops issues — daily at 04:30 UTC, just after the audit-awareness
-# refresh (~04:00). Dev-side only (files issues; no bumps/deploys). Pause with
-# `touch /home/rob/nwp/.rag-sync-paused`. Reads its token from .secrets.yml, so
-# no env file is needed. Increase frequency by adding more minute/hour fields.
-30 4 * * * /home/rob/nwp/scripts/agent-loop/rag-sync.sh >> /home/rob/nwp/logs/rag-sync.log 2>&1
+# refresh (~04:00). Dev-side only (files issues; no bumps/deploys). Reads its
+# token from .secrets.yml, so no env file is needed.
+#
+# DO NOT PASTE THIS LINE INTO A CRONTAB. `pl loop schedule install --execute`
+# owns it (see the top of this file); it writes the same entry inside a managed
+# block that can be verified, refreshed and removed by code. Kept here only so
+# this file still documents what the loop is made of.
+#   30 4 * * * /home/rob/nwp/scripts/agent-loop/rag-sync.sh >> /home/rob/nwp/logs/rag-sync.log 2>&1
 
 # Log rotation — two-tier:
 #   1. Size-based: gzip any uncompressed log >50M, so a runaway hour

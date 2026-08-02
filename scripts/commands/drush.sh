@@ -388,15 +388,48 @@ run_live() {
     #     held noise from earlier failed probes is discarded;
     #   * if ALL candidates fail, every probe's stderr is replayed so the final
     #     failure stays loud — the cause is never swallowed.
-    local _cand _cand_err _held_err _ok="no"
+    #
+    # ops#223 — ONLY FALL THROUGH WHEN THE BINARY WAS NOT THERE.
+    #
+    # This loop used to advance to the next candidate on ANY non-zero exit. That
+    # is fine while probing for a drush binary and catastrophic once one is
+    # found: a candidate that RAN and whose drush command legitimately failed
+    # looked identical to a candidate that did not exist, so the command was
+    # executed again on the next candidate, and again on the third. For a
+    # MUTATING command — `scr`, `php:eval`, `sql:query`, `user:cancel` — that is
+    # up to three executions of a write the caller asked for once. Observed
+    # 2026-08-02: an ops#223 erasure probe under `-- scr` created and deleted its
+    # fixture users twice per invocation, because a failing test exits non-zero
+    # and drush reports a script's own exit() as "terminated abnormally".
+    #
+    # The discriminator is the remote SHELL's own not-found signature. sudo
+    # returns 1 (not 127) for a missing command, so the exit code alone cannot
+    # tell these apart; but `sudo:`/`bash:`/`sh:` prefixed lines come from the
+    # shell, never from drush, which prefixes its own diagnostics with ` [error]`.
+    local _cand _cand_err _held_err _ok="no" _rc=0
     _cand_err=$(mktemp); _held_err=$(mktemp)
     for _cand in "$primary" "$fallback" "$fallback2"; do
-        if ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$_cand" 2>"$_cand_err"; then
+        _rc=0
+        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$_cand" 2>"$_cand_err" || _rc=$?
+        if [[ "$_rc" -eq 0 ]]; then
             _ok="yes"
             cat "$_cand_err" >&2
             break
         fi
-        cat "$_cand_err" >> "$_held_err"
+        if [[ "$_rc" -eq 127 ]] \
+           || grep -qE '^(sudo|bash|sh|-bash):.*(command not found|No such file or directory)' "$_cand_err"; then
+            # The binary is not at this path. Keep probing.
+            cat "$_cand_err" >> "$_held_err"
+            continue
+        fi
+        # drush RAN and the command failed. Report that, and do NOT try another
+        # candidate — re-running is how one requested write becomes three.
+        cat "$_held_err" >&2
+        cat "$_cand_err" >&2
+        rm -f "$_cand_err" "$_held_err"
+        print_error "drush RAN on live and the command failed (exit ${_rc}). Not retrying the remaining"
+        print_error "candidates: re-running would repeat any write the command already made."
+        exit "$_rc"
     done
     if [[ "$_ok" != "yes" ]]; then
         cat "$_held_err" >&2

@@ -251,3 +251,81 @@ EOF
   [[ "$output" == *"command not found"* ]]
   [ "$(cat "$SSH_COUNT_FILE")" -eq 3 ]
 }
+
+# ── ops#223: a command that RAN and failed must not be re-run ────────────────
+# The candidate chain used to advance on ANY non-zero exit, so a drush command
+# that executed and legitimately failed was indistinguishable from a drush
+# binary that was not there — and got executed again on the next candidate, and
+# the next. For a MUTATING command (`scr`, `php:eval`, `sql:query`,
+# `user:cancel`) that is up to three executions of a write requested once.
+# Observed on live nwd 2026-08-02: an erasure probe under `-- scr` created and
+# deleted its fixture users TWICE per invocation.
+#
+# The discriminator is the remote SHELL's not-found signature. sudo exits 1 (not
+# 127) for a missing command, so the exit code alone cannot separate these.
+
+# A stub whose FIRST candidate is a real drush that runs and fails.
+_install_ssh_stub_ran_and_failed() {
+  STUB="$TEST_TMP/bin"; mkdir -p "$STUB"
+  export SSH_COUNT_FILE="$TEST_TMP/ssh-count"
+  cat > "$STUB/ssh" <<'EOF'
+#!/bin/bash
+n=$(cat "$SSH_COUNT_FILE" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$SSH_COUNT_FILE"
+# drush was found, ran, mutated something, and reported failure its own way.
+echo "MUTATION APPLIED (run $n)"
+echo " [error] The command failed." >&2
+exit 1
+EOF
+  chmod +x "$STUB/ssh"
+  export PATH="$STUB:$PATH" NWP_SSH_NO_MULTIPLEX=1
+}
+
+@test "ops#223: a drush command that RAN and failed executes exactly ONCE, not three times" {
+  _install_ssh_stub_ran_and_failed
+  run bash "$DRUSH" nwc --tier=live --execute -- sql:query "DELETE FROM users WHERE uid=99"
+  [ "$status" -ne 0 ]
+  # THE ASSERTION: one execution, not one per candidate.
+  [ "$(cat "$SSH_COUNT_FILE")" -eq 1 ]
+  [[ "$output" == *"MUTATION APPLIED (run 1)"* ]]
+  [[ "$output" != *"run 2"* ]]
+  [[ "$output" == *"Not retrying"* ]]
+}
+
+@test "ops#223: the failed command's own exit code is propagated, not flattened to 1" {
+  STUB="$TEST_TMP/bin"; mkdir -p "$STUB"
+  cat > "$STUB/ssh" <<'EOF'
+#!/bin/bash
+echo " [error] nope" >&2
+exit 3
+EOF
+  chmod +x "$STUB/ssh"
+  export PATH="$STUB:$PATH" NWP_SSH_NO_MULTIPLEX=1
+  run bash "$DRUSH" nwc --tier=live --execute -- cr
+  [ "$status" -eq 3 ]
+}
+
+@test "ops#223: a genuine missing-binary probe STILL falls through to the next candidate" {
+  # The safety fix must not break the thing the chain exists for. sudo's
+  # not-found form exits 1, so this is exactly the case a naive exit-code test
+  # would get wrong.
+  _install_ssh_stub 2
+  run bash "$DRUSH" nwc --tier=live --execute -- cr
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SSH_COUNT_FILE")" -eq 3 ]
+}
+
+@test "ops#223: exit 127 also falls through (a shell that reports not-found properly)" {
+  STUB="$TEST_TMP/bin"; mkdir -p "$STUB"
+  export SSH_COUNT_FILE="$TEST_TMP/ssh-count"
+  cat > "$STUB/ssh" <<'EOF'
+#!/bin/bash
+n=$(cat "$SSH_COUNT_FILE" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$SSH_COUNT_FILE"
+if [ "$n" -lt 3 ]; then exit 127; fi
+echo "ran"; exit 0
+EOF
+  chmod +x "$STUB/ssh"
+  export PATH="$STUB:$PATH" NWP_SSH_NO_MULTIPLEX=1
+  run bash "$DRUSH" nwc --tier=live --execute -- cr
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SSH_COUNT_FILE")" -eq 3 ]
+}

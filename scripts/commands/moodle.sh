@@ -52,6 +52,7 @@ ${BOLD}USAGE:${NC}
     pl moodle maintenance   <site> --tier=live on|off [--dry-run|--execute]
     pl moodle plugin build  <plugin> [--from=DIR] [--ddev=SITE|--tree=DIR] [--check-only]
     pl moodle plugin deploy <site> <plugin>... --tier=stg|live [--dry-run|--apply] [--no-upgrade]
+                            [--from=DIR|--from-canonical] [--allow-downgrade]
     pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live]
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
@@ -349,6 +350,7 @@ cmd_plugin_build() {
 cmd_plugin_deploy() {
     local site="" tier="" mode="dry-run" no_upgrade="false"
     local explicit_from="" force_toolkit="false" force_canonical="false" allow_ungated="false"
+    local allow_downgrade="false"
     local -a plugins=()
     for a in "$@"; do
         case "$a" in
@@ -360,6 +362,7 @@ cmd_plugin_deploy() {
             --from-canonical)  force_canonical="true" ;;
             --from-nwptoolkit) force_toolkit="true" ;;
             --allow-ungated)   allow_ungated="true" ;;
+            --allow-downgrade) allow_downgrade="true" ;;
             -*)            print_error "Unknown option: $a"; return 1 ;;
             *)             if [ -z "$site" ]; then site="$a"; else plugins+=("$a"); fi ;;
         esac
@@ -427,17 +430,9 @@ cmd_plugin_deploy() {
         return 1
     fi
 
-    # 7. freshness gate — every plugin must be built + fresh at the RESOLVED source
-    i=0
-    for p in "${plugins[@]}"; do
-        if ! cmd_plugin_build "$p" --from="${src_dirs[$i]}" --check-only; then
-            print_error "Freshness gate FAILED for '$p' — rebuild before deploy (pl moodle plugin build $p)."
-            return 1
-        fi
-        i=$((i+1))
-    done
-
-    # Resolve remote target.
+    # Remote target is resolved HERE, before the freshness gate, because the
+    # version-direction gate below needs it. Pure config reads + string building;
+    # no side effects, nothing dialled yet.
     local server_ip ssh_user remote_path ssh_opts ssh_target sudo_prefix=""
     if [ "$tier" = "live" ]; then
         server_ip=$(get_live_config "$BASE" "server_ip")
@@ -453,6 +448,56 @@ cmd_plugin_deploy() {
     ssh_opts="$(nwp_ssh_opts "$BASE")"
     ssh_target="${ssh_user}@${server_ip}"
 
+    ###########################################################################
+    # 6b. VERSION-DIRECTION GATE (ops#229) — a deploy that moves $plugin->version
+    #     BACKWARDS is either a mistake or a deliberate rollback, and the
+    #     deliberate case has to say so.
+    #
+    # WHY THIS IS A P0 AND NOT A NICETY. `_moodle_resolve_source` defaults to the
+    # DEV tree (rung 5). `sites/ssd/dev/mod/depthcontent` has no video renderer;
+    # live ssd runs 2026080101, which has it. So a naive
+    #
+    #     pl moodle plugin deploy ssd mod/depthcontent --tier=live --apply
+    #
+    # would ship the dev tree over the top and silently remove video from all
+    # 175 clips on a live site. The existing drift WARNING (rung 5) fires only
+    # when a canonical cache is present to compare against, says "shipping the
+    # DEV copy" either way, and does not look at the TARGET at all — so nothing
+    # in the deploy output would have said the version went backwards.
+    #
+    # Same shape as ops#103: the verb's default source is not the canonical
+    # source, and the resulting deploy looks successful.
+    #
+    # Runs on DRY-RUN too — a refusal you can only discover with --apply is not
+    # a preflight. Fails CLOSED on an unreadable source version; an unreadable
+    # TARGET version is reported as a first install, which is the honest reading
+    # of "no version.php over there" and is proven by a test either way.
+    ###########################################################################
+    print_header "Version-direction gate (ops#229)"
+    local _vd_refuse=0
+    i=0
+    for p in "${plugins[@]}"; do
+        local src_v tgt_v
+        src_v="$(moodle_plugin_version_dir "${src_dirs[$i]}" 2>/dev/null || true)"
+        # THREE answers, not two: an ssh that cannot be asked must not read as
+        # "not installed yet", which would wave a downgrade straight through.
+        tgt_v="$(moodle_plugin_target_version "$ssh_target" "$ssh_opts" "$sudo_prefix" "$remote_path" "$p")"
+        moodle_version_gate_report "$p" "${src_dirs[$i]}" "$src_v" "$tgt_v" \
+            "$allow_downgrade" "$BASE" "$tier" "${MOODLE_SRC_ORIGIN:-?}" || _vd_refuse=1
+        i=$((i+1))
+    done
+    [ "$_vd_refuse" -eq 0 ] || return 1
+
+    # 7. freshness gate — every plugin must be built + fresh at the RESOLVED source
+    i=0
+    for p in "${plugins[@]}"; do
+        if ! cmd_plugin_build "$p" --from="${src_dirs[$i]}" --check-only; then
+            print_error "Freshness gate FAILED for '$p' — rebuild before deploy (pl moodle plugin build $p)."
+            return 1
+        fi
+        i=$((i+1))
+    done
+
     # 6. deploy gate (ADR-0028 solo-touch) — skipped on dry-run (nothing written)
     if [ "$mode" = "apply" ] && [ "$tier" = "live" ]; then
         deploy_gate_require "$BASE" "live" "rsync ${#plugins[@]} Moodle plugin dir(s) → live webroot (per-plugin --delete)" || return 1
@@ -467,6 +512,10 @@ cmd_plugin_deploy() {
     impact_keep "${remote_path%/*}/${BASE}_moodledata / moodledata — live uploads, never touched (INV-5)"
     impact_keep "all other plugins + Moodle core — outside the deploy scope"
     [ "$no_upgrade" = "true" ] && impact_warn "--no-upgrade: admin/cli/upgrade.php will NOT run (version bump deferred)."
+    # ops#229: a downgrade is ledgered where the operator has to read it — in the
+    # fate manifest that the typed live confirm renders, not only in a warning
+    # that has already scrolled past.
+    [ "$allow_downgrade" = "true" ] && impact_warn "--allow-downgrade: \$plugin->version may move BACKWARDS on this target (ops#229)."
     impact_render
     if [ "$mode" = "apply" ] && [ "$tier" = "live" ]; then
         impact_confirm typed "$BASE" "${AUTO_CONFIRM:-false}" || { print_error "aborted."; return 1; }

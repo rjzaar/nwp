@@ -44,6 +44,9 @@ AI/LLM-host utilities (F21 Phase 3a).
 
 Subcommands:
     llm health       Check the local LLM stack on the AI host
+    sessions         List agent tmux sessions on the AI host
+    attach [NAME]    Attach to a session (READ-ONLY by default)
+    term             Interactive session picker (the `miniterm` menu)
 
 Options for `llm health`:
     --json           Emit structured JSON (for Phase 12 alerting consumers)
@@ -67,7 +70,19 @@ Environment:
     NWP_AI_HOST_SSH - SSH host alias for the AI host (default: ai-host;
                       back-compat: also honours NWP_MINI_SSH_HOST)
 
+Why attach is read-only by default:
+    Long agent runs live in tmux on the AI host so they survive a disconnect
+    (the dev laptop crashed mid-operation on 2026-08-02 and killed seven
+    running agents). Attaching read-WRITE to a session where an agent is
+    working means your keystrokes go into its prompt — one stray keypress
+    injects input into a task mid-flight. Use --write only when you intend
+    to type.
+
 Examples:
+    pl ai-host sessions
+    pl ai-host attach nwp            # read-only
+    pl ai-host attach nwp --write    # you can type; warns first
+    pl ai-host term                  # interactive picker
     pl ai-host llm health
     pl ai-host llm health --quick
     pl ai-host llm health --json | jq .
@@ -325,6 +340,124 @@ cmd_llm_health() {
     [[ "$overall" == "ok" ]]
 }
 
+
+################################################################################
+# Agent sessions (tmux) on the AI host
+#
+# The ai-host is the durable agent host. These surfaces let the operator see what is
+# running and watch it. READ-ONLY is the default on purpose — see show_help.
+################################################################################
+
+AI_HOST_SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
+
+# ai_host_sessions — emit "name<TAB>windows<TAB>attached" per session.
+# Distinguishes THREE states, never two: sessions / none / unreachable.
+# "Could not look" must never render as "nothing running" (ops#214 family).
+ai_host_sessions() {
+    local out rc
+    # NOTE: the separator must be a REAL tab. Passing the two characters \t
+    # through ssh hands tmux a literal backslash-t, which it prints verbatim
+    # and the reader then fails to split on — caught in testing.
+    local fmt
+    fmt=$(printf '#{session_name}\t#{session_windows}\t#{?session_attached,attached,}')
+    out=$(ssh "${AI_HOST_SSH_OPTS[@]}" "$AI_HOST_SSH" \
+        "tmux list-sessions -F $(printf '%q' "$fmt")" 2>&1)
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        if [[ "$out" == *"no server running"* || "$out" == *"No such file"* ]]; then
+            return 1   # genuinely no sessions
+        fi
+        printf '%s\n' "$out" >&2
+        return 3       # UNREACHABLE — not the same as none
+    fi
+    [[ -z "$out" ]] && return 1
+    printf '%s\n' "$out"
+    return 0
+}
+
+cmd_sessions() {
+    local rows rc
+    rows=$(ai_host_sessions); rc=$?
+    case $rc in
+        3) print_error "UNREACHABLE: cannot reach ${AI_HOST_SSH} — this is 'could not look', not 'nothing running'"; return 3 ;;
+        1) print_info "No tmux sessions on ${AI_HOST_SSH}"; return 1 ;;
+    esac
+    printf '%s\n' "$rows" | while IFS=$'\t' read -r name wins att; do
+        printf '  %-24s %s window(s)%s\n' "$name" "$wins" "${att:+  · attached}"
+    done
+}
+
+# _ai_host_spawn — open the attach in a NEW terminal when one exists, so the
+# operator keeps the shell they ran this from. Falls back to attaching here.
+_ai_host_spawn() {
+    local session="$1" mode="${2:-read}" ropt="-r" cmd term
+    [[ "$mode" == write ]] && ropt=""
+    cmd="ssh -t $(printf '%q' "$AI_HOST_SSH") 'tmux attach ${ropt} -t $(printf '%q' "$session")'"
+    for term in gnome-terminal x-terminal-emulator xfce4-terminal konsole alacritty kitty xterm; do
+        command -v "$term" >/dev/null 2>&1 || continue
+        case "$term" in
+            gnome-terminal) nohup "$term" --title="${AI_HOST_SSH}:${session}" -- bash -lc "$cmd" >/dev/null 2>&1 & ;;
+            *)              nohup "$term" -e bash -lc "$cmd" >/dev/null 2>&1 & ;;
+        esac
+        if [[ "$mode" == write ]]; then
+            print_warning "${session}: opened in WRITE mode — your keystrokes reach the agent"
+        else
+            print_success "${session}: opened read-only"
+        fi
+        return 0
+    done
+    print_info "No terminal emulator found — attaching in this shell"
+    eval "$cmd"
+}
+
+cmd_attach() {
+    local session="${1:-}" mode=read
+    shift 2>/dev/null || true
+    [[ "${1:-}" == "--write" || "${1:-}" == "-w" ]] && mode=write
+    if [[ -z "$session" ]]; then print_error "usage: pl ai-host attach <session> [--write]"; return 2; fi
+    _ai_host_spawn "$session" "$mode"
+}
+
+cmd_term() {
+    local rows rc choice mode=read pick i yn nn
+    while true; do
+        rows=$(ai_host_sessions); rc=$?
+        printf '\n  \033[1msessions on %s\033[0m   %s\n\n' "$AI_HOST_SSH" \
+            "$([[ "$mode" == write ]] && printf '\033[0;33m[WRITE MODE]\033[0m' || printf '\033[2m[read-only]\033[0m')"
+        case $rc in
+            3) printf '  \033[0;31mUNREACHABLE\033[0m: cannot reach %s.\n     That is "could not look", not "nothing running".\n' "$AI_HOST_SSH" ;;
+            1) printf '  \033[2mno sessions running\033[0m\n' ;;
+            0) i=0
+               while IFS=$'\t' read -r name wins att; do
+                   i=$((i+1))
+                   printf '   \033[1m%s\033[0m) %-22s %s window(s)%s\n' "$i" "$name" "$wins" "${att:+  · attached}"
+               done <<< "$rows" ;;
+        esac
+        printf '\n  [1-9] attach   [w] write-mode   [n] new   [h] help   [r] refresh   [q] quit\n  > '
+        read -r choice || { printf '\n'; return 0; }
+        case "$choice" in
+            q|Q|'') printf '\n'; return 0 ;;
+            h|H) show_help ;;
+            r|R) continue ;;
+            w|W) if [[ "$mode" == write ]]; then mode=read
+                 else
+                     printf '\n  \033[0;33mCAUTION\033[0m: write mode sends your keystrokes into the session.\n'
+                     printf '  If an agent is working there, you are typing into its prompt.\n  Enable? [y/N] '
+                     read -r yn; [[ "$yn" == y || "$yn" == Y ]] && mode=write
+                 fi ;;
+            n|N) printf '  new session name: '; read -r nn
+                 [[ -z "$nn" ]] && continue
+                 ssh "${AI_HOST_SSH_OPTS[@]}" "$AI_HOST_SSH" "tmux new-session -d -s $(printf '%q' "$nn")" \
+                     && _ai_host_spawn "$nn" "$mode" ;;
+            [1-9]|[1-9][0-9])
+                 pick=$(printf '%s\n' "$rows" | sed -n "${choice}p" | cut -f1)
+                 [[ -z "$pick" ]] && { printf '  no session %s\n' "$choice"; continue; }
+                 _ai_host_spawn "$pick" "$mode" ;;
+            *) printf '  unknown option: %s\n' "$choice" ;;
+        esac
+    done
+}
+
 main() {
     if [[ $# -eq 0 ]]; then
         show_help
@@ -334,6 +467,18 @@ main() {
     case "$1" in
         -h|--help)
             show_help
+            ;;
+        sessions)
+            shift
+            cmd_sessions "$@"
+            ;;
+        attach)
+            shift
+            cmd_attach "$@"
+            ;;
+        term)
+            shift
+            cmd_term "$@"
             ;;
         llm)
             shift

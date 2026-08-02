@@ -1,0 +1,47 @@
+[Unit]
+# The session supervisor — reads the baton, starts the next session when the
+# previous one has handed over (or dropped the baton past its timeout).
+#
+# A USER unit, following nwp-console.service and nwp-tmux.service on mini: the
+# work needs the operator's ssh agent, ~/.claude credentials and ~/nwp checkout,
+# none of which a system unit has. `loginctl enable-linger rob` is what makes it
+# survive logout — without linger this is a unit that quietly stops existing the
+# moment the operator's last session closes, which is exactly when it is needed.
+Description=NWP unattended session supervisor (baton → next session)
+After=network-online.target nwp-tmux.service
+Documentation=file:%h/nwp/docs/guides/session-handover-runbook.md
+
+[Service]
+Type=oneshot
+# oneshot, not simple: this is a TICK. It looks, decides, maybe launches a tmux
+# session that outlives it, and exits. The agent must NOT be a child of this
+# unit — a systemd restart would then kill a running session mid-write.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h/nwp
+
+# Every bound is an environment variable with a defensible default, so changing
+# one is a recorded config edit rather than a code change.
+Environment=NWP_BATON_TIMEOUT_MIN=90
+Environment=NWP_SESSION_MAX_REPEATS=2
+Environment=NWP_SESSION_TOKEN_CEILING=2000000
+Environment=NWP_SESSION_MAX_TURNS=200
+Environment=NWP_SESSION_DEMO_SITES=nwd ssd
+Environment=NWP_SESSION_TMUX=nwp-auto
+# Operator overrides (Gotify app token, ceilings, NWP_SESSION_ALLOW_NO_NOTIFY)
+# live here. Optional (`-`) so a missing file is not a boot failure; the
+# supervisor's own notify preflight is what actually refuses to launch blind.
+EnvironmentFile=-%h/.config/nwp-session/env
+
+ExecStart=%h/nwp/pl session supervisor run
+
+# Bounded so a wedged tick cannot occupy the slot forever. The launched agent is
+# unaffected: it lives in its own tmux session, not in this cgroup.
+TimeoutStartSec=600
+# The launched tmux session must survive this unit exiting.
+KillMode=process
+
+StandardOutput=append:%h/.local/state/nwp/session/supervisor.log
+StandardError=append:%h/.local/state/nwp/session/supervisor.log
+
+[Install]
+WantedBy=default.target

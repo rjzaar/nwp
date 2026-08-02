@@ -58,6 +58,7 @@ ${BOLD}USAGE:${NC}
     pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
     pl moodle mail          <site> --tier=live [--dry-run|--apply] [--sync-golden]
     pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]
+    pl moodle content sync  <site> --tier=live|dev --from=DIR [--dry-run|--apply]
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
     pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
@@ -2320,6 +2321,285 @@ cmd_course_restore() {
 }
 
 ################################################################################
+# content sync — repair depth content IN PLACE on a site that already has the
+# courses (nwp/ops#220)
+#
+# THE GAP THIS FILLS. `pl moodle course restore` is idempotent BY SHORTNAME.
+# That is right for an importer and useless for a repair: when the ssd demo
+# tier was imported on 2026-08-02 from the .mbz set captured 2026-07-11, all
+# 247 migrated depth-content activities arrived carrying only
+# {id,title,session,depths}, because the archives predate the 2026-07-21
+# content refresh. Live ssc carries, for the SAME 247 pointids, 1,671 quiz
+# items across 213 activities plus practice, application, checkpoints,
+# dogmatic_propositions, catechism_paragraphs and 18 audio clips. Re-running
+# `course restore` against a corrected mbz set repairs nothing — it skips all
+# 55 shortnames. There was no verb for this, so the fleet had no way to fix it
+# that was not a hand-rolled `ssh` + `mysql` UPDATE.
+#
+#   pl moodle content sync <site> --tier=live|dev --from=DIR [--dry-run|--apply]
+#
+# --from=DIR is a directory of learning-point JSON files — the shape the
+# canonical catalogue already builds (courses_v3/build/json/*.json), where each
+# file's top-level `id` is the pointid. The verb reads them LOCALLY, validates
+# every one, and ships a single NDJSON payload.
+#
+# GUARDS (fail-closed, all local except the last):
+#   * every *.json must parse and carry a non-empty string `id`; one bad file
+#     refuses the WHOLE run. A partially-understood content payload must never
+#     be partially applied.
+#   * duplicate `id` across two files is a refusal, not last-wins.
+#   * the payload is pushed sha256-verified (the demo_push_verified contract,
+#     reused via _cr_push_verified) and staged where only www-data can read it.
+#   * the remote helper matches on `pointid` and ONLY ever UPDATEs an EXISTING
+#     depthcontent row. It cannot create or delete an activity, and it cannot
+#     touch a course, an enrolment or a user. A pointid with no row on the
+#     target is REPORTED and skipped — absent content is an authoring fact, not
+#     something a sync may invent.
+#   * --apply refuses unless the helper can open its rollback file first. The
+#     prior content_json of every row it changes is written BEFORE the write,
+#     in the same NDJSON shape, so the backup is itself a valid payload: feed
+#     it back through --apply to undo the run exactly.
+#   * a row whose stored content is already byte-identical is not rewritten at
+#     all, so a second run is a true no-op and does not churn timemodified.
+#   * live additionally takes the ADR-0028 deploy gate, a computed fate
+#     manifest and a typed confirm.
+################################################################################
+
+# The staged remote helper (plan / apply).
+CS_HELPER="${CS_HELPER:-$REPO_ROOT/scripts/moodle/content-sync-apply.php}"
+
+# _cs_build_payload <dir> <outfile> — validate every *.json and emit NDJSON.
+# Prints the entry count on stdout. Every refusal names the offending file:
+# "some file in that directory is bad" is not an actionable error message.
+_cs_build_payload() {
+    local dir="$1" out="$2"
+    local -a jsons=()
+    mapfile -t jsons < <(find "$dir" -maxdepth 1 -type f -name '*.json' 2>/dev/null | sort)
+    if [ "${#jsons[@]}" -eq 0 ]; then
+        print_error "No *.json learning-point files in ${dir}"
+        return 1
+    fi
+    : > "$out" || return 1
+    local f id seen_file
+    local seen_dir; seen_dir="$(mktemp -d)" || return 1
+    for f in "${jsons[@]}"; do
+        if ! jq -e . "$f" >/dev/null 2>&1; then
+            print_error "REFUSING $(basename "$f"): not valid JSON."
+            rm -rf "$seen_dir"; return 1
+        fi
+        id="$(jq -r 'if (.id | type) == "string" then .id else empty end' "$f" 2>/dev/null)"
+        if [ -z "$id" ]; then
+            print_error "REFUSING $(basename "$f"): no non-empty string top-level 'id' (the pointid)."
+            print_info  "  This verb matches on pointid; a file without one cannot be placed."
+            rm -rf "$seen_dir"; return 1
+        fi
+        case "$id" in
+            */*|*..*) print_error "REFUSING $(basename "$f"): pointid '${id}' has a path shape."; rm -rf "$seen_dir"; return 1 ;;
+        esac
+        seen_file="${seen_dir}/$(printf '%s' "$id" | tr -c '[:alnum:]._-' '_')"
+        if [ -e "$seen_file" ]; then
+            print_error "REFUSING: pointid '${id}' appears in more than one file (last is $(basename "$f"))."
+            rm -rf "$seen_dir"; return 1
+        fi
+        : > "$seen_file"
+        if ! jq -c --arg pid "$id" '{pointid: $pid, content_json: .}' "$f" >> "$out"; then
+            print_error "Could not serialise $(basename "$f") into the payload."
+            rm -rf "$seen_dir"; return 1
+        fi
+    done
+    rm -rf "$seen_dir"
+    printf '%s' "${#jsons[@]}"
+    return 0
+}
+
+cmd_content_sync() {
+    local site="" tier="" from_dir="" mode="dry-run"
+    for a in "$@"; do
+        case "$a" in
+            --tier=*)  tier="${a#*=}" ;;
+            --from=*)  from_dir="${a#*=}" ;;
+            --dry-run) mode="dry-run" ;;
+            --apply|--execute) mode="apply" ;;
+            -h|--help)
+                print_info "usage: pl moodle content sync <site> --tier=live|dev --from=DIR [--dry-run|--apply]"
+                return 0 ;;
+            -*) print_error "Unknown option: $a"; return 1 ;;
+            *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle content sync <site> --tier=live|dev --from=DIR [--dry-run|--apply]"; return 1; }
+    case "$tier" in
+        live|dev) ;;
+        "") print_error "--tier is required (live|dev)"; return 1 ;;
+        *)  print_error "--tier must be live or dev (stg is a local ddev tier without a sync path here)"; return 1 ;;
+    esac
+    [ -z "$from_dir" ] && { print_error "--from=DIR is required (directory of learning-point *.json files)"; return 1; }
+    [ -d "$from_dir" ] || { print_error "--from is not a directory: $from_dir"; return 1; }
+    command -v jq >/dev/null 2>&1 || { print_error "jq is required to validate the learning-point JSON."; return 1; }
+    _resolve_moodle_site "$site" || return 1
+    [ -f "$CS_HELPER" ] || { print_error "Missing staged helper: $CS_HELPER"; return 1; }
+
+    # ---- build + validate the payload, entirely locally ---------------------
+    print_header "Moodle content sync: ${BASE}@${tier}"
+    local payload; payload="$(mktemp)" || return 1
+    local count
+    if ! count="$(_cs_build_payload "$from_dir" "$payload")"; then
+        rm -f "$payload"; return 1
+    fi
+    print_info "${count} learning point(s) validated from ${from_dir}"
+
+    # ---- tier plumbing ------------------------------------------------------
+    local ssh_target="" ssh_opts="" sudo_prefix="" remote_path="" php_bin="" php_opts=""
+    local dev_root="" dev_stage_rel=".nwp-content-sync-stage"
+    if [ "$tier" = "live" ]; then
+        local live_enabled; live_enabled=$(get_live_config "$BASE" "enabled")
+        [ "$live_enabled" = "false" ] && { print_error "Live disabled for '$BASE' (live.enabled: false)."; rm -f "$payload"; return 1; }
+        local server_ip ssh_user
+        server_ip=$(get_live_config "$BASE" "server_ip")
+        [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE'."; rm -f "$payload"; return 1; }
+        ssh_user=$(get_ssh_user "$BASE")
+        remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+        [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+        ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+        php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+        php_opts="$(moodle_cli_php_opts "$CONFIG_FILE")"
+        moodle_cli_assert "$php_bin" "$php_opts" || { rm -f "$payload"; return 1; }
+        print_info "Target:  ${ssh_target}:${remote_path}"
+        print_info "php:     ${php_bin} ${php_opts}"
+    else
+        dev_root="$PROJECT_ROOT/sites/${BASE}/dev"
+        [ -f "$dev_root/config.php" ] || { print_error "No Moodle dev tier at ${dev_root} (config.php missing)."; rm -f "$payload"; return 1; }
+        command -v ddev >/dev/null 2>&1 || { print_error "ddev is required for --tier=dev."; rm -f "$payload"; return 1; }
+        print_info "Target:  ddev project at ${dev_root}"
+    fi
+
+    # ---- dry-run stops HERE: no ssh, no scp, no ddev exec -------------------
+    if [ "$mode" != "apply" ]; then
+        print_info "At --apply time the payload is pushed sha256-verified and the staged helper"
+        print_info "UPDATEs content_json on EXISTING depthcontent rows matched by pointid only."
+        print_info "Rows already byte-identical are not rewritten; absent pointids are reported, never created."
+        print_info "The prior value of every changed row is written to a rollback NDJSON first,"
+        print_info "and pulled back to sites/${BASE}/backups/."
+        print_status "OK" "[dry-run] ${count} learning point(s) planned — nothing executed. Re-run with --apply."
+        rm -f "$payload"
+        return 0
+    fi
+
+    # ---- live gates (ADR-0028 + fate manifest + typed confirm) --------------
+    if [ "$tier" = "live" ]; then
+        deploy_gate_require "$BASE" "live" "sync ${count} learning point(s) of depth content into live Moodle" || { rm -f "$payload"; return 1; }
+        impact_reset
+        impact_overwrite "mdl_depthcontent.content_json" "up to ${count} EXISTING row(s), matched by pointid — prior values written to a rollback NDJSON first"
+        impact_keep "depthcontent activities, courses, sections, enrolments, users — this verb only UPDATEs content_json"
+        impact_keep "rows whose content is already identical — not rewritten, timemodified untouched"
+        impact_keep "config.php + moodledata — untouched"
+        impact_warn "A pointid with no row on the target is SKIPPED and reported; this verb never creates an activity."
+        impact_render
+        impact_confirm typed "$BASE" "${AUTO_CONFIRM:-false}" || { print_error "aborted."; rm -f "$payload"; return 1; }
+    fi
+
+    # ---- runner shims -------------------------------------------------------
+    local stamp; stamp="$(date -u +%Y%m%d-%H%M%S)"
+    local remote_stage="/tmp/nwp-content-sync-$(date +%s)-$$"
+    local backup_dir="${PROJECT_ROOT}/sites/${BASE}/backups"
+    local backup_local="${backup_dir}/content-sync-${tier}-${stamp}.ndjson"
+    mkdir -p "$backup_dir" || { rm -f "$payload"; return 1; }
+
+    _cs_run_helper() {   # <args...> — run the staged helper as the web user
+        if [ "$tier" = "live" ]; then
+            local qargs="" x
+            for x in "$@"; do qargs+=" $(printf '%q' "$x")"; done
+            # shellcheck disable=SC2086
+            ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+                "cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_stage}/content-sync-apply.php${qargs}" </dev/null
+        else
+            (cd "$dev_root" && ddev exec php -d max_input_vars=5000 "${dev_stage_rel}/content-sync-apply.php" "$@" </dev/null)
+        fi
+    }
+    _cs_cleanup() {
+        if [ "$tier" = "live" ]; then
+            # shellcheck disable=SC2086
+            ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${sudo_prefix} rm -rf ${remote_stage}" >/dev/null 2>&1 || true
+        else
+            rm -rf "${dev_root:?}/${dev_stage_rel}"
+        fi
+        rm -f "$payload"
+    }
+
+    # ---- stage: sha256-verified push ---------------------------------------
+    print_header "Staging (sha256-verified)"
+    local remote_payload remote_backup
+    if [ "$tier" = "live" ]; then
+        _cr_push_verified "$ssh_target" "$ssh_opts" "$CS_HELPER" "content-sync-apply.php" || { rm -f "$payload"; return 1; }
+        if ! _cr_push_verified "$ssh_target" "$ssh_opts" "$payload" "content-sync-payload.ndjson"; then
+            # shellcheck disable=SC2086
+            ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "rm -f ~/content-sync-apply.php" >/dev/null 2>&1 || true
+            rm -f "$payload"; return 1
+        fi
+        # shellcheck disable=SC2086
+        if ! ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+            "${sudo_prefix} mkdir -p ${remote_stage} && cd ~ && ${sudo_prefix} cp content-sync-apply.php content-sync-payload.ndjson ${remote_stage}/ && ${sudo_prefix} chown -R www-data:www-data ${remote_stage} && ${sudo_prefix} chmod 0755 ${remote_stage} && rm -f content-sync-apply.php content-sync-payload.ndjson"; then
+            print_error "Could not stage verified files into ${remote_stage} on the target."
+            _cs_cleanup; return 1
+        fi
+        remote_payload="${remote_stage}/content-sync-payload.ndjson"
+        remote_backup="${remote_stage}/rollback.ndjson"
+    else
+        mkdir -p "${dev_root}/${dev_stage_rel}" || { rm -f "$payload"; return 1; }
+        cp "$CS_HELPER" "${dev_root}/${dev_stage_rel}/content-sync-apply.php" || { _cs_cleanup; return 1; }
+        cp "$payload"   "${dev_root}/${dev_stage_rel}/content-sync-payload.ndjson" || { _cs_cleanup; return 1; }
+        if [ "$(_cr_sha256 "${dev_root}/${dev_stage_rel}/content-sync-payload.ndjson")" != "$(_cr_sha256 "$payload")" ]; then
+            print_error "sha256 MISMATCH staging the payload into the dev tier."; _cs_cleanup; return 1
+        fi
+        remote_payload="${dev_stage_rel}/content-sync-payload.ndjson"
+        remote_backup="${dev_stage_rel}/rollback.ndjson"
+    fi
+
+    # ---- plan (read-only, on the target) ------------------------------------
+    print_header "Plan (read-only, computed on the target)"
+    local plan
+    if ! plan="$(_cs_run_helper --plan "$remote_payload")"; then
+        print_error "Could not compute the plan on the target — refusing to write blind."
+        _cs_cleanup; return 1
+    fi
+    printf '%s\n' "$plan" | grep -E '^POINT .* (ABSENT|PRESENT DIFFER) ' | head -20
+    local summary; summary="$(printf '%s\n' "$plan" | grep '^PLAN-SUMMARY ' || true)"
+    [ -z "$summary" ] && { print_error "No PLAN-SUMMARY from the target — refusing."; _cs_cleanup; return 1; }
+    print_info "$summary"
+
+    # ---- apply --------------------------------------------------------------
+    print_header "Applying"
+    local out
+    if ! out="$(_cs_run_helper --apply "$remote_payload" "--backup=${remote_backup}")"; then
+        print_error "Content sync FAILED on the target."
+        print_info  "Any rows already changed are recorded in ${remote_backup} on the target; pull it before cleaning up."
+        return 1
+    fi
+    printf '%s\n' "$out" | grep -E '^(ABSENT|APPLY-SUMMARY) ' || true
+
+    # ---- pull the rollback ledger back --------------------------------------
+    if [ "$tier" = "live" ]; then
+        # shellcheck disable=SC2086
+        if ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "${sudo_prefix} cat ${remote_backup}" > "$backup_local" 2>/dev/null \
+            && [ -s "$backup_local" ]; then
+            print_status "OK" "rollback ledger: ${backup_local}"
+        else
+            rm -f "$backup_local"
+            print_warning "No rollback ledger pulled back (nothing changed, or the pull failed)."
+        fi
+    else
+        if [ -s "${dev_root}/${remote_backup}" ]; then
+            cp "${dev_root}/${remote_backup}" "$backup_local" && print_status "OK" "rollback ledger: ${backup_local}"
+        fi
+    fi
+
+    _cs_cleanup
+    print_status "OK" "content sync complete for ${BASE}@${tier}."
+    print_info  "Undo: pl moodle content sync ${BASE} --tier=${tier} --from=<dir rebuilt from the rollback ledger> --apply"
+    return 0
+}
+
+################################################################################
 # Dispatch
 #
 # Sourcing this file (bats unit tests) defines the functions WITHOUT dispatching,
@@ -2350,6 +2630,13 @@ case "$SUB" in
         case "$PSUB" in
             restore) cmd_course_restore "$@" ;;
             *) print_error "Unknown 'course' subcommand: ${PSUB:-(none)} (restore)"; exit 1 ;;
+        esac
+        ;;
+    content)
+        PSUB="${1:-}"; shift || true
+        case "$PSUB" in
+            sync) cmd_content_sync "$@" ;;
+            *) print_error "Unknown 'content' subcommand: ${PSUB:-(none)} (sync)"; exit 1 ;;
         esac
         ;;
     plugins)

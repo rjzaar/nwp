@@ -337,7 +337,11 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
     # asserted about something never examined. Both outcomes refuse, so this is
     # about what the operator is told to do next, not about safety.
     cd "$ROOT" || return 1
+    # CI_SERVER_HOST is supplied deliberately: without it the guard now stops at
+    # the earlier "host unresolved" refusal and this case would pass without
+    # ever reaching the token path it claims to test.
     run env -u NWP_MR_TOKEN -u GITLAB_TOKEN NWP_SECRETS_FILE=/nonexistent-$$ \
+        CI_SERVER_HOST=example.invalid \
         CI_MERGE_REQUEST_IID=314 CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main \
         ./scripts/commands/mr.sh guard --ci
     [ "$status" -eq 2 ]

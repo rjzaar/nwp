@@ -394,6 +394,7 @@ cmd_guard(){
   # told to do next. Reporting "no release record" to someone who has already
   # released it sends them to re-run a command that cannot work, which is
   # exactly what happened on !314 on 2026-08-02.
+  _mr_require_yq || return 2
   if [ -n "$iid" ] && ! _mr_host_ok; then
     echo ""
     echo "CANNOT VERIFY — the forge host could not be determined (no"

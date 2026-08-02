@@ -45,7 +45,29 @@ if [ -z "${PROJECT_ROOT:-}" ]; then
   PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 fi
 : "${MR_SECRETS_FILE:=${NWP_SECRETS_FILE:-$PROJECT_ROOT/.secrets.yml}}"
+# yq resolution. The bare `command -v yq` is not enough in CI: the runner has
+# yq at ~/.local/bin/yq, which is on an interactive PATH but not necessarily on
+# a job's. An empty $YQ then makes every parse call run `"" e …`, which fails —
+# and the ONLY visible symptom was the bodies parse returning non-zero, which
+# this library reported as "the notes API could not be read" while the notes
+# call had in fact returned HTTP 200. A missing tool wearing an API error's
+# costume (!314, pipelines 1782/1784).
 : "${YQ:=$(command -v yq || true)}"
+if [ -z "$YQ" ]; then
+  for _c in "$HOME/.local/bin/yq" /usr/local/bin/yq /usr/bin/yq /snap/bin/yq; do
+    [ -x "$_c" ] && { YQ="$_c"; break; }
+  done
+fi
+
+# _mr_require_yq — every parse path goes through yq, so its absence is a
+# CANNOT-VERIFY for the whole library, said once and plainly.
+_mr_require_yq(){
+  [ -n "$YQ" ] && [ -x "$YQ" ] && return 0
+  echo "CANNOT VERIFY — yq was not found on PATH, and every GitLab API response" >&2
+  echo "  in this library is parsed with it. This is a missing tool, not an API" >&2
+  echo "  or permission problem. Install yq or set YQ=/path/to/yq." >&2
+  return 2
+}
 
 # shellcheck source=/dev/null
 [ -f "$PROJECT_ROOT/lib/http.sh" ] && source "$PROJECT_ROOT/lib/http.sh"

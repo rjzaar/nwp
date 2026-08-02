@@ -27,6 +27,22 @@
 setup() {
   ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
   export ROOT
+
+  # HERMETIC: scrub the ambient CI environment.
+  #
+  # These cases exercise the guard against throwaway fixture repos. When the
+  # suite runs INSIDE an MR pipeline, GitLab exports CI_MERGE_REQUEST_IID,
+  # CI_SERVER_HOST, CI_PROJECT_ID and NWP_MR_TOKEN into the job — and the guard
+  # reads all four. Two cases then took the real-MR path against MR !314 and
+  # returned 2 (CANNOT VERIFY) where the fixture expected 1 (HELD).
+  #
+  # They passed locally and failed only in CI, which is the worst shape for a
+  # test to have: green on the developer's machine, red exactly where it runs
+  # unattended. A test that reads its environment is testing the environment.
+  # Cases that WANT these variables set them explicitly with `run env …`.
+  unset CI_MERGE_REQUEST_IID CI_MERGE_REQUEST_TARGET_BRANCH_NAME \
+        CI_SERVER_HOST CI_PROJECT_ID CI_API_V4_URL \
+        NWP_MR_TOKEN NWP_GITLAB_HOST GITLAB_TOKEN MR_HOLD_TOKEN
   TMP="$BATS_TEST_TMPDIR/mrhold"
   mkdir -p "$TMP"
 }

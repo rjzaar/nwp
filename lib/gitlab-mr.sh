@@ -81,15 +81,30 @@ trap _mr_status_cleanup EXIT
 
 _mr_http_status(){ cat "$MR_STATUS_FILE" 2>/dev/null || printf '?'; }
 
+MR_HOST_UNRESOLVED='<gitlab-host>'
+
 _mr_host(){
   local h="${NWP_GITLAB_HOST:-}"
   if [ -z "$h" ] && [ -n "$YQ" ]; then
     h=$("$YQ" e '.gitlab.server.domain // ""' "$MR_SECRETS_FILE" 2>/dev/null | grep -v '^null$')
   fi
-  # Placeholder keeps the live domain out of git (see .gitleaks.toml).
-  [ -z "$h" ] && h="<gitlab-host>"
+  # IN CI THERE IS NO .secrets.yml. GitLab exports CI_SERVER_HOST into every
+  # job, and _mr_project already leans on CI_PROJECT_ID the same way — the host
+  # simply never got the matching fallback. Without it the placeholder below
+  # went into the URL and every call returned HTTP 000, which the guard then
+  # reported as "no release record for this head": a network failure wearing the
+  # costume of a policy decision. Observed on !314, pipeline 1779.
+  [ -z "$h" ] && h="${CI_SERVER_HOST:-}"
+  # Placeholder keeps the live domain out of git (see .gitleaks.toml). It is NOT
+  # a usable host; callers must treat it as "cannot determine", never dial it.
+  [ -z "$h" ] && h="$MR_HOST_UNRESOLVED"
   printf '%s' "$h"
 }
+
+# _mr_host_ok — 0 if we know where the forge is, 1 if we do not.
+# Exists so "I do not know the address" is a distinct, loud outcome instead of
+# an unexplained HTTP 000 three layers down.
+_mr_host_ok(){ [ "$(_mr_host)" != "$MR_HOST_UNRESOLVED" ]; }
 
 # Token preference: an explicit CI/job token first (so the pipeline never needs
 # the developer credential), then .secrets.yml:gitlab.api_token — the non-admin

@@ -345,3 +345,30 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
     # and it must NOT send the reader to a command that cannot help
     echo "$output" | grep -q "will not clear it"
 }
+
+# --- the forge host in CI (2026-08-02, !314 pipeline 1779) --------------------
+
+@test "the host falls back to CI_SERVER_HOST when there is no secrets file" {
+    # In CI there is no .secrets.yml. _mr_project already used CI_PROJECT_ID;
+    # the host never got the matching fallback, so every call dialled the
+    # placeholder and returned HTTP 000 — which the guard then reported as
+    # "no release record for this head". A network failure wearing the costume
+    # of a policy decision.
+    run env NWP_SECRETS_FILE=/nonexistent-$$ CI_SERVER_HOST=example.invalid \
+        bash -c "source '$ROOT/lib/gitlab-mr.sh'; _mr_host"
+    [ "$status" -eq 0 ]
+    [ "$output" = "example.invalid" ]
+}
+
+@test "an unresolvable host is a distinct, loud refusal — never a dialled placeholder" {
+    run env -u CI_SERVER_HOST -u NWP_GITLAB_HOST NWP_SECRETS_FILE=/nonexistent-$$ \
+        bash -c "source '$ROOT/lib/gitlab-mr.sh'; _mr_host_ok"
+    [ "$status" -ne 0 ]
+
+    run env -u CI_SERVER_HOST -u NWP_GITLAB_HOST -u NWP_MR_TOKEN -u GITLAB_TOKEN \
+        NWP_SECRETS_FILE=/nonexistent-$$ CI_MERGE_REQUEST_IID=314 \
+        CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main \
+        "$ROOT/scripts/commands/mr.sh" guard --ci
+    [ "$status" -eq 2 ]
+    echo "$output" | grep -q 'forge host could not be determined'
+}

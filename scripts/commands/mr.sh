@@ -394,6 +394,14 @@ cmd_guard(){
   # told to do next. Reporting "no release record" to someone who has already
   # released it sends them to re-run a command that cannot work, which is
   # exactly what happened on !314 on 2026-08-02.
+  if [ -n "$iid" ] && ! _mr_host_ok; then
+    echo ""
+    echo "CANNOT VERIFY — the forge host could not be determined (no"
+    echo "  NWP_GITLAB_HOST, no CI_SERVER_HOST, no .secrets.yml). Every API call"
+    echo "  would dial a placeholder and return HTTP 000, which is a network"
+    echo "  failure, not a policy decision. Refusing (fail closed)."
+    return 2
+  fi
   if [ -n "$iid" ] && ! _mr_have_token; then
     echo ""
     echo "CANNOT VERIFY — no MR-capable token in this environment, so this job"

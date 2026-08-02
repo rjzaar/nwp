@@ -1,0 +1,64 @@
+# NWP git attributes.
+#
+# ── Append-only arc documents: union merge ────────────────────────────────────
+#
+# WHY. The rollback registry and decision log are APPEND-ONLY ledgers written by
+# concurrent agents. Every agent appends its own rows at the end of the same
+# table, so git sees two different insertions at the same line and calls it a
+# conflict — even though the two edits do not disagree about anything. On
+# 2026-08-02 this single file caused more merge conflicts than every other file
+# in the tree combined: !313, !317, !320 and !332 all stalled on it, and !332's
+# author independently reported "the concurrent-appender problem in that file is
+# structural and will recur".
+#
+# It is not a real conflict, and resolving it by hand a fourth time would be
+# repairing rather than fixing. `merge=union` (a git built-in, no driver to
+# install) keeps BOTH sides' lines. For a ledger whose semantics are "these
+# things happened", keeping both is not merely a safe resolution — it is the
+# only correct one. Dropping either side would erase a recorded rollback path,
+# which is precisely the row an operator reaches for mid-incident.
+#
+# WHAT MAKES THIS SAFE, AND WHY IT WOULD NOT BE OTHERWISE. Union merge is
+# dangerous on files where duplicate lines change meaning. Here the danger is
+# specific and already covered: two agents can independently allocate the same
+# checkpoint id, and union merge would happily keep both — one id, two different
+# restore commands, which the existing gate calls "worse than a missing row".
+# scripts/ci/lint-rollback-registry-ids.sh (CI job `lint:registry-ids`) fails on
+# a duplicate id. That gate is what earns this attribute: it turns a silent bad
+# merge into a red pipeline. Do not extend `merge=union` to any other file
+# without an equivalent gate on that file's uniqueness rule.
+#
+# The gate's own header says it "does not fix" the structural defect and only
+# makes collisions impossible to merge — "the cheap half". This is the other
+# half: the collisions stop being conflicts at all, while the gate keeps the
+# genuine ones red.
+#
+# KNOWN LIMIT — an amended row, replayed by REBASE. Worth stating precisely,
+# because the two git paths differ and the difference is the whole limitation:
+#
+#   MERGE  of a branch that added a row and later amended it  -> correct. Only
+#          the final version lands; git compares endpoints, so the amendment is
+#          simply part of that side's content.
+#   REBASE of the same branch                                  -> duplicates it.
+#          Each commit is replayed in turn: the "add" lands, then the "amend"
+#          arrives as a change to a line union has already decided to keep, so
+#          both the superseded and the final version survive under one id.
+#
+# The rebase path is the one that matters here — it is what GitLab's rebase
+# button does and what draining the queue does by hand. Observed for real on
+# !317 (2026-08-02): a checkpoint row added as "MR TBD" and amended to
+# "MR !317" came through as both. Both tests below reproduce it by rebase for
+# that reason; asserting it via merge would report no problem and prove nothing.
+#
+# The right resolution is to drop the SUPERSEDED DRAFT — the one case where
+# deleting a registry line is correct, since it is a stale version of a row
+# rather than a distinct checkpoint.
+#
+# The limit is acceptable because it is not silent: lint:registry-ids fails on
+# the duplicated id, so this surfaces as a red pipeline, never as a quietly
+# doubled ledger. Plain appends — the common case, and the one costing a
+# conflict per MR — rebase cleanly.
+#
+# SCOPE. Only these two ledgers, matched under any arc directory.
+docs/reports/**/rollback-registry.md   merge=union
+docs/reports/**/decision-log.md        merge=union

@@ -5,6 +5,7 @@
 
 # Ignore everything by default
 /*
+!/.gitattributes
 
 # Whitelist NWP infrastructure files
 

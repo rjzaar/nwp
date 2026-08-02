@@ -56,6 +56,20 @@ _token(){
   printf '%s' "$t"
 }
 
+# _token_present — "would _token succeed?", WITHOUT dying and without printing
+# the value. _token calls die (exit 1), which is right for an operator running
+# `pl issue`, and wrong for an unattended step that runs AFTER a live reset has
+# already succeeded: there, no token must mean "keep the payload for later", not
+# "report the night as a failure". Callers that cannot afford an exit ask here
+# first. Same key list as _token, in the same file, so the two cannot drift.
+_token_present(){
+  local t
+  [ -s "$SECRETS_FILE" ] || return 1
+  [ -n "${YQ:-}" ] || return 1
+  t=$("$YQ" e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  [ -n "$t" ]
+}
+
 # run an authenticated GET; prints the JSON body. token stays in a 0600 curl config.
 _api_get(){ # $1 = path (e.g. /projects/21/issues?...)
   local host token cfg

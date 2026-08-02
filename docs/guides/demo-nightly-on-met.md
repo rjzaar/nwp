@@ -520,3 +520,136 @@ pl demo feedback-sync nwd --tier=live
 The Moodle half (`ssd`) is deliberately skipped: `local_feedback` forwards each
 report to GitLab synchronously at submit time, so it holds no pending set for a
 wipe to destroy. Its payload was minimised by `nwp/ss-moodle-plugins!11`.
+
+---
+
+## 13. §12's residual, and what met actually runs (nwp/ops#156, ruling D15)
+
+§12 ends with a gap it names honestly: the box wrapper cannot sync feedback,
+because it holds no GitLab token and **must not** — a key that can reset must
+not also be able to push to the tracker. The operator ruled option **(b)**:
+route met's cron through `pl demo nightly` rather than stage a token on the box.
+
+What that means in practice, after researching what met can and cannot do:
+
+### 13.1 met runs `pl demo nightly <site> --tier=live --via-key`
+
+```
+# NWP Demo Reset - nwd (restricted key; see docs/guides/demo-nightly-on-met.md)
+CRON_TZ=Australia/Melbourne
+0,30 1-3 * * * /home/rob/nwp/pl demo nightly nwd --tier=live --via-key --host gitlab@<box> >> /home/rob/nwp/logs/demo-nightly-nwd.log 2>&1
+```
+
+Installed, never hand-edited:
+
+```bash
+pl demo schedule nwd --tier=live --via-key --host gitlab@<box>     # ON MET
+pl demo schedule ssd --tier=live --via-key --host gitlab@<box>     # minutes 15,45, derived
+```
+
+**The transport does not change.** Same restricted key, same `-F /dev/null`
+options, same single action word, same box-resident sha256-verified golden, same
+box-side pair lock (§11.6). `demo_box_ssh_args` is the one function that decides
+what ssh invocation reaches the box, and both the cron line and the runner read
+it — a unit test pins that the command met RUNS is the command the verb
+INSTALLED.
+
+What the pl wrapper adds is the two things only a checkout can do:
+
+| when | step | needs |
+|---|---|---|
+| before the wipe | tester-feedback sync (§12) | a drush transport + a token |
+| after a successful wipe | drain the box's pre-wipe error digests (`harvest`, read-only) and post them to nwp/ops | the same restricted key; a token only to POST |
+
+Both are **fail-OPEN and cannot change the reset's exit code**. A scheduler step
+that can turn a good reset into a reported failure is a step that eventually
+stops the nightly.
+
+### 13.2 Why not the obvious form, `pl demo nightly <half> --tier=live`
+
+Because met cannot run it, and making it able to would be a worse posture than
+the gap it closes:
+
+- it routes into `cmd_reset_live`, which needs `sites/<site>/.nwp.yml` — met's
+  checkout has `sites/{avc,mayo,nwc,ss}` and no `nwd` or `ssd`;
+- it uploads the golden from the SCHEDULER on every run; the box already holds a
+  verified copy (nwd 84 MB DB + files, ssd 23 MB DB + 134 MB moodledata);
+- it needs an admin `gitlab@` shell on the live box, whose `gitlab` user has
+  `NOPASSWD: ALL` over ~15 live sites. Handing that to an AI-accessible machine
+  to save a flag is exactly what §1 says never;
+- once nwp/nwp!300 merges, that exact command **REFUSES** anyway: nwd and ssd are
+  a coupled pair and the paired live reset is opt-in.
+
+`--with-pair` is not the answer either: the paired LIVE reset has never run
+against the estate, which is precisely why !300 made it opt-in. An unattended
+nightly must not be its first exerciser. `--no-pair` silences the guard rather
+than satisfying it.
+
+`--via-key` sidesteps the question correctly, not by luck: it never enters
+`cmd_reset`, so the paired-half guard is not in its path — and the pair
+invariant it protects is held on the box, where the ssd wrapper takes the nwd
+wrapper's lock so the two halves never restore simultaneously.
+
+### 13.3 What is still NOT closed, stated plainly
+
+**met still cannot sync feedback**, and this change does not pretend otherwise.
+The sync runs `drush nwc-feedback:sync-to-gitlab` on the live site; the only
+transports to that site are the admin shell (refused above) and the restricted
+key, whose entire guarantee [G1] is that it runs fixed action words and nothing
+else. On met the verb therefore logs
+
+```
+feedback-sync-no-transport tier=live reason=no-live-config-on-scheduler
+```
+
+and prints a WARN naming `pl demo feedback-sync nwd --tier=live`. That is
+*logged* loss, in the log an operator already reads, instead of loss inferred
+from a box-side warning nobody sees. Closing it needs one of:
+
+1. a **token-free `feedback` export action word** in the box wrappers — the box
+   dumps pending rows, met posts them with met's own token. This is the correct
+   final fix and it keeps every existing guarantee; it is a box-wrapper change
+   and therefore its own MR;
+2. or live site config + a registered GitLab token on met (a new secret
+   placement: `pl secrets` entry, `stored_in: host=met:…`, and a scope probe).
+
+Neither is done here. `pl demo nightly --via-key` is where either plugs in.
+
+### 13.4 Cutover order — this matters
+
+The cron line names a verb. **met's checkout must know the verb before the
+crontab names it.** An older `pl` silently ignores `--via-key` and attempts a
+full live reset it cannot perform, so the nightly would fail instead of reset.
+
+```bash
+# 1. merge the MR, then ON MET:
+git -C ~/nwp pull --ff-only
+~/nwp/pl demo nightly nwd --tier=live --via-key --host gitlab@<box> --dry-run   # proves it
+# 2. only then:
+crontab -l > ~/crontab.backup-$(date +%Y%m%d)        # keep the old one
+~/nwp/pl demo schedule nwd --tier=live --via-key --host gitlab@<box>
+~/nwp/pl demo schedule ssd --tier=live --via-key --host gitlab@<box>
+```
+
+`--raw-ssh` reinstalls the previous bare-ssh line at any time; it is the
+rollback, and it is also the right choice for a scheduler that has the key and
+no checkout.
+
+### 13.5 met's git identity is still @root (ops#156 residue)
+
+Measured 2026-08-02: `ssh -T -i ~/.ssh/gitlab_metabox -o IdentitiesOnly=yes
+git@git.nwpcode.org` from met answers **`Welcome to GitLab, @root`**, and `git
+ls-remote` authenticates with that same key. It is a root-identity credential
+and it must be replaced with a read-only, met-specific deploy key.
+
+Two things follow, and both matter:
+
+- **This nightly does not use it.** `pl demo nightly --via-key` runs no `git`
+  command; its only network calls are the restricted-key ssh to the box and (if
+  a token is ever present) an HTTPS POST to nwp/ops. The credential's exposure
+  is unchanged by this MR.
+- **It still gates the cutover.** The code met executes nightly arrives through
+  that credential, so the honest sequence is: de-root met's git identity, then
+  flip the crontab. Minting the deploy key needs Maintainer/admin — `pl secrets
+  capabilities` shows `deploy-keys: no` for every token available to automation,
+  including `gitlab_operator_pat`. It is an operator action.

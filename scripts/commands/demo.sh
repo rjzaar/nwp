@@ -125,6 +125,25 @@ ${BOLD}SUBCOMMANDS:${NC}
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
                                   retrying every 30 min until the 04:00
                                   ${DEMO_TZ} floor, then skip + log.
+    nightly <site> --tier=live --via-key [--host <[user@]ip>] [--dry-run]
+                                  THE ARMED NIGHTLY (met). Hands the wipe to
+                                  the box's restricted forced command — same
+                                  key, same action word, same box-resident
+                                  golden as the bare ssh line it replaces, and
+                                  still no admin key and no root on the box.
+                                  What it adds is what only a checkout can do:
+                                  the ops#161 pre-wipe tester-feedback sync
+                                  (attempted where a drush transport exists;
+                                  LOGGED as feedback-sync-no-transport where it
+                                  does not), and afterwards the read-only drain
+                                  of the box's pre-wipe error digests, posted to
+                                  nwp/ops if this host has a token and kept in
+                                  the spool if it does not. Both fail-OPEN:
+                                  neither can change the reset's exit code.
+                                  --dry-run sends the box's 'dry-run' word and
+                                  syncs nothing. Never enters cmd_reset, so the
+                                  paired-half refusal does not apply — the pair
+                                  invariant is held by the box's own pair lock.
     harvest-pull <site> --tier=live
                                   Drain the LIVE box's spooled pre-wipe error
                                   digests into the local spool. Read-only on the
@@ -179,16 +198,23 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   least-privilege gitlab.ops_note_token).
                                   Retry-safe: only posted digests are moved to
                                   demo-harvest/posted/.
-    schedule <site> [--tier=live] [--remove] [--via-key]
+    schedule <site> [--tier=live] [--remove] [--via-key] [--raw-ssh]
              [--host <[user@]ip>] [--print-only]
                                   Install/remove the nightly cron on THIS
                                   machine (intended host: met).
                                   --via-key schedules the RESTRICTED
                                   forced-command key (~/.ssh/<site>_demo_reset →
                                   /usr/local/bin/nwd-demo-reset-restricted on
-                                  the box) instead of running pl locally: the
-                                  scheduler then needs no repo checkout, no
-                                  admin key, and gets no root on the box.
+                                  the box): no admin key, and no root on the
+                                  box. The line it writes runs
+                                  'pl demo nightly <site> --tier=live --via-key
+                                  --host <box>' (ops#156), so the pre-wipe
+                                  feedback sync and the post-reset harvest drain
+                                  happen; the checkout must therefore exist on
+                                  the SCHEDULER and be new enough to know the
+                                  flag. --raw-ssh writes the older bare-ssh line
+                                  instead, for a scheduler with the key and no
+                                  checkout — it resets and does nothing else.
                                   Fires every 30 min 01:00–03:30 ${DEMO_TZ}
                                   (the wrapper is idempotent), giving the same
                                   ${DEMO_FLOOR_TIME} floor without holding a
@@ -2714,9 +2740,170 @@ _cmd_reset_paired_live_body() {
 # nightly — scheduled entrypoint with the §4.3 retry loop
 ################################################################################
 
+# demo_nightly_via_key <site> <host-override> <dry-run> <print-transport>
+#
+# THE SCHEDULER'S NIGHTLY, AS A pl VERB (nwp/ops#156 + #161, operator ruling D15).
+#
+# What this is NOT: it is not `pl demo reset --tier=live` on a timer. met cannot
+# run that and must not be made able to. cmd_reset_live needs
+# sites/<site>/.nwp.yml (met has no sites/nwd or sites/ssd), a LOCAL golden to
+# upload on every run (the box already holds a sha256-verified copy), and an
+# admin `gitlab@` shell on the LIVE box — a host whose `gitlab` user has
+# NOPASSWD sudo over ~15 live sites. Handing that key to an AI-accessible
+# machine to save a `--via-key` flag trades a logged gap for root on the live
+# box. The standing rule in docs/guides/demo-nightly-on-met.md §1 says never,
+# and it is right.
+#
+# So the transport is unchanged: the restricted forced-command key, one action
+# word, the box-resident golden, the box's own pair lock serialising the two
+# halves (§11.6). Byte-identical to the cron line `pl demo schedule --via-key
+# --raw-ssh` writes, because both come out of demo_box_ssh_args.
+#
+# What routing it through pl BUYS is the steps only a checkout can take, in the
+# one place they belong — around the wipe, on the scheduler:
+#
+#   PRE   tester-feedback sync (ops#161). The Feedback entities are IN the
+#         database the box is about to replace and live holds no other copy.
+#         Attempted only where a real drush transport exists; where it does not
+#         (met today) the verb says so and LOGS it, instead of the loss being
+#         inferred from a box-side WARN nobody reads.
+#   POST  harvest drain (ops#161's other half). The box has always written a
+#         pre-wipe error digest and the box keeps only 30; nothing on met ever
+#         collected them, so every live tester error aged out silently. The
+#         drain is the read-only `harvest` action word on the SAME restricted
+#         key — no token, no shell, no box change.
+#
+# Both are fail-OPEN and neither can change the reset's exit code: a scheduler
+# step that can turn a good reset into a reported failure is a scheduler step
+# that will eventually stop the nightly.
+demo_nightly_via_key() {
+    local site="$1" host_override="${2:-}" dry_run="${3:-false}" print_transport="${4:-false}"
+    local -a sshargs=()
+    mapfile -t sshargs < <(demo_box_ssh_args "$site" "$host_override")
+    (( ${#sshargs[@]} > 0 )) || {
+        print_error "Cannot resolve the demo box for '$site' — pass --host <[user@]ip> or set NWP_DEMO_BOX_HOST."
+        return 1
+    }
+
+    # The CRON form carries a literal `$HOME` (sh expands it). Executing it here
+    # means expanding it ourselves — the one and only difference between the
+    # scheduled string and the executed argv, and the pinning test asserts it.
+    local i
+    for i in "${!sshargs[@]}"; do sshargs[$i]="${sshargs[$i]//\$HOME/$HOME}"; done
+
+    if [[ "$print_transport" == "true" ]]; then
+        printf '%s\n' "${sshargs[*]}"
+        return 0
+    fi
+
+    local action="nightly"
+    [[ "$dry_run" == "true" ]] && action="dry-run"
+
+    print_header "Nightly demo reset via the restricted key: $site (live)"
+    print_info "Transport: restricted forced command — no admin key, no shell, no root on the box."
+
+    # --- PRE: tester feedback, before the box destroys the database ----------
+    demo_nightly_feedback_preflight "$site" "$dry_run"
+
+    # --- The reset itself, on the box ----------------------------------------
+    local rc=0
+    set +e
+    # -n: never read stdin. Under cron there is none, but an interactive re-run
+    # must not have the wrapper inherit a terminal either.
+    "${sshargs[@]}" -n "$action"
+    rc=$?
+    set -e
+
+    case "$rc" in
+        0) print_status "OK" "Box reported success (action=${action})" ;;
+        "$DEMO_EXIT_ACTIVE")
+            # Cron retries every 30 min to the floor; the wrapper is idempotent.
+            print_status "WARN" "Box reports ACTIVE sessions (exit ${DEMO_EXIT_ACTIVE}) — cron retries within the window" ;;
+        2) print_status "FAIL" "Box REFUSED the action word — the key or the wrapper is not what this verb expects" ;;
+        *) print_status "FAIL" "Box reset failed (exit ${rc})" ;;
+    esac
+    demo_log "$site" nightly-via-key "tier=live action=${action} rc=${rc}"
+
+    # --- POST: drain the box's pre-wipe error digests ------------------------
+    if [[ "$rc" -eq 0 && "$dry_run" != "true" ]]; then
+        demo_nightly_harvest_drain "$site" "$host_override"
+    fi
+    return "$rc"
+}
+
+# Attempt the ops#161 pre-wipe sync, and be honest when it cannot be attempted.
+# Fail-OPEN in every branch: this function always returns 0.
+demo_nightly_feedback_preflight() {
+    local site="$1" dry_run="${2:-false}"
+    if [[ "$dry_run" == "true" ]]; then
+        print_info "[dry-run] pre-wipe feedback sync not attempted (a rehearsal must not push tester reports)."
+        return 0
+    fi
+    # Moodle halves hold no pending set — local_feedback forwards at submit time.
+    if [[ "$(demo_kind_of "$site")" != "drupal" ]]; then
+        return 0
+    fi
+    # A real drush transport means live site config on THIS host. Without it
+    # there is nothing to run the module's own sync command through, and the
+    # restricted key cannot provide one by design ([G1]: fixed action words).
+    if ! demo_live_ctx "$site" >/dev/null 2>&1; then
+        demo_log "$site" feedback-sync-no-transport "tier=live reason=no-live-config-on-scheduler"
+        print_status "WARN" "Pending tester feedback CANNOT be synced from this host — the restricted key runs fixed action words only, and there is no live site config here."
+        print_hint "From a host with admin access + a token: pl demo feedback-sync ${site} --tier=live"
+        return 0
+    fi
+    print_info "Syncing pending tester feedback to GitLab before the box wipes it…"
+    demo_feedback_sync "$site" live demo_rdrush "$site" || true
+    return 0
+}
+
+# Drain + post the box's pre-wipe digests. Fail-OPEN: always returns 0.
+demo_nightly_harvest_drain() {
+    local site="$1" host_override="${2:-}"
+    set +e
+    cmd_harvest_pull "$site" live false "$host_override"
+    set -e
+    # cmd_harvest_post sources lib/gitlab-issues.sh, whose _token EXITS the
+    # process when there is none. Checking first is the difference between "no
+    # token, digests kept for later" and a nightly that dies after the reset.
+    if demo_ops_token_present; then
+        set +e
+        cmd_harvest_post "$site" false
+        set -e
+    else
+        demo_log "$site" harvest-post-skipped "tier=live reason=no-token"
+        print_info "No GitLab token on this host — digests kept in the spool. Post them with: pl demo harvest-post ${site}"
+    fi
+    return 0
+}
+
+# Is there a token cmd_harvest_post could use? Delegated to lib/gitlab-issues.sh
+# so demo.sh still names no token key of its own (the rule the harvest-post test
+# pins), and run in a SUBSHELL so a `die` inside the lib cannot take the nightly
+# down after the reset has already succeeded.
+demo_ops_token_present() {
+    ( source "$REPO_ROOT/lib/gitlab-issues.sh" >/dev/null 2>&1 && _token_present )
+}
+
 cmd_nightly() {
     local site="$1" tier="$2" use_pair="${3:-false}"
+    local via_key="${4:-false}" host_override="${5:-}" dry_run="${6:-false}"
+    local print_transport="${7:-false}"
     local rc now
+
+    # --via-key is a different NIGHTLY, not a different reset: it hands the wipe
+    # to the box's own idempotent wrapper, so the retry loop below (which exists
+    # to re-attempt a locally-driven reset) is cron's job instead — every 30 min
+    # to the 04:00 floor, exactly as the installed schedule already does.
+    if [[ "$via_key" == "true" ]]; then
+        if ! demo_is_live "$tier"; then
+            print_error "REFUSED: --via-key is a LIVE-tier transport (the restricted key reaches the live box)."
+            return 2
+        fi
+        demo_nightly_via_key "$site" "$host_override" "$dry_run" "$print_transport"
+        return $?
+    fi
+
     if [[ "$use_pair" == "true" ]]; then
         print_info "Pair mode: this reset restores BOTH halves to one golden cut."
     fi
@@ -3389,9 +3576,16 @@ DEMO_KEY_PATH="${DEMO_KEY_PATH:-\$HOME/.ssh/<site>_demo_reset}"
 # The override takes `host` or `user@host`. It is honoured ahead of every config
 # lookup, because someone who names the box explicitly is not asking to be
 # second-guessed by whatever a stale local checkout happens to think.
-demo_schedule_key_cmd() {
+#
+# SPLIT INTO THREE (nwp/ops#156/#161). The endpoint resolution, the argv and the
+# joined string used to be one function whose only consumer was the cron line.
+# `pl demo nightly --via-key` now EXECUTES the same transport, and a scheduler
+# that runs a different command from the one the verb installed is a scheduler
+# nobody can reason about. So there is exactly one place that decides what ssh
+# invocation reaches the box, and both the installer and the runner read it.
+demo_box_endpoint() {
     local site="$1" override="${2:-${NWP_DEMO_BOX_HOST:-}}"
-    local host="" user="" key="" server_name=""
+    local host="" user="" server_name=""
     if [[ -n "$override" ]]; then
         # `user@host` splits; a bare host keeps the config-derived user.
         if [[ "$override" == *"@"* ]]; then
@@ -3423,23 +3617,51 @@ demo_schedule_key_cmd() {
         }
     fi
     [[ -n "$user" ]] || user="$(get_ssh_user "$site")"
+    printf '%s@%s' "$user" "$host"
+}
+
+# demo_box_ssh_args <site> [<[user@]host-override>] → the ssh invocation, ONE
+# ARGUMENT PER LINE, so the runner can exec it as an argv array instead of
+# re-splitting a string it did not build.
+#
+# -F /dev/null: IdentitiesOnly + IdentityAgent=none block the AGENT, but an
+# `IdentityFile` in ~/.ssh/config for this host is still offered — and on a
+# workstation that file usually names the ADMIN key. When that wins, the forced
+# command never applies and the wrapper is bypassed entirely: the action word
+# lands in a login shell instead ("status: command not found"), so the nightly
+# silently stops resetting while cron reports success. Reading no config at all
+# is the only way to guarantee this key, and only this key, is what
+# authenticates. known_hosts still applies (it is not a config-file setting), so
+# host verification is unaffected.
+#
+# The key path deliberately keeps the LITERAL `$HOME` that DEMO_KEY_PATH carries:
+# a crontab line is run by sh and expands it, and the runner expands it itself
+# (demo_nightly_via_key). One string, two correct readings — not two strings.
+demo_box_ssh_args() {
+    local site="$1" override="${2:-}"
+    local endpoint key
+    endpoint="$(demo_box_endpoint "$site" "$override")" || return 1
     key="${DEMO_KEY_PATH//<site>/$site}"
-    # -F /dev/null: IdentitiesOnly + IdentityAgent=none block the AGENT, but an
-    # `IdentityFile` in ~/.ssh/config for this host is still offered — and on a
-    # workstation that file usually names the ADMIN key. When that wins, the
-    # forced command never applies and the wrapper is bypassed entirely: the
-    # action word lands in a login shell instead ("status: command not found"),
-    # so the nightly silently stops resetting while cron reports success.
-    # Reading no config at all is the only way to guarantee this key, and only
-    # this key, is what authenticates. known_hosts still applies (it is not a
-    # config-file setting), so host verification is unaffected.
-    printf 'ssh -F /dev/null -i %s -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=30 %s@%s' \
-        "$key" "$user" "$host"
+    printf '%s\n' ssh -F /dev/null -i "$key" \
+        -o IdentitiesOnly=yes -o IdentityAgent=none \
+        -o BatchMode=yes -o ConnectTimeout=30 "$endpoint"
+}
+
+# demo_schedule_key_cmd <site> [<[user@]host-override>] → the same invocation as
+# a single space-joined string, for the `--via-key --raw-ssh` cron line.
+demo_schedule_key_cmd() {
+    local -a a=()
+    mapfile -t a < <(demo_box_ssh_args "$1" "${2:-${NWP_DEMO_BOX_HOST:-}}")
+    # mapfile's status is its own, not the producer's — an empty array IS the
+    # failure signal, and treating it as anything else would emit a truncated
+    # ssh command into a crontab.
+    (( ${#a[@]} > 0 )) || return 1
+    printf '%s' "${a[*]}"
 }
 
 cmd_schedule() {
     local site="$1" remove="$2" tier="${3:-dev}" via_key="${4:-false}"
-    local host_override="${5:-}" print_only="${6:-false}"
+    local host_override="${5:-}" print_only="${6:-false}" raw_ssh="${7:-false}"
     # `pl demo schedule --help` parsed the FLAG as a site name and cheerfully
     # installed a nightly cron for a site called "--help". A scheduler that
     # accepts a name no site could ever have is writing a job that can only
@@ -3505,17 +3727,35 @@ cmd_schedule() {
         fi
     fi
 
-    if [[ "$via_key" == "true" ]]; then
-        # Restricted-key flavour. The retry loop lives in CRON, not in a
-        # 3-hour-long ssh session: the box-side wrapper is idempotent (one
-        # reset per Melbourne day) and returns 3 while sessions are active, so
-        # firing every 30 min from 01:00 to 03:30 gives the same "retry to the
-        # 04:00 floor" semantics without holding a connection open on a 3.8 GB
-        # host. No repo checkout is needed on the scheduler at all.
+    if [[ "$via_key" == "true" && "$raw_ssh" == "true" ]]; then
+        # RAW flavour — the pre-ops#156 line, kept for a scheduler that has the
+        # restricted key and NO checkout. It resets and nothing else: no
+        # pre-wipe feedback sync, no harvest drain. Explicit, because a
+        # scheduler silently doing less than the operator thinks is how
+        # ops#161's loss went unnoticed in the first place.
         local sshcmd
         sshcmd="$(demo_schedule_key_cmd "$site" "$host_override")" || return 1
         entry="CRON_TZ=${DEMO_TZ}
 ${minutes} 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
+    elif [[ "$via_key" == "true" ]]; then
+        # Restricted-key flavour, DRIVEN BY pl (ops#156 / operator ruling D15).
+        # The transport is identical — same key, same options, same action word,
+        # same idempotent box wrapper — but the invocation goes through
+        # `pl demo nightly --via-key`, so the pre-wipe feedback sync and the
+        # post-reset harvest drain have somewhere to live. The retry loop still
+        # lives in CRON, not in a 3-hour ssh session: the wrapper is idempotent
+        # (one reset per Melbourne day) and returns 3 while sessions are active,
+        # so firing every 30 min from 01:00 to 03:30 gives the same "retry to
+        # the 04:00 floor" semantics without holding a connection open on a
+        # small host.
+        #
+        # The endpoint is BAKED INTO THE LINE rather than resolved at run time,
+        # so the job does not start depending on site config the scheduler was
+        # deliberately never given.
+        local endpoint
+        endpoint="$(demo_box_endpoint "$site" "$host_override")" || return 1
+        entry="CRON_TZ=${DEMO_TZ}
+${minutes} 1-3 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=live --via-key --host ${endpoint} >> ${log} 2>&1"
     else
         # CRON_TZ pins the fire time to Melbourne regardless of host TZ (handles
         # DST; supported by ISC/vixie cron on Ubuntu 22.04+). The retry semantics
@@ -3543,14 +3783,15 @@ ${minutes} 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
         {
             print_info "--print-only: nothing was written to any crontab."
             print_hint "Install on the scheduler (met): crontab -l > /tmp/c; cat block >> /tmp/c; crontab /tmp/c"
-            if [[ "$via_key" != "true" ]]; then
-                # The local-pl flavour hard-codes THIS machine's checkout path.
-                print_status "WARN" "This block runs ${PROJECT_ROOT}/pl — that path must exist on the TARGET machine, not just this one."
-            else
-                # Even the repo-free flavour names a log path, and it is this
+            if [[ "$via_key" == "true" && "$raw_ssh" == "true" ]]; then
+                # The repo-free flavour still names a log path, and it is this
                 # machine's. On met the checkout lives elsewhere and cron would
                 # silently write nowhere useful.
                 print_info "Log path in the block is ${log} — confirm it exists on the target, or edit the block's '>>' path."
+            else
+                # Every other flavour hard-codes THIS machine's checkout path.
+                print_status "WARN" "This block runs ${PROJECT_ROOT}/pl — that path must exist on the TARGET machine, not just this one."
+                [[ "$via_key" == "true" ]] && print_status "WARN" "The target's checkout must be new enough to know 'pl demo nightly --via-key' (nwp/ops#156). An older pl ignores the flag and attempts a FULL LIVE RESET it cannot do."
             fi
         } >&2
         return 0
@@ -3559,7 +3800,12 @@ ${minutes} 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
     printf '%s\n%s\n%s\n' "$cleaned" "$marker_line" "$entry" | crontab -
     if [[ "$via_key" == "true" ]]; then
         print_status "OK" "Installed nightly demo reset for $site via the RESTRICTED key (01:00–03:30 ${DEMO_TZ}, minutes ${minutes}, ${DEMO_FLOOR_TIME} floor)${pair_note}"
-        print_info "This host needs only ~/.ssh/${site}_demo_reset — no repo, no admin key, no root on the box."
+        if [[ "$raw_ssh" == "true" ]]; then
+            print_info "This host needs only ~/.ssh/${site}_demo_reset — no repo, no admin key, no root on the box."
+            print_status "WARN" "--raw-ssh: the reset runs, but NOTHING syncs tester feedback or drains the box's error digests (nwp/ops#161)."
+        else
+            print_info "This host needs ~/.ssh/${site}_demo_reset and THIS checkout — still no admin key and no root on the box."
+        fi
     else
         print_status "OK" "Installed nightly demo reset for $site --tier=${tier} (01:00 ${DEMO_TZ}, retries to ${DEMO_FLOOR_TIME})"
         print_info "Runs on THIS machine's crontab — the production schedule belongs on met (pl schedule host)."
@@ -3595,6 +3841,12 @@ main() {
     # can carry the box address in its environment instead of in site config it
     # is deliberately not given.
     local box_host="${NWP_DEMO_BOX_HOST:-}" print_only="false"
+    # ops#156: --via-key now installs (and runs) a pl-mediated nightly.
+    # --raw-ssh asks for the older bare-ssh cron line, for a scheduler with the
+    # restricted key and no checkout. --print-transport is the introspection
+    # hook the pinning test uses: it prints the ssh command `nightly --via-key`
+    # would execute and runs nothing.
+    local raw_ssh="false" print_transport="false"
     local with_pair="auto"
     local passthru=()
     while [[ $# -gt 0 ]]; do
@@ -3610,6 +3862,8 @@ main() {
             --no-pair)   with_pair="no";  shift ;;
             --remove)   remove="true"; shift ;;
             --via-key)  via_key="true"; shift ;;
+            --raw-ssh)  raw_ssh="true"; shift ;;
+            --print-transport) print_transport="true"; shift ;;
             # A bare trailing `--host` would `shift 2` off the end and, under
             # `set -e`, kill the script with no message at all. Say what is wrong.
             --host)     [[ -n "${2:-}" ]] || { print_error "--host requires a value: --host <[user@]ip>"; return 2; }
@@ -3688,15 +3942,15 @@ main() {
                       local _pg=""; [[ "$with_pair" == "no" ]] && _pg="skip"
                       cmd_reset "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run" "$_pg"
                   fi ;;
-        nightly)  cmd_nightly "$site" "$tier" "$use_pair" ;;
+        nightly)  cmd_nightly "$site" "$tier" "$use_pair" "$via_key" "$box_host" "$dry_run" "$print_transport" ;;
         status)   cmd_status "$site" "$tier" ;;
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
-        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" ;;
+        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" "$raw_ssh" ;;
         feedback-sync) cmd_feedback_sync "$site" "$tier" "$dry_run" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
-        harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" ;;
+        harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" "$box_host" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
 }
@@ -3718,7 +3972,7 @@ main() {
 # posted. Re-running is free; a half-finished pull loses nothing.
 ################################################################################
 cmd_harvest_pull() {
-    local site="$1" tier="${2:-live}" dry_run="${3:-false}"
+    local site="$1" tier="${2:-live}" dry_run="${3:-false}" host_override="${4:-}"
 
     if [[ "$tier" != "live" ]]; then
         print_error "harvest-pull is a LIVE-tier action (the box is the only place these digests exist)."
@@ -3735,10 +3989,15 @@ cmd_harvest_pull() {
     # the restricted key is not on this machine.
     local keyfile="$HOME/.ssh/${site}_demo_reset" out
     if [[ -r "$keyfile" ]]; then
-        if ! demo_live_ctx "$site"; then return 1; fi
+        # The endpoint comes from demo_box_endpoint, not demo_live_ctx: the
+        # scheduler that most needs this drain (met) has no sites/ config, which
+        # is exactly the ops#171 trap the schedule verb already climbed out of.
+        # --host / NWP_DEMO_BOX_HOST wins; site config is the fallback.
+        local endpoint
+        endpoint="$(demo_box_endpoint "$site" "$host_override")" || return 1
         out=$(ssh -i "$keyfile" -o IdentitiesOnly=yes -o IdentityAgent=none \
                   -o BatchMode=yes -o StrictHostKeyChecking=accept-new -n \
-                  "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}" harvest 2>/dev/null) || {
+                  "$endpoint" harvest 2>/dev/null) || {
             print_error "Restricted-key drain failed. Is the box wrapper current? (scripts/deploy-demo-reset-wrapper.sh)"
             return 1
         }

@@ -842,7 +842,11 @@ wrapper() { echo "${REPO_ROOT}/servers/live/demo/nwd-demo-reset-restricted"; }
   done
 }
 
-@test "schedule --via-key writes a repo-free cron line pinned to the restricted key" {
+@test "schedule --via-key --raw-ssh writes a repo-free cron line pinned to the restricted key" {
+  # ops#156 moved the DEFAULT --via-key line to `pl demo nightly --via-key`, so
+  # the pre/post steps have somewhere to live. --raw-ssh keeps this shape for a
+  # scheduler that has the key and no checkout; the assertions below are
+  # unchanged, because the transport is unchanged.
   mkdir -p "${TEST_TMP}/bin"
   cat > "${TEST_TMP}/bin/crontab" <<'STUB'
 #!/bin/bash
@@ -863,7 +867,7 @@ live:
   server_ip: 203.0.113.9
 YML
 
-  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --raw-ssh
   [ "$status" -eq 0 ]
   grep -q '^CRON_TZ=Australia/Melbourne$' "$STUB_CRON"
   grep -q 'demo1_demo_reset' "$STUB_CRON"
@@ -1678,6 +1682,16 @@ YML
   [ "$status" -eq 0 ]
   grep -q '198.51.100.7' "$STUB_CRON"    # … the flag says .7, and the flag wins
   ! grep -q '203.0.113.9' "$STUB_CRON"
+  # ops#156: the default --via-key line is the pl-mediated one, and the endpoint
+  # the flag named is BAKED INTO it — resolved once, at install time.
+  grep -q 'pl demo nightly demo1 --tier=live --via-key --host' "$STUB_CRON"
+
+  # …and the raw form obeys the same override
+  : > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --raw-ssh --host 198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q '198.51.100.7' "$STUB_CRON"
+  ! grep -q '203.0.113.9' "$STUB_CRON"
   grep -q 'demo1_demo_reset' "$STUB_CRON"
 }
 
@@ -1688,12 +1702,18 @@ YML
   : > "$STUB_CRON"
   rm -rf "${PROJECT_ROOT}/sites/demo1"
 
-  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --host gitlab@198.51.100.7
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --raw-ssh --host gitlab@198.51.100.7
   [ "$status" -eq 0 ]
   grep -q 'gitlab@198.51.100.7' "$STUB_CRON"
   grep -q 'IdentitiesOnly=yes' "$STUB_CRON"
   grep -q 'IdentityAgent=none' "$STUB_CRON"
   grep -q -- '-F /dev/null' "$STUB_CRON"   # MR !262's anti-hijack fix, still there
+
+  # ops#156: and the DEFAULT (pl-mediated) form is equally config-free
+  : > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q 'pl demo nightly demo1 --tier=live --via-key --host gitlab@198.51.100.7' "$STUB_CRON"
 }
 
 @test "ops#171 NWP_DEMO_BOX_HOST is the env form of --host" {
@@ -2383,4 +2403,234 @@ _fb_pushed() { grep -q 'nwc-feedback:sync-to-gitlab --limit' "$FB_CALLS"; }
   [ "$fb" -lt "$drop" ]
   # …and it must name the verb that recovers them.
   grep -q 'pl demo feedback-sync' "$w"
+}
+
+################################################################################
+# nwp/ops#156 + #161 — the ARMED NIGHTLY is a pl verb (operator ruling D15)
+#
+# met's cron ran a bare `ssh <box> nightly`. It reset the sites and it could do
+# nothing else: the box wrapper holds no GitLab token (correctly — a key that
+# can reset must not also be able to push to the tracker), so the ops#161
+# pre-wipe feedback sync could never run on the armed path, and the box's own
+# pre-wipe error digests were never drained by anything.
+#
+# What did NOT change, and these tests exist to keep it that way: the transport.
+# `pl demo nightly --via-key` does not become `pl demo reset --tier=live` on a
+# timer. That path needs sites/<site>/.nwp.yml, a local golden to upload nightly,
+# and an admin `gitlab@` shell on a box whose gitlab user has NOPASSWD sudo over
+# ~15 live sites. The restricted forced command stays the only thing met can
+# reach, and the pinning test below proves the command met RUNS is the command
+# the verb INSTALLS.
+################################################################################
+
+# An ssh stub that records its full argv, so "what met would run" is observable
+# rather than described. $SSH_RC lets a test choose the box's exit code.
+_stub_ssh() {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/ssh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$@" >> "$SSH_ARGV"
+exit "${SSH_RC:-0}"
+STUB
+  chmod +x "${TEST_TMP}/bin/ssh"
+  export SSH_ARGV="${TEST_TMP}/ssh.argv"
+  rm -f "$SSH_ARGV"
+}
+
+@test "ops#156 schedule --via-key installs the pl-mediated nightly, not a bare ssh line" {
+  _stub_crontab
+  : > "$STUB_CRON"
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  # the job is a pl verb…
+  grep -q "pl demo nightly demo1 --tier=live --via-key --host gitlab@198.51.100.7" "$STUB_CRON"
+  # …and the endpoint is BAKED IN, so the job never starts depending on the
+  # sites/ config the scheduler was deliberately never given.
+  ! grep -qE '^[0-9,]+ 1-3 \* \* \* ssh ' "$STUB_CRON"
+  grep -q '^CRON_TZ=Australia/Melbourne$' "$STUB_CRON"
+  grep -q '^0,30 1-3 \* \* \*' "$STUB_CRON"
+}
+
+@test "ops#156 --raw-ssh still writes the checkout-free line (a scheduler with no repo keeps working)" {
+  _stub_crontab
+  : > "$STUB_CRON"
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 \
+      --tier=live --via-key --raw-ssh --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q 'demo1_demo_reset' "$STUB_CRON"
+  grep -q -- '-F /dev/null' "$STUB_CRON"
+  grep -q 'IdentitiesOnly=yes' "$STUB_CRON"
+  grep -q 'IdentityAgent=none' "$STUB_CRON"
+  ! grep -q 'pl demo nightly demo1' "$STUB_CRON"
+  # and it must SAY what it is giving up, or the operator cannot know
+  [[ "$output" == *"NOTHING syncs tester feedback"* ]]
+}
+
+@test "ops#156 PIN: the transport the nightly RUNS is the one the schedule verb INSTALLS" {
+  # The single property that makes this refactor safe. Both come out of
+  # demo_box_ssh_args; the only permitted difference is that the cron line
+  # carries a literal \$HOME (sh expands it) and the runner expands it itself.
+  _stub_crontab
+  : > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 \
+      --tier=live --via-key --raw-ssh --host gitlab@198.51.100.7 --print-only \
+      > "${TEST_TMP}/block" 2>/dev/null
+
+  # the ssh command out of the cron line: strip the 5 cron fields and the >> tail
+  local scheduled
+  scheduled="$(grep -E '^[0-9,]+ 1-3 ' "${TEST_TMP}/block" \
+      | sed -E 's/^([^ ]+ ){5}//; s/ nightly >>.*$//')"
+  [ -n "$scheduled" ]
+
+  run bash "$DEMO_CMD" nightly demo1 --tier=live --via-key \
+      --host gitlab@198.51.100.7 --print-transport
+  [ "$status" -eq 0 ]
+
+  # identical once \$HOME is resolved the way cron's sh would resolve it
+  [ "${scheduled/\$HOME/$HOME}" = "$output" ]
+}
+
+@test "ops#156 the nightly executes the restricted key with the 'nightly' action word" {
+  _stub_ssh
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -qx -- '-F' "$SSH_ARGV"
+  grep -qx -- '/dev/null' "$SSH_ARGV"
+  grep -qx 'IdentitiesOnly=yes' "$SSH_ARGV"
+  grep -qx 'IdentityAgent=none' "$SSH_ARGV"
+  grep -qx 'gitlab@198.51.100.7' "$SSH_ARGV"
+  grep -qx 'nightly' "$SSH_ARGV"
+  # the key path is EXPANDED for exec — a literal $HOME would name no file
+  grep -qx "${HOME}/.ssh/demo1_demo_reset" "$SSH_ARGV"
+  ! grep -q '\$HOME' "$SSH_ARGV"
+}
+
+@test "ops#156 --dry-run sends the box's 'dry-run' word and syncs nothing" {
+  _stub_ssh
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7 --dry-run
+  [ "$status" -eq 0 ]
+  grep -qx 'dry-run' "$SSH_ARGV"
+  ! grep -qx 'nightly' "$SSH_ARGV"
+  [[ "$output" == *"not attempted"* ]]
+}
+
+@test "ops#156 --via-key is refused at a non-live tier (the key reaches the live box)" {
+  _stub_ssh
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 --via-key
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [ ! -s "$SSH_ARGV" ]
+}
+
+@test "ops#170 the --via-key nightly never enters cmd_reset, so the paired-half refusal cannot fire" {
+  # MR !300 makes a bare `pl demo reset <half> --tier=live` REFUSE for a coupled
+  # pair, and `pl demo nightly` routes through cmd_reset. The armed nightly must
+  # not become a refusing nightly the day that merges — it does not go that way
+  # at all. The pair invariant at live is held by the BOX's pair lock (the ssd
+  # wrapper takes the nwd wrapper's lock), not by this guard.
+  run bash -c "sed -n '/^cmd_nightly()/,/^}/p' '$DEMO_CMD'"
+  [ "$status" -eq 0 ]
+  # the via_key branch returns BEFORE either reset verb is named
+  local viakey_line reset_line
+  viakey_line=$(printf '%s\n' "$output" | grep -n 'demo_nightly_via_key' | head -1 | cut -d: -f1)
+  reset_line=$(printf '%s\n' "$output" | grep -n 'cmd_reset' | head -1 | cut -d: -f1)
+  [ -n "$viakey_line" ] && [ -n "$reset_line" ]
+  [ "$viakey_line" -lt "$reset_line" ]
+  printf '%s\n' "$output" | grep -q 'return \$?'
+}
+
+@test "ops#161 with no live config on the scheduler the lost feedback is LOGGED, not inferred" {
+  # The met case verbatim: the restricted key runs fixed action words, so there
+  # is no drush transport here. Silent loss became logged loss.
+  _stub_ssh
+  rm -rf "${PROJECT_ROOT}/sites/demo1"
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q 'feedback-sync-no-transport' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+  [[ "$output" == *"pl demo feedback-sync demo1"* ]]
+  # and the reset still happened — the warning is not a refusal
+  grep -qx 'nightly' "$SSH_ARGV"
+}
+
+@test "ops#156 the box's exit code is passed through (cron's retry semantics survive)" {
+  _stub_ssh
+  SSH_RC=3 PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"ACTIVE"* ]]
+  grep -q 'nightly-via-key .*rc=3' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+}
+
+@test "ops#161 the harvest is drained only after a SUCCESSFUL reset" {
+  _stub_ssh
+  # success → two ssh invocations: the reset, then the read-only harvest drain
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  # no restricted key on this test host → the drain takes the admin fallback and
+  # fails harmlessly; what matters is that the reset's exit code is unaffected
+  grep -qx 'nightly' "$SSH_ARGV"
+
+  # failure → nothing is drained
+  rm -f "$SSH_ARGV"
+  SSH_RC=1 PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 1 ]
+  ! grep -qx 'harvest' "$SSH_ARGV"
+}
+
+@test "ops#161 no token means the digests are KEPT, not a nightly that dies after the wipe" {
+  # cmd_harvest_post sources lib/gitlab-issues.sh, whose _token calls die →
+  # exit 1. Reached after a successful reset, that would report the night as a
+  # failure. demo_ops_token_present is the pre-check that stops it.
+  run bash -c "sed -n '/^demo_nightly_harvest_drain()/,/^}/p' '$DEMO_CMD'"
+  [[ "$output" == *"demo_ops_token_present"* ]]
+  [[ "$output" == *"harvest-post-skipped"* ]]
+
+  # and the check itself is honest about an empty/absent secrets file
+  source "${REPO_ROOT}/lib/demo.sh"
+  source /dev/stdin <<< "$(sed -n '/^demo_ops_token_present()/,/^}/p' "$DEMO_CMD")"
+  SECRETS_FILE="${TEST_TMP}/absent.yml" run demo_ops_token_present
+  [ "$status" -ne 0 ]
+  printf 'gitlab:\n  ops_note_token: glpat-XXXXXXXXXXXX\n' > "${TEST_TMP}/s.yml"
+  SECRETS_FILE="${TEST_TMP}/s.yml" run demo_ops_token_present
+  [ "$status" -eq 0 ]
+}
+
+@test "ops#156 schedule --remove clears the pl-mediated block too" {
+  _stub_crontab
+  printf '# unrelated\n30 2 * * * $HOME/bin/nwp-daily-audit\n' > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7 >/dev/null 2>&1
+  grep -q 'pl demo nightly demo1' "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --remove >/dev/null 2>&1
+  ! grep -q 'pl demo nightly demo1' "$STUB_CRON"
+  ! grep -q 'NWP Demo Reset - demo1' "$STUB_CRON"
+  grep -q 'nwp-daily-audit' "$STUB_CRON"
+}
+
+@test "ops#156 the consumer half keeps its 15-minute offset on the pl-mediated line" {
+  _stub_crontab
+  : > "$STUB_CRON"
+  mkdir -p "${PROJECT_ROOT}/pairs"
+  cat > "${PROJECT_ROOT}/pairs/cons1.pair-contract.yml" <<'YML'
+pair: cons1-prov1
+provider: prov1
+consumer: cons1
+demo:
+  enabled: true
+  paired_golden: true
+  paired_reset: true
+YML
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule cons1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  grep -q '^15,45 1-3 \* \* \*' "$STUB_CRON"
+  grep -q 'pl demo nightly cons1 --tier=live --via-key' "$STUB_CRON"
 }

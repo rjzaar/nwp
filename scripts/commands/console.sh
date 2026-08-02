@@ -230,7 +230,14 @@ NWP_CONSOLE_ROOT=%h/nwp
 NWP_CONSOLE_GITLAB_HOST=${gitlab_host}
 NWP_CONSOLE_DEMO_SITES=nwd
 NWP_CONSOLE_CI_PROJECTS=nwp/nwp
+# OPS_PROJECT is the ONE tracker the Issues pane may WRITE to. ISSUE_PROJECTS is
+# every tracker it READS — tester feedback is synced into nwp/nwc by
+# \`drush nwc-feedback:sync-to-gitlab\`, not into nwp/ops, so a console that
+# reads only the ops board cannot show the operator their testers' reports.
+# The walled ops_note_token 404s on nwp/nwc; give that tracker its own 0600
+# token at ~/.config/nwp-console/gitlab.nwc.token (see README).
 NWP_CONSOLE_OPS_PROJECT=nwp/ops
+NWP_CONSOLE_ISSUE_PROJECTS=nwp/ops,nwp/nwc
 # Quokka (local-LLM chat tab) — loopback ollama on this host only.
 NWP_CONSOLE_QUOKKA_URL=http://127.0.0.1:11434
 NWP_CONSOLE_QUOKKA_MODEL=llama3.3:70b

@@ -216,36 +216,77 @@ def detect_rag(rag: dict, prev, console_url: str = "") -> tuple[list[Event], dic
 
 def detect_demo_tester(issues, issues_ok: bool, prev, gitlab_url: str = "",
                        label: str = "demo-tester") -> tuple[list[Event], dict]:
-    """New GitLab issues carrying the demo-tester label. Keyed on issue iid, so
-    edits to an already-seen issue stay quiet."""
+    """New GitLab issues carrying the demo-tester label.
+
+    HIGH-WATER MARKS ARE PER TRACKER. iids are project-local: `ops#8` and
+    `nwc#8` are different issues, so one shared `last_iid` across two trackers
+    would either replay old rows or — worse — permanently silence a whole
+    tracker whose iids sit below the other's. Rows carry `_project` (set by the
+    gatherer); rows without one keep the legacy single-tracker state shape so
+    an existing notify-state.json is read, not reset.
+
+    State: {"last_iid": N}                  (legacy / untagged rows)
+           {"per_project": {"<slug>": N}}   (tagged rows)
+    """
     if not issues_ok or not isinstance(issues, list):
         return [], (prev if isinstance(prev, dict) else {})  # API down: never lose the high-water mark
-    tagged = []
+    prev = prev if isinstance(prev, dict) else {}
+    legacy_last = prev.get("last_iid")
+    per_prev = dict(prev.get("per_project") or {})
+
+    # group -> {project_or_"": [(iid, issue), ...]}
+    tagged: dict[str, list] = {}
     for i in issues:
         if not isinstance(i, dict):
             continue
         labels = [str(x).lower() for x in (i.get("labels") or [])]
-        if label.lower() in labels:
-            try:
-                tagged.append((int(i.get("iid", 0)), i))
-            except (TypeError, ValueError):
-                continue
-    high = max((iid for iid, _ in tagged), default=0)
-    if not isinstance(prev, dict) or "last_iid" not in prev:
-        return [], {"last_iid": high}  # first run: seed silently
-    last = int(prev.get("last_iid") or 0)
-    events = []
-    for iid, i in sorted(tagged):
-        if iid <= last:
+        if label.lower() not in labels:
             continue
-        title = str(i.get("title", ""))[:160]
-        author = str((i.get("author") or {}).get("username", "?"))
-        url = str(i.get("web_url", "")) or gitlab_url
-        events.append(Event(
-            kind="demo_tester", title=f"\U0001f4dd New tester report #{iid}",
-            message=f"{title}\nfiled by {author}",
-            priority=P_NORMAL, click=url, dedupe=f"issue:{iid}"))
-    return events, {"last_iid": max(high, last)}
+        try:
+            iid = int(i.get("iid", 0))
+        except (TypeError, ValueError):
+            continue
+        tagged.setdefault(str(i.get("_project") or ""), []).append((iid, i))
+
+    events: list[Event] = []
+    next_legacy = legacy_last
+    next_per = dict(per_prev)
+    for project, rows in sorted(tagged.items()):
+        high = max((iid for iid, _ in rows), default=0)
+        if project:
+            seen = per_prev.get(project)
+            next_per[project] = max(high, int(seen or 0))
+        else:
+            seen = legacy_last
+            next_legacy = max(high, int(legacy_last or 0))
+        if seen is None:
+            continue  # first sight of this tracker: seed silently, never a flood
+        last = int(seen or 0)
+        for iid, i in sorted(rows):
+            if iid <= last:
+                continue
+            title = str(i.get("title", ""))[:160]
+            author = str((i.get("author") or {}).get("username", "?"))
+            url = str(i.get("web_url", "")) or gitlab_url
+            ref = f"{project.rsplit('/', 1)[-1]}#{iid}" if project else f"#{iid}"
+            # Untagged rows keep the historic dedupe key so an existing
+            # notify-state.json does not re-announce everything once.
+            dedupe = f"issue:{project}:{iid}" if project else f"issue:{iid}"
+            events.append(Event(
+                kind="demo_tester", title=f"\U0001f4dd New tester report {ref}",
+                message=f"{title}\nfiled by {author}",
+                priority=P_NORMAL, click=url, dedupe=dedupe))
+
+    # Seed the legacy mark on a first run even when nothing is tagged, so the
+    # pre-existing "first run is silent" contract is unchanged.
+    if legacy_last is None and "" not in tagged:
+        next_legacy = 0
+    out: dict = {}
+    if next_legacy is not None:
+        out["last_iid"] = int(next_legacy)
+    if next_per:
+        out["per_project"] = next_per
+    return events, out
 
 
 # What the demo reset log can say (see parsers.DEMO_EVENT_RE). Anything that

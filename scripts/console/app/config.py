@@ -48,6 +48,38 @@ GITLAB_TOKEN_FILE = Path(
 OPS_PROJECT = _env("NWP_CONSOLE_OPS_PROJECT", "nwp/ops")
 CI_PROJECTS = [p.strip() for p in _env("NWP_CONSOLE_CI_PROJECTS", "nwp/nwp").split(",") if p.strip()]
 
+# Every tracker the Issues pane READS. OPS_PROJECT remains the single tracker
+# the pane's WRITE actions (note/label/close) may touch — see main.py.
+#
+# WHY THIS IS A LIST. Ops work lands in nwp/ops, but TESTER FEEDBACK does not:
+# `drush nwc-feedback:sync-to-gitlab` files it in nwp/nwc (e.g. nwc#8
+# "[feedback-2] help topic should be clickable", labels demo-tester/feedback/
+# needs-human/tier-3). Measured 2026-08-02: 136 open in nwp/ops, 3 open in
+# nwp/nwc. A console that reads one project shows the operator their own work
+# board and silently hides the queue their testers actually fill — which is the
+# one queue a demo pilot exists to produce.
+ISSUE_PROJECTS = [
+    p.strip()
+    for p in _env("NWP_CONSOLE_ISSUE_PROJECTS", f"{OPS_PROJECT},nwp/nwc").split(",")
+    if p.strip()
+]
+
+# Pages of 100 the pane will walk per tracker before it stops and SAYS it
+# stopped. The old pane asked for one page of 40 out of 136 open and rendered
+# no hint that the other 96 existed.
+ISSUE_MAX_PAGES = int(_env("NWP_CONSOLE_ISSUE_MAX_PAGES", "4"))
+
+# Label chips offered as one-click filters, beyond "all". These are the states
+# the approval workflow turns on: `agent-eligible` is what the agent-loop polls
+# for, `needs-human` is the nwc-feedback policy label that forbids an agent
+# picking it up, `demo-tester` is where a tester report enters the estate.
+ISSUE_QUICK_LABELS = [
+    l.strip()
+    for l in _env("NWP_CONSOLE_ISSUE_QUICK_LABELS",
+                  "agent-eligible,needs-human,demo-tester,feedback").split(",")
+    if l.strip()
+]
+
 # Demo tier sites the demo pane covers. This is the TIER GATE, not a grant:
 # it says which sites the demo verbs exist for at all. WHICH of them a given
 # request may act on comes from the Scope (project.demo_sites ∩ this list) —

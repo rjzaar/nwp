@@ -87,10 +87,18 @@ SECTIONS: tuple = (
                           "reasons behind the grade, and — when the snapshot carries the security "
                           "feed — a clickable advisory count that opens that site's advisory "
                           "detail further down the pane."),
-                ("Issues", "Open issues from the ops tracker in GitLab. An operator can add a "
-                           "note, add or remove a label, or close one. With no API token "
-                           "provisioned on the host the pane still renders and simply "
-                           "deep-links into GitLab instead."),
+                ("Issues", "Every issue tracker this console reads, one block each, "
+                           "paginated and with the real total stated: the ops board "
+                           "(nwp/ops) AND the tester-feedback tracker (nwp/nwc), which is "
+                           "where `drush nwc-feedback:sync-to-gitlab` files what your "
+                           "testers report. Filter by state and by label — the chips cover "
+                           "agent-eligible (queued for the agent-loop), needs-human (agents "
+                           "must not touch it) and demo-tester. A paused agent-loop is "
+                           "announced at the top. An operator can add a note, add or remove "
+                           "a label, or close one, but only on the write tracker; other "
+                           "trackers are read-only here and deep-link into GitLab. A tracker "
+                           "this console's token cannot read is shown as UNREADABLE, never "
+                           "as empty."),
                 ("Todo", "The `pl todo check` sweep as a FLAT list — one row per item, in the "
                          "order the sweep emitted them, each row naming its site in bold and "
                          "carrying a high/medium/low priority chip. It is not grouped or "
@@ -417,6 +425,11 @@ SECTIONS: tuple = (
                 ("An empty Issues list inside a project",
                  "Nothing carries your project's label. The pane names the label it filtered "
                  "on, so you can check that first."),
+                ("Issues says a tracker is unreadable (http-404)",
+                 "This console's GitLab token is walled to one project — 404 is how GitLab "
+                 "says 'not authorised'. Give that tracker its own 0600 sibling token file, "
+                 "e.g. ~/.config/nwp-console/gitlab.nwc.token. Until then the pane refuses "
+                 "to render that queue as empty."),
                 ("A tab count is missing",
                  "That one feed failed. Counts are independent and best-effort — the pane "
                  "itself will tell you more."),

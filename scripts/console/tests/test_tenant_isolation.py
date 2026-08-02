@@ -98,8 +98,15 @@ def _maybe_break_scoping(app_main):
     app_main._gather_todo = lambda sc, force=False: app_main._gather_todo_raw(force=force)
     app_main._gather_demo = lambda sc, force=False: app_main._gather_demo_raw(
         list(app_main.config.DEMO_SITES), force=force)
-    app_main._gather_issues = lambda sc: (
-        (app_main._gather_issues_raw().get("data") or []), app_main._gather_issues_raw())
+    def _unscoped_issues(sc, state="opened", label=""):
+        blocks = app_main._gather_issues_raw(state, label)
+        for b in blocks:
+            b["shown"] = len(b["issues"])          # NOT scope-filtered: the hole
+        return blocks, {"ok": any(b["ok"] for b in blocks), "any_unreadable": False,
+                        "unreadable": [], "truncated": False,
+                        "shown": sum(b["shown"] for b in blocks), "total": None, "error": ""}
+
+    app_main._gather_issues = _unscoped_issues
     app_main._gather_security = lambda sc, force=False: app_main._gather_security_raw(force=force)
     # ...and the second net too, since a real regression could remove either.
     scope_mod.scrub = lambda obj, scope: (obj, 0)

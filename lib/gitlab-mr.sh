@@ -177,10 +177,22 @@ _mr_host_ok(){ [ "$(_mr_host)" != "$MR_HOST_UNRESOLVED" ]; }
 # NOTE the deliberate omission of gitlab.ops_note_token: it is Reporter on
 # nwp/ops only and cannot touch an MR on the code repo. Falling back to it would
 # turn "I lack the rights" into a confusing 404.
+#
+# gitlab.ai_host_token was added 2026-08-03: the ai-host holds a project access
+# token for nwp/nwp (api + write_repository, Developer) and NOT gitlab.api_token,
+# which is the workstation's group bot. Provisioning that token to the ai-host
+# achieved nothing until this function knew to look for it — `pl mr` reported
+# "no usable token" on a host that was holding a perfectly valid one.
+#
+# Order is deliberate: an explicit job token, then the workstation's group bot,
+# then the host-local one. Whichever answers first is the identity used.
 _mr_token(){
-  local t="${NWP_MR_TOKEN:-}"
+  local t="${NWP_MR_TOKEN:-}" k
   if [ -z "$t" ] && [ -n "$YQ" ]; then
-    t=$("$YQ" e '.gitlab.api_token // ""' "$MR_SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+    for k in '.gitlab.api_token' '.gitlab.ai_host_token'; do
+      t=$("$YQ" e "$k // \"\"" "$MR_SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+      [ -n "$t" ] && break
+    done
   fi
   printf '%s' "$t"
 }

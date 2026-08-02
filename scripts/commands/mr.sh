@@ -296,6 +296,283 @@ and the guard will re-hold this MR."
 }
 
 ################################################################################
+# pl mr create — open a merge request for the current branch.
+#
+# ops#216: on the night of 2026-08-01/02, thirty-plus MRs were created with raw
+# curl. That works and keeps the token out of argv, but it is precisely the
+# "hand-rolled ssh/curl one-liner" the standing order forbids, and it means the
+# preconditions get re-invented (or forgotten) every session. The three that
+# actually bit, in one night:
+#
+#   * a branch that was committed but never pushed — the MR opened against a
+#     stale remote head, so CI graded code nobody had sent
+#   * a second MR opened for a branch that already had one
+#   * a description with no `Closes nwp/ops#N`, so the tracker learnt nothing
+#
+# All three are preconditions, and preconditions belong in the verb.
+#
+# The description comes from --desc / --desc-file / stdin, else from the head
+# commit's body — which is where the reasoning already is, and re-typing it is
+# how the two copies diverge.
+################################################################################
+cmd_create(){
+  _need_yq
+  local title="" desc="" desc_file="" source_branch="" target="main" closes=""
+  local dry=false remove_source=true
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title)       title="${2:-}"; shift 2 ;;
+      --title=*)     title="${1#*=}"; shift ;;
+      --desc)        desc="${2:-}"; shift 2 ;;
+      --desc=*)      desc="${1#*=}"; shift ;;
+      --desc-file)   desc_file="${2:-}"; shift 2 ;;
+      --desc-file=*) desc_file="${1#*=}"; shift ;;
+      --source)      source_branch="${2:-}"; shift 2 ;;
+      --source=*)    source_branch="${1#*=}"; shift ;;
+      --target)      target="${2:-}"; shift 2 ;;
+      --target=*)    target="${1#*=}"; shift ;;
+      --closes)      closes="${2:-}"; shift 2 ;;
+      --closes=*)    closes="${1#*=}"; shift ;;
+      --keep-branch) remove_source=false; shift ;;
+      --dry-run)     dry=true; shift ;;
+      -h|--help)
+        cat <<'EOF'
+usage: pl mr create [--title="..."] [--desc="..." | --desc-file=F | -] [--closes=N]
+                    [--source=BRANCH] [--target=main] [--keep-branch] [--dry-run]
+
+  Defaults: source = the current branch, target = main, title and description
+  taken from the head commit (subject and body).
+
+  Refuses to open an MR when the branch is unpushed or behind its remote, when
+  one already exists, or when the source and target are the same branch.
+EOF
+        return 0 ;;
+      -)  desc="$(cat)"; shift ;;
+      -*) die "unknown option: $1 (try: pl mr create --help)" ;;
+      *)  die "unexpected argument: $1 (pl mr create takes flags only)" ;;
+    esac
+  done
+  _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
+
+  git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
+  [ -n "$source_branch" ] || source_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  [ -n "$source_branch" ] && [ "$source_branch" != "HEAD" ] \
+    || die "cannot determine the source branch (detached HEAD?) — pass --source=BRANCH"
+  [ "$source_branch" != "$target" ] || die "source and target are both '$target'"
+
+  # PRECONDITION: the remote must already have exactly what we are asking the
+  # forge to review. An MR is a request to merge a REMOTE ref; if the local
+  # branch is ahead, the reviewer and CI see code that is not the code you
+  # tested. This is checked BEFORE anything is created, so a failure leaves no
+  # half-made MR behind.
+  #
+  # `--verify --quiet` is not decoration. Plain `git rev-parse origin/nope`
+  # ECHOES THE ARGUMENT on stdout and exits non-zero, so `$(... || true)` yields
+  # the literal string "origin/<branch>" — a non-empty value that sails past an
+  # `[ -z ]` test and then gets compared against a real sha. The first draft of
+  # this check therefore reported an unpushed branch as a MISMATCH ("remote
+  # origin/ops-2", which is `${remote_sha:0:12}` of the branch NAME) instead of
+  # as missing. Right refusal, wrong reason — and a wrong reason sends the next
+  # person to fix the wrong thing.
+  local local_sha remote_sha
+  local_sha=$(git rev-parse --verify --quiet "$source_branch^{commit}" 2>/dev/null) \
+    || die "no such branch: $source_branch"
+  remote_sha=$(git rev-parse --verify --quiet "origin/$source_branch^{commit}" 2>/dev/null || true)
+  if [ -z "$remote_sha" ]; then
+    die "branch '$source_branch' has never been pushed — git push -u origin $source_branch"
+  fi
+  if [ "$local_sha" != "$remote_sha" ]; then
+    die "branch '$source_branch' differs from origin/$source_branch (local ${local_sha:0:12}, remote ${remote_sha:0:12}) — push first, or the MR reviews code you did not send"
+  fi
+
+  local proj; proj=$(_mr_project) || die "cannot resolve the project (no origin remote?)"
+
+  # PRECONDITION: one MR per branch. A duplicate splits the review thread and
+  # the CI history, and the second one is usually a session that did not look.
+  local existing eid
+  existing=$(_mr_get "/projects/$proj/merge_requests?state=opened&source_branch=$source_branch") || existing=""
+  eid=$(printf '%s' "$existing" | "$YQ" e -p=json -r '.[0].iid // ""' - 2>/dev/null | grep -v '^null$' || true)
+  if [ -n "$eid" ]; then
+    print_warning "!$eid is already open for '$source_branch' — not creating a second one"
+    printf '  %s\n' "$(_mr_web_url "$eid")"
+    return 1
+  fi
+
+  [ -n "$title" ] || title=$(git log -1 --format=%s "$source_branch")
+  if [ -z "$desc" ] && [ -n "$desc_file" ]; then
+    [ -r "$desc_file" ] || die "cannot read --desc-file: $desc_file"
+    desc=$(cat "$desc_file")
+  fi
+  [ -n "$desc" ] || desc=$(git log -1 --format=%b "$source_branch")
+
+  # The tracker only learns from the MR if the MR says so. If --closes was given
+  # (or the description already carries the reference) leave it alone; otherwise
+  # append it. Never invent one.
+  if [ -n "$closes" ]; then
+    closes="${closes#\#}"; closes="${closes#nwp/ops#}"
+    [[ "$closes" =~ ^[0-9]+$ ]] || die "--closes wants an issue number, got: $closes"
+    grep -qiE "closes[[:space:]]+nwp/ops#$closes([^0-9]|\$)" <<<"$desc" \
+      || desc="$desc"$'\n\n'"Closes nwp/ops#$closes"
+  fi
+
+  if [ "$dry" = true ]; then
+    print_header "pl mr create — DRY RUN, nothing was sent"
+    printf "  ${BOLD}%-14s${NC} %s\n" "source:" "$source_branch @ ${local_sha:0:12}"
+    printf "  ${BOLD}%-14s${NC} %s\n" "target:" "$target"
+    printf "  ${BOLD}%-14s${NC} %s\n" "title:"  "$title"
+    printf "  ${BOLD}%-14s${NC} %s\n" "rm branch:" "$remove_source"
+    echo; printf '%s\n' "$desc" | sed 's/^/  | /'
+    return 0
+  fi
+
+  local payload resp iid
+  payload=$(T="$title" D="$desc" S="$source_branch" G="$target" R="$remove_source" \
+    "$YQ" -n -o=json '{"title": strenv(T), "description": strenv(D),
+                       "source_branch": strenv(S), "target_branch": strenv(G),
+                       "remove_source_branch": (strenv(R) == "true")}')
+  resp=$(_mr_api POST "/projects/$proj/merge_requests" "$payload") \
+    || die "create failed (HTTP $(_mr_http_status)): $(printf '%s' "$resp" | _mr_jget message)"
+  iid=$(printf '%s' "$resp" | _mr_jget iid)
+  [ -n "$iid" ] || die "create returned no iid (HTTP $(_mr_http_status))"
+  print_success "!$iid created"
+  printf '  %s\n' "$(_mr_web_url "$iid")"
+
+  # And immediately subject it to the gate, because "nobody has to remember" is
+  # the whole design of `pl mr guard`. Creating an MR that must be held and
+  # leaving it unheld until CI gets round to it is a window, however short.
+  local grc=0
+  cmd_guard "$iid" --apply || grc=$?
+  return 0
+}
+
+################################################################################
+# pl mr merge <iid> — merge, with the merge-status knowledge that had nowhere
+# to live (ops#216).
+#
+# THIS INSTANCE LIES ABOUT CONFLICTS. `detailed_merge_status` is computed
+# asynchronously and goes stale: branches that merge cleanly report `conflict`
+# for minutes at a time. Verified repeatedly on 2026-08-02 by local test-merge.
+# `PUT /merge_requests/:iid/rebase` forces a recompute; `checking` means "ask
+# again", not "no".
+#
+# AND THE COROLLARY THAT COST A NIGHT (report §11.11): a rebase pushes a new
+# head, which starts a fresh pipeline and CANCELS the running one. A loop that
+# re-requests a rebase every round therefore destroys the very work whose
+# completion is its exit condition — ten cancelled pipelines on one MR, and from
+# the log it looks like healthy activity. So: AT MOST ONE REBASE PER MR PER RUN.
+#
+#     a retry is only safe if retrying does not destroy the progress made
+#     since the last attempt.
+#
+# EXIT
+#   0 merged  ·  1 refused (held / not approved)  ·  2 genuine conflict
+#   3 not ready (CI running, or still checking after the poke)
+#   4 cannot verify
+################################################################################
+cmd_merge(){
+  _need_yq
+  local iid="" dry=false poke=true wait_s=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run)   dry=true; shift ;;
+      --no-rebase) poke=false; shift ;;
+      --wait)      wait_s="${2:-0}"; shift 2 ;;
+      --wait=*)    wait_s="${1#*=}"; shift ;;
+      -h|--help)
+        cat <<'EOF'
+usage: pl mr merge <iid> [--dry-run] [--no-rebase] [--wait=SECONDS]
+
+  Refuses a HELD MR. Never believes `conflict` without one recompute
+  (PUT /rebase, at most once). Treats `checking` as retry, not failure.
+
+  exit 0 merged · 1 refused · 2 conflict · 3 not ready · 4 cannot verify
+EOF
+        return 0 ;;
+      -*) die "unknown option: $1 (try: pl mr merge --help)" ;;
+      *)  [ -z "$iid" ] && { iid="$1"; shift; } || die "unexpected arg: $1" ;;
+    esac
+  done
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr merge <iid>"
+  [[ "$wait_s" =~ ^[0-9]+$ ]] || die "--wait wants seconds"
+  _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
+  local proj; proj=$(_mr_project) || die "cannot resolve the project"
+
+  local json dms state rebased=false deadline rounds=0
+  deadline=$(( $(date +%s) + wait_s ))
+
+  # A HARD ROUND CAP, independent of --wait. Found by mutation-testing this very
+  # function: removing the once-only rebase flag turned the loop into a
+  # non-terminating one (the `conflict` branch `continue`s BEFORE the deadline
+  # test, so the wall-clock bound never applies to it). The flag is the correct
+  # fix and remains; this is the belt that means no future edit to the case
+  # arms can wedge a merge command forever.
+  local max_rounds=$(( 6 + wait_s / 10 ))
+
+  while :; do
+    rounds=$((rounds + 1))
+    if [ "$rounds" -gt "$max_rounds" ]; then
+      print_warning "!$iid: giving up after $max_rounds rounds (last status: ${dms:-?})"
+      return 3
+    fi
+    json=$(_mr_fetch "$iid") || { print_error "cannot read !$iid (HTTP $(_mr_http_status))"; return 4; }
+    state=$(_mr_state "$json"); dms=$(_mr_detailed_merge_status "$json")
+
+    [ "$state" = "opened" ] || { print_error "!$iid is $state, not open"; return 1; }
+
+    # THE HOLD IS CHECKED FIRST, and against the forge's own view. A held MR is
+    # not a "not ready yet" to be waited out; it is a refusal.
+    if _mr_is_draft "$json"; then
+      print_error "!$iid is HELD (draft) — refusing. pl mr status $iid"
+      return 1
+    fi
+    local grc=0; cmd_guard "$iid" >/dev/null 2>&1 || grc=$?
+    if [ "$grc" -ne 0 ]; then
+      print_error "!$iid does not pass the sensitive-path gate (pl mr guard exit $grc) — refusing"
+      print_hint "pl mr status $iid"
+      return 1
+    fi
+
+    case "$dms" in
+      mergeable)
+        break ;;
+      checking|unchecked|preparing)
+        # NOT a failure. The forge has not finished thinking.
+        ;;
+      conflict)
+        if [ "$poke" = true ] && [ "$rebased" = false ]; then
+          print_info "!$iid reports 'conflict' — forcing ONE recompute (PUT /rebase) before believing it"
+          _mr_api PUT "/projects/$proj/merge_requests/$iid/rebase" >/dev/null 2>&1 || true
+          rebased=true
+          sleep 5
+          continue
+        fi
+        print_error "!$iid: conflict, confirmed after a recompute"
+        return 2 ;;
+      ci_still_running)
+        print_warning "!$iid: pipeline still running"
+        [ "$wait_s" -eq 0 ] && return 3 ;;
+      draft_status)
+        print_error "!$iid is HELD (draft_status) — refusing"; return 1 ;;
+      *)
+        print_error "!$iid: not mergeable — detailed_merge_status=${dms:-unknown}"
+        return 1 ;;
+    esac
+
+    [ "$(date +%s)" -lt "$deadline" ] || { print_warning "!$iid still ${dms:-?} after ${wait_s}s"; return 3; }
+    sleep 10
+  done
+
+  if [ "$dry" = true ]; then
+    print_success "DRY RUN: !$iid is mergeable and passes every gate — nothing was merged"
+    return 0
+  fi
+  local resp; resp=$(_mr_api PUT "/projects/$proj/merge_requests/$iid/merge" '{"should_remove_source_branch":true}') \
+    || { print_error "merge failed (HTTP $(_mr_http_status)): $(printf '%s' "$resp" | _mr_jget message)"; return 1; }
+  print_success "!$iid merged"
+  return 0
+}
+
+################################################################################
 # pl mr guard [<iid>] [--apply] — the permanent, unremembering half of D13.
 #
 # An MR touching a CLAUDE.md sensitive path is HELD AUTOMATICALLY. Not
@@ -485,13 +762,28 @@ main(){
   case "$sub" in
     status|show) cmd_status "$@" ;;
     list|ls)     cmd_list "$@" ;;
+    create|new)  cmd_create "$@" ;;
+    merge)       cmd_merge "$@" ;;
     hold)        cmd_hold "$@" ;;
     release)     cmd_release "$@" ;;
     guard|gate)  cmd_guard "$@" ;;
     -h|--help|help)
       cat <<EOF
-pl mr — hold, release and guard merge requests (a hold the FORGE enforces)
+pl mr — create, merge, hold, release and guard merge requests
 
+  pl mr create [--title=..] [--desc=..|--desc-file=F|-] [--closes=N]
+               [--source=BRANCH] [--target=main] [--dry-run]
+                                   open an MR for the current branch. Refuses an
+                                   unpushed/behind branch and a duplicate; takes
+                                   title+body from the head commit by default;
+                                   runs the sensitive-path gate immediately.
+  pl mr merge <iid> [--dry-run] [--no-rebase] [--wait=SECS]
+                                   merge. Refuses a HELD MR. Never believes
+                                   'conflict' without ONE recompute (this
+                                   instance's merge status goes stale); treats
+                                   'checking' as retry. At most one rebase per
+                                   run — a rebase cancels the pipeline it is
+                                   waiting for.
   pl mr list                       every open MR: held? auto-merge armed?
   pl mr status <iid>               hold state, GitLab's own merge status,
                                    sensitive paths, release record

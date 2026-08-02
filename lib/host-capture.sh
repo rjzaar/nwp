@@ -246,7 +246,7 @@ host_scrub_stream() {
 ################################################################################
 
 # The order here is the order --all captures in.
-HOST_CAPTURE_KINDS=(cron systemd nginx php ssh firewall headscale)
+HOST_CAPTURE_KINDS=(cron systemd nginx php ssh firewall headscale gitlab)
 
 host_kind_default_file() {
     case "$1" in
@@ -257,6 +257,7 @@ host_kind_default_file() {
         ssh)       echo "authorized_keys.policy" ;;
         firewall)  echo "ufw.rules" ;;
         headscale) echo "headscale.policy.json" ;;
+        gitlab)    echo "gitlab-tunables.measured" ;;
         *)         return 1 ;;
     esac
 }
@@ -308,6 +309,49 @@ for f in /etc/letsencrypt/renewal-hooks/deploy/*; do
   printf '==NWPFILE== renewal-hooks/deploy/%s\n' "$(basename "$f")"
   cat "$f" 2>/dev/null || printf '==NWPINCOMPLETE== renewal-hooks/deploy/%s not-readable\n' "$(basename "$f")"
 done
+PROBE
+        ;;
+    gitlab) cat <<'PROBE'
+set -u
+emit() { printf '==NWPFILE== %s\n' "$1"; }
+inc()  { printf '==NWPINCOMPLETE== %s %s\n' "$1" "$2"; }
+emit "gitlab-tunables.measured"
+# EFFECTIVE values only: what the server reports and what chef rendered.
+# Deliberately NOT a grep of /etc/gitlab/gitlab.rb — reading back the file you
+# edit proves you can write a file, not that the setting took effect.
+# gitlab.rb is root-only (0600), so a plain -r test fails as the login user and
+# would report "not a gitlab host" about a box that plainly is one. Ask with the
+# same privilege the reads below use.
+if ! sudo -n test -r /etc/gitlab/gitlab.rb 2>/dev/null; then
+  if [ -e /etc/gitlab/gitlab.rb ]; then
+    inc gitlab-tunables.measured "gitlab.rb-present-but-unreadable"
+  else
+    inc gitlab-tunables.measured "not-a-gitlab-host"
+  fi
+else
+  mc=$(sudo -n gitlab-psql -tAc 'SHOW max_connections' 2>/dev/null | tr -d ' ')
+  printf 'postgresql.max_connections=%s\n' "${mc:-CANNOT-MEASURE}"
+  pr=/var/opt/gitlab/gitlab-rails/etc/puma.rb
+  if sudo -n test -r "$pr" 2>/dev/null; then
+    v=$(sudo -n grep -oE 'per_worker_max_memory_mb[^0-9]*[0-9]+' "$pr" 2>/dev/null | grep -oE '[0-9]+$')
+    printf 'puma.per_worker_max_memory_mb=%s\n' "${v:-UNSET}"
+    w=$(sudo -n grep -oE '^workers +[0-9]+' "$pr" 2>/dev/null | grep -oE '[0-9]+$')
+    printf 'puma.workers=%s\n' "${w:-CANNOT-MEASURE}"
+  else
+    printf 'puma.per_worker_max_memory_mb=CANNOT-MEASURE\n'
+  fi
+  sr=/opt/gitlab/sv/sidekiq/run
+  if sudo -n test -r "$sr" 2>/dev/null; then
+    v=$(sudo -n grep -oE 'SIDEKIQ_MEMORY_KILLER_MAX_RSS[= ]+[0-9]+' "$sr" 2>/dev/null | grep -oE '[0-9]+$')
+    printf 'sidekiq.memory_killer_max_rss=%s\n' "${v:-UNSET}"
+  else
+    printf 'sidekiq.memory_killer_max_rss=CANNOT-MEASURE\n'
+  fi
+  c=$(ps -eo args 2>/dev/null | grep -m1 '^sidekiq ' | grep -oE 'of [0-9]+ busy' | grep -oE '[0-9]+')
+  printf 'sidekiq.concurrency=%s\n' "${c:-CANNOT-MEASURE}"
+  printf 'mem.available_mb=%s\n' "$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo)"
+  printf 'swap.used_mb=%s\n' "$(awk '/^SwapTotal:/{t=$2}/^SwapFree:/{f=$2}END{print int((t-f)/1024)}' /proc/meminfo)"
+fi
 PROBE
         ;;
     php) cat <<'PROBE'

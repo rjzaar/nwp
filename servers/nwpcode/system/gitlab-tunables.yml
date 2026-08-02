@@ -1,0 +1,90 @@
+# Declared GitLab tunables for the forge box — ops#257.
+#
+# Applied by:  pl host apply nwpcode --kind=gitlab --execute
+# Measured by: pl host apply nwpcode --kind=gitlab      (dry run re-measures)
+#
+# WHY THESE NUMBERS EXIST
+# Measured 2026-08-02 by PSS (shared memory counted once; a naive `ps` RSS sum
+# reads postgres at ~1.7 GB instead of 358 MB and sends you tuning the wrong
+# process):
+#
+#     puma      1220 MB      sidekiq   968 MB      postgres  358 MB
+#     gitaly     168 MB      total RAM 3.92 GB     available  ~560 MB
+#     swap used 1.46 GB of 2.6 GB      <-- the box is over-committed and paging
+#
+# The swap figure is the finding. This box does not merely run warm; it has
+# already spilled, which is the mechanism behind the 2026-07-25 OOM that took
+# GitLab and its vhosts down for 5-8 minutes.
+#
+# prometheus_monitoring is already disabled — the usual biggest win is taken.
+#
+# TWO RECOMMENDATIONS WERE WRONG AND ARE NOT HERE
+# 1. "Drop sidekiq concurrency 10 -> 5." Already done: gitlab.rb:3698 sets
+#    `sidekiq['concurrency'] = 5` and the running process confirms it
+#    ("0 of 5 busy"). The 968 MB is what concurrency 5 costs, so lowering a
+#    number already lowered would have saved nothing. The real lever is the
+#    memory killer below. (`sidekiq['max_concurrency']` at line 3667 is a
+#    superseded key and is not what is in force.)
+# 2. "shared_buffers is too big." At 256 MB for a 3.9 GB box it is already
+#    conservative (the usual guidance is 25% = ~1 GB). Left alone.
+
+tunables:
+  # ── sidekiq: the memory killer, via the route that WORKS on 18.7 ──────────
+  # RESEARCHED 2026-08-02 against the install itself, after the obvious key
+  # turned out to do nothing.
+  #
+  # `sidekiq['memory_killer_max_rss']` is NOT an omnibus attribute on 18.7 — it
+  # appears nowhere in the shipped cookbooks, so chef accepts the assignment and
+  # renders nothing. But the MECHANISM is very much alive: the Rails app reads
+  # SIDEKIQ_MEMORY_KILLER_MAX_RSS (8 references in gitlab-rails), and omnibus
+  # renders `gitlab_rails['env']` into /opt/gitlab/etc/gitlab-rails/env/, one
+  # file per variable, which the sidekiq runit script loads wholesale
+  # (`exec chpst -e /opt/gitlab/etc/gitlab-rails/env`).
+  #
+  # So the setting moved from an omnibus attribute to a Rails env var, and the
+  # box was still running the 2 GB default — unreachable on a 3.9 GB host, i.e.
+  # a killer that can never fire. 700000 KB (~683 MB) is below the observed idle
+  # 968 MB, so it engages immediately. The killer is graceful: it finishes the
+  # running job before restarting the process.
+  #
+  # UNITS ARE KILOBYTES. 700 here would mean 700 KB and would restart sidekiq
+  # continuously.
+  #
+  # gitlab_rails['env'] is not declared anywhere else in gitlab.rb (checked), so
+  # this adds rather than clobbers.
+
+  # ── puma: give the worker a ceiling at all ────────────────────────────────
+  # Unset today, and the single worker has grown to 1064 MB. This is MB (not KB
+  # spelled out). 700 MB recycles a bloated worker instead of letting it climb.
+  #
+  # STATUS: UNVERIFIED, and honestly so. The key IS still known to this omnibus
+  # (it appears in recipes/puma.rb line 92), but after a reconfigure it renders
+  # into no artifact this verb can find — not /var/opt/gitlab/gitlab-rails/etc/
+  # puma.rb, not the runit run script. So it is applied-and-accepted but cannot
+  # be shown to be in force. The verb reports that as NOT IN FORCE rather than
+  # quietly passing, which is the correct behaviour: a control you cannot
+  # measure is a control you do not have.
+  puma['per_worker_max_memory_mb']: 700
+
+  # ── puma: make the worker count unambiguous ───────────────────────────────
+  # NOT a change — it is already 1 in force. gitlab.rb assigns
+  # `puma['worker_processes']` TWICE (2 at line 3664, 1 at line 3697) and
+  # last-wins makes 1 real. Anyone editing 3664 would see no effect and conclude
+  # the setting is broken. Restating it inside the managed block, which is last
+  # in the file, makes the effective value the one you can find.
+  puma['worker_processes']: 1
+
+  # ── postgres: 400 connections for a single-operator instance ──────────────
+  # Not declared in gitlab.rb at all — 400 is the omnibus default, and
+  # postgresql.conf is chef-managed ("Manual changes will be erased"), so the
+  # only correct place to change it is here. GitLab's own default guidance is
+  # 200; this instance serves one person plus CI. Each backend carries fixed
+  # overhead and can claim work_mem, so the win is less about steady state than
+  # about shrinking the worst-case spike on a box with no headroom.
+  postgresql['max_connections']: 100
+
+# Rails environment variables, rendered by omnibus into
+# /opt/gitlab/etc/gitlab-rails/env/<NAME> and loaded by the puma and sidekiq
+# runit scripts. This is where the memory controls actually live on 18.7.
+rails_env:
+  SIDEKIQ_MEMORY_KILLER_MAX_RSS: 700000

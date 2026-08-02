@@ -272,9 +272,33 @@ EOF
   # The 3.8 GB forge box was OOM-killed by exactly this class of mistake.
   # Comment lines are stripped: the doc-comments name these commands only to
   # warn against them (same convention as test-nginx-versioning.bats).
+  #
+  # The forbidden thing is INVOKING `gitlab-rails`/`gitlab-rake`, not naming a
+  # PATH that contains the string. A bare substring match called
+  # `/var/opt/gitlab/gitlab-rails/etc/puma.rb` — a 4 KB config file read, the
+  # cheapest possible measurement — a heavy op, and the tempting repair for a
+  # false positive on a guard is to delete the guard. So the pattern requires
+  # the token to stand as a COMMAND WORD: not preceded by `/` (a path
+  # component) and followed by whitespace (its arguments).
   run bash -c "grep -vE '^[[:space:]]*#' '${REPO_ROOT}/lib/host-capture.sh' \
-               | grep -nE 'gitlab-rails|gitlab-rake|composer install|drush sql'"
+               | grep -nE '(^|[^/[:alnum:]_-])(gitlab-rails|gitlab-rake)[[:space:]]|composer install|drush sql'"
   [ "$status" -ne 0 ]
+}
+
+@test "RED-PROOF: that CHEAP assertion still catches a real gitlab-rails invocation" {
+  # A check never proven to fail is not a check. Same pattern, over a file that
+  # really does invoke the forbidden command.
+  cat > "${TMP}/heavy.sh" <<'EOF'
+#!/bin/bash
+# this comment mentions gitlab-rails and must NOT trip the check
+pr=/var/opt/gitlab/gitlab-rails/etc/puma.rb      # a path must NOT trip it either
+sudo -n gitlab-rails runner 'puts User.count'    # THIS must trip it
+EOF
+  run bash -c "grep -vE '^[[:space:]]*#' '${TMP}/heavy.sh' \
+               | grep -nE '(^|[^/[:alnum:]_-])(gitlab-rails|gitlab-rake)[[:space:]]|composer install|drush sql'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"runner"* ]]
+  [[ "$output" != *"puma.rb"* ]]     # the path alone is not a finding
 }
 
 ################################################################################

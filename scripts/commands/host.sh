@@ -83,6 +83,8 @@ ${BOLD}HOST STATE:${NC}
   pl host capture <target> [--kind=K|--all]   read real state into servers/<h>/system/
   pl host diff    <target> [--kind=K|--all]   non-zero on drift, blindness or incompleteness
   pl host apply   <target> --kind=php [--execute]  put a DECLARED php setting floor
+  pl host apply   <target> --kind=gitlab [--execute]  put DECLARED GitLab tunables
+                                                   in force, reconfigure, re-measure
                                                    in force, then re-measure it
   pl host apply   <target> [--kind=K]         other kinds: dry-run / declare-only
   pl host schedule <target> list|install|remove   remote cron, idempotent, absolute PATH
@@ -245,17 +247,36 @@ cmd_apply() {
 
     local name; name="$(host_resolve_name "$target")"
 
-    # --- php floors: the one kind this verb can actually put in force -------
-    local php_selected=0 rest=() k
+    # --- the kinds this verb can actually put in force ----------------------
+    # php (lib/php-floor.sh) and gitlab (lib/gitlab-tunables.sh). Both are
+    # DECLARED-not-captured, additive, single-purpose and MEASURABLE afterwards,
+    # which is the test for whether an apply is safe to automate. The rest stay
+    # declare-only.
+    local php_selected=0 gitlab_selected=0 rest=() k
     for k in "${kinds[@]}"; do
-        if [ "$k" = "php" ]; then php_selected=1; else rest+=("$k"); fi
+        case "$k" in
+            php)    php_selected=1 ;;
+            gitlab) gitlab_selected=1 ;;
+            *)      rest+=("$k") ;;
+        esac
     done
 
     local php_rc=0
     if [ "$php_selected" -eq 1 ]; then
         php_floor_run "$target" "$@" || php_rc=$?
         # An explicit --kind=php run is the floor run and nothing else.
-        [ "${#rest[@]}" -eq 0 ] && return "$php_rc"
+        [ "${#rest[@]}" -eq 0 ] && [ "$gitlab_selected" -eq 0 ] && return "$php_rc"
+        echo ""
+    fi
+
+    local gitlab_rc=0
+    if [ "$gitlab_selected" -eq 1 ]; then
+        if ! declare -F gitlab_tunables_run >/dev/null 2>&1; then
+            # shellcheck source=/dev/null
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/gitlab-tunables.sh"
+        fi
+        gitlab_tunables_run "$target" "$@" || gitlab_rc=$?
+        [ "${#rest[@]}" -eq 0 ] && return "$(( php_rc > gitlab_rc ? php_rc : gitlab_rc ))"
         echo ""
     fi
 

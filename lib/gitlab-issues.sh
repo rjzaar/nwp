@@ -49,10 +49,21 @@ _host(){
   printf '%s' "$h"
 }
 
+# Which .secrets.yml key(s) to read, in preference order, as a yq expression.
+# Default = the least-privilege ops_note_token (Reporter on nwp/ops), falling
+# back to gitlab.api_token — UNCHANGED behaviour for every existing caller.
+#
+# It is overridable per call site because the least-privilege token is scoped to
+# ONE project: measured 2026-08-02, `gitlab.ops_note_token` gets `404 Project Not
+# Found` on nwp/nwc (project 16), which is where tester feedback lands. A reader
+# that wants a different project must be able to say which credential can see it
+# instead of silently rendering an empty list.
+: "${GITLAB_TOKEN_EXPR:=.gitlab.ops_note_token // .gitlab.api_token // \"\"}"
+
 _token(){
   local t
-  t=$("$YQ" e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
-  [ -n "$t" ] || die "no usable token in $SECRETS_FILE (gitlab.ops_note_token / gitlab.api_token)"
+  t=$("$YQ" e "$GITLAB_TOKEN_EXPR" "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  [ -n "$t" ] || die "no usable token in $SECRETS_FILE (looked for: $GITLAB_TOKEN_EXPR)"
   printf '%s' "$t"
 }
 
@@ -66,7 +77,7 @@ _token_present(){
   local t
   [ -s "$SECRETS_FILE" ] || return 1
   [ -n "${YQ:-}" ] || return 1
-  t=$("$YQ" e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  t=$("$YQ" e "$GITLAB_TOKEN_EXPR" "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
   [ -n "$t" ]
 }
 
@@ -184,20 +195,30 @@ _mr_read_key(){
 #   3  BLIND — could not see the code projects, so "0" is unproven (refuse)
 #
 # Never conflate 0 and 3. That conflation IS ops#235.
+#
+# PAGINATED since 2026-08-03 (!320 rebase). The single unpaginated GET this
+# replaced took GitLab's DEFAULT page size for this endpoint — 20, not 100 — so
+# on an issue with more than 20 related merge requests an open one sitting on
+# page 2 was invisible and the guard passed. That is the ops#235 failure again
+# in a narrower window: a guard that did not read everything, reporting a pass.
+# It walks pages through `_api_rows`, the one pagination primitive, using
+# NWP_API_ROWS_KEY so the escalated token is still the one that does the read.
 issue_open_mrs(){ # $1 = issue iid
-  local iid="$1" key json n
+  local iid="$1" key lines rc=0
   # NOT `key=$(_mr_read_key)` — see the note on _mr_read_key. A subshell here
   # throws the memo away on every call.
   _mr_read_key || return 3
   key="$_MR_READ_KEY"
-  json=$(_api_get_as "$key" "/projects/$PROJECT_ID/issues/$iid/related_merge_requests" 2>/dev/null || true)
-  # Anything that is not a JSON ARRAY is an error body, not "none".
-  printf '%s' "$json" | "$YQ" e -p=json 'tag' - 2>/dev/null | grep -qx '!!seq' || return 3
-  n=$(printf '%s' "$json" | "$YQ" e -p=json '[.[] | select(.state == "opened")] | length' - 2>/dev/null || echo "")
-  [[ "$n" =~ ^[0-9]+$ ]] || return 3
-  [ "$n" -eq 0 ] && return 0
-  printf '%s' "$json" | "$YQ" e -p=json -r \
-    '.[] | select(.state == "opened") | .references.full + "  " + .title' - 2>/dev/null || true
+  # Anything that is not a JSON ARRAY is an error body, not "none": _api_rows
+  # returns 3 for that, and for an unreachable host, on the FIRST page.
+  lines=$(NWP_API_ROWS_KEY="$key" _api_rows \
+            "/projects/$PROJECT_ID/issues/$iid/related_merge_requests" \
+            'select(.state == "opened")
+             | ((.references.full // ("!" + (.iid|tostring))) + "  " + (.title // ""))' \
+          2>/dev/null) || rc=$?
+  [ "$rc" -eq 3 ] && return 3
+  [ -n "$lines" ] || return 0
+  printf '%s\n' "$lines"
   return 1
 }
 
@@ -239,4 +260,94 @@ _require_ok(){ # $1=json $2=key-that-must-exist  $3=action-description
     die "$desc failed${msg:+: $msg}"
   fi
   printf '%s' "$v"
+}
+
+################################################################################
+# _api_rows — THE pagination primitive. Any read of a GitLab *collection* goes
+# through here.
+#
+# WHY THIS IS A LIB FUNCTION AND NOT AN INLINE LOOP: on 2026-08-02 `pl issue ls`
+# showed 100 of nwp/ops' 136 open issues. It asked for `per_page=100`, got the
+# API's cap, printed the rows, and stopped — no page 2, no "showing 100 of 136".
+# Because the sort was `created_at asc`, the 36 rows it dropped were the NEWEST,
+# i.e. exactly the ones an operator opens the list to triage. `cmd_reconcile`
+# had already been fixed for the identical bug and carried the reasoning in a
+# comment; the fix was not shared, so the bug survived in its siblings. It is
+# shared now.
+#
+#   _api_rows <path> <yq-per-item-expr> [max_pages]
+#
+# <path> may already carry a query string; per_page/page are appended.
+# <yq-per-item-expr> is evaluated as `.[] | <expr>` and must emit ONE LINE per
+# item. Join the fields with a LITERAL TAB BYTE after flattening newlines and
+# tabs out of them.
+#
+# Two traps, both paid for:
+#   * NOT `@tsv`. Its encoder CSV-quotes any field containing a `"`, so a title
+#     like `replace "amened"` renders to the operator as `"replace ""amened"""`.
+#   * NOT `join("\t")`. yq only began interpreting that escape after v4.44.1:
+#     on v4.44.1 — which is what the CI runner has — it joins with a literal
+#     backslash-t, every row arrives as ONE field, and `IFS=$'"'"'\t'"'"' read`
+#     assigns the whole row to the first variable. Measured 2026-08-03: 12 unit
+#     tests passed on a v4.50.1 workstation and failed on the v4.44.1 runner
+#     for exactly this reason. Put a real tab in the expression; both versions
+#     agree about a byte.
+#
+# Prints TSV rows to stdout. Rows are emitted page by page and never merged as
+# JSON: there is no concatenation step that could quietly lose a page.
+#
+# Returns 0 on a complete read, 3 if the FIRST page was not a JSON array (auth
+# failure / 404 / unreachable host). rc=3 is "I could not look" and callers MUST
+# report it — an empty list from an unreadable source must never render as "no
+# issues".
+#
+# Sets NWP_API_ROWS_COUNT (rows emitted) and NWP_API_ROWS_TRUNCATED (1 if the
+# max_pages guard stopped the walk before the server ran out). A cap is allowed;
+# a SILENT cap is not.
+#
+# NWP_API_ROWS_KEY — read with a SPECIFIC .secrets.yml key (via _api_get_as)
+# instead of the default preference order. Set it for the one read that must
+# escalate past the walled ops token: `issue_open_mrs` (ops#235). Without this
+# hook that reader could not use the pagination primitive at all, and a
+# collection read that opts out of the primitive is exactly how `pl issue ls`
+# kept a truncation bug that `cmd_reconcile` had already fixed.
+################################################################################
+_api_rows(){
+  local path="$1" expr="$2" max="${3:-20}"
+  local page=0 sep batch kind n rows
+  NWP_API_ROWS_COUNT=0
+  NWP_API_ROWS_TRUNCATED=0
+  case "$path" in *\?*) sep='&' ;; *) sep='?' ;; esac
+  while :; do
+    page=$((page + 1))
+    if [ -n "${NWP_API_ROWS_KEY:-}" ]; then
+      batch=$(_api_get_as "$NWP_API_ROWS_KEY" "${path}${sep}per_page=100&page=${page}" 2>/dev/null || true)
+    else
+      batch=$(_api_get "${path}${sep}per_page=100&page=${page}")
+    fi
+    if [ -z "$batch" ]; then
+      [ "$page" -eq 1 ] && return 3
+      break
+    fi
+    # A GitLab error is an OBJECT ({"message":"404 …"}); a collection is an
+    # array. Iterating an object with `.[]` would emit its values as if they
+    # were rows, so the shape is checked before anything is printed.
+    kind=$(printf '%s' "$batch" | "$YQ" e -p=json 'tag' - 2>/dev/null || true)
+    if [ "$kind" != "!!seq" ]; then
+      [ "$page" -eq 1 ] && return 3
+      break
+    fi
+    n=$(printf '%s' "$batch" | "$YQ" e -p=json 'length' - 2>/dev/null || echo 0)
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    [ "$n" -eq 0 ] && break
+    rows=$(printf '%s' "$batch" | "$YQ" e -p=json -r ".[] | $expr" - 2>/dev/null || true)
+    if [ -n "$rows" ]; then
+      printf '%s\n' "$rows"
+      NWP_API_ROWS_COUNT=$((NWP_API_ROWS_COUNT + n))
+    fi
+    # Fewer than a full page came back → the server has nothing more.
+    [ "$n" -lt 100 ] && break
+    if [ "$page" -ge "$max" ]; then NWP_API_ROWS_TRUNCATED=1; break; fi
+  done
+  return 0
 }

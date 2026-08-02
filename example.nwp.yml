@@ -525,6 +525,21 @@ settings:
   #   replicas:
   #     - user@backup-host-1
   #     - user@backup-host-2
+
+  # Self-healing loop (ops#230). The loop has TWO kill switches, keyed off each
+  # part's declared capability in lib/loop-parts.sh:
+  #   `pl loop disable all`        WRITE kill — parts that can change the estate
+  #   `pl loop disable oversight`  OVERSIGHT kill — the read-only parts
+  # They are separate because a switch meaning "do not let agents write" must
+  # never also mean "stop looking": that conflation left the fleet ungraded for
+  # 16 nights (2026-07-18 → 2026-08-02) while every cron in the chain exited 0.
+  loop:
+    # Which HOST owns the rag-sync (oversight) schedule. Unset = this machine.
+    # When set to another host, `pl loop`/`pl todo` on this machine report
+    # DELEGATED — an AMBER "I cannot vouch for it" — instead of either crying
+    # NOSCHEDULE or, worse, asserting GREEN about a schedule it does not own.
+    # Read the owner directly with: pl loop --host <role>
+    # oversight_host: mini
   todo:
     thresholds:
       # A site's newest backup older than this many days is flagged stale by
@@ -557,7 +572,13 @@ settings:
       # Surfaces .loop-paused / .rag-sync-paused / disabled loop parts, with the
       # age of the pause. A pause nobody can see is an outage.
       paused_automation: true
-      # Ages the last successful rag-sync run.
+      # OVERSIGHT LIVENESS (ops#230). Ages the last COMPLETED rag-sync run and
+      # also asserts that a schedule exists to produce the next one — "not
+      # paused" is not "alive", and an empty crontab looks identical to a
+      # healthy estate. A high finding here grades the (global) row RED in
+      # `pl rag`, which is why `pl rag` can exit 3 with every site green.
+      # This is the ONE gate for that check; the duplicate definition that
+      # answered to `loop_liveness` was dead code and was removed (ops#204).
       rag_sync: true
       # Ages the last proven `pl notify health` canary.
       notify_health: true

@@ -79,8 +79,18 @@ if todo_unreadable:
     sweep_state = "failed"
     sweep_reason = (sweep_reason + " | " if sweep_reason else "") + todo_unreadable
 sweep_failed = (sweep_state == "failed")
-work=defaultdict(lambda: {"high":0,"med":0,"low":0,"sec_high":0,"unknown":0,"top":""})
+work=defaultdict(lambda: {"high":0,"med":0,"low":0,"sec_high":0,"ovr_high":0,"unknown":0,"top":""})
 SEC_CATS={"SEC","TOK"}
+# ops#230 — OVERSIGHT LIVENESS IS A RED-GRADE SIGNAL, not ordinary work.
+#
+# `pl todo`'s check_rag_sync_freshness files an RSY item when the machinery that
+# turns this table into tracked issues has stopped. Before this line that item
+# graded like any other todo: AMBER, one row among twenty, on the `(global)`
+# pseudo-site. So for 16 nights the estate's oversight was dead and the oversight
+# surface rendered it as a mild amber. A high-priority RSY item now grades RED
+# and therefore makes `pl rag` exit 3 — "the watchman has stopped" must be at
+# least as loud as "a site has an advisory".
+OVERSIGHT_CATS={"RSY"}
 for it in items:
     s=it.get("site") or "(global)"
     p=(it.get("priority") or "").lower()
@@ -90,6 +100,7 @@ for it in items:
     elif p=="medium": w["med"]+=1
     else: w["low"]+=1
     if c in SEC_CATS and p=="high": w["sec_high"]+=1
+    if c in OVERSIGHT_CATS and p=="high": w["ovr_high"]+=1
     # UNK items are checks that could not run (unreachable host, missing tool).
     # They are not findings — they are the absence of a finding we cannot vouch
     # for, and they must stop a site grading GREEN.
@@ -118,8 +129,8 @@ def is_scanned(s):
 
 def grade(s):
     sc=sec.get(s,{}); wk=work.get(s,{})
-    secn=sc.get("count",0); sech=wk.get("sec_high",0)
-    if secn>0 or sech>0: return "RED"
+    secn=sc.get("count",0); sech=wk.get("sec_high",0); ovr=wk.get("ovr_high",0)
+    if secn>0 or sech>0 or ovr>0: return "RED"
     if (wk.get("high",0)+wk.get("med",0)+wk.get("low",0))>0 or sc.get("stale"): return "AMBER"
     # GREEN is a positive assertion ("I looked, it was clear"). We may only make
     # it about a site we actually scanned and whose checks all completed.

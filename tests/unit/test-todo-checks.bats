@@ -216,6 +216,10 @@ YML
 }
 
 @test "LOOP: a fresh rag-sync log produces NO item" {
+  # ops#230: "fresh log" is no longer sufficient for silence — the check also
+  # asserts that a schedule exists to produce the NEXT run. State it in the
+  # fixture rather than inheriting the test machine's crontab.
+  export NWP_OVERSIGHT_CRON=present
   _mkfixture
   # Guard against a VACUOUS green: assert the check exists before asserting it
   # stayed quiet. Without this, deleting the function makes this test pass.

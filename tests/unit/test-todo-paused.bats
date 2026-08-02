@@ -102,8 +102,17 @@ _run() { # $1 = check fn
 }
 
 # --- rag-sync freshness -------------------------------------------------------
+#
+# ops#230 added a second assertion to this check: a rag-sync part that is
+# enabled and unpaused but has NO CRON is RED, because nothing will ever wake
+# it — that is the state this workstation was actually in on 2026-08-02, with a
+# log that still looked recent. A fixture that only supplies a log therefore no
+# longer describes a healthy host, so the fixtures below state the schedule too.
+# NWP_OVERSIGHT_CRON exists for exactly this: the suite must not depend on
+# whatever the machine running it happens to have in its crontab.
 
 @test "a rag-sync log with a recent successful run is clean" {
+  export NWP_OVERSIGHT_CRON=present
   { echo "$(date -u -d '2 hours ago' +%FT%TZ) rag-sync start"
     echo "$(date -u -d '2 hours ago' +%FT%TZ) rag-sync done (pl rag exit=0)"; } > "$TMP/logs/rag-sync.log"
   run _run check_rag_sync_freshness
@@ -137,6 +146,7 @@ _run() { # $1 = check fn
 }
 
 @test "a MISSING rag-sync log is UNKNOWN, not clean" {
+  export NWP_OVERSIGHT_CRON=present
   rm -f "$TMP/logs/rag-sync.log"
   run _run check_rag_sync_freshness
   echo "$output"

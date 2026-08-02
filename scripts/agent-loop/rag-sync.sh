@@ -10,8 +10,12 @@
 # GitLab issues (via the least-privilege gitlab.ops_note_token in .secrets.yml).
 # It does NOT bump packages, deploy, or mark anything agent-eligible.
 #
-# Pause without uninstalling:  touch ~/nwp/.rag-sync-paused
-# Resume:                      rm    ~/nwp/.rag-sync-paused
+# Pause without uninstalling:  pl loop disable rag-sync   (or touch ~/nwp/.rag-sync-paused)
+# Resume:                      pl loop enable  rag-sync   (or rm    ~/nwp/.rag-sync-paused)
+# Install/remove the schedule: pl loop schedule install|remove --execute
+#
+# NOTE the WRITE kill (`pl loop disable all` / ~/nwp/.loop-paused) does NOT stop
+# this script — see the gate block below and ops#230.
 ################################################################################
 set -uo pipefail
 
@@ -27,49 +31,43 @@ ts(){ date -u +%FT%TZ; }
 
 # Wrapper-enforced part gate (lib/loop-parts.sh, deep-audit C0). rag-sync is a
 # distinct part of the self-healing loop; an operator can disable it on its own
-# via `pl loop disable rag-sync`, and the global kill / legacy .rag-sync-paused
-# sentinel also stop it. If the library is absent (older checkout) we fall back
-# to the legacy sentinel only, which is fail-safe.
+# via `pl loop disable rag-sync` or the legacy .rag-sync-paused sentinel. If the
+# library is absent (older checkout) we fall back to the legacy sentinel only,
+# which is fail-safe.
 #
-# SPLIT GATES (item 4, opt-in via NWP_LOOP_SPLIT_GATES=1)
-# ------------------------------------------------------
-# The global kill (`.loop-paused` / parts.state all=disabled) exists to stop the
-# loop WRITING — opening MRs, deploying. rag-sync does neither: it reads fleet
-# state and files/updates nwp/ops issues. Lumping it under the same switch cost
-# 8 nights of complete oversight blackout (2026-07-18 → 2026-07-25) during which
-# the fleet was 12 red / 10 amber / 0 green and zero issues were filed, while
-# every cron in the chain exited 0.
+# SPLIT GATES ARE NOW THE BEHAVIOUR, NOT A FLAG (ops#230)
+# -------------------------------------------------------
+# The WRITE kill (`.loop-paused` / parts.state all=disabled) exists to stop the
+# loop CHANGING things — opening MRs, deploying. rag-sync does neither: it reads
+# fleet state and files/updates nwp/ops issues. Lumping it under the same switch
+# cost 8 nights of oversight blackout in July 2026 — and then, because the fix
+# shipped as an opt-in flag that defaulted to OFF, it happened AGAIN and ran to
+# 16 nights (2026-07-18 → 2026-08-02), during which guzzle advisories landed,
+# three sites flipped AMBER→RED, and no issue was ever updated.
 #
-# With NWP_LOOP_SPLIT_GATES=1 rag-sync honours only its OWN gate, so pausing the
-# write half no longer blinds the read half. DEFAULT IS OFF: the existing
-# global-kill semantics are preserved until one clean night has been observed
-# with the flag on (see the rollback note in the MR).
+# lib/loop-parts.sh now classifies rag-sync as an `observe` part, so the write
+# kill structurally cannot reach it: only the separate OVERSIGHT kill
+# (`.oversight-paused` / parts.state oversight=disabled) or rag-sync's own
+# switch stop it. NWP_LOOP_UNIFIED_GATES=1 restores the old conflation, and this
+# wrapper says so in the log when it does.
 #
-# Either way the skip is now recorded with a REASON, so `pl todo`'s
+# Either way the skip is recorded with a REASON, so `pl todo`'s
 # check_rag_sync_freshness and `pl rag`'s LOOP banner can tell "switched off"
-# from "broken" — previously both looked identical from outside.
+# from "broken" — for 16 nights both looked identical from outside.
 export NWP_ROOT="$NWP_DIR"
-SPLIT="${NWP_LOOP_SPLIT_GATES:-0}"
 LOOP_PARTS_LIB="$NWP_DIR/lib/loop-parts.sh"
 if [ -f "$LOOP_PARTS_LIB" ]; then
   # shellcheck source=/dev/null
   . "$LOOP_PARTS_LIB"
-  if [ "$SPLIT" = "1" ]; then
-    # Read-only part: only its own switches apply.
-    if [ -f "$NWP_DIR/.rag-sync-paused" ] || [ "$(loop_part_raw rag-sync)" = "disabled" ]; then
-      echo "$(ts) rag-sync DISABLED by its own gate (.rag-sync-paused / parts.state rag-sync) — skipping [split-gates]" >> "$LOG"
-      exit 0
-    fi
-    if loop_global_killed; then
-      echo "$(ts) global kill is set but split-gates is on — rag-sync (read-only) CONTINUES" >> "$LOG"
-    fi
-  elif ! loop_part_enabled rag-sync; then
-    if loop_global_killed; then
-      echo "$(ts) rag-sync DISABLED by the GLOBAL kill — skipping. The fleet is ungraded into the tracker while this holds; 'pl rag' says LOOP DARK. Set NWP_LOOP_SPLIT_GATES=1 to keep this read-only part running." >> "$LOG"
-    else
-      echo "$(ts) rag-sync part disabled (parts.state rag-sync / .rag-sync-paused) — skipping" >> "$LOG"
-    fi
+  if ! loop_part_enabled rag-sync; then
+    echo "$(ts) rag-sync DISABLED — skipping. Reason: $(loop_part_disabled_reason rag-sync). While this holds the fleet's RAG grade does not reach nwp/ops; 'pl rag' says LOOP DARK and 'pl todo' files an RSY item." >> "$LOG"
     exit 0
+  fi
+  if loop_write_killed; then
+    echo "$(ts) WRITE kill is set ($(loop_write_kill_reason)) — rag-sync is an 'observe' part and CONTINUES (ops#230: a write-kill must not stop oversight)" >> "$LOG"
+  fi
+  if loop_gates_unified; then
+    echo "$(ts) WARNING: NWP_LOOP_UNIFIED_GATES=1 — the pre-ops#230 conflation is armed on this host; a write-kill CAN blind oversight here" >> "$LOG"
   fi
 elif [ -f "$NWP_DIR/.rag-sync-paused" ]; then
   echo "$(ts) paused (.rag-sync-paused present) — skipping" >> "$LOG"

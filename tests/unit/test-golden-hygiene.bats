@@ -117,6 +117,24 @@ INSERT INTO u VALUES ('noreply@bounce.mx.estate-under-test.org');"
   [[ "$output" == *"test.com"* ]]
 }
 
+@test "a package version string is not a mailbox — no TLD is all-digits" {
+  # Warm Drupal cache tables are full of CDN library refs shaped like an
+  # address. Before this, a recapture of nwd reported three "foreign mail
+  # domains" (v17.0.19, v2.0.7, v2.3.0) on every single scan — and a guard
+  # that cries wolf nightly is a guard that gets switched off.
+  _golden "INSERT INTO cache_default VALUES ('intl-tel-input@v17.0.19','signature_pad@v2.3.0','progress-tracker@v2.0.7','mathjax@2.7.9');"
+  _source_lib
+  run golden_hygiene_foreign_mail_domains "$GOLDEN/golden.db.sql.gz" "$(_declared)"
+  [ -z "$output" ]
+}
+
+@test "the version-string exemption does not blind the check to a real domain" {
+  _golden "INSERT INTO c VALUES ('intl-tel-input@v17.0.19','person@gmail.com');"
+  _source_lib
+  run golden_hygiene_foreign_mail_domains "$GOLDEN/golden.db.sql.gz" "$(_declared)"
+  [[ "$output" == *"gmail.com"* ]]
+}
+
 @test "the files tarball is scanned too, not just the DB dump" {
   mkdir -p "$TMP/stage"
   printf 'approver_email: person@gmail.com\n' > "$TMP/stage/settings.yml"
@@ -171,6 +189,117 @@ INSERT INTO u VALUES ('noreply@bounce.mx.estate-under-test.org');"
   _source_lib
   run golden_hygiene_denylisted_tokens "$GOLDEN/golden.db.sql.gz" "$TMP/private/golden-identity-denylist.txt"
   [ -z "$output" ]
+}
+
+################################################################################
+# Rule 3 — orphaned consent, the fingerprint of the WRONG remedy
+#
+# nwp/ops#200: an identity scrub found the operator's mailbox in an OLD
+# data_policy revision and DELETED the revision. The published text was already
+# clean, so nothing user-facing changed — but a user_consent row cited that
+# revision, and a consent record whose referent no longer exists cannot show
+# what the person agreed to. Operator ruling: redact as a revision, never
+# delete. Rule 3 makes the deletion visible instead of silent.
+################################################################################
+
+# A data_policy fixture. $1 = space-separated vids that still EXIST,
+# $2 = space-separated vids that consent rows CITE.
+_policy_golden() {
+  { echo 'INSERT INTO `data_policy_revision` VALUES'
+    local first=1 v
+    for v in $1; do
+      [ $first -eq 1 ] && first=0 || echo ','
+      printf "(%s,%s,'en',0,1784943141,'v1 initial — operator-drafted; pre-counsel',1)" "$v" "$v"
+    done
+    echo ';'
+    echo 'INSERT INTO `user_consent__data_policy_revision_id` VALUES'
+    first=1; local i=0
+    for v in $2; do
+      i=$((i+1))
+      [ $first -eq 1 ] && first=0 || echo ','
+      printf "('user_consent',0,%s,%s,'en',0,%s)" "$i" "$i" "$v"
+    done
+    echo ';'
+  } | gzip -c > "$GOLDEN/golden.db.sql.gz"
+}
+
+@test "a consent row citing a deleted revision is reported as an orphan" {
+  _policy_golden "1 3 4 5 6 7" "5 5 5 1 2 3 4 5 1 6 3 4 7"   # vid 2 deleted
+  _source_lib
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2 1" ]      # revision 2 missing, cited by 1 consent row
+}
+
+@test "orphan counting reports how many consent rows each deleted revision cost" {
+  _policy_golden "1 3" "1 2 2 2 3 3"
+  _source_lib
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ "$output" = "2 3" ]
+}
+
+@test "a golden with every cited revision present is clean" {
+  _policy_golden "1 2 3 4 5 6 7" "5 5 5 1 2 3 4 5 1 6 3 4 7"
+  _source_lib
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ -z "$output" ]
+}
+
+@test "restoring the deleted revision — redacted, at its own vid — clears the finding" {
+  # The whole point of the ops#200 ruling: the repair is to put the revision
+  # BACK (redacted), not to renumber it or to repoint the consent record.
+  _policy_golden "1 3 4 5 6 7" "1 2 3"
+  _source_lib
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ "$output" = "2 1" ]
+  _policy_golden "1 2 3 4 5 6 7" "1 2 3"
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ -z "$output" ]
+}
+
+@test "a golden with no data_policy at all is silent, not all-orphaned" {
+  # Every Moodle golden looks like this. Failing loud here would put a
+  # permanent false RED on half the fleet and get the check disabled.
+  _golden "INSERT INTO mdl_user VALUES (3,'Given','Family');"
+  _source_lib
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ -z "$output" ]
+}
+
+@test "consent rows but no revision table is silent too — cannot conclude deletion" {
+  { echo 'INSERT INTO `user_consent__data_policy_revision_id` VALUES'
+    echo "('user_consent',0,1,1,'en',0,4);"
+  } | gzip -c > "$GOLDEN/golden.db.sql.gz"
+  _source_lib
+  run golden_hygiene_orphaned_consents "$GOLDEN/golden.db.sql.gz"
+  [ -z "$output" ]
+}
+
+@test "an orphan surfaces as SEC/high — pl rag must grade this RED" {
+  printf '# none\n' > "$TMP/private/golden-identity-denylist.txt"
+  _policy_golden "1 3" "1 2 3"
+  run _run_check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"category":"SEC"'* ]]
+  [[ "$output" == *'"priority":"high"'* ]]
+  [[ "$output" == *"-orphan"* ]]
+}
+
+@test "the orphan finding says the remedy is redact-not-delete, and that recapture will not fix it" {
+  printf '# none\n' > "$TMP/private/golden-identity-denylist.txt"
+  _policy_golden "1 3" "1 2 3"
+  run _run_check
+  [[ "$output" == *"REDACT, NEVER DELETE"* ]]
+  [[ "$output" == *"ops#200"* ]]
+  [[ "$output" == *"ORIGINAL vid"* ]]
+}
+
+@test "the PII findings carry the remedy too — the guard must say what to do, not just what is wrong" {
+  # A guard that reports "there is a personal mailbox in your golden" and stops
+  # is what produced the deletion in the first place.
+  _golden "INSERT INTO users VALUES ('person@gmail.com');"
+  run _run_check
+  [[ "$output" == *"REDACT, NEVER DELETE"* ]]
 }
 
 ################################################################################

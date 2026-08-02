@@ -1980,7 +1980,7 @@ check_demo_golden_hygiene() {
     local declared; declared=$(golden_hygiene_declared_domains "$config_file")
     local denylist; denylist=$(golden_hygiene_denylist_file "$root")
 
-    local site tier artifact scan foreign masked offfence
+    local site tier artifact scan foreign masked offfence orphans
     for d in "$root"/sites/*/demo-golden "$root"/sites/*/demo-golden-live; do
         [ -d "$d" ] || continue
         site=$(basename "$(dirname "$d")")
@@ -2008,17 +2008,38 @@ check_demo_golden_hygiene() {
                     "$site" "pl demo golden ${site} --tier=live"
             fi
 
+            # RULE 4 arrived on a branch that predated RULE 3 (the seed-fence
+            # trap above); both were numbered 3. They are unrelated findings and
+            # each is independently actionable, so both are kept and this one is
+            # renumbered rather than folded in.
+            orphans=$(printf '%s\n' "$scan" | sed -n 's/^ORPHAN //p')
+
             if [ -n "$foreign" ]; then
                 todo_add_item "SEC" "goldenid-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)-mail" "high" \
                     "Demo golden for ${site} (${tier}) carries a mailbox on an undeclared domain" \
-                    "$(basename "$artifact") holds an address on: $(echo "$foreign" | tr '\n' ' '). A golden is restored over the LIVE demo site every night and copied into every backup of the demo box, so anything personal in it is permanent. Demo accounts must use an undeliverable sentinel address (RFC 2606, e.g. *.invalid); operational notification addresses must be a role address on an estate domain, not a person's. Fix the LIVE site, then recapture: pl demo golden ${site} --tier=live" \
+                    "$(basename "$artifact") holds an address on: $(echo "$foreign" | tr '\n' ' '). A golden is restored over the LIVE demo site every night and copied into every backup of the demo box, so anything personal in it is permanent. Demo accounts must use an undeliverable sentinel address (RFC 2606, e.g. *.invalid); operational notification addresses must be a role address on an estate domain, not a person's. ${GOLDEN_HYGIENE_REMEDY} Recapture with: pl demo golden ${site} --tier=live" \
                     "$site" "pl demo golden ${site} --tier=live"
             fi
 
             if [ -n "$masked" ]; then
                 todo_add_item "SEC" "goldenid-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)-name" "high" \
                     "Demo golden for ${site} (${tier}) contains a denylisted personal identifier" \
-                    "$(basename "$artifact") matched $(echo "$masked" | tr '\n' ' ') from the untracked identity denylist. Reported masked on purpose — a finding must not republish what it found. Fix the LIVE site, then recapture: pl demo golden ${site} --tier=live" \
+                    "$(basename "$artifact") matched $(echo "$masked" | tr '\n' ' ') from the untracked identity denylist. Reported masked on purpose — a finding must not republish what it found. ${GOLDEN_HYGIENE_REMEDY} Recapture with: pl demo golden ${site} --tier=live" \
+                    "$site" "pl demo golden ${site} --tier=live"
+            fi
+
+            # RULE 4 — the fingerprint of the WRONG remedy having already been
+            # applied. SEC/high like its two siblings, deliberately: `pl rag`
+            # grades RED on SEC/high only (lib/rag-render.py SEC_CATS), and
+            # being unable to demonstrate WHICH text a person consented to is a
+            # governance failure of the same weight as the leak that provoked
+            # it — not a piece of background work to be triaged later.
+            # Unlike the other two findings, a recapture does NOT clear this
+            # one: the revision has to be put back, redacted, at its own vid.
+            if [ -n "$orphans" ]; then
+                todo_add_item "SEC" "goldenid-${site}-$(basename "$d")-$(basename "$artifact" | tr . -)-orphan" "high" \
+                    "Demo golden for ${site} (${tier}) has user_consent rows citing deleted policy revisions" \
+                    "$(basename "$artifact") holds consent records that name data_policy revision(s) which are not in the dump: $(echo "$orphans" | awk '{printf "vid %s (%s consent row(s)) ", $1, $2}'). The module never reuses or renumbers a vid, so the ordinary way to reach this state is that somebody DELETED a revision — almost always to silence a personal-data finding in an old draft. That is the wrong remedy and it is not repaired by recapturing: it destroys the drafting work and hollows out the consent record, which exists precisely to evidence WHICH text the person accepted. ${GOLDEN_HYGIENE_REMEDY} Restore the missing revision AT ITS ORIGINAL vid with the redacted body, then recapture: pl demo golden ${site} --tier=live" \
                     "$site" "pl demo golden ${site} --tier=live"
             fi
         done

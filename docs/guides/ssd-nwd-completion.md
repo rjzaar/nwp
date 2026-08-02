@@ -219,6 +219,27 @@ pl drush nwd --tier=live --execute -- nwc-moodle:pull-completions 21
 | nwd recorded | 4 rows in `nwc_sojourner_completion`, `source=moodle_pull` |
 | **The number moved** | `users_data nwc_guild:sojourner_level` **absent → 1** (L0 → L1, "Inquirer") |
 
+Re-proved the same evening against the restored ssd content (216 quiz activities,
+51 courses), to show the bridge is repeatable and not a one-shot:
+
+| | |
+|---|---|
+| Did | additionally completed A1, A4, A5, A6 (the two clusters L2 requires) |
+| nwd recorded | evidence rows **4 → 8**, all `source=moodle_pull` |
+| **The number moved again** | `sojourner_level` **1 → 2** (L1 "Inquirer" → L2 "Sojourner") |
+
+## Interaction with further ssd content restores
+
+The bridge reads **nothing** from `practice`, `checkpoints` or `application` —
+its entire read surface is the two web-service calls above. Restoring those
+rows cannot collide with it.
+
+One caution for whoever restores more course content: ALL-aggregation is over
+the **declared criteria rows**, not over every activity in the course, so adding
+activities does **not** re-open an already-complete course. But re-running
+`ssd-completion-criteria.sh --apply` afterwards *will* declare criteria for the
+new activities and *can* re-open one. Run `--check` first.
+
 ## Two pre-existing defects this surfaced
 
 1. **`nwc_notification` throws on every Sojourner level grant.**

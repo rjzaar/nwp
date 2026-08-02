@@ -427,9 +427,17 @@ cmd_guard(){
         return 0
       elif [ "$rr_rc" -eq 2 ]; then
         echo ""
-        echo "CANNOT VERIFY — the notes API could not be read, so the release"
-        echo "  record could not be checked. Refusing (fail closed). This is"
-        echo "  'could not look', not 'no release exists'."
+        echo "CANNOT VERIFY — the notes API could not be read (HTTP $(_mr_http_status)),"
+        echo "  so the release record could not be checked. Refusing (fail closed)."
+        echo "  This is 'could not look', not 'no release exists'."
+        case "$(_mr_http_status)" in
+          401) echo "  401 = the token was rejected. Check the NWP_MR_TOKEN value was"
+               echo "        pasted whole, and that it has not expired or been revoked." ;;
+          403) echo "  403 = the token is valid but lacks rights on this project."
+               echo "        The gate needs 'api' scope at Developer or above." ;;
+          404) echo "  404 = project or MR not visible to this token." ;;
+          000) echo "  000 = no connection at all (DNS/TLS), not an auth problem." ;;
+        esac
         return 2
       fi
     fi

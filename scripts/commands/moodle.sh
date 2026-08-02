@@ -15,7 +15,7 @@ set -uo pipefail
 #   pl moodle plugin deploy <site> <plugin>... --tier=stg|live [--dry-run|--apply] [--no-upgrade]
 #   pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
 #   pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
-#   pl moodle rollback      <site> --tier=live [list|execute] [--dry-run]
+#   pl moodle rollback      <site> --tier=live [list|verify|execute] [--dry-run]
 #   pl moodle config        <site> [...]        # alias → moodle-promote.sh
 #   pl moodle smoke         <site> [...]        # alias → moodle-smoke.sh
 #   pl moodle dev2stg       <site> [...]        # delegation target (== config for stg)
@@ -52,10 +52,12 @@ ${BOLD}USAGE:${NC}
     pl moodle maintenance   <site> --tier=live on|off [--dry-run|--execute]
     pl moodle plugin build  <plugin> [--from=DIR] [--ddev=SITE|--tree=DIR] [--check-only]
     pl moodle plugin deploy <site> <plugin>... --tier=stg|live [--dry-run|--apply] [--no-upgrade]
-                            [--from=DIR|--from-canonical] [--allow-downgrade]
+                            [--from=DIR|--from-canonical|--from-nwptoolkit]
+                            [--allow-downgrade] [--override-pair]
     pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live] [--no-canonical] [--canonical-ref=REF]
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
+    pl moodle privacy       <site> --tier=live [--component=<frankenstyle>]... [--all] [--verbose]
     pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
     pl moodle mail          <site> --tier=live [--dry-run|--apply] [--sync-golden]
     pl moodle course restore <site> --tier=live|dev --from=DIR [--category=NAME|--category-map=FILE] [--enable-self-enrol] [--dry-run|--apply]
@@ -63,7 +65,7 @@ ${BOLD}USAGE:${NC}
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
     pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
-    pl moodle rollback      <site> --tier=live [list|execute] [--dry-run]
+    pl moodle rollback      <site> --tier=live [list|verify|execute] [--dry-run]
     pl moodle config        <site> [...]       # == pl moodle-promote (dev/stg substrate)
     pl moodle smoke         <site> [...]       # == pl moodle-smoke
 
@@ -104,6 +106,12 @@ ${BOLD}NOTES:${NC}
       that handles formation data must carry the consent gate in the bytes that
       ship. Override deliberately with --allow-ungated (loudly ledgered).
     * <plugin> is a Moodle <type>/<name> id, e.g. mod/depthcontent.
+    * 'privacy' is READ-ONLY and asks MOODLE, on the target, whether a plugin is
+      visible to the privacy API — class resolves, interfaces implemented,
+      versiondb == versiondisk. 'drift' cannot answer this: it compares
+      \$plugin->version between copies, so a file missing from ALL of them reads
+      as agreement. local_feedback shipped to live ssd + ssc for weeks with no
+      provider.php at all (ops#259) and nothing went red.
     * 'policy' reports whether the site's published legal documents are actually
       presented for acceptance (\$CFG->sitepolicyhandler == tool_policy). ss/ssc
       published five MANDATORY documents with the handler unset and recorded zero
@@ -351,6 +359,14 @@ cmd_plugin_deploy() {
     local site="" tier="" mode="dry-run" no_upgrade="false"
     local explicit_from="" force_toolkit="false" force_canonical="false" allow_ungated="false"
     local allow_downgrade="false"
+    # pair_guard's own refusal says "re-run with --override-pair". Until 2026-08-03
+    # this verb did not parse that flag and answered the advice with
+    # "Unknown option", so the only way through was to know that the OVERRIDE_PAIR
+    # environment variable existed. An override that is reachable only by reading
+    # the source is an override that never gets ledgered by the people who need
+    # it and gets replaced by a hand-rolled ssh by the people who don't. The env
+    # var still works, so nothing that used it breaks.
+    local override_pair="${OVERRIDE_PAIR:-false}"
     local -a plugins=()
     for a in "$@"; do
         case "$a" in
@@ -363,6 +379,7 @@ cmd_plugin_deploy() {
             --from-nwptoolkit) force_toolkit="true" ;;
             --allow-ungated)   allow_ungated="true" ;;
             --allow-downgrade) allow_downgrade="true" ;;
+            --override-pair)   override_pair="true" ;;
             -*)            print_error "Unknown option: $a"; return 1 ;;
             *)             if [ -z "$site" ]; then site="$a"; else plugins+=("$a"); fi ;;
         esac
@@ -391,7 +408,7 @@ cmd_plugin_deploy() {
     # 3. maturity guard (code-flow class gates HOW code reaches live)
     if ! maturity_guard_deploy "$BASE" "moodle-deploy"; then return 1; fi
     # 4. pair guard (code-only by construction ⇒ passes the coupled-tier rule)
-    if ! pair_guard "$BASE" "$tier" "moodle-deploy" "true" "${OVERRIDE_PAIR:-false}"; then return 1; fi
+    if ! pair_guard "$BASE" "$tier" "moodle-deploy" "true" "$override_pair"; then return 1; fi
     # 4b. DECLARED CORE PATCHES (item 9) — fail CLOSED before any bytes move,
     #     on dry-run too. A target missing a declared core patch is running
     #     DIFFERENT core code than the one this deploy was validated against;
@@ -868,12 +885,13 @@ cmd_rollback() {
             --override-pair) override_pair="true" ;;
             --paired-restore-ack=*) paired_ack="${a#*=}" ;;
             list)      action="list" ;;
+            verify)    action="verify" ;;
             execute)   action="execute" ;;
             -*)        print_error "Unknown option: $a"; return 1 ;;
             *)         [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
         esac
     done
-    [ -z "$site" ] && { print_error "usage: pl moodle rollback <site> --tier=live [list|execute] [--dry-run]"; return 1; }
+    [ -z "$site" ] && { print_error "usage: pl moodle rollback <site> --tier=live [list|verify|execute] [--dry-run]"; return 1; }
     _resolve_moodle_site "$site" || return 1
     rollback_init
 
@@ -889,6 +907,70 @@ cmd_rollback() {
             found=$((found+1))
         done
         [ "$found" -eq 0 ] && print_info "No moodle-remote rollback points for ${BASE}."
+        print_info "Are those artifacts still THERE? pl moodle rollback ${BASE} --tier=live verify"
+        return 0
+    fi
+
+    # verify → the ledger is a claim; the box is the fact.
+    #
+    # `list` prints "[active]" out of a local JSON file and has never once looked
+    # at the target. A rollback point whose remote tarball was cleaned out of
+    # /home/gitlab months ago lists exactly the same as a good one, so the ledger
+    # can read healthy while the estate has no way back at all — and you find out
+    # at the only moment it matters. This action goes and looks: size + sha256 of
+    # both artifacts, taken ON the box. READ-ONLY; it writes nothing anywhere.
+    # It also prints the sha256 you need for a rollback-registry row, which until
+    # now had to be fetched with a hand-rolled ssh.
+    if [ "$action" = "verify" ]; then
+        local server_ip ssh_user ssh_opts ssh_target
+        server_ip=$(get_live_config "$BASE" "server_ip")
+        [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE'."; return 1; }
+        ssh_user=$(get_ssh_user "$BASE")
+        ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+
+        print_header "Moodle rollback artifacts: ${BASE} (on ${ssh_target})"
+        local f n_ok=0 n_bad=0 n_blind=0
+        for f in "${ROLLBACK_DIR}/${BASE}_"*.json; do
+            [ -e "$f" ] || continue
+            grep -q '"type": *"moodle-remote"' "$f" 2>/dev/null || continue
+            local ts st db pl_
+            ts=$(grep -m1 '"timestamp"' "$f"        | sed 's/.*: *"\([^"]*\)".*/\1/')
+            st=$(grep -m1 '"status"' "$f"           | sed 's/.*: *"\([^"]*\)".*/\1/')
+            db=$(grep -m1 '"snapshot_db"' "$f"      | sed 's/.*: *"\([^"]*\)".*/\1/')
+            pl_=$(grep -m1 '"snapshot_plugins"' "$f" | sed 's/.*: *"\([^"]*\)".*/\1/')
+            echo "  ${ts}  [${st}]  $(basename "$f")"
+            local a
+            for a in "$db" "$pl_"; do
+                [ -n "$a" ] || continue
+                local line rc=0
+                # shellcheck disable=SC2086
+                line="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+                    "if [ -f $(printf '%q' "$a") ]; then stat -c %s $(printf '%q' "$a"); sha256sum $(printf '%q' "$a") | cut -d' ' -f1; else echo MISSING; fi" \
+                    </dev/null 2>/dev/null)" || rc=$?
+                if [ "$rc" -ne 0 ] || [ -z "$line" ]; then
+                    # Could not look. NOT the same as "not there" — grade it apart.
+                    printf '      %-64s %s\n' "$(basename "$a")" "CANNOT-VERIFY (ssh/stat failed)"
+                    n_blind=$((n_blind+1)); continue
+                fi
+                if [ "$line" = "MISSING" ]; then
+                    printf '      %-64s %s\n' "$(basename "$a")" "MISSING on the target"
+                    n_bad=$((n_bad+1)); continue
+                fi
+                local sz sha
+                sz="$(printf '%s\n' "$line" | sed -n 1p)"
+                sha="$(printf '%s\n' "$line" | sed -n 2p)"
+                printf '      %-64s %s bytes  sha256=%s\n' "$(basename "$a")" "$sz" "$sha"
+                n_ok=$((n_ok+1))
+            done
+        done
+        if [ "$n_ok" -eq 0 ] && [ "$n_bad" -eq 0 ] && [ "$n_blind" -eq 0 ]; then
+            print_info "No moodle-remote rollback points for ${BASE}."
+            return 0
+        fi
+        print_info "artifacts present=${n_ok} missing=${n_bad} unverifiable=${n_blind}"
+        [ "$n_blind" -gt 0 ] && { print_error "CANNOT-VERIFY on ${n_blind} artifact(s) — not a pass."; return 3; }
+        [ "$n_bad"   -gt 0 ] && { print_error "${n_bad} recorded artifact(s) are GONE from the target — those rollback points are phantoms."; return 1; }
+        print_status "OK" "every recorded rollback artifact is present and hashed."
         return 0
     fi
 
@@ -2697,6 +2779,134 @@ cmd_content_sync() {
 }
 
 ################################################################################
+# privacy — "is this plugin VISIBLE to Moodle's privacy API on the target?"
+#
+# WHY THIS VERB EXISTS (nwp/ops#259)
+# ----------------------------------
+# On 2026-08-03 `local/feedback` was found installed on live ssd and live ssc
+# with `classes/privacy/provider.php` ABSENT from the deployed tree. The plugin
+# stores userid, username, email, ipaddress and user_agent per submission. With
+# no provider class the privacy API does not know the plugin exists: a DSAR
+# export returns nothing for it and an Art.17 erasure silently skips it.
+#
+# `pl moodle plugin drift` could not see it. Drift compares $plugin->version
+# between copies and every copy agreed — a file can be missing from all of them
+# at once. And a file listing is not an answer either: "provider.php is on
+# disk" is not "the API resolves the class, it implements the interfaces the
+# API calls, and the plugin is installed at that version". Only Moodle can say
+# that, and only on the target.
+#
+# READ-ONLY BY CONSTRUCTION. No deploy gate, no typed confirm, no maintenance
+# mode — there is nothing to confirm. The only thing written anywhere is the
+# staged helper under /tmp on the target, removed on every exit path. That is
+# also why it is safe to run before a deploy, which is exactly when you want it:
+# a check whose failing state you have never observed is not a check.
+#
+#   pl moodle privacy <site> --tier=live [--component=<frankenstyle>]... [--all] [--verbose]
+#
+# With --component the verb ASSERTS and exits non-zero on NO-PROVIDER /
+# INCOMPLETE / NOT-INSTALLED. With no --component it scans every installed
+# plugin and REPORTS (exit 0 + summary), because a bare core scan always
+# surfaces something and a report must not masquerade as a gate.
+################################################################################
+
+PRIV_HELPER="${PRIV_HELPER:-$REPO_ROOT/scripts/moodle/privacy-registry.php}"
+
+cmd_privacy() {
+    local site="" tier="" verbose="false" scanall="false"
+    local -a comps=()
+    for a in "$@"; do
+        case "$a" in
+            --tier=*)      tier="${a#*=}" ;;
+            --component=*) comps+=("${a#*=}") ;;
+            --all)         scanall="true" ;;
+            --verbose)     verbose="true" ;;
+            -h|--help)
+                print_info "usage: pl moodle privacy <site> --tier=live [--component=<frankenstyle>]... [--all] [--verbose]"
+                return 0 ;;
+            -*) print_error "Unknown option: $a"; return 1 ;;
+            *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle privacy <site> --tier=live [--component=...]"; return 1; }
+    case "$tier" in
+        live) ;;
+        "")   print_error "--tier is required (live)"; return 1 ;;
+        *)    print_error "tier '${tier}' is not supported by this verb yet — only live."
+              print_info  "  (dev/stg run in ddev; use 'ddev exec php scripts/moodle/privacy-registry.php' there.)"
+              return 1 ;;
+    esac
+    [ ! -f "$PRIV_HELPER" ] && { print_error "Missing helper: $PRIV_HELPER"; return 1; }
+    _resolve_moodle_site "$site" || return 1
+
+    local server_ip ssh_user remote_path ssh_opts ssh_target sudo_prefix=""
+    server_ip=$(get_live_config "$BASE" "server_ip")
+    [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE'."; return 1; }
+    ssh_user=$(get_ssh_user "$BASE")
+    remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+    [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+    ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+
+    local php_bin php_opts
+    php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+    php_opts="$(moodle_cli_php_opts "$CONFIG_FILE")"
+    moodle_cli_assert "$php_bin" "$php_opts" || return 1
+
+    local -a hargs=()
+    local c
+    for c in "${comps[@]:-}"; do [ -n "$c" ] && hargs+=("--component=${c}"); done
+    [ "$scanall" = "true" ] && hargs+=("--all")
+    [ "$verbose" = "true" ] && hargs+=("--verbose")
+
+    print_header "Moodle privacy registry: ${BASE}@live"
+    print_info "Target: ${ssh_target}:${remote_path}"
+    if [ "${#comps[@]}" -gt 0 ]; then
+        print_info "Asserting: ${comps[*]}"
+    else
+        print_info "Scanning every installed plugin (report mode — use --component to assert)."
+    fi
+
+    local remote_stage="/tmp/nwp-privacy-$(date +%s)-$$"
+    _priv_cleanup() {
+        # shellcheck disable=SC2086
+        ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+            "${sudo_prefix} rm -rf ${remote_stage}; rm -f ~/privacy-registry.php" >/dev/null 2>&1 || true
+    }
+
+    _cr_push_verified "$ssh_target" "$ssh_opts" "$PRIV_HELPER" "privacy-registry.php" || return 1
+    # shellcheck disable=SC2086
+    if ! ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+        "${sudo_prefix} mkdir -p ${remote_stage} && cd ~ && ${sudo_prefix} cp privacy-registry.php ${remote_stage}/ && ${sudo_prefix} chown -R www-data:www-data ${remote_stage} && ${sudo_prefix} chmod 0755 ${remote_stage} && rm -f privacy-registry.php"; then
+        print_error "Could not stage the verified helper into ${remote_stage} on the target."
+        _priv_cleanup; return 1
+    fi
+
+    local qargs="" x
+    for x in "${hargs[@]:-}"; do [ -n "$x" ] && qargs+=" $(printf '%q' "$x")"; done
+
+    local out rc=0
+    # shellcheck disable=SC2086
+    out="$(ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" \
+        "cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_stage}/privacy-registry.php${qargs}" </dev/null 2>&1)" || rc=$?
+    _priv_cleanup
+
+    printf '%s\n' "$out"
+
+    if [ "$rc" -eq 2 ] || ! printf '%s\n' "$out" | grep -q '^PRIVACY-SUMMARY '; then
+        print_error "CANNOT-VERIFY: the privacy registry did not run to completion on ${BASE}@live (rc=${rc})."
+        print_info  "  A check that could not look has NOT looked — do not read this as a pass."
+        return 3
+    fi
+    if [ "$rc" -ne 0 ]; then
+        print_error "PRIVACY GAP on ${BASE}@live — at least one asserted component is invisible to the privacy API."
+        print_info  "  Remedy: pl moodle plugin deploy ${BASE} <plugin> --tier=live --from-canonical --apply"
+        return 1
+    fi
+    print_status "OK" "privacy registry checked on ${BASE}@live."
+    return 0
+}
+
+################################################################################
 # Dispatch
 #
 # Sourcing this file (bats unit tests) defines the functions WITHOUT dispatching,
@@ -2745,6 +2955,7 @@ case "$SUB" in
         esac
         ;;
     gate-status) cmd_gate_status "$@" ;;
+    privacy)   cmd_privacy  "$@" ;;
     policy)    cmd_policy   "$@" ;;
     mail)      cmd_mail     "$@" ;;
     upgrade)   cmd_upgrade  "$@" ;;

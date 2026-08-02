@@ -182,6 +182,48 @@ EOF
   [[ "$output" == *"2 -> 1"* ]]
 }
 
+@test "H3: the word 'skip' in a COMMENT or an @test title is not a skip" {
+  # The rule taxed prose on its first contact with the real tree: five suites
+  # scored a skip apiece for a comment saying why they deliberately did NOT
+  # skip. Counting those trains people to delete the explanation and seeds a
+  # shrink-only baseline with rows no fix can remove.
+  # Written as a single-line `printf` carrying `# honesty:fixture`, like every
+  # other fixture here: a heredoc cannot carry the marker (its lines ARE the
+  # fixture's lines), and `@test` at column 0 in this file would be scanned by
+  # bats as a case of this suite.
+  printf '# this suite refuses to skip; it fails instead\n@test "RED-PROOF: the wrapper DOES skip when its sentinel is set" {\n  run true   # deliberately not a skip\n}\n' > "$FIX/tests/unit/test-x.bats"  # honesty:fixture
+  _run_lint --rules=H3
+  [ "$status" -eq 0 ]                        # nothing to report at all
+  [[ "$output" == *"none new"* ]]
+}
+
+@test "H3: an executable skip in the SAME file is still counted (not blanket-blind)" {
+  # The green half: prove the exclusion above did not switch the rule off.
+  printf '# a comment mentioning skip\n@test "a title mentioning skip" {\n  command -v nosuchtool >/dev/null || skip "nosuchtool absent"\n}\n' > "$FIX/tests/unit/test-x.bats"  # honesty:fixture
+  _run_lint --rules=H3
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"NEW skip-bearing suite"* ]]
+  [[ "$output" == *"(1 skip statement(s))"* ]]   # exactly one: the executable one
+}
+
+@test "H3: 'skip' that is not in command position is prose, not a statement" {
+  # An assertion ABOUT a skip message is not a skip. This exact line shape is
+  # what made the rule score its own acceptance suite.
+  printf '@test "z" {\n  [[ "$out" == *"(1 skip statement(s))"* ]]\n}\n' > "$FIX/tests/unit/test-x.bats"  # honesty:fixture
+  _run_lint --rules=H3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"none new"* ]]
+}
+
+@test "H3: 'skip' inside a quoted string on a code line still counts" {
+  # `#` inside quotes must not be treated as a comment introducer, or the
+  # stripper would blind the rule on any line carrying a hash in a message.
+  printf '@test "y" {\n  [ -n "$X" ] || skip "needs X # see ops-214"\n}\n' > "$FIX/tests/unit/test-x.bats"  # honesty:fixture
+  _run_lint --rules=H3
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"(1 skip statement(s))"* ]]
+}
+
 @test "H3: a suite with all skips removed leaves a STALE row" {
   printf 'a() { skip "one"; }\n' > "$FIX/tests/unit/test-x.bats"  # honesty:fixture
   _run_lint --rules=H3 --update-baseline

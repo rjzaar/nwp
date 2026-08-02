@@ -110,9 +110,33 @@ ai_host_ssh() {
 # and returns 0 on success, 1 on failure.
 ################################################################################
 
+# `x=$(cmd || echo LITERAL)` does NOT replace the output on failure — it
+# APPENDS the literal to whatever the command already printed. Both checks
+# below used that shape, and `systemctl is-active` / `curl -w %{http_code}`
+# both print their answer AND exit non-zero when the answer is bad, which is
+# their normal failure mode. So the two commonest real failures produced a
+# two-line detail ("inactive\nunreachable", "000\n000"), and emit_json
+# interpolates the detail into python source: `pl ai-host llm health --json`
+# died with `SyntaxError: unterminated string literal` on exactly the runs it
+# exists to report. Reproduced 2026-08-03 with a stubbed ssh.
+#
+# The rule both now follow (the ai_host_sessions idiom already in this file):
+# capture the exit status separately, keep the command's own words, and only
+# invent a sentinel when the command said nothing recognisable. Three states,
+# never two — "the unit is stopped" and "I could not reach the host" are
+# different facts and the operator is told which one happened.
+_ai_host_last_line() { printf '%s' "${1##*$'\n'}"; }
+# A detail is a ONE-LINE field (it lands in a table column and in JSON).
+_ai_host_flatten()  { local s="${1//$'\n'/ | }"; printf '%s' "${s//$'\r'/}"; }
+
 check_systemd_active() {
-    local state
-    state=$(ai_host_ssh 'systemctl --user is-active ollama.service' 2>/dev/null || echo "unreachable")
+    local out rc state
+    out=$(ai_host_ssh 'systemctl --user is-active ollama.service' 2>&1); rc=$?
+    state="$(_ai_host_last_line "$out")"
+    case "$state" in
+        active|inactive|failed|activating|deactivating|reloading|unknown) ;;
+        *) state="unreachable (rc=${rc}: $(_ai_host_flatten "${out:-no output}"))" ;;
+    esac
     CHECK_SYSTEMD_DETAIL="$state"
     if [[ "$state" == "active" ]]; then
         CHECK_SYSTEMD_STATUS=ok
@@ -123,8 +147,14 @@ check_systemd_active() {
 }
 
 check_daemon_reachable() {
-    local http
-    http=$(ai_host_ssh 'curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:11434/api/tags' 2>/dev/null || echo "000")
+    local out rc http
+    out=$(ai_host_ssh 'curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:11434/api/tags' 2>&1); rc=$?
+    http="$(_ai_host_last_line "$out")"
+    if [[ ! "$http" =~ ^[0-9]{3}$ ]]; then
+        CHECK_DAEMON_DETAIL="unreachable (rc=${rc}: $(_ai_host_flatten "${out:-no output}"))"
+        CHECK_DAEMON_STATUS=fail
+        return 1
+    fi
     CHECK_DAEMON_DETAIL="HTTP $http on 127.0.0.1:11434/api/tags"
     if [[ "$http" == "200" ]]; then
         CHECK_DAEMON_STATUS=ok
@@ -137,7 +167,7 @@ check_daemon_reachable() {
 check_loopback_only() {
     local listen
     listen=$(ai_host_ssh "ss -tlnH 'sport = :11434' 2>/dev/null | awk '{print \$4}'" 2>/dev/null || true)
-    CHECK_BIND_DETAIL="${listen:-<no listener>}"
+    CHECK_BIND_DETAIL="$(_ai_host_flatten "${listen:-<no listener>}")"
     if [[ "$listen" == "127.0.0.1:11434" ]]; then
         CHECK_BIND_STATUS=ok
         return 0
@@ -267,23 +297,42 @@ emit_human() {
 emit_json() {
     local status="$1"
     local quick="${QUICK:-0}"
-    python3 - <<PY
-import json
+    # Details are REMOTE TEXT (systemctl / curl / ssh error output). They used
+    # to be pasted straight into this python source, so any detail containing a
+    # newline or a double quote produced a SyntaxError instead of JSON — the
+    # emitter broke on precisely the unhealthy hosts it is meant to describe.
+    # Hand them over as environment variables and let json.dumps do the quoting.
+    J_HOST="$AI_HOST_SSH" \
+    J_STATUS="$status" \
+    J_QUICK="$quick" \
+    J_SYSTEMD_S="$CHECK_SYSTEMD_STATUS"          J_SYSTEMD_D="$CHECK_SYSTEMD_DETAIL" \
+    J_DAEMON_S="$CHECK_DAEMON_STATUS"            J_DAEMON_D="$CHECK_DAEMON_DETAIL" \
+    J_BIND_S="$CHECK_BIND_STATUS"                J_BIND_D="$CHECK_BIND_DETAIL" \
+    J_CHATM_S="$CHECK_CHAT_MODEL_STATUS"         J_CHATM_D="$CHECK_CHAT_MODEL_DETAIL" \
+    J_CODERM_S="$CHECK_CODER_MODEL_STATUS"       J_CODERM_D="$CHECK_CODER_MODEL_DETAIL" \
+    J_CHATB_S="${CHECK_CHAT_BENCH_STATUS:-skip}" J_CHATB_D="${CHECK_CHAT_BENCH_DETAIL:-}" \
+    J_CHATB_R="${CHECK_CHAT_BENCH_RATE:-0}" \
+    J_CODERB_S="${CHECK_CODER_BENCH_STATUS:-skip}" J_CODERB_D="${CHECK_CODER_BENCH_DETAIL:-}" \
+    J_CODERB_R="${CHECK_CODER_BENCH_RATE:-0}" \
+    python3 - <<'PY'
+import json, os
+e = os.environ
+def chk(s, d): return {"status": e[s], "detail": e[d]}
 doc = {
-    "host": "${AI_HOST_SSH}",
-    "status": "${status}",
-    "quick": bool(int("${quick}")),
+    "host":   e["J_HOST"],
+    "status": e["J_STATUS"],
+    "quick":  bool(int(e["J_QUICK"] or "0")),
     "checks": {
-        "systemd":      {"status": "${CHECK_SYSTEMD_STATUS}",      "detail": "${CHECK_SYSTEMD_DETAIL}"},
-        "daemon":       {"status": "${CHECK_DAEMON_STATUS}",       "detail": "${CHECK_DAEMON_DETAIL}"},
-        "bind":         {"status": "${CHECK_BIND_STATUS}",         "detail": "${CHECK_BIND_DETAIL}"},
-        "chat_model":   {"status": "${CHECK_CHAT_MODEL_STATUS}",   "detail": "${CHECK_CHAT_MODEL_DETAIL}"},
-        "coder_model":  {"status": "${CHECK_CODER_MODEL_STATUS}",  "detail": "${CHECK_CODER_MODEL_DETAIL}"},
+        "systemd":     chk("J_SYSTEMD_S", "J_SYSTEMD_D"),
+        "daemon":      chk("J_DAEMON_S",  "J_DAEMON_D"),
+        "bind":        chk("J_BIND_S",    "J_BIND_D"),
+        "chat_model":  chk("J_CHATM_S",   "J_CHATM_D"),
+        "coder_model": chk("J_CODERM_S",  "J_CODERM_D"),
     },
 }
 if not doc["quick"]:
-    doc["checks"]["chat_bench"]  = {"status": "${CHECK_CHAT_BENCH_STATUS:-skip}",  "detail": "${CHECK_CHAT_BENCH_DETAIL:-}",  "rate_toks": float("${CHECK_CHAT_BENCH_RATE:-0}")}
-    doc["checks"]["coder_bench"] = {"status": "${CHECK_CODER_BENCH_STATUS:-skip}", "detail": "${CHECK_CODER_BENCH_DETAIL:-}", "rate_toks": float("${CHECK_CODER_BENCH_RATE:-0}")}
+    doc["checks"]["chat_bench"]  = dict(chk("J_CHATB_S",  "J_CHATB_D"),  rate_toks=float(e["J_CHATB_R"]  or 0))
+    doc["checks"]["coder_bench"] = dict(chk("J_CODERB_S", "J_CODERB_D"), rate_toks=float(e["J_CODERB_R"] or 0))
 print(json.dumps(doc, indent=2))
 PY
 }

@@ -15,6 +15,26 @@
 # say in the commit message why the check is going in blind.
 # Regenerate: scripts/ci/lint-test-honesty.sh --update-baseline
 # Inspect:    scripts/ci/lint-test-honesty.sh --list
+#=
+#= RECORDED DECISIONS (why a row is here rather than fixed) — 2026-08-03, MR !317
+#=
+#= H3 tests/unit/test-ssd-restore-catalogue-content.bats 1
+#= H3 tests/unit/test-ssd-seed-courses.bats             1
+#= H3 tests/unit/test-auth-logic.bats                   1
+#=   All three are the SAME deliberate shape and it is the one H4 asks for: a
+#=   `require_php` helper that FAILS when php is absent, and skips only when the
+#=   operator has set NWP_ALLOW_MISSING_PHP=1 on purpose. The skip statement
+#=   exists so that the absent-tool path can be exercised deliberately; it
+#=   cannot fire by accident. Counting it is correct — this rule counts skips
+#=   that EXIST, not skips that fire — and recording it is the honest answer.
+#=
+#= H3 tests/unit/test-ci-lint-commands.bats 2
+#=   Neither line can skip anything: one `printf`s a skip into a synthetic
+#=   fixture, the other `grep`s the repo for the skip idiom. The rule counts
+#=   executable `skip` in command position and cannot tell a fixture writer
+#=   from a skip. Left as a known over-count rather than teaching the counter
+#=   another exception it would then be trusted to apply correctly.
+#=
 H1-BLIND-NEGATION	! pl backup 2>/dev/null
 H1-BLIND-NEGATION	! pl backup nonexistent-site-12345 2>/dev/null
 H1-BLIND-NEGATION	! pl copy 2>/dev/null
@@ -23,13 +43,6 @@ H1-BLIND-NEGATION	! pl copy source 2>/dev/null
 H1-BLIND-NEGATION	! pl delete 2>/dev/null
 H1-BLIND-NEGATION	! pl delete nonexistent-site-12345 -y 2>/dev/null
 H1-BLIND-NEGATION	! pl install 2>/dev/null
-H1-BLIND-NEGATION	! pl install d './hidden' 2>/dev/null
-H1-BLIND-NEGATION	! pl install d 'test$(whoami)' 2>/dev/null
-H1-BLIND-NEGATION	! pl install d 'test|cat /etc/passwd' 2>/dev/null
-H1-BLIND-NEGATION	! pl install d 'test site' 2>/dev/null
-H1-BLIND-NEGATION	! pl install d 'test&whoami' 2>/dev/null
-H1-BLIND-NEGATION	! pl install d 'test`whoami`' 2>/dev/null
-H1-BLIND-NEGATION	! pl install d '/tmp/malicious' 2>/dev/null
 H1-BLIND-NEGATION	! pl restore 2>/dev/null
 H1-BLIND-NEGATION	! pl restore nonexistent-site-12345 2>/dev/null
 H2-SWALLOWED-VERDICT	lib/badges.sh::check_coverage_threshold
@@ -41,9 +54,7 @@ H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_incomplete_installs
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_loop_liveness
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_notify_health
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_paused_automation
-H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_rag_sync_freshness
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_secret_expiry
-H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_security_updates
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_ssl_expiry
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_test_instances
 H2-SWALLOWED-VERDICT	lib/todo-checks.sh::check_token_liveness
@@ -67,8 +78,6 @@ H2-SWALLOWED-VERDICT	scripts/commands/doctor.sh::check_prerequisites
 H2-SWALLOWED-VERDICT	scripts/commands/doctor.sh::check_server_schemas
 H2-SWALLOWED-VERDICT	scripts/commands/doctor.sh::check_site_schemas
 H2-SWALLOWED-VERDICT	scripts/commands/link.sh::link_verify
-H2-SWALLOWED-VERDICT	scripts/commands/mini.sh::check_daemon_reachable
-H2-SWALLOWED-VERDICT	scripts/commands/mini.sh::check_systemd_active
 H2-SWALLOWED-VERDICT	scripts/commands/security.sh::security_audit
 H2-SWALLOWED-VERDICT	scripts/commands/seo-check.sh::check_index_risk
 H2-SWALLOWED-VERDICT	scripts/commands/seo-check.sh::check_robots_txt
@@ -77,40 +86,31 @@ H2-SWALLOWED-VERDICT	scripts/commands/seo-check.sh::check_x_robots_tag
 H2-SWALLOWED-VERDICT	scripts/commands/seo-check.sh::do_headers_check
 H2-SWALLOWED-VERDICT	scripts/commands/status.sh::check_site_health
 H2-SWALLOWED-VERDICT	scripts/commands/stg2live.sh::stg2live_profile_change_guard
-H3-SKIP-STATEMENTS	tests/integration/01-install.bats	7
-H3-SKIP-STATEMENTS	tests/integration/02-backup-restore.bats	7
-H3-SKIP-STATEMENTS	tests/integration/03-copy.bats	5
-H3-SKIP-STATEMENTS	tests/integration/04-delete.bats	7
-H3-SKIP-STATEMENTS	tests/integration/05-deployment.bats	5
-H3-SKIP-STATEMENTS	tests/unit/test-auth-logic.bats	3
+H3-SKIP-STATEMENTS	tests/integration/01-install.bats	6
+H3-SKIP-STATEMENTS	tests/integration/02-backup-restore.bats	6
+H3-SKIP-STATEMENTS	tests/integration/03-copy.bats	4
+H3-SKIP-STATEMENTS	tests/integration/04-delete.bats	6
+H3-SKIP-STATEMENTS	tests/integration/05-deployment.bats	4
+H3-SKIP-STATEMENTS	tests/unit/test-auth-logic.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-backup-replicate.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-boundary.bats	7
 H3-SKIP-STATEMENTS	tests/unit/test-canonical.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-ci-lint-commands.bats	5
-H3-SKIP-STATEMENTS	tests/unit/test-common.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-demo.bats	2
+H3-SKIP-STATEMENTS	tests/unit/test-ci-lint-commands.bats	2
+H3-SKIP-STATEMENTS	tests/unit/test-common.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-demo-pair.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-deploy-gate-marker-blind.bats	2
+H3-SKIP-STATEMENTS	tests/unit/test-deploy-gate-marker-blind.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-ensure-yq.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-impact.bats	2
 H3-SKIP-STATEMENTS	tests/unit/test-install-sitename-validation.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-maturity.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-oidc-key-rotation.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-pair-guard.bats	1
 H3-SKIP-STATEMENTS	tests/unit/test-pair-membership.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-pl-freshness.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-precommit-hook.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-pubrel-docs-genericised.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-secrets-audit.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-secrets-registry-truth.bats	6
-H3-SKIP-STATEMENTS	tests/unit/test-ssd-seed-courses.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-stale-branch-sweep.bats	7
-H3-SKIP-STATEMENTS	tests/unit/test-stg2prod-guards.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-suite-honesty.bats	8
-H3-SKIP-STATEMENTS	tests/unit/test-test-honesty.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-verification-manifest.bats	1
-H3-SKIP-STATEMENTS	tests/unit/test-verify-ci-requires.bats	2
-H3-SKIP-STATEMENTS	tests/unit/test-ver-test.bats	1
+H3-SKIP-STATEMENTS	tests/unit/test-precommit-hook.bats	1
+H3-SKIP-STATEMENTS	tests/unit/test-secrets-registry-truth.bats	5
+H3-SKIP-STATEMENTS	tests/unit/test-ssd-restore-catalogue-content.bats	1
+H3-SKIP-STATEMENTS	tests/unit/test-ssd-seed-courses.bats	1
+H3-SKIP-STATEMENTS	tests/unit/test-stale-branch-sweep.bats	6
+H3-SKIP-STATEMENTS	tests/unit/test-suite-honesty.bats	2
 H4-HOST-BLIND	scripts/ci/test.sh::xmllint
 H4-HOST-BLIND	scripts/ci/visual-regression.sh::backstop
 H4-HOST-BLIND	scripts/ci/visual-regression.sh::jq

@@ -21,6 +21,26 @@
 #
 # NETWORK: impossible. `curl` is PATH-stubbed and every invocation logged, so
 # "no API call" is asserted positively (log absent), not assumed.
+#
+# NO `command -v yq || skip` GUARDS HERE (removed 2026-08-03, MR !317)
+#   The five P1 cases below used to guard on yq and skip when it was absent.
+#   bats scores a skip as `ok`, so on any machine without yq the ONLY proof in
+#   the tree that the canonical:prod deploy REFUSAL actually fires reported
+#   green having asserted nothing. That is H3 in
+#   scripts/ci/lint-test-honesty.sh, and this was the worst possible place for
+#   it: the guard is inert against the real estate, so the fixture IS the
+#   evidence.
+#
+#   The guards were also dead in the only place they claimed to help. test:unit
+#   provisions a pinned, sha256-verified yq (scripts/ci/ensure-yq.sh), declares
+#   `NWP_BATS_REQUIRED_TOOLS: "bats git php yq"`, and scripts/ci/run-bats.sh
+#   exits 2 — "cannot verify" — before running a single case if any of those is
+#   missing. The skip budget is an exact-equality contract on top of that. So a
+#   yq-less runner is ALREADY a red pipeline; the guard could only ever fire on
+#   a workstation, where silently not running these is exactly wrong.
+#
+#   If you land here because a case failed with "yq: command not found": that is
+#   the intended report. Install yq (`pl setup`), do not re-add the guard.
 
 setup() {
   ROOT="${BATS_TEST_DIRNAME}/../.."
@@ -268,7 +288,6 @@ EOF
 }
 
 @test "deploy-check ALLOWS a canonical:live site (the whole estate, today)" {
-  command -v yq >/dev/null || skip "yq required to read the fixture nwp.yml"
   _fixture_estate
   run env PROJECT_ROOT="$FIXTURE_ROOT" NWP_YML="$NWP_YML" bash "$CMD" deploy-check demosite
   [ "$status" -eq 0 ]
@@ -280,7 +299,6 @@ EOF
   # THIS IS THE TEST THE WHOLE GUARD EXISTS FOR. It is inert against the real
   # estate today (nothing is prod), so its behaviour is demonstrated here on a
   # fixture instead of being taken on trust until the day it matters.
-  command -v yq >/dev/null || skip "yq required to read the fixture nwp.yml"
   _fixture_estate
   run env PROJECT_ROOT="$FIXTURE_ROOT" NWP_YML="$NWP_YML" bash "$CMD" deploy-check realprod
   [ "$status" -eq 1 ]
@@ -289,7 +307,6 @@ EOF
 }
 
 @test "deploy-check over a mixed estate refuses as a whole but reports per site" {
-  command -v yq >/dev/null || skip "yq required to read the fixture nwp.yml"
   _fixture_estate
   run env PROJECT_ROOT="$FIXTURE_ROOT" NWP_YML="$NWP_YML" bash "$CMD" deploy-check
   [ "$status" -eq 1 ]              # one refusal makes the whole check non-zero
@@ -298,7 +315,6 @@ EOF
 }
 
 @test "deploy-check --json is machine-readable and carries the verdict per site" {
-  command -v yq >/dev/null || skip "yq required"
   _fixture_estate
   run env PROJECT_ROOT="$FIXTURE_ROOT" NWP_YML="$NWP_YML" bash "$CMD" deploy-check realprod --json
   [ "$status" -eq 1 ]
@@ -307,7 +323,6 @@ EOF
 }
 
 @test "deploy-check makes no network call" {
-  command -v yq >/dev/null || skip "yq required"
   _fixture_estate
   run env PROJECT_ROOT="$FIXTURE_ROOT" NWP_YML="$NWP_YML" bash "$CMD" deploy-check
   [ ! -f "$CURL_LOG" ]

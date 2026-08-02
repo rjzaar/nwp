@@ -209,8 +209,44 @@ if wants H3; then
             # synthetic tree (this file's own acceptance suite does that eight
             # times). Explicit and greppable beats obfuscating the word so the
             # counter cannot see it.
-            n="$(grep -vF 'honesty:fixture' "$f" \
-                 | grep -cE '(^|[|&;( ])skip( |$|"|'"'"')')"
+            #
+            # Only EXECUTABLE skips count. The first cut of this rule matched
+            # the bare word, so a comment explaining why a case deliberately
+            # did NOT skip, and an @test TITLE containing "skip", each scored
+            # as a skip. Five such rows appeared the first time the rule met
+            # the real tree (test-issue-ls-pagination, test-live-drush-policy,
+            # test-oversight-freshness, test-session-baton,
+            # test-session-supervisor) — every one of them a case that had
+            # documented its refusal to skip. A rule that taxes the comment
+            # explaining the fix is a rule that trains people to delete the
+            # comment, and it puts rows in a shrink-only baseline that no fix
+            # can ever remove. Strip full-line comments, @test declarations,
+            # and trailing comments outside quotes, then match.
+            #
+            # And match `skip` only in COMMAND POSITION — after ||, &&, ;, |,
+            # &, a brace/paren, then/else/do, or at the start of the line. The
+            # first cut allowed any preceding space, so an assertion ABOUT the
+            # linter's own wording, `[[ "$out" == *"(1 skip statement(s))"* ]]`,
+            # scored as a skip. Same disease as the comment case: a row the
+            # shrink-only baseline can never lose.
+            n="$(grep -vF 'honesty:fixture' "$f" | awk -v SQ="'" '
+                function strip_comment(s,   i, ch, sq, dq) {
+                    for (i = 1; i <= length(s); i++) {
+                        ch = substr(s, i, 1)
+                        if (ch == "\\") { i++; continue }
+                        if (ch == "\"" && !sq) { dq = !dq; continue }
+                        if (ch == SQ  && !dq) { sq = !sq; continue }
+                        if (ch == "#" && !sq && !dq) return substr(s, 1, i - 1)
+                    }
+                    return s
+                }
+                {
+                    t = $0; sub(/^[ \t]*/, "", t)
+                    if (t ~ /^#/) next                  # whole-line comment
+                    if (t ~ /^@test[ \t"]/) next        # bats case TITLE
+                    if (strip_comment($0) ~ "(^[ \t]*|[;&|(){}][ \t]*|(^|[ \t;&|])(then|else|do)[ \t]+)skip([ \t]|$|\"|" SQ ")") c++
+                }
+                END { print c + 0 }')"
             [ "${n:-0}" -gt 0 ] && printf 'H3-SKIP-STATEMENTS\t%s\t%s\n' "$f" "$n" >> "$findings"
         done < <(find "$r" -maxdepth 1 -type f -name '*.bats' -print0 2>/dev/null | sort -z)
     done

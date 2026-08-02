@@ -61,12 +61,54 @@ fi
 
 # _mr_require_yq — every parse path goes through yq, so its absence is a
 # CANNOT-VERIFY for the whole library, said once and plainly.
+_mr_have_yq(){ [ -n "$YQ" ] && [ -x "$YQ" ]; }
+
 _mr_require_yq(){
-  [ -n "$YQ" ] && [ -x "$YQ" ] && return 0
-  echo "CANNOT VERIFY — yq was not found on PATH, and every GitLab API response" >&2
-  echo "  in this library is parsed with it. This is a missing tool, not an API" >&2
-  echo "  or permission problem. Install yq or set YQ=/path/to/yq." >&2
+  _mr_have_yq && return 0
+  command -v python3 >/dev/null 2>&1 && return 0
+  echo "CANNOT VERIFY — neither yq nor python3 is available, and every GitLab" >&2
+  echo "  API response in this library is parsed with one of them. This is a" >&2
+  echo "  missing tool, not an API or permission problem." >&2
   return 2
+}
+
+# JSON parsing prefers yq and falls back to python3.
+#
+# WHY A FALLBACK AT ALL. This is a SECURITY gate; it decides whether a
+# sensitive-path MR may merge. Making that decision depend on one binary being
+# on one host's PATH is fragile, and it failed exactly that way: the CI runner
+# executes jobs as `gitlab-runner`, yq existed only under /home/rob (mode 750,
+# so unreachable), and the gate could not verify anything. python3 is present
+# system-wide. yq stays the primary so the yq-first convention holds for YAML;
+# this fallback is for JSON API responses only.
+_mr_jget(){
+  if _mr_have_yq; then
+    "$YQ" e -p=json ".$1 // \"\"" - 2>/dev/null | grep -v '^null$'
+  else
+    python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+v=d
+for part in sys.argv[1].split("."):
+    v = v.get(part) if isinstance(v, dict) else None
+    if v is None: break
+print("" if v is None else v)' "$1"
+  fi
+}
+
+# _mr_note_bodies <boundary> — note bodies on stdout, one boundary line after
+# each. Non-system notes only.
+_mr_note_bodies(){
+  if _mr_have_yq; then
+    B="$1" "$YQ" e -p=json -r '.[] | select(.system == false) | .body + "\n" + strenv(B)' - 2>/dev/null
+  else
+    python3 -c 'import json,sys
+try: notes=json.load(sys.stdin)
+except Exception: sys.exit(1)
+for n in notes:
+    if not n.get("system", False):
+        print(n.get("body","") or ""); print(sys.argv[1])' "$1"
+  fi
 }
 
 # shellcheck source=/dev/null
@@ -191,7 +233,7 @@ _mr_api(){
 
 _mr_get(){ _mr_api GET "$1"; }
 
-_mr_jget(){ "$YQ" e -p=json ".$1 // \"\"" - 2>/dev/null | grep -v '^null$'; }
+# _mr_jget is defined above, with its python3 fallback.
 
 # _mr_fetch <iid> → the MR JSON object (empty + rc1 when it cannot be read)
 _mr_fetch(){
@@ -404,8 +446,7 @@ _mr_release_record(){
   # release record that nobody ever wrote — a forgery assembled by accident out
   # of two innocent comments. A release must be one note, entire.
   local BOUNDARY='@@NWP-NOTE-BOUNDARY@@'
-  bodies=$(B="$BOUNDARY" "$YQ" e -p=json -r \
-             '.[] | select(.system == false) | .body + "\n" + strenv(B)' - <<<"$notes" 2>/dev/null) || return 2
+  bodies=$(_mr_note_bodies "$BOUNDARY" <<<"$notes") || return 2
   local block=""
   while IFS= read -r line; do
     if [ "$line" = "$BOUNDARY" ]; then

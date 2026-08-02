@@ -115,3 +115,48 @@ append_on_branch() { # branch, row
     grep -q 'D2' "$LEDGER"
     grep -q 'D3' "$LEDGER"
 }
+
+@test "an amended row is NOT duplicated by a plain merge" {
+    # The merge path handles the amendment correctly — git compares endpoints,
+    # so only the final version lands. Pinned so the limitation below is
+    # attributed to the right mechanism (rebase) rather than to union itself.
+    git checkout -q -b amend-side main
+    printf '%s\n' '| CP2 | thing | MR TBD |' >> "$LEDGER"
+    git commit -qam 'add row'
+    sed -i 's/MR TBD/MR !317/' "$LEDGER"
+    git commit -qam 'amend row'
+
+    git checkout -q main
+    printf '%s\n' '| CP3 | other agent | run b |' >> "$LEDGER"
+    git commit -qam 'concurrent append'
+    git merge -q --no-edit amend-side
+
+    [ "$(grep -c '^| CP2 ' "$LEDGER")" -eq 1 ]
+    grep -q 'MR !317' "$LEDGER"
+}
+
+@test "KNOWN LIMIT: REBASE replays the amendment and the row survives twice" {
+    # The path that actually bites: GitLab's rebase button, and draining the
+    # queue by hand, replay each commit in turn — so the "add" lands and the
+    # "amend" then arrives as a change to a line union has already kept.
+    # Asserting this via merge would report no problem (see the test above) and
+    # would prove nothing.
+    git checkout -q main
+    printf '%s\n' '| CP3 | other agent | run b |' >> "$LEDGER"
+    git commit -qam 'concurrent append'
+
+    git checkout -q -b amend-side main~1 2>/dev/null || git checkout -q -b amend-side main
+    printf '%s\n' '| CP2 | thing | MR TBD |' >> "$LEDGER"
+    git commit -qam 'add row'
+    sed -i 's/MR TBD/MR !317/' "$LEDGER"
+    git commit -qam 'amend row'
+
+    run git rebase main
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^| CP2 ' "$LEDGER")" -eq 2 ]   # the limitation, made visible
+
+    # …and it is NOT silent: the gate refuses the duplicated id.
+    run ./scripts/ci/lint-rollback-registry-ids.sh
+    [ "$status" -ne 0 ]
+    echo "$output" | grep -q 'CP2'
+}

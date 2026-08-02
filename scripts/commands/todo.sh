@@ -73,6 +73,9 @@ ${BOLD}COMMANDS:${NC}
     ignore <id>         Ignore a todo (with optional reason)
     unignore <id>       Stop ignoring a todo
     refresh             Force refresh all checks (clear cache)
+    registry            Verify the check registry agrees with itself (ops#204):
+                        no duplicate entries, every listed check defined exactly
+                        once, every defined check listed. Exit 1 on any defect.
     schedule install    Install cron schedule for todo checks
     schedule remove     Remove cron schedule
     token <name>        Record token rotation (updates last_rotated)
@@ -906,6 +909,22 @@ main() {
                 show_json "$results"
             else
                 show_list "$results"
+            fi
+            ;;
+        registry)
+            # ops#204: state the sweep's own registry out loud. `pl todo check`
+            # already files a REG item per defect, but an operator who has just
+            # edited TODO_CHECK_LIST wants the answer in one second, not behind a
+            # 150s sweep. Exit 1 on any defect so CI/cron can consume it.
+            local _defects _rc=0
+            _defects=$(todo_check_registry_defects) || _rc=1
+            if [ "$_rc" -eq 0 ]; then
+                print_status "OK" "check registry consistent — $(todo_get_check_count) checks, each listed once and defined once"
+            else
+                printf '%s\n' "$_defects" | while IFS= read -r _d; do
+                    [ -n "$_d" ] && print_error "${_d#defect: }"
+                done
+                exit 1
             fi
             ;;
         token)

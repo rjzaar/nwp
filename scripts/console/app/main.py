@@ -625,14 +625,86 @@ def _gather_demo(sc: Scope, force: bool = False) -> list[dict]:
     return _gather_demo_raw(sorted(sc.demo_sites), force=force)
 
 
-def _gather_issues_raw() -> dict:
-    return gitlab.list_issues(config.OPS_PROJECT)
+ISSUE_STATES = ("opened", "closed", "all")
 
 
-def _gather_issues(sc: Scope) -> tuple[list[dict], dict]:
-    r = _gather_issues_raw()
-    issues = (r.get("data") or []) if r.get("ok") else []
-    return sc.filter_issues(issues), r
+def _issue_filters(state: str = "opened", label: str = "") -> tuple[str, str]:
+    """Normalise the two pane filters. Anything unrecognised falls back to the
+    safe default rather than being passed through to the API."""
+    st = state if state in ISSUE_STATES else "opened"
+    lb = (label or "").strip()
+    if len(lb) > 100 or any(c in lb for c in "\r\n"):
+        lb = ""
+    return st, lb
+
+
+def _gather_issues_raw(state: str = "opened", label: str = "") -> list[dict]:
+    """One block PER TRACKER (config.ISSUE_PROJECTS), never a merged soup.
+
+    Blocks, not one list, because the two trackers mean different things: iids
+    collide across projects (`ops#8` is not `nwc#8`), the walled console token
+    can read one and not the other, and an operator triaging tester feedback
+    needs to see WHICH queue a row came from.
+    """
+    st, lb = _issue_filters(state, label)
+    blocks: list[dict] = []
+    for project in config.ISSUE_PROJECTS:
+        r = gitlab.list_issues(project, state=st, labels=lb,
+                               max_pages=config.ISSUE_MAX_PAGES)
+        blocks.append({
+            "project": project,
+            "url": gitlab.web_url(project + "/-/issues"),
+            "ok": bool(r.get("ok")),
+            "error": r.get("error", ""),
+            "issues": (r.get("data") or []) if r.get("ok") else [],
+            "total": r.get("total"),
+            "truncated": bool(r.get("truncated")),
+            "writable": project == config.OPS_PROJECT,
+        })
+    return blocks
+
+
+def _issues_flat(blocks: list[dict]) -> list[dict]:
+    """Every row from every readable tracker, each tagged with its project so a
+    consumer can never mistake one tracker's iid for another's."""
+    out: list[dict] = []
+    for b in blocks:
+        for i in b.get("issues", []):
+            if isinstance(i, dict):
+                out.append(dict(i, _project=b["project"]))
+    return out
+
+
+def _gather_issues(sc: Scope, state: str = "opened", label: str = "") -> tuple[list[dict], dict]:
+    """Scope-filtered blocks + a summary dict the tab count and callers use."""
+    blocks = _gather_issues_raw(state, label)
+    for b in blocks:
+        b["issues"] = sc.filter_issues(b["issues"])
+        b["shown"] = len(b["issues"])
+    shown = sum(b["shown"] for b in blocks)
+    readable = [b for b in blocks if b["ok"]]
+    summary = {
+        "ok": bool(readable),                       # at least one tracker answered
+        "any_unreadable": any(not b["ok"] for b in blocks),
+        "unreadable": [b["project"] for b in blocks if not b["ok"]],
+        "truncated": any(b["truncated"] for b in blocks),
+        "shown": shown,
+        # Sum of x-total across readable trackers, when every one reported it.
+        "total": (sum(b["total"] for b in readable)
+                  if readable and all(b.get("total") is not None for b in readable) else None),
+        "error": next((b["error"] for b in blocks if not b["ok"]), ""),
+    }
+    return blocks, summary
+
+
+def _loop_paused() -> bool:
+    """`.loop-paused` in the nwp checkout the console shells to. The agent-loop
+    honours it, so the Issues pane must say so: `agent-eligible` means "queued
+    for the loop", and a queue whose consumer is stopped is not a queue."""
+    try:
+        return (config.NWP_ROOT / ".loop-paused").exists()
+    except OSError:
+        return False
 
 
 def _gather_ci_raw(ci_projects) -> tuple[list[dict], bool]:
@@ -685,8 +757,10 @@ def tab_counts(request: Request, sc: Scope = Depends(scoped("viewer"))):
         counts.append({"pane": pane, "text": text, "alert": alert})
 
     def _issues_count():
-        issues, r = _gather_issues(sc)
-        return (parsers.fmt_n_tab(len(issues)) if r.get("ok") else ""), False
+        _blocks, r = _gather_issues(sc)
+        # An unreadable tracker is an ALERT on the tab, not a smaller number:
+        # the count would otherwise silently describe a subset of the queues.
+        return (parsers.fmt_n_tab(r["shown"]) if r.get("ok") else ""), bool(r.get("any_unreadable"))
 
     def _todo_counts():
         todo = _gather_todo(sc)[0]
@@ -763,24 +837,32 @@ def pane_demo(request: Request, force: int = 0, sc: Scope = Depends(scoped("view
 
 
 @app.get("/panes/issues", response_class=HTMLResponse)
-def pane_issues(request: Request, sc: Scope = Depends(scoped("viewer"))):
-    issues, r = _gather_issues(sc)
+def pane_issues(request: Request, state: str = "opened", label: str = "",
+                sc: Scope = Depends(scoped("viewer"))):
+    st, lb = _issue_filters(state, label)
+    blocks, r = _gather_issues(sc, st, lb)
     return _pane(
         request,
         "pane_issues.html",
         {
-            "issues": issues,
+            "blocks": blocks,
+            "summary": r,
             "api_ok": r.get("ok", False),
             "api_error": r.get("error", ""),
+            "f_state": st, "f_label": lb,
+            "states": list(ISSUE_STATES),
+            "quick_labels": list(config.ISSUE_QUICK_LABELS),
             # A scoped reader is told WHICH label bounds their view, so an
             # empty pane reads as "nothing carries this label" rather than as
             # "the tracker is broken".
             "issue_labels": sorted(sc.issue_labels),
-            "project": config.OPS_PROJECT,
-            "project_url": gitlab.web_url(config.OPS_PROJECT),
+            "write_project": config.OPS_PROJECT,
+            "loop_paused": _loop_paused(),
         },
         sc,
-        tab="issues", tab_count=parsers.fmt_n_tab(len(issues)) if r.get("ok") else "",
+        tab="issues",
+        tab_count=parsers.fmt_n_tab(r["shown"]) if r.get("ok") else "",
+        tab_alert=bool(r.get("any_unreadable")),
     )
 
 
@@ -975,9 +1057,15 @@ def _quokka_state(sc: Scope, force: bool = False) -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
-        issues, r = _gather_issues(sc)
+        blocks, r = _gather_issues(sc)
         state["issues_ok"] = bool(r.get("ok"))
-        state["issues"] = issues
+        state["issues"] = _issues_flat(blocks)
+        if r.get("any_unreadable"):
+            state.setdefault("extra_lines", []).append(
+                "Issue trackers this console could NOT read: "
+                + ", ".join(r["unreadable"])
+                + ". Do not describe the issue list as complete."
+            )
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -1165,8 +1253,12 @@ def _notify_gather() -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
-        r = _gather_issues_raw()
-        g["issues"], g["issues_ok"] = (r.get("data") or []), bool(r.get("ok"))
+        blocks = _gather_issues_raw()
+        # Rows carry `_project`; detect_demo_tester keys its high-water mark per
+        # tracker on it, so a tester report in nwp/nwc pushes even though its
+        # iid is far below nwp/ops's.
+        g["issues"] = _issues_flat(blocks)
+        g["issues_ok"] = any(b["ok"] for b in blocks)
     except Exception:  # noqa: BLE001
         pass
     try:

@@ -1,54 +1,119 @@
 {% include "_tabcount.html" %}
+
+{# ---------------------------------------------------------------------------
+   Filters. State + label are applied BY THE API, per tracker, so a filter is a
+   real query and not a client-side hide of rows that were never fetched.
+   --------------------------------------------------------------------------- #}
+<form class="issue-filters" hx-get="/panes/issues" hx-target="#pane-body" hx-indicator="#pane-spin">
+  <label>state
+    <select name="state">
+      {% for s in states %}<option value="{{ s }}" {{ 'selected' if s == f_state else '' }}>{{ s }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>label
+    <input name="label" value="{{ f_label }}" placeholder="any label" maxlength="100">
+  </label>
+  <button class="primary">Filter</button>
+  <span class="quick-labels">
+    <a href="#" hx-get="/panes/issues?state={{ f_state }}" hx-target="#pane-body">all</a>
+    {% for l in quick_labels %}
+    <a href="#" class="chip{{ ' chip-on' if l == f_label else '' }}"
+       hx-get="/panes/issues?state={{ f_state }}&label={{ l|urlencode }}"
+       hx-target="#pane-body">{{ l }}</a>
+    {% endfor %}
+  </span>
+</form>
+
+{% if loop_paused %}
+{# `agent-eligible` means "queued for the agent-loop". A queue whose consumer is
+   stopped is not a queue, and an operator approving issues into it deserves to
+   know before, not after. #}
+<p class="warnfg">⏸ The agent-loop is <strong>paused</strong> (<code>.loop-paused</code>) —
+nothing labelled <code>agent-eligible</code> will be picked up until it is resumed.</p>
+{% endif %}
+
+{% if summary.any_unreadable %}
+{# The load-bearing honesty line. An unreadable tracker used to render as an
+   empty list, which is indistinguishable from "no open issues". #}
+<p class="warnfg">⚠ This console could not read:
+  {% for p in summary.unreadable %}<code>{{ p }}</code>{{ ", " if not loop.last }}{% endfor %}
+  ({{ summary.error }}). Its token is walled to
+  <code>{{ write_project }}</code>; a tracker it cannot see shows as empty, not as clean.
+  Provision a sibling token file (<code>gitlab.&lt;name&gt;.token</code>, 0600) on the console host —
+  see scripts/console/README.md.</p>
+{% endif %}
+
 {% if not api_ok %}
-<p class="muted">No GitLab token provisioned on this host ({{ api_error }}) — read-only deep-links.
+<p class="muted">No GitLab tracker is readable from this host ({{ api_error }}) — read-only deep-links.
 Provision <code>~/.config/nwp-console/gitlab.token</code> (0600, walled bot token) to enable the embedded board.</p>
-<p><a class="primary-link" href="{{ project_url }}/-/issues">Open {{ project }} issues in GitLab →</a></p>
+{% for b in blocks %}
+<p><a class="primary-link" href="{{ b.url }}">Open {{ b.project }} issues in GitLab →</a></p>
+{% endfor %}
 {% else %}
-<table class="tbl">
-  {% for i in issues %}
-  <tr>
-    <td class="issue-row">
-      <a href="{{ i.web_url }}" target="_blank" rel="noopener">#{{ i.iid }}</a>
-      <strong>{{ i.title }}</strong>
-      <span class="labels">{% for l in i.labels %}<span class="chip">{{ l }}</span>{% endfor %}</span>
-      <span class="muted">{{ i.updated_at[:10] }}</span>
-      {% if can_act %}
-      <details>
-        <summary>act</summary>
-        <form hx-post="/issues/{{ i.iid }}/note" hx-target="#issue-result-{{ i.iid }}">
-          <textarea name="body" rows="3" placeholder="reply / note (posted via the walled bot)" required></textarea>
-          <button class="primary">Post note</button>
-        </form>
-        <form hx-post="/issues/{{ i.iid }}/label" hx-target="#issue-result-{{ i.iid }}" class="inline">
-          <input name="label" placeholder="label" required>
-          <select name="mode"><option value="add">add</option><option value="remove">remove</option></select>
-          <button>Label</button>
-        </form>
-        <form hx-post="/issues/{{ i.iid }}/close" hx-target="#issue-result-{{ i.iid }}" class="inline">
-          <button class="warn" hx-confirm="Close #{{ i.iid }}?">Close</button>
-        </form>
-        <div id="issue-result-{{ i.iid }}"></div>
-      </details>
-      {% endif %}
-    </td>
-  </tr>
-  {% else %}
-  {# "No open issues" is only true unscoped. For a project member the list was
-     filtered by label, so an empty pane means "nothing carries your label" —
-     and if no label is configured it means the project sees no issues AT ALL,
-     which must not read as good news. #}
-  {%- if scope and not scope.all_sites %}
-    {%- if issue_labels %}
-  <tr><td class="ok">No open issues in {{ project }} labelled
-      <span class="mono">{{ issue_labels|join(' / ') }}</span>.</td></tr>
+
+{% for b in blocks %}
+<section class="issue-tracker">
+  <h3>{{ b.project }}
+    {%- if b.ok %}
+    <span class="muted">— showing {{ b.shown }}{% if b.total is not none %} of {{ b.total }}{% endif %}
+      {{ f_state }}{% if f_label %} · label <span class="mono">{{ f_label }}</span>{% endif %}</span>
+    {%- if b.truncated %}<span class="warnfg"> (cut off — narrow the filter or open GitLab)</span>{% endif %}
+    {%- if not b.writable %}<span class="muted"> · read-only here</span>{% endif %}
     {%- else %}
-  <tr><td class="warnfg">This project has no issue label configured, so it shows
-      <strong>no issues at all</strong>. An owner sets one on the Projects page.</td></tr>
+    <span class="warnfg">— unreadable ({{ b.error }})</span>
     {%- endif %}
-  {%- else %}
-  <tr><td class="ok">No open issues in {{ project }}.</td></tr>
-  {%- endif %}
-  {% endfor %}
-</table>
-<p><a href="{{ project_url }}/-/issues">all issues in GitLab →</a></p>
+  </h3>
+
+  {% if b.ok %}
+  <table class="tbl">
+    {% for i in b.issues %}
+    <tr>
+      <td class="issue-row">
+        <a href="{{ i.web_url }}" target="_blank" rel="noopener">#{{ i.iid }}</a>
+        <strong>{{ i.title }}</strong>
+        <span class="labels">{% for l in i.labels %}<span class="chip">{{ l }}</span>{% endfor %}</span>
+        <span class="muted">{{ i.updated_at[:10] }}</span>
+        {% if can_act and b.writable %}
+        <details>
+          <summary>act</summary>
+          <form hx-post="/issues/{{ i.iid }}/note" hx-target="#issue-result-{{ i.iid }}">
+            <textarea name="body" rows="3" placeholder="reply / note (posted via the walled bot)" required></textarea>
+            <button class="primary">Post note</button>
+          </form>
+          <form hx-post="/issues/{{ i.iid }}/label" hx-target="#issue-result-{{ i.iid }}" class="inline">
+            <input name="label" placeholder="label" required>
+            <select name="mode"><option value="add">add</option><option value="remove">remove</option></select>
+            <button>Label</button>
+          </form>
+          <form hx-post="/issues/{{ i.iid }}/close" hx-target="#issue-result-{{ i.iid }}" class="inline">
+            <button class="warn" hx-confirm="Close #{{ i.iid }}?">Close</button>
+          </form>
+          <div id="issue-result-{{ i.iid }}"></div>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    {# "No open issues" is only true unscoped. For a project member the list was
+       filtered by label, so an empty pane means "nothing carries your label" —
+       and if no label is configured it means the project sees no issues AT ALL,
+       which must not read as good news. #}
+    {%- if scope and not scope.all_sites %}
+      {%- if issue_labels %}
+    <tr><td class="ok">No {{ f_state }} issues in {{ b.project }} labelled
+        <span class="mono">{{ issue_labels|join(' / ') }}</span>{% if f_label %} and <span class="mono">{{ f_label }}</span>{% endif %}.</td></tr>
+      {%- else %}
+    <tr><td class="warnfg">This project has no issue label configured, so it shows
+        <strong>no issues at all</strong>. An owner sets one on the Projects page.</td></tr>
+      {%- endif %}
+    {%- else %}
+    <tr><td class="ok">No {{ f_state }} issues in {{ b.project }}{% if f_label %} labelled
+        <span class="mono">{{ f_label }}</span>{% endif %}.</td></tr>
+    {%- endif %}
+    {% endfor %}
+  </table>
+  {% endif %}
+  <p><a href="{{ b.url }}">all {{ b.project }} issues in GitLab →</a></p>
+</section>
+{% endfor %}
 {% endif %}

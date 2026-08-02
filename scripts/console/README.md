@@ -248,6 +248,33 @@ ssh <console-host> 'umask 077 && mkdir -p ~/.config/nwp-console && cat > ~/.conf
 `pl console deploy` never copies tokens. With no token file the panes degrade to
 deep-links into GitLab; nothing breaks.
 
+### The feedback tracker needs its own token
+
+`NWP_CONSOLE_OPS_PROJECT` is the one tracker the Issues pane may **write** to.
+`NWP_CONSOLE_ISSUE_PROJECTS` (default `nwp/ops,nwp/nwc`) is every tracker it
+**reads**, because tester feedback does not land on the ops board: the nwd demo
+site syncs it out with `drush nwc-feedback:sync-to-gitlab` into **`nwp/nwc`**
+(e.g. `nwc#8` "[feedback-2] help topic should be clickable", labelled
+`demo-tester,feedback,needs-human,tier-3`). Measured 2026-08-02: 136 open in
+`nwp/ops`, 3 open in `nwp/nwc`.
+
+The walled `ops_note_token` is walled *hard* — from the console host it returns
+`200` for project 21 and **`404 Project Not Found`** for project 16. Widening it
+would hand the console reach it was deliberately denied, so each extra tracker
+gets a **sibling token file named for its basename**:
+
+```
+ssh <console-host> 'umask 077 && cat > ~/.config/nwp-console/gitlab.nwc.token'
+# paste a token that can READ nwp/nwc (reporter is enough), Ctrl-D
+```
+
+Until that file exists the pane does **not** show `nwp/nwc` as empty — it shows
+`⚠ This console could not read: nwp/nwc (http-404)`, because an unreadable
+tracker and a clean one must never render the same.
+
+Related verb: `pl issue ls --project=all` gives the same combined queue on the
+command line.
+
 ## Quokka voice (talk to Quokka, Quokka talks back)
 
 Both legs run **on the console host**. No cloud speech API is called anywhere,

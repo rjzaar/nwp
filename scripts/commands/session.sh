@@ -413,6 +413,12 @@ cmd_supervisor_run() {
   # the ORDER of the checks, which is the part that carries the safety.
   local PL="${NWP_PL:-$PROJECT_ROOT/pl}"
   local tmux_sess="${NWP_SESSION_TMUX:-nwp-auto}"
+  # NWP_SESSION_TMUX_BIN — same indirection as NWP_PL above, for the same
+  # reason. Without it the "no tmux at all" branch below is reachable only on a
+  # host that HAPPENS to lack tmux, so its RED-PROOF skipped on every CI runner
+  # and the branch was never once executed under test. A guard whose failure
+  # path depends on the runner's package list is a guard nobody has proven.
+  local TMUX_BIN="${NWP_SESSION_TMUX_BIN:-tmux}"
   local eff; eff=$(session_baton_effective_status)
   local mode=fresh
 
@@ -420,11 +426,11 @@ cmd_supervisor_run() {
   # `tmux has-session` also returns non-zero when tmux is ABSENT, which would
   # read as "no session running, go ahead" and launch into nothing. Separate the
   # two: no tmux is a CANNOT-VERIFY, not a green light.
-  if ! command -v tmux >/dev/null 2>&1; then
+  if ! command -v "$TMUX_BIN" >/dev/null 2>&1; then
     print_error "supervisor: no tmux on this host — cannot start or supervise a durable session"
     return 2
   fi
-  if tmux has-session -t "$tmux_sess" 2>/dev/null; then
+  if "$TMUX_BIN" has-session -t "$tmux_sess" 2>/dev/null; then
     print_info "supervisor: '$tmux_sess' is already running — nothing to do"
     return 0
   fi
@@ -505,7 +511,7 @@ EOF
     printf 'When you finish, `pl session end` writes the handover and flips the baton.\n'
   } > "$prompt"
 
-  tmux new-session -d -s "$tmux_sess" -c "$PROJECT_ROOT" \
+  "$TMUX_BIN" new-session -d -s "$tmux_sess" -c "$PROJECT_ROOT" \
     "${NWP_CLAUDE_CMD:-claude} -p --max-turns ${NWP_SESSION_MAX_TURNS} \"\$(cat '$prompt')\" ; '$PL' session end --status=READY" \
     || { session_failure_record "$sig" "tmux-launch-failed"
          session_notify "stuck" "supervisor could not start tmux session '$tmux_sess'" 7 || true

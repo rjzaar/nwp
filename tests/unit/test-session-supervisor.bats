@@ -174,13 +174,35 @@ dropped()     { printf 'STATUS: IN-PROGRESS\nHEARTBEAT: %s\n' "$(date -u -d '3 h
 
 @test "RED-PROOF supervisor: NO TMUX at all is CANNOT-VERIFY, not a green light" {
   # `tmux has-session` also fails when tmux is absent. Reading that as "nothing
-  # is running, go ahead" would launch into a void — and this workstation is
-  # exactly such a host, so the case is real, not theoretical.
+  # is running, go ahead" would launch into a void.
+  #
+  # This used to depend on the RUNNER not having tmux: it stripped PATH down to
+  # /usr/bin:/bin and then `skip`ped if /usr/bin/tmux existed. Every CI runner
+  # has tmux, so on the only machine whose verdict is enforced this RED-PROOF
+  # never executed — and it cost the pinned skip budget a slot, turning a
+  # host-shaped condition into a red pipeline. It now names a tmux that cannot
+  # exist (NWP_SESSION_TMUX_BIN, the same indirection as NWP_PL), so the branch
+  # runs identically everywhere.
   ready
-  PATH="/usr/bin:/bin" run "$REPO_ROOT/scripts/commands/session.sh" supervisor run --dry-run
-  if command -v /usr/bin/tmux >/dev/null 2>&1; then skip "this host has a real tmux"; fi
+  NWP_SESSION_TMUX_BIN="$BATS_TEST_TMPDIR/no-such-tmux" \
+    run "$REPO_ROOT/scripts/commands/session.sh" supervisor run --dry-run
   [ "$status" -eq 2 ]
   [[ "$output" == *"no tmux"* ]]
+}
+
+@test "NEGATIVE CONTROL: with a WORKING tmux the run gets past step 0" {
+  # Proves the test above fails for the reason it claims. Same command, the only
+  # difference being a tmux that exists — it must NOT return the no-tmux code.
+  ready
+  cat > "$BATS_TEST_TMPDIR/faketmux" <<'EOF'
+#!/bin/sh
+case "$1" in has-session) exit 1 ;; *) exit 0 ;; esac
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/faketmux"
+  NWP_SESSION_TMUX_BIN="$BATS_TEST_TMPDIR/faketmux" \
+    run "$REPO_ROOT/scripts/commands/session.sh" supervisor run --dry-run
+  [ "$status" -ne 2 ]
+  [[ "$output" != *"no tmux"* ]]
 }
 
 @test "RED-PROOF supervisor: a DEAD notification path REFUSES the launch" {

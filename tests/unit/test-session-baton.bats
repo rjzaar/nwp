@@ -134,13 +134,40 @@ setup() {
 
 # ── the real estate's baton still satisfies the contract ─────────────────────
 
-@test "baton: the LIVE baton (if present) parses under this contract" {
-  local live="$HOME/central/OVERNIGHT-BATON.md"
-  if [ ! -r "$live" ]; then skip "no live baton on this host"; fi
-  NWP_BATON_FILE="$live"
-  local s; s=$(session_baton_effective_status)
-  case "$s" in
-    READY|IN-PROGRESS|ABANDONED*) : ;;
-    *) echo "live baton graded '$s' — the contract does not cover it" >&2; return 1 ;;
-  esac
+@test "baton: a REAL-SHAPED baton parses under this contract (live one too, if present)" {
+  # This used to `skip` when $HOME/central/OVERNIGHT-BATON.md was absent, which
+  # is every CI runner — so on the only machine whose verdict is enforced, the
+  # test asserted nothing and still reported `ok`. It also cost the suite a skip
+  # against a budget that is pinned exactly, turning a host-shaped condition
+  # into a red pipeline.
+  #
+  # It now ALWAYS runs against a checked-in real-shaped baton (the exact header
+  # the generator emits, prose and all), and ADDITIONALLY over the live file
+  # when this host happens to have one. Never skipped; strictly more coverage.
+  local fixture="$BATS_TEST_TMPDIR/real-shaped.md"
+  cat > "$fixture" <<'EOF'
+# OVERNIGHT BATON
+
+STATUS: IN-PROGRESS
+SESSION: 2026-08-03T02:14:00Z
+HOST: mini
+
+## What is in flight
+- !320 rebased over !338; close guard kept from main.
+
+## Do not
+- Do not merge !321 (author's Draft).
+EOF
+  local candidates=("$fixture")
+  [ -r "$HOME/central/OVERNIGHT-BATON.md" ] && candidates+=("$HOME/central/OVERNIGHT-BATON.md")
+
+  local f s
+  for f in "${candidates[@]}"; do
+    NWP_BATON_FILE="$f"
+    s=$(session_baton_effective_status)
+    case "$s" in
+      READY|IN-PROGRESS|ABANDONED*) : ;;
+      *) echo "baton '$f' graded '$s' — the contract does not cover it" >&2; return 1 ;;
+    esac
+  done
 }

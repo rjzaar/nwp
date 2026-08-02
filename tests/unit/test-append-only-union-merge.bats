@@ -17,6 +17,13 @@ setup() {
     git init -q -b main .
     git config user.email t@example.invalid
     git config user.name  t
+    # The estate mandates signed commits, and the runner may enforce that
+    # globally. A fixture repo has no key, so every `git commit` here would
+    # fail and ALL cases in this file would go red for a reason unrelated to
+    # merge behaviour — which is exactly what happened in CI while the suite
+    # passed locally. Disable signing for the throwaway repo only.
+    git config commit.gpgsign false
+    git config tag.gpgsign false
     mkdir -p docs/reports/arc-test
     cp "$REPO_ROOT/.gitattributes" .gitattributes
     # The gate pins itself to its own repo root (cd to BASH_SOURCE/../..), which

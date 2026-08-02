@@ -33,7 +33,23 @@
 setup() {
   ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
   MR="$ROOT/scripts/commands/mr.sh"
+  # SCRUB THE RUNNER'S ENVIRONMENT — including CI_MERGE_REQUEST_DIFF_BASE_SHA,
+  # which cost two CI-only failures before it was in this list.
+  #
+  # `cmd_guard` prefers a GIT RANGE over the API, and it derives that range from
+  # CI_MERGE_REQUEST_DIFF_BASE_SHA when set. On the runner that variable points
+  # at the REAL merge request's base, and the checkout is the real repo — so the
+  # gate graded THIS MR's own diff instead of the stubbed one, and two cases that
+  # pass on a laptop failed only in CI (pipeline 1827, job 13834).
+  #
+  # That is precisely the shape recorded in §6c, reproduced here in my own test:
+  # a test that reads its environment is testing the environment. Reproduced
+  # locally by exporting the one variable, which is how it was found rather than
+  # guessed — and the last case in this file exports it deliberately and asserts
+  # the suite is now immune, so this cannot rot back.
   unset CI_MERGE_REQUEST_IID CI_MERGE_REQUEST_TARGET_BRANCH_NAME \
+        CI_MERGE_REQUEST_DIFF_BASE_SHA CI_MERGE_REQUEST_SOURCE_BRANCH_SHA \
+        CI_MERGE_REQUEST_TARGET_BRANCH_SHA \
         CI_SERVER_HOST CI_PROJECT_ID CI_API_V4_URL \
         NWP_MR_TOKEN NWP_GITLAB_HOST GITLAB_TOKEN MR_HOLD_TOKEN
 
@@ -323,4 +339,19 @@ JSON
   run _run_in_repo create --closes=204 --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRY RUN"* ]]
+}
+
+@test "HERMETIC PROOF: the sensitive-path cases survive the runner's own environment" {
+  # Sets the variable that broke them in CI (pipeline 1827) and asserts the
+  # outcome is unchanged. Without this the unset above is an unproven claim —
+  # and an unproven claim about hermeticity is exactly how these two cases came
+  # to pass on a laptop and fail only where it mattered.
+  export CI_MERGE_REQUEST_DIFF_BASE_SHA="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo deadbeef)"
+  export CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main
+  _mr_json mergeable false
+  echo '[{"new_path":".gitlab-ci.yml","old_path":".gitlab-ci.yml"}]' > "$STATE/diffs.json"
+  run bash "$MR" merge 900
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sensitive-path gate"* ]]
+  ! grep -q 'PUT .*/merge$' "$CURL_LOG"
 }

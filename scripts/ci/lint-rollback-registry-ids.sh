@@ -64,6 +64,31 @@ for reg in "${registries[@]}"; do
         exit 2
     fi
 
+    # UNRECOGNISED IDS. The uniqueness scan below only sees rows whose first
+    # cell looks like `CP<something>`. Anything else was silently skipped —
+    # which means a row could evade the whole gate simply by not using the
+    # prefix, and the run would still print "all ids unique". That is the
+    # failure this file exists to prevent, one level up: not a wrong answer,
+    # but a confident answer about rows it never looked at.
+    #
+    # Found on 2026-08-02: two rows recording LIVE writes (`ops213`, `ops218`)
+    # were added without the prefix and were invisible here. Renamed, and the
+    # skip is now an error rather than a silence.
+    #
+    # Header (`| # |`) and separator (`|---|`) rows are structure, not data.
+    unrecognised="$(grep -nE '^\| ' "$reg" \
+        | grep -vE '^[0-9]+:\| *CP' \
+        | grep -vE '^[0-9]+:\| *#? *\|' \
+        | grep -vE '^[0-9]+:\|[ :-]*\|')"
+    if [ -n "$unrecognised" ]; then
+        echo "UNRECOGNISED CHECKPOINT ID: $reg"
+        echo "    A registry row's first cell must be a CP id (e.g. CP-ops213),"
+        echo "    otherwise the uniqueness check below cannot see it and this gate"
+        echo "    reports a clean run for rows it never examined."
+        printf '%s\n' "$unrecognised" | cut -c1-140 | sed 's/^/        /'
+        rc=1
+    fi
+
     # First cell of a table row, when it looks like a checkpoint id.
     mapfile -t ids < <(grep -oE '^\| *CP[A-Za-z0-9_.-]+' "$reg" | sed 's/^| *//')
 

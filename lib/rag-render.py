@@ -14,8 +14,15 @@ and it was zero"; anything unmeasured renders `-`, grades AMBER at best, and is
 counted separately in the fleet line so the operator can see the size of the
 blind spot.
 """
-import os, json, glob
+import os, sys, json, glob
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import importlib
+# lib/audit-record.py — the SHARED interpreter for pl audit records (ops#178).
+# `pl todo`'s check_security_updates reads the same module, so the two oversight
+# surfaces cannot disagree about what a record asserts.
+audit_record = importlib.import_module("audit-record")
 
 audit_dir=os.environ["AUDIT_DIR"]; state_dir=os.environ["STATE_DIR"]
 site_filter=os.environ.get("SITE",""); as_json=os.environ.get("JSON")=="true"
@@ -27,54 +34,27 @@ mats=dict(kv.split("=",1) for kv in os.environ.get("MATURITIES","").split() if "
 MAT_ABBR={"incubating":"inc","stabilizing":"stab","production":"prod"}
 
 # --- security signal from pl audit records ---
-# `scanned` is written by pl audit. Records predating it are inferred from
-# cache_stale, which had the same meaning for the composer leg; a record with
-# neither key is assumed scanned so historical records don't all flip amber at
-# once, but a record whose reason we can see is honoured.
-sec={}  # site -> {count, ignored, stale, scanned, reason}
-for f in glob.glob(os.path.join(audit_dir,"*.json")):
-    try: d=json.load(open(f))
-    except Exception:
-        # An unreadable record is a blind spot, not an absent site.
-        s=os.path.basename(f)[:-5]
-        sec[s]={"count":0,"ignored":0,"stale":True,"scanned":False,
-                "reason":"audit record is unreadable/corrupt"}
-        continue
-    s=d.get("site") or os.path.basename(f)[:-5]
-    stale=bool(d.get("cache_stale",False))
-    scanned=d.get("scanned")
-    if scanned is None:
-        scanned = not stale
-    reason=d.get("stale_reason","") or ""
-
-    # SELF-EVIDENTLY BOGUS RECORD. `pl audit`'s Moodle leg had a greedy-sed bug
-    # that parsed BOTH the installed and the upstream $version to the literal
-    # string "branchingdateYYYYMMDD-donotmodify!", so `behind` was arithmetically
-    # always 0 and every Moodle site recorded security_count: 0. Those records
-    # are still on disk and would keep grading GREEN until the next audit run.
-    # A record that carries the evidence of its own invalidity must not be
-    # believed: if a Moodle record's version fields are not numeric, no
-    # comparison happened, whatever the record claims.
-    if d.get("platform") == "moodle":
-        def _numeric(v):
-            try: float(str(v)); return True
-            except Exception: return False
-        iv, lv = d.get("moodle_installed_version"), d.get("moodle_latest_version")
-        if not (_numeric(iv) and _numeric(lv)):
-            scanned = False; stale = True
-            reason = ("Moodle version fields are unparseable (installed=%r latest=%r) — "
-                      "no version comparison happened, so security_count 0 is meaningless. "
-                      "Re-run: pl audit --site %s" % (iv, lv, s))
-
-    sec[s]={"count":int(d.get("security_count",0) or 0),
-            "ignored":int(d.get("ignored_count",0) or 0),
-            "stale":stale,
-            "scanned":bool(scanned),
-            "reason":reason}
+# Interpretation (the `scanned` inference for pre-`scanned` records, the
+# unreadable-record blind spot, and the bogus-Moodle-version guard) lives in
+# lib/audit-record.py so `pl todo` grades the identical records identically.
+sec = {s: {k: r[k] for k in ("count", "ignored", "stale", "scanned", "reason")}
+       for s, r in audit_record.load_dir(audit_dir).items()}
 
 # --- work signal from pl todo ---
-try: todo=json.load(open(os.environ["TODO_JSON"]))
-except Exception: todo={"items":[]}
+# A TODO_JSON we cannot parse is a BLIND SWEEP, not an empty one (ops#178).
+# This used to be `except Exception: todo={"items":[]}`: ANY malformed document
+# — a producer bug, a truncated write, a disk-full — silently became "swept,
+# found nothing", and every site could then grade GREEN. Unlike the sweep
+# timeout, which announced itself in a banner, this failure mode was completely
+# quiet, so it is the more dangerous of the two. Defence in depth: the producer
+# is also being fixed to emit escaped JSON, but rag must not be the component
+# that converts someone else's bug into a clean bill of health.
+todo_unreadable = ""
+try:
+    todo = json.load(open(os.environ["TODO_JSON"]))
+except Exception as e:
+    todo = {"items": []}
+    todo_unreadable = "pl todo emitted unparseable JSON (%s)" % e
 items = todo if isinstance(todo,list) else todo.get("items",[])
 
 # Did the work sweep actually happen?
@@ -95,6 +75,9 @@ sweep_reason=os.environ.get("SWEEP_REASON","") or ""
 if isinstance(todo,dict) and todo.get("sweep_state"):
     sweep_state=todo["sweep_state"]
     sweep_reason=todo.get("sweep_reason","") or sweep_reason
+if todo_unreadable:
+    sweep_state = "failed"
+    sweep_reason = (sweep_reason + " | " if sweep_reason else "") + todo_unreadable
 sweep_failed = (sweep_state == "failed")
 work=defaultdict(lambda: {"high":0,"med":0,"low":0,"sec_high":0,"unknown":0,"top":""})
 SEC_CATS={"SEC","TOK"}

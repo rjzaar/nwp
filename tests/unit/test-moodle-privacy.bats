@@ -22,6 +22,16 @@
 #   p8  the helper writes nothing — no --apply, no confirm, no deploy gate
 #
 # NO network, NO real ssh: ssh/scp are PATH stubs writing to a trace file.
+#
+# NO `command -v php || skip` GUARDS (removed 2026-08-03, MR !317)
+#   p10/p11 used to skip when php was absent. bats scores a skip as `ok`, so on
+#   a php-less machine the helper's own argument validation — the traversal
+#   refusal in p10 — reported green having run nothing (H3 in
+#   scripts/ci/lint-test-honesty.sh). The guard was also dead where it claimed
+#   to help: test:unit sets NWP_BATS_REQUIRED_TOOLS="bats git php yq" and
+#   scripts/ci/run-bats.sh exits 2 before running a case if php is missing, so
+#   a php-less runner is already a red pipeline. "php: command not found" here
+#   is the intended report; install php-cli, do not re-add the guard.
 
 setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -184,14 +194,12 @@ priv() { env PATH="${STUB}:${PATH}" bash "$MOODLE" privacy "$@"; }
 # ── the helper's own argument validation (runs before Moodle is loaded) ───────
 
 @test "p10: the helper refuses a non-frankenstyle --component without a Moodle" {
-  command -v php >/dev/null 2>&1 || skip "php not available"
   run php "${REPO_ROOT}/scripts/moodle/privacy-registry.php" --component='../../etc/passwd'
   [ "$status" -eq 2 ]
   [[ "$output" == *"Bad --component"* ]]
 }
 
 @test "p11: the helper is syntactically valid PHP" {
-  command -v php >/dev/null 2>&1 || skip "php not available"
   run php -l "${REPO_ROOT}/scripts/moodle/privacy-registry.php"
   [ "$status" -eq 0 ]
 }

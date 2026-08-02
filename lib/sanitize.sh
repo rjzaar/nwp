@@ -249,26 +249,82 @@ sanitize_database() {
     return 1
 }
 
-# Check if database contains PII
-# Usage: check_for_pii "/path/to/file.sql"
-check_for_pii() {
-    local sql_file="$1"
+# Domains an address may legitimately carry AFTER sanitisation. Anchored at the
+# end of the address on purpose: `bob@example.com.attacker.ru` is NOT clean, and
+# the unanchored pre-2026-08-02 pattern would have said it was.
+NWP_PII_SAFE_EMAIL_RE='@(example|invalid)\.(com|org|net)$'
 
-    if [ ! -f "$sql_file" ]; then
-        return 1
+# Check whether an artifact still contains PII.
+#
+# Usage:  check_for_pii "/path/to/file.sql"
+# Exit:   0 — read the artifact, found nothing
+#         1 — read the artifact, FOUND something (details on stdout)
+#         2 — CANNOT VERIFY (missing / empty / unreadable). Never a pass.
+#
+# ---------------------------------------------------------------------------
+# THE 2026-08-02 FIX — the email arm could not fire
+# ---------------------------------------------------------------------------
+#   The arm used to read:
+#
+#       if grep -qE '<email>' "$sql_file" | grep -qvE '@example\.(com|org|net)'
+#
+#   `grep -q` prints NOTHING — that is the whole meaning of -q. The downstream
+#   `grep -qv` therefore read an empty stdin, found no non-matching line and
+#   exited 1. The branch was UNSATISFIABLE: no artifact, however dirty, could
+#   take it. Measured on a 3-address file: `found` stayed 0 and the function
+#   returned "No obvious PII detected", exit 0.
+#
+#   Its neighbour, the credit-card arm, is a plain `grep -qE` and always
+#   worked. That is exactly how the defect survived: a two-arm detector whose
+#   working arm supplied the only evidence anyone ever saw.
+#
+#   The replacement is a single awk pass, chosen over `grep -o … | grep -v … |
+#   wc -l` deliberately: a pipeline whose head is a `grep` returns a non-zero
+#   status when the tail finds nothing, and under `set -o pipefail` (which some
+#   callers set) that turns "clean artifact" into "command substitution
+#   failed". One process, no pipe, always exit 0, verdict carried in the value.
+#
+#   A missing or empty artifact used to `return 1` — indistinguishable from
+#   "PII found" to a caller checking `if check_for_pii`, and worse, an empty
+#   file scanned clean. It is now exit 2, CANNOT VERIFY, per the estate rule
+#   that an unmeasurable subject is never graded healthy.
+check_for_pii() {
+    local sql_file="${1:-}"
+
+    if [ -z "$sql_file" ] || [ ! -f "$sql_file" ] || [ ! -r "$sql_file" ]; then
+        print_error "CANNOT VERIFY: no readable artifact at '${sql_file:-<none>}'"
+        return 2
+    fi
+    if [ ! -s "$sql_file" ]; then
+        print_error "CANNOT VERIFY: artifact is empty: $sql_file"
+        return 2
     fi
 
     print_info "Checking for potential PII..."
 
     local found=0
 
-    # Check for real email addresses (not example.com)
-    if grep -qE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$sql_file" | grep -qvE '@example\.(com|org|net)'; then
-        echo "  - Real email addresses found"
+    # ---- real email addresses (anything not on the post-sanitisation list) ----
+    local real_emails
+    real_emails="$(
+        awk -v safe="$NWP_PII_SAFE_EMAIL_RE" '
+            {
+                s = $0
+                while (match(s, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z][A-Za-z]+/)) {
+                    addr = substr(s, RSTART, RLENGTH)
+                    s    = substr(s, RSTART + RLENGTH)
+                    if (addr !~ safe) n++
+                }
+            }
+            END { print n + 0 }
+        ' "$sql_file"
+    )"
+    if [ "${real_emails:-0}" -gt 0 ]; then
+        echo "  - Real email addresses found ($real_emails occurrence(s))"
         found=1
     fi
 
-    # Check for credit card patterns
+    # ---- credit card patterns ----
     if grep -qE '[0-9]{4}[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?[0-9]{4}' "$sql_file"; then
         echo "  - Potential credit card numbers found"
         found=1

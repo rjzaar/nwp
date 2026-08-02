@@ -17,6 +17,25 @@
 #   4. {site}-parameterised checks ran with {site} substituted to "" when no
 #      test site existed, failing on garbage commands like
 #      `cd sites/ && ddev drush uli`. They are now SKIPPED, visibly.
+#
+# NO `command -v yq || skip` GUARDS HERE (removed 2026-08-03, MR !317)
+#   Two cases below used to guard on yq and skip when it was absent: the
+#   manifest-parse case, and the one that runs the site-name rejection checks
+#   against a deliberately PERMISSIVE validator to prove they can go red. bats
+#   scores a skip as `ok`, so on a yq-less machine the vacuity proof for !297
+#   itself reported green having asserted nothing — H3 in
+#   scripts/ci/lint-test-honesty.sh, in the suite that exists to catch vacuity.
+#
+#   The guards were also dead in the only place they claimed to help. test:unit
+#   provisions a pinned, sha256-verified yq (scripts/ci/ensure-yq.sh), declares
+#   `NWP_BATS_REQUIRED_TOOLS: "bats git php yq"`, and scripts/ci/run-bats.sh
+#   exits 2 — "cannot verify" — before running a single case if any of those is
+#   missing. The skip budget is an exact-equality contract on top of that. So a
+#   yq-less runner is ALREADY a red pipeline; the guard could only ever fire on
+#   a workstation, where silently not running these is exactly wrong.
+#
+#   If you land here because a case failed with "yq: command not found": that is
+#   the intended report. Install yq (`pl setup`), do not re-add the guard.
 
 setup() {
     REAL_ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
@@ -48,7 +67,6 @@ setup() {
 }
 
 @test "manifest still parses and keeps its feature count" {
-    command -v yq >/dev/null || skip "needs yq"
     run yq e '.features | keys | length' "$MANIFEST"
     [ "$status" -eq 0 ]
     [ "$output" -ge 90 ]
@@ -85,7 +103,6 @@ setup() {
 }
 
 @test "the site-name rejection checks pass on the real validator and FAIL on a permissive one" {
-    command -v yq >/dev/null || skip "needs yq"
     local cmds
     cmds="$(yq e '.features.security_validation.checklist[]
                   | select(.machine.checks.basic.commands[0].cmd | test("validate_sitename"))

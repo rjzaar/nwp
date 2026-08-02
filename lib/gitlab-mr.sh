@@ -289,6 +289,46 @@ _mr_author(){   printf '%s' "$1" | _mr_jget 'author.username'; }
 _mr_head_sha(){ printf '%s' "$1" | _mr_jget sha; }
 _mr_state(){    printf '%s' "$1" | _mr_jget state; }
 _mr_detailed_merge_status(){ printf '%s' "$1" | _mr_jget detailed_merge_status; }
+_mr_head_pipeline_id(){ printf '%s' "$1" | _mr_jget 'head_pipeline.id'; }
+
+# _mr_failed_jobs <pipeline-id> → "<job-id>\t<job-name>" per FAILED job.
+#
+# Only `failed` counts. `canceled`, `skipped` and an allow_failure job that went
+# red are not what blocks a merge, and treating them as failures here would let
+# the retry path below fire on jobs it has no business touching.
+_mr_failed_jobs(){
+  local pid="$1" proj json
+  proj=$(_mr_project) || return 1
+  json=$(_mr_api GET "/projects/$proj/pipelines/${pid}/jobs?per_page=100") || return 1
+  if _mr_have_yq; then
+    # strenv(TAB), NOT "\t". yq only began expanding "\t" to a real tab after
+    # v4.44.1, which is the version ensure-yq.sh pins onto the runners. The
+    # workstation has v4.50.1, so the "\t" spelling produced a real tab here
+    # and the two characters `\t` there: `awk -F'\t'` then found no separator,
+    # the job-name list came back EMPTY, and the merge verb refused with no
+    # names. Three cases green on this machine, red only in CI (pipeline 1866).
+    # Measured against the pinned binary, not assumed. Same trap already
+    # documented in monitor.sh, lib/pair.sh and lib/gitlab-issues.sh.
+    printf '%s' "$json" | TAB=$'\t' "$YQ" e -p=json -r \
+      '.[] | select(.status == "failed") | select(.allow_failure == false) | (.id|tostring) + strenv(TAB) + .name' - 2>/dev/null
+  else
+    printf '%s' "$json" | python3 -c 'import json,sys
+try: jobs=json.load(sys.stdin)
+except Exception: sys.exit(1)
+for j in jobs:
+    if j.get("status")=="failed" and not j.get("allow_failure", False):
+        print("%s\t%s" % (j["id"], j["name"]))'
+  fi
+}
+
+# _mr_retry_job <job-id> → re-run one job. rc 0 on an accepted retry.
+_mr_retry_job(){
+  local jid="$1" proj
+  proj=$(_mr_project) || return 1
+  _mr_api POST "/projects/$proj/jobs/${jid}/retry" >/dev/null || return 1
+  return 0
+}
+
 _mr_auto_merge_armed(){
   local v
   v=$(printf '%s' "$1" | "$YQ" e -p=json '.merge_when_pipeline_succeeds // false' - 2>/dev/null)

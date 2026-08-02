@@ -310,6 +310,46 @@ _release() { # $1=notes-json  $2=head_sha  $3=author
   [[ "$output" == *"merge_request_event"* ]]
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The CI ENTRY POINT itself, executed — not grepped
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Everything above drives `mr.sh guard --ci` directly and reads the wrapper with
+# grep. That leaves the wrapper's one job — propagating the verb's exit status —
+# untested, and the wrapper's FAILURE is the credential-free half of the D13
+# hold: `merge_when_pipeline_succeeds` cannot fire on a red pipeline, so a
+# wrapper that swallowed the status would silently disarm the backstop while
+# every existing case stayed green. scripts/ci/lint-gate-redproof.sh named this
+# exact gap (`NO-RED-PROOF impl:scripts/ci/sensitive-path-hold-gate.sh`).
+
+@test "the CI entry point EXITS NON-ZERO on a sensitive change it cannot clear" {
+  local d; d="$(_sensitive_repo)"
+  run env -u NWP_MR_TOKEN -u GITLAB_TOKEN -u MR_HOLD_TOKEN \
+      NWP_SECRETS_FILE=/nonexistent-$$ \
+      CI_SERVER_HOST=example.invalid CI_PROJECT_ID=9 CI_MERGE_REQUEST_IID=314 \
+      bash -c "cd '$d' && '$ROOT/scripts/ci/sensitive-path-hold-gate.sh' --base=main --head=HEAD"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -q 'CANNOT VERIFY'
+}
+
+@test "NEGATIVE CONTROL: the same entry point exits 0 on a benign change" {
+  # A wrapper that returned non-zero unconditionally would satisfy the case
+  # above and block every merge request in the estate.
+  local d="$BATS_TEST_TMPDIR/gatebenign"
+  rm -rf "$d"; mkdir -p "$d"
+  git -C "$d" init -q -b main
+  git -C "$d" config user.email t@example.invalid
+  git -C "$d" config user.name Tester
+  echo x > "$d/README.md"; git -C "$d" add -A; git -C "$d" commit -q -m base
+  git -C "$d" checkout -q -b feature
+  echo y >> "$d/README.md"; git -C "$d" commit -qam benign
+  run env -u NWP_MR_TOKEN -u GITLAB_TOKEN -u MR_HOLD_TOKEN -u CI_MERGE_REQUEST_IID \
+      NWP_SECRETS_FILE=/nonexistent-$$ \
+      bash -c "cd '$d' && '$ROOT/scripts/ci/sensitive-path-hold-gate.sh' --base=main --head=HEAD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no CLAUDE.md sensitive path touched"* ]]
+}
+
 @test "the CI entry point actually invokes the pl verb (STANDING ORDER)" {
   # A gate script that quietly reimplements the verb is a second copy of the
   # policy. It must delegate.

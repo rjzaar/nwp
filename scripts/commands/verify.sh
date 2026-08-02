@@ -4513,6 +4513,37 @@ main() {
             shift
             run_ci_mode "$@"
             ;;
+        gates)
+            # `pl verify gates` — the meta-check: which gates have EVER been
+            # observed going red, and which have only ever been seen green?
+            #
+            # Delegates to the same scripts/ci/lint-gate-redproof.sh that CI
+            # runs, deliberately. Two implementations of "is this gate honest"
+            # would drift, and the drift would be invisible in exactly the way
+            # this whole family of checks exists to prevent (cf. run-tests.sh
+            # delegating its bats suites to scripts/ci/run-bats.sh).
+            shift
+            gate_script="$PROJECT_ROOT/scripts/ci/lint-gate-redproof.sh"
+            if [[ ! -x "$gate_script" ]]; then
+                echo "CANNOT VERIFY: $gate_script is missing or not executable." >&2
+                exit 2
+            fi
+            if [[ $# -eq 0 ]]; then
+                exec "$gate_script" --inventory
+            fi
+            exec "$gate_script" "$@"
+            ;;
+        honesty)
+            # `pl verify honesty` — the companion lint: of the checks that CAN
+            # go red, which of them prove WHY. Same delegation rule as above.
+            shift
+            honesty_script="$PROJECT_ROOT/scripts/ci/lint-test-honesty.sh"
+            if [[ ! -x "$honesty_script" ]]; then
+                echo "CANNOT VERIFY: $honesty_script is missing or not executable." >&2
+                exit 2
+            fi
+            exec "$honesty_script" "$@"
+            ;;
         issues)
             source "$PROJECT_ROOT/lib/verify-issues.sh"
             shift
@@ -4553,6 +4584,13 @@ main() {
             echo "  list          List all feature IDs"
             echo "  summary       Show summary statistics"
             echo "  reset         Reset all verifications"
+            echo ""
+            echo "Gate honesty (a check never proven to fail is not a check):"
+            echo "  gates                    Inventory: which gates can prove they go RED"
+            echo "  gates --list             Machine-readable <verdict>TAB<key>TAB<detail>"
+            echo "  gates --update-baseline  Re-record the unproven set (shrink-only)"
+            echo "  honesty                  Lint tests/checks that assert less than they look"
+            echo "  honesty --list           Every finding, by rule (H1-H4)"
             echo ""
             echo "Machine execution (replaces test-nwp.sh):"
             echo "  --run                    Run all machine-verifiable items"

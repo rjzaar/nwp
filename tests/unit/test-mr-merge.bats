@@ -99,6 +99,12 @@ case "$meth $path" in
       emit '{"rebase_in_progress":true}' 202 ;;
   "PUT "*"/merge")
       emit '{"iid":900,"state":"merged"}' ;;
+  "GET "*"/pipelines/"*"/jobs"*)
+      emit "$(cat "$STATE/jobs.json" 2>/dev/null || echo '[]')" ;;
+  "POST "*"/jobs/"*"/retry")
+      # A retry makes the forge re-evaluate; the scenario says what it becomes.
+      cp "$STATE/after_retry.json" "$STATE/mr.json" 2>/dev/null || true
+      emit '{"id":1,"status":"pending"}' 201 ;;
   "GET "*"/merge_requests/"*)
       emit "$(cat "$STATE/mr.json")" ;;
   *)  emit '{}' ;;
@@ -122,8 +128,23 @@ _mr_json() { # $1=detailed_merge_status  $2=draft(true|false)  [$3=file]
   cat > "${3:-$STATE/mr.json}" <<EOF
 {"iid":900,"state":"opened","title":"$([ "$2" = true ] && printf 'Draft: ')a change",
  "draft":$2,"sha":"deadbeefcafe","detailed_merge_status":"$1",
+ "head_pipeline":{"id":1865,"sha":"deadbeefcafe"},
  "author":{"username":"someone"},"labels":[],"merge_when_pipeline_succeeds":false}
 EOF
+}
+
+_jobs_json() { # each arg "name:status"; allow_failure false throughout
+  { printf '['
+    local first=1 a n st
+    for a in "$@"; do
+      n="${a%:*}"; st="${a##*:}"   # job names contain colons; split on the LAST one
+      [ $first -eq 1 ] || printf ','
+      first=0
+      printf '{"id":%s,"name":"%s","status":"%s","allow_failure":false}' \
+             "$((RANDOM + 1000))" "$n" "$st"
+    done
+    printf ']'
+  } > "$STATE/jobs.json"
 }
 
 _branch() { # make + push a feature branch, leave the repo on it
@@ -354,4 +375,81 @@ JSON
   [ "$status" -eq 1 ]
   [[ "$output" == *"sensitive-path gate"* ]]
   ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+################################################################################
+# ci_must_pass — the D13 hold is RED BY DESIGN on its first run
+################################################################################
+#
+# `security:mr-hold` runs on push. The release it demands binds to the head
+# commit, so it can only be issued AFTER that pipeline has started. Every
+# sensitive-path MR therefore lands in the same state: released, un-held, and
+# unmergeable behind a job that failed for a reason that has since gone away.
+# Observed on !317 (2026-08-03): release bound to the head, `pl mr` showing
+# HELD=no, and `pl mr merge` refusing on ci_must_pass with security:mr-hold the
+# only red job. Re-running it by hand is the "step around the verb" move this
+# estate keeps paying for, so the verb does it — once, and only for that job.
+
+@test "ci_must_pass with ONLY security:mr-hold red: re-run it once, then merge" {
+  _mr_json ci_must_pass false
+  _jobs_json "security:mr-hold:failed" "test:unit:success"
+  _mr_json mergeable false "$STATE/after_retry.json"
+  run bash "$MR" merge 900 --wait=30
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^POST .*/jobs/[0-9]*/retry$' "$CURL_LOG")" -eq 1 ]
+  grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "NEGATIVE CONTROL: any OTHER red job is a refusal — never 'retry until green'" {
+  _mr_json ci_must_pass false
+  _jobs_json "security:mr-hold:failed" "test:unit:failed"
+  _mr_json mergeable false "$STATE/after_retry.json"
+  run bash "$MR" merge 900 --wait=30
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"test:unit"* ]]          # it NAMES what is red
+  ! grep -q '^POST .*/retry$' "$CURL_LOG"
+  ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "NEGATIVE CONTROL: a hold job that stays red is retried EXACTLY once" {
+  # Without the once-only flag this is an infinite loop against a gate that is
+  # genuinely refusing — the same shape as the rebase bug this file already
+  # pins by counting calls rather than reading stdout.
+  _mr_json ci_must_pass false
+  _jobs_json "security:mr-hold:failed"
+  _mr_json ci_must_pass false "$STATE/after_retry.json"
+  run bash "$MR" merge 900 --wait=30
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '^POST .*/jobs/[0-9]*/retry$' "$CURL_LOG")" -eq 1 ]
+  ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "--dry-run reports ci_must_pass and re-runs NOTHING" {
+  # A dry run reports; it does not act. Retrying a job is an action.
+  _mr_json ci_must_pass false
+  _jobs_json "security:mr-hold:failed"
+  run bash "$MR" merge 900 --dry-run --wait=30
+  [ "$status" -eq 1 ]
+  [ ! -f "$CURL_LOG" ] || ! grep -q '^POST .*/retry$' "$CURL_LOG"
+}
+
+@test "the jobs reader does not spell a tab as yq's \"\\t\" — the runner's yq does not expand it" {
+  # THE CI-ONLY FAILURE, made catchable on a workstation. ensure-yq.sh pins
+  # v4.44.1 onto the runners; this machine has v4.50.1. Measured 2026-08-03
+  # against the pinned binary itself:
+  #     '(.id|tostring) + "\t" + .name'  ->  12\tsecurity:mr-hold   (two chars)
+  #     '... + strenv(TAB) + ...'        ->  12<TAB>security:mr-hold
+  # So `awk -F'\t'` split nothing, the failed-job name list came back empty,
+  # and all three retry cases above passed here and failed in CI (pipeline
+  # 1866). The behaviour cases cannot catch this — they run whatever yq the
+  # machine has — so the assertion is on the SOURCE, where it is version-free.
+  # Comments are stripped first: this very case, and the comment above the
+  # fix, both name the bad spelling on purpose. A guard that its own
+  # explanation satisfies is not a guard — the first cut of this case was
+  # exactly that, and stayed green against the reintroduced defect.
+  code="$(grep -v '^[[:space:]]*#' "$ROOT/lib/gitlab-mr.sh")"
+  run grep -c '"\\\\t"' <<<"$code"
+  [ "$output" = "0" ]
+  run grep -c 'strenv(TAB)' <<<"$code"
+  [ "$output" -ge 1 ]
 }

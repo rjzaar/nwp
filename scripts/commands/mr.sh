@@ -490,6 +490,11 @@ usage: pl mr merge <iid> [--dry-run] [--no-rebase] [--wait=SECONDS]
   Refuses a HELD MR. Never believes `conflict` without one recompute
   (PUT /rebase, at most once). Treats `checking` as retry, not failure.
 
+  On ci_must_pass it re-runs `security:mr-hold` ONCE, and only when that is
+  the only red job and the hold is already lifted for this head — the D13
+  gate runs on push, so it is red by design until `pl mr release` exists.
+  Any other red job stays a refusal, and --dry-run re-runs nothing.
+
   exit 0 merged · 1 refused · 2 conflict · 3 not ready · 4 cannot verify
 EOF
         return 0 ;;
@@ -502,7 +507,7 @@ EOF
   _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
   local proj; proj=$(_mr_project) || die "cannot resolve the project"
 
-  local json dms state rebased=false deadline rounds=0
+  local json dms state rebased=false hold_rerun=false deadline rounds=0
   deadline=$(( $(date +%s) + wait_s ))
 
   # A HARD ROUND CAP, independent of --wait. Found by mutation-testing this very
@@ -558,6 +563,43 @@ EOF
         [ "$wait_s" -eq 0 ] && return 3 ;;
       draft_status)
         print_error "!$iid is HELD (draft_status) — refusing"; return 1 ;;
+      ci_must_pass)
+        # THE D13 HOLD IS RED BY DESIGN ON ITS FIRST RUN, AND ONLY IT MAY BE
+        # RE-RUN HERE.
+        #
+        # `security:mr-hold` executes on push. The release it demands cannot
+        # exist yet at that moment — `pl mr release` binds to the head commit,
+        # so it is necessarily issued AFTER the pipeline starts. Every
+        # sensitive-path MR therefore ends up released, un-held, and unmergeable
+        # behind a job that failed for a reason that no longer holds. Observed
+        # on !317: released and bound to the head, hold cleared, `pl mr merge`
+        # refusing on ci_must_pass with `security:mr-hold` the only red job.
+        #
+        # Re-running it by hand is exactly the "step around the verb" this
+        # estate keeps paying for, so the verb does it — under four bounds:
+        #   * ONCE (hold_rerun), so a genuinely broken gate cannot be looped on;
+        #   * only when EVERY failed job is the hold gate — one other red job
+        #     and this stays a refusal, because "retry until green" is not a
+        #     merge policy;
+        #   * only after the draft check and `pl mr guard` above have already
+        #     passed, i.e. the hold really is lifted for THIS head;
+        #   * never with --dry-run: a dry run reports, it does not act.
+        local failed names
+        failed=$(_mr_failed_jobs "$(_mr_head_pipeline_id "$json")" 2>/dev/null)
+        names=$(printf '%s\n' "$failed" | awk -F'\t' 'NF{print $2}' | sort -u)
+        if [ "$hold_rerun" = false ] && [ "$dry" = false ] \
+           && [ -n "$names" ] && [ "$names" = "security:mr-hold" ]; then
+          print_info "!$iid: the only red job is security:mr-hold, and the hold is lifted for this head — re-running it once"
+          printf '%s\n' "$failed" | awk -F'\t' 'NF{print $1}' | while read -r jid; do
+            _mr_retry_job "$jid" || print_warning "could not retry job $jid"
+          done
+          hold_rerun=true
+          sleep 10
+          continue
+        fi
+        print_error "!$iid: not mergeable — detailed_merge_status=ci_must_pass"
+        [ -n "$names" ] && print_info "failed job(s): $(printf '%s' "$names" | tr '\n' ' ')"
+        return 1 ;;
       *)
         print_error "!$iid: not mergeable — detailed_merge_status=${dms:-unknown}"
         return 1 ;;

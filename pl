@@ -280,6 +280,15 @@ ${BOLD}GDPR ART.17 ERASURE + IDENTITY REPAIR (ops#81 / ops#83):${NC}
     erasure execute <pair> --request-id=   Fails closed until the ops#81 channel is deployed
     pair reconcile <consumer> [--apply]    Detect/repair severed UID-locks (ops#83 §3)
 
+${BOLD}CONTRIB PATCHES (a patch composer dropped is not a fix, ops#223):${NC}
+    patches <site> [--tier=dev|stg|live]   Every patch declared in extra.patches
+                                           is present AND applied in the built
+                                           tree (reverse dry-run), and the two
+                                           composer flags the scheme rests on
+                                           are still true. --tier=live compares
+                                           the live copies against dev.
+    patches --all                          Same, across every site with a project
+
 ${BOLD}SNAPSHOT BUNDLES (a backup that cannot restore is not a backup):${NC}
     snapshot bundle <repo> [--out=F]  Bundle a repo and PROVE it stands alone first
     snapshot verify <bundle>...       Verify in a pristine scratch repo (no borrowing)
@@ -941,6 +950,14 @@ main() {
         # P1/P2 channel is deployed and the operator has approved the semantics.
         erasure)
             run_script "erasure.sh" "$@"
+            ;;
+
+        # Are this site's DECLARED contrib patches actually in the built tree?
+        # (ops#223). The Drupal twin of `pl moodle core-patch`: a patch that
+        # composer silently stopped applying is not a fix, and the Art.17
+        # erasure fix is a patch.
+        patches)
+            run_script "patches.sh" "$@"
             ;;
 
         # Git bundles that can actually rebuild what they claim to hold

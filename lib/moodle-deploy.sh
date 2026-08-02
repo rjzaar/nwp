@@ -829,11 +829,59 @@ moodle_core_patch_check_remote() {
 # and drops the consent gate. Nothing detected that before this verb.
 ################################################################################
 
+# moodle_plugin_version_dir <plugin_dir> — echo the numeric $plugin->version of
+# the plugin whose ROOT is this directory (i.e. <dir>/version.php).
+#
+# The deploy path resolves a source to the plugin directory itself, not to a
+# tree root, so it cannot use moodle_plugin_version_local without re-deriving
+# the split. Both now read the same file the same way, in one place: a second
+# regex for the same field is how two callers come to disagree about what
+# version a tree is at.
+moodle_plugin_version_dir() {
+    local f="${1%/}/version.php"
+    [ -f "$f" ] || return 1
+    local v; v=$(sed -n 's/.*\$plugin->version[[:space:]]*=[[:space:]]*\([0-9]\{6,\}\).*/\1/p' "$f" | head -1)
+    [ -n "$v" ] || return 1
+    printf '%s' "$v"
+}
+
 # moodle_plugin_version_local <tree_root> <plugin> — echo the numeric version.
 moodle_plugin_version_local() {
-    local root="${1%/}" plugin="$2" f="${1%/}/$2/version.php"
-    [ -f "$f" ] || return 1
-    sed -n 's/.*\$plugin->version[[:space:]]*=[[:space:]]*\([0-9]\{6,\}\).*/\1/p' "$f" | head -1
+    local root="${1%/}" plugin="$2"
+    moodle_plugin_version_dir "${root}/${plugin}"
+}
+
+# moodle_version_direction <src_version> <tgt_version> — WHICH WAY does this
+# deploy move $plugin->version on the target? (ops#229)
+#
+# The decision is a pure function of two numbers, so it lives here where it can
+# be exercised exhaustively without an ssh, a site config or a live host. The
+# command that consumes it does the refusing.
+#
+# Echoes exactly one of:
+#   unreadable-source  the SOURCE has no readable version  -> refuse: an
+#                      uncomparable deploy is the one this gate exists to stop
+#   unreadable-target  the TARGET could not be ASKED         -> refuse: an ssh
+#                      timeout must not read as "nothing installed yet"
+#   first-install      the TARGET has no version.php          -> allow, and say so
+#   forward            src >  tgt                          -> allow
+#   same               src == tgt                          -> allow (re-ship)
+#   backwards          src <  tgt                          -> refuse unless the
+#                      operator says --allow-downgrade
+#
+# `first-install` and `unreadable-source` are deliberately DIFFERENT answers.
+# Both involve a missing version.php, and collapsing them would mean either
+# refusing every genuine first install or waving through a source we cannot
+# read — the two halves of the same vacuous pass.
+moodle_version_direction() {
+    local src="${1:-}" tgt="${2:-}"
+    case "$src" in ''|*[!0-9]*) echo "unreadable-source"; return 0 ;; esac
+    case "$tgt" in unreachable) echo "unreadable-target"; return 0 ;; esac
+    case "$tgt" in ''|none|*[!0-9]*) echo "first-install"; return 0 ;; esac
+    if   [ "$src" -lt "$tgt" ]; then echo "backwards"
+    elif [ "$src" -gt "$tgt" ]; then echo "forward"
+    else                             echo "same"
+    fi
 }
 
 # moodle_plugin_version_remote <ssh_target> <ssh_opts> <sudo_prefix> <root> <plugin>
@@ -902,6 +950,98 @@ moodle_plugin_backup_capable_remote() {
     case "$out" in
         ok|blind|n/a|unknown) printf '%s' "$out" ;;
         *)                    printf 'unknown' ;;
+    esac
+    return 0
+}
+
+# moodle_plugin_target_version <ssh_target> <ssh_opts> <sudo_prefix> <root> <plugin>
+# ─────────────────────────────────────────────────────────────────────────────
+# THREE ANSWERS, because "I could not look" is not "there is nothing there".
+#
+#   <digits>     the target runs this $plugin->version
+#   none         the target has no version.php for this plugin (a FIRST INSTALL)
+#   unreachable  the host could not be asked at all
+#
+# moodle_plugin_version_remote (below) collapses the last two into "empty", which
+# is right for `drift`'s reporting table and WRONG for a gate: an ssh timeout
+# would read as "not installed yet" and the version-direction gate would wave a
+# downgrade straight through. The sentinel is emitted by the REMOTE side, so the
+# difference is established where the file actually is.
+# moodle_version_gate_report <plugin> <src_dir> <src_v> <tgt_v> <allow_downgrade>
+#                            <base> <tier> <origin>
+# ─────────────────────────────────────────────────────────────────────────────
+# Print one line per plugin saying WHICH WAY the deploy moves it, and return 1
+# if the deploy must be refused for this plugin (ops#229).
+#
+# It lives here, not inline in cmd_plugin_deploy, so the REFUSAL itself is
+# testable without a site config, a pair contract, an Art.9 gate or a live host.
+# The first version of this gate was inline, and the only tests possible were
+# greps for the presence of a function name — which stayed green when the
+# refusal was deleted. A guard whose refusal cannot be exercised is a guard on
+# paper (ops#214).
+moodle_version_gate_report() {
+    local plugin="$1" src_dir="$2" src_v="$3" tgt_v="$4" allow_downgrade="$5"
+    local base="$6" tier="$7" origin="${8:-?}"
+    local dir; dir="$(moodle_version_direction "$src_v" "$tgt_v")"
+
+    case "$dir" in
+        unreadable-source)
+            printf '    %-28s %s\n' "$plugin" "SOURCE VERSION UNREADABLE"
+            _md_err  "  ${src_dir}/version.php has no \$plugin->version — refusing."
+            _md_info "  A source whose version cannot be read cannot be compared, and an"
+            _md_info "  uncomparable deploy is exactly the one this gate exists to stop."
+            return 1 ;;
+        unreadable-target)
+            printf '    %-28s %s\n' "$plugin" "TARGET VERSION UNREADABLE"
+            _md_err  "  Could not read ${base}@${tier}'s installed version of '${plugin}' over ssh — refusing."
+            _md_info "  This is 'could not look', NOT 'nothing installed'. Treating an ssh"
+            _md_info "  timeout as a first install is how a downgrade gets waved through."
+            return 1 ;;
+        first-install)
+            printf '    %-28s %-12s -> %s\n' "$plugin" "$src_v" "(not installed on target — first install)"
+            return 0 ;;
+        same)
+            printf '    %-28s %-12s == %s  (re-ship, no version change)\n' "$plugin" "$src_v" "$tgt_v"
+            return 0 ;;
+        forward)
+            printf '    %-28s %-12s -> %s  (forward)\n' "$plugin" "$tgt_v" "$src_v"
+            return 0 ;;
+        backwards)
+            printf '    %-28s %-12s -> %s  ** BACKWARDS **\n' "$plugin" "$src_v" "$tgt_v"
+            if [ "$allow_downgrade" = "true" ]; then
+                _md_warn "  DOWNGRADE ACCEPTED for '${plugin}': ${tgt_v} -> ${src_v} (--allow-downgrade)."
+                return 0
+            fi
+            _md_err  "  REFUSED: '${plugin}' would go BACKWARDS on ${base}@${tier}: ${tgt_v} -> ${src_v}."
+            _md_info "  Source: ${origin} — ${src_dir}"
+            _md_info "  The default source is the DEV tree, which is often behind live."
+            _md_info "  Ship the canonical tree instead:"
+            _md_info "    pl moodle plugins sync ${base} --apply    # refresh the canonical cache"
+            _md_info "    pl moodle plugin deploy ${base} ${plugin} --tier=${tier} --from-canonical"
+            _md_info "  Or, if this really is a rollback, say so: --allow-downgrade"
+            return 1 ;;
+    esac
+    # An unrecognised direction is a programming error, and the safe reading of
+    # a programming error in a gate is REFUSE.
+    _md_err "  unknown version direction '$dir' for '${plugin}' — refusing (fail closed)."
+    return 1
+}
+
+moodle_plugin_target_version() {
+    local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" root="${4%/}" plugin="$5"
+    local remote out rc=0
+    remote="if ${sudo_prefix} test -f '${root}/${plugin}/version.php'; then
+              ${sudo_prefix} sed -n 's/.*\\\$plugin->version[[:space:]]*=[[:space:]]*\\([0-9]\\{6,\\}\\).*/\\1/p' '${root}/${plugin}/version.php' | head -1;
+            else echo NOFILE; fi"
+    remote="$(_md_trim "$remote")"
+    out="$(ssh ${ssh_opts} -o BatchMode=yes -o ConnectTimeout=10 "$ssh_target" "$remote" 2>/dev/null)" || rc=$?
+    [ "$rc" -eq 0 ] || { printf 'unreachable'; return 0; }
+    out="$(printf '%s' "$out" | tr -dc 'A-Z0-9')"
+    case "$out" in
+        NOFILE) printf 'none' ;;
+        '')     printf 'none' ;;          # file present but carries no version
+        *[!0-9]*) printf 'unreachable' ;; # anything unparseable is "could not look"
+        *)      printf '%s' "$out" ;;
     esac
     return 0
 }

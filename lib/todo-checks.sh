@@ -2294,6 +2294,92 @@ TODO_CHECK_LIST=(
     "check_demo_pair_cut:Demo pair cut (live) + SPLIT"
 )
 
+################################################################################
+# ops#204 — THE REGISTRY MUST AGREE WITH ITSELF, AND SAY SO WHEN IT DOES NOT.
+#
+# The concrete bug: `check_rag_sync_freshness` was DEFINED twice and LISTED
+# twice. Bash binds the last definition, so one body was dead code from the day
+# it was shadowed; and because the list carried a duplicate, one listed check ran
+# TWICE while whichever check it displaced in the operator's mental model never
+# announced itself at all. Nothing anywhere reported either fact — `pl todo`
+# printed a full-looking sweep, `pl rag` consumed it, and the estate's only
+# oversight surface was quietly grading itself on a registry it had never read.
+#
+# Deduping the two occurrences fixes THAT instance. This function is the part
+# that makes the class impossible to reintroduce silently, because the shape is
+# very easy to recreate: the list is 28 lines of near-identical text and the
+# definitions are 2,000 lines away from it.
+#
+# Three invariants, each currently exactly true (verified 2026-08-02: 28 listed,
+# 28 defined, sets identical):
+#
+#   1. no function name appears twice in TODO_CHECK_LIST
+#   2. every listed name resolves to exactly ONE definition — both at runtime
+#      (`declare -F`, catches a typo'd/renamed entry) and in the file text
+#      (catches SHADOWING, which `declare -F` cannot see because bash has already
+#      thrown the loser away by the time we can ask)
+#   3. every `check_*` defined at column 0 in this file is listed — an unlisted
+#      check is code that can never run, which is the other half of the same bug
+#
+# Deliberately NOT an invariant: `export -f`. The sweep runs each check in a
+# subshell of this shell, so a missing export changes nothing observable, and a
+# gate that fires on a harmless condition trains people to ignore it.
+#
+# Output: one `defect: <text>` line per problem on stdout. Returns 1 if any.
+# Pure — reads no state outside this file — so it is cheap enough to run at the
+# top of every sweep, and testable without a fixture estate.
+#
+# Args: $1 = path to the file defining the registry (default: this file)
+################################################################################
+todo_check_registry_defects() {
+    local src="${1:-${BASH_SOURCE[0]}}"
+    local found=0 entry func seen dup
+
+    # --- 1. duplicates in the list itself -----------------------------------
+    local listed=()
+    for entry in "${TODO_CHECK_LIST[@]}"; do
+        listed+=( "${entry%%:*}" )
+    done
+    while read -r dup seen; do
+        [ -n "$seen" ] || continue
+        echo "defect: '$seen' appears $dup times in TODO_CHECK_LIST — it will run $dup times per sweep"
+        found=1
+    done < <(printf '%s\n' "${listed[@]}" | sort | uniq -cd | awk '{print $1, $2}')
+
+    # --- 2. every listed name resolves to exactly one definition ------------
+    for func in "${listed[@]}"; do
+        if ! declare -F "$func" >/dev/null 2>&1; then
+            echo "defect: TODO_CHECK_LIST names '$func' but no such function is defined — that entry is a no-op"
+            found=1
+            continue
+        fi
+    done
+
+    # File-text pass: shadowed definitions are invisible to `declare -F`.
+    local defs=() n
+    if [ -r "$src" ]; then
+        mapfile -t defs < <(grep -oE '^check_[a-z0-9_]+\(\) \{' "$src" | sed 's/() {$//')
+        for func in "${listed[@]}"; do
+            n=$(printf '%s\n' "${defs[@]}" | grep -cx -- "$func" || true)
+            if [ "$n" -gt 1 ]; then
+                echo "defect: '$func' is defined $n times in $(basename "$src") — bash binds the LAST one and the others are dead code"
+                found=1
+            fi
+        done
+
+        # --- 3. defined but never listed ------------------------------------
+        for func in "${defs[@]}"; do
+            [ -n "$func" ] || continue
+            if ! printf '%s\n' "${listed[@]}" | grep -qx -- "$func"; then
+                echo "defect: '$func' is defined but absent from TODO_CHECK_LIST — it can never run"
+                found=1
+            fi
+        done
+    fi
+
+    return $(( found ))
+}
+
 # Get check count
 todo_get_check_count() {
     echo "${#TODO_CHECK_LIST[@]}"
@@ -2422,6 +2508,19 @@ run_all_checks() {
 
     todo_clear_items
 
+    # ops#204: the sweep's own registry is the first thing it reports on. A
+    # duplicated or unlisted check makes every number below it a lie, so this
+    # must surface as a finding rather than as a comment nobody reads. It is a
+    # pure text/array check — no network, no disk beyond this file — so it costs
+    # nothing against the sweep budget and runs BEFORE the budget starts.
+    local _reg_defect
+    while IFS= read -r _reg_defect; do
+        [ -n "$_reg_defect" ] || continue
+        todo_add_item "REG" "" "high" \
+            "pl todo check registry is inconsistent" \
+            "${_reg_defect#defect: }" "" "pl todo registry"
+    done < <(todo_check_registry_defects || true)
+
     local per_check="$TODO_CHECK_TIMEOUT"
     local budget="$TODO_SWEEP_BUDGET"
     [[ "$per_check" =~ ^[0-9]+$ ]] || per_check=25
@@ -2532,6 +2631,7 @@ export -f _todo_kill_tree
 export -f _todo_kill_tree_hard
 export -f _todo_run_check_bounded
 export -f run_all_checks
+export -f todo_check_registry_defects
 export -f todo_get_check_count
 export -f todo_get_check_name
 export -f todo_run_check_by_index

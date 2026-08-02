@@ -42,6 +42,76 @@ teardown() {
   [[ "$output" == *"REFUSED"* ]]
 }
 
+################################################################################
+# ops#225 — THE TIER IS A FLAG, AND A BARE POSITIONAL TIER MUST BE REFUSED.
+#
+# `pl demo golden nwd live` did NOT act on live. The bare `live` fell into the
+# parser's `passthru` array, which only `codes` and `invite` ever read, so for
+# every other subcommand it was silently discarded and `tier` kept its `dev`
+# default. The verb then graded — and STAGED A GOLDEN for — a different site
+# than the words on the command line named, with no warning.
+#
+# Measured on the real tree before the fix, using the read-only sibling verb:
+#
+#     pl demo status nwd live        -> "Demo status: nwd (dev)"
+#                                       golden captured 2026-07-25T14:42:09Z
+#     pl demo status nwd --tier=live -> "Demo status: nwd (live)"
+#                                       golden captured 2026-08-02T05:35:47Z
+#
+# Reported consequence on `golden`: 75 phantom identity-hygiene gaps that
+# vanished on re-run with the flag. Not "wrong target" — "wrong target,
+# plausible output, opposite conclusion".
+#
+# These cases refuse BEFORE any site resolution, so they need no fixture site.
+################################################################################
+
+@test "ops#225: a bare positional tier is REFUSED, not silently ignored" {
+  run bash "$DEMO_CMD" status demo1 live
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a positional argument"* ]]
+  [[ "$output" == *"--tier=live"* ]]
+}
+
+@test "ops#225: the refusal covers every tier word, on every code verb" {
+  local sub t
+  for sub in golden reset status smoke nightly; do
+    for t in dev stg live prod; do
+      run bash "$DEMO_CMD" "$sub" demo1 "$t"
+      [ "$status" -eq 2 ] || { echo "pl demo $sub demo1 $t -> $status"; false; }
+      [[ "$output" == *"not a positional argument"* ]]
+    done
+  done
+}
+
+@test "ops#225: an unrecognised NON-tier positional is also refused" {
+  run bash "$DEMO_CMD" status demo1 tierlive
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unrecognised argument"* ]]
+}
+
+@test "ops#225 NEGATIVE CONTROL: --tier=live is still accepted" {
+  # Without this the refusal above is satisfied by a parser that rejects
+  # everything, which would be a far worse bug than the one being fixed.
+  run bash "$DEMO_CMD" status demo1 --tier=live
+  [[ "$output" != *"not a positional argument"* ]]
+  [[ "$output" != *"unrecognised argument"* ]]
+}
+
+@test "ops#225 NEGATIVE CONTROL: codes/invite keep their real positionals" {
+  # `codes` and `invite` are the only subcommands that read passthru. Refusing
+  # their positionals would break them, so the guard must let them through.
+  run bash "$DEMO_CMD" codes demo1 list
+  [[ "$output" != *"unrecognised argument"* ]]
+}
+
+@test "ops#225: but codes/invite still refuse a TIER-shaped positional" {
+  # No codes/invite action is named dev/stg/live/prod, and that is exactly the
+  # argument this issue is about — so the tier check binds everywhere.
+  run bash "$DEMO_CMD" codes demo1 live
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a positional argument"* ]]
+}
+
 @test "demo.sh refuses an unknown tier" {
   run bash "$DEMO_CMD" status demo1 --tier=staging
   [ "$status" -ne 0 ]

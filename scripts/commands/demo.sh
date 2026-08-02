@@ -1124,6 +1124,132 @@ demo_parity_check_live() {
     demo_parity_verdict "$site" live "$out"
 }
 
+################################################################################
+# PENDING DATABASE UPDATES (nwp/ops#226) — a golden may not be captured from a
+# site that still owes a hook_update_N.
+#
+# This defect is SELF-RESTORING, which is what makes it worse than a config
+# gap. Capture a golden while an update is pending and every nightly reset puts
+# the pending update back: the restore returns the site to the pre-update
+# schema, the reset never runs updatedb, and the update stays pending forever.
+# An operator who notices and runs updatedb on the live site fixes it only
+# until 02:00, when the same golden is restored over the top.
+#
+# It nearly happened on 2026-08-02: nwc!63 adds nwc_moodle_data_update_10001,
+# and an nwd capture taken between "merged" and "updatedb run" would have
+# frozen it in. The same night showed the cost of pending updates on this tier
+# for real — updatedb orders by module, not dependency, so a demo hook ran
+# before the guild hook that created its field, aborted, and left live nwd in
+# maintenance mode.
+#
+# There is deliberately NO override flag. --allow-config-gaps exists because a
+# config gap can be a considered trade-off you accept and remedy later; a
+# pending update inside a golden never is, because "remedy it later" is exactly
+# what the nightly reset undoes.
+################################################################################
+
+# The probe's completion marker. Clean sites print NOTHING to stdout (drush
+# puts "No database updates required" on stderr), so emptiness cannot
+# distinguish "no updates" from "the probe never ran". The marker carries that
+# signal instead — the same job TOTAL_CUSTOM does for config parity, and for
+# the same fail-closed reason.
+DEMO_PENDING_PROBE_MARKER='PENDING_UPDATES_PROBE_OK'
+
+# Set by the verdict for the golden manifest: 0 | not-applicable | unknown.
+DEMO_PENDING_UPDATES="unknown"
+
+# Parse the probe's output. Fail-CLOSED: no marker means the probe did not
+# complete, and a site whose update state cannot be read is never a pass.
+#
+# $1 site  $2 tier  $3 probe stdout
+demo_pending_updates_verdict() {
+    local site="$1" tier="$2" out="$3"
+    DEMO_PENDING_UPDATES="unknown"
+
+    if ! printf '%s\n' "$out" | grep -qx "$DEMO_PENDING_PROBE_MARKER"; then
+        print_error "Pending-updates probe did not complete on ${site} (${tier}) — no ${DEMO_PENDING_PROBE_MARKER} line."
+        print_info  "Treated as a FAILURE: an unreadable update state is never captured as a golden."
+        demo_log "$site" pending-updates-failed "tier=${tier} reason=probe-incomplete"
+        return 1
+    fi
+
+    # `|| true`: grep -v exits 1 when it selects nothing, which under this
+    # script's `set -e` would abort the verdict on the CLEAN case — the one
+    # answer that must be cheapest to give.
+    local json
+    json="$(printf '%s\n' "$out" | grep -vx "$DEMO_PENDING_PROBE_MARKER" | sed '/^[[:space:]]*$/d' || true)"
+    if [[ -z "$json" ]]; then
+        DEMO_PENDING_UPDATES=0
+        print_status "OK" "Pending database updates: none"
+        return 0
+    fi
+
+    demo_require_jq || {
+        print_error "Cannot parse the pending-updates payload on ${site} (${tier}) — jq is missing."
+        print_info  "Treated as a FAILURE: an unreadable update state is never captured as a golden."
+        demo_log "$site" pending-updates-failed "tier=${tier} reason=no-jq"
+        return 1
+    }
+
+    local n
+    n="$(printf '%s' "$json" | jq -r 'length' 2>/dev/null || true)"
+    if [[ ! "$n" =~ ^[0-9]+$ ]]; then
+        print_error "Pending-updates payload from ${site} (${tier}) is not the JSON drush promised."
+        print_info  "Treated as a FAILURE: an unreadable update state is never captured as a golden."
+        demo_log "$site" pending-updates-failed "tier=${tier} reason=payload-unparseable"
+        return 1
+    fi
+
+    if [[ "$n" -eq 0 ]]; then
+        DEMO_PENDING_UPDATES=0
+        print_status "OK" "Pending database updates: none"
+        return 0
+    fi
+
+    print_error "Pending database updates: ${n} on ${site} (${tier}) — golden REFUSED."
+    printf '%s' "$json" \
+        | jq -r 'if type=="object" then keys_unsorted[] else (.[]|tostring) end' 2>/dev/null \
+        | head -20 | sed 's/^/        /'
+    [[ "$n" -gt 20 ]] && print_info "… and $((n - 20)) more."
+    print_info "A golden captured now would re-pend these on EVERY nightly reset —"
+    print_info "the reset restores this schema and never runs updatedb, so it never clears."
+    print_hint "Run the updates first, then re-capture:"
+    print_hint "  pl drush ${site} --tier=${tier} --execute -- updatedb -y"
+    print_hint "There is no override: a pending update in a golden cannot be remedied later."
+    demo_log "$site" pending-updates-failed "tier=${tier} pending=${n}"
+    return 1
+}
+
+# Probe the LOCAL (dev|stg) DDEV project.
+demo_pending_updates_check_local() {
+    local site="$1" tier="$2" proj="$3"
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        # Moodle has no drush and no hook_update_N registry; its equivalent is
+        # $CFG->version vs version.php, read out of the mdl_config TABLE. That
+        # is a DIFFERENT rule and this one does not cover it — say so rather
+        # than let a Moodle golden inherit a Drupal site's clean bill.
+        print_info "Pending updates: Moodle needs its own rule (\$CFG->version vs version.php) — not checked here."
+        DEMO_PENDING_UPDATES="not-applicable"
+        return 0
+    fi
+    local out
+    out="$( cd "$proj" && ddev drush updatedb:status --format=json 2>/dev/null && echo "$DEMO_PENDING_PROBE_MARKER" )"
+    demo_pending_updates_verdict "$site" "$tier" "$out"
+}
+
+# Probe the LIVE demo host. Read-only — updatedb:status changes nothing.
+demo_pending_updates_check_live() {
+    local site="$1"
+    if [[ "$(demo_kind_of "$site")" == "moodle" ]]; then
+        print_info "Pending updates: Moodle needs its own rule (\$CFG->version vs version.php) — not checked here."
+        DEMO_PENDING_UPDATES="not-applicable"
+        return 0
+    fi
+    local out
+    out="$(demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush updatedb:status --format=json 2>/dev/null && echo ${DEMO_PENDING_PROBE_MARKER}")"
+    demo_pending_updates_verdict "$site" live "$out"
+}
+
 # Push a local artifact to the remote home dir and verify its sha256 ON THE
 # REMOTE against the local sidecar. Fail-closed: a corrupt upload must be
 # caught BEFORE anything is destroyed.
@@ -1682,6 +1808,14 @@ cmd_golden() {
         demo_log "$site" parity-overridden "tier=$tier"
     fi
 
+    # 0b. PENDING DB UPDATES (ops#226). Also BEFORE the dump, and deliberately
+    #     NOT covered by --allow-config-gaps: a pending update frozen into the
+    #     image is re-pended by every nightly reset and can never be cleared.
+    if ! demo_pending_updates_check_local "$site" "$tier" "$proj"; then
+        print_error "Golden NOT captured — the existing image is unchanged."
+        return 1
+    fi
+
     # 1. DB dump (ddev export-db handles credentials + gzip).
     print_info "Exporting database…"
     ( cd "$proj" && ddev export-db --file="$gdir/$GOLDEN_DB" --gzip ) >/dev/null || {
@@ -1706,7 +1840,7 @@ cmd_golden() {
     done
 
     # 4. Manifest, then verify the whole set exactly as reset will.
-    demo_manifest_write "$gdir" "$site" "$GOLDEN_DB" "$GOLDEN_FILES" || return 1
+    demo_manifest_write "$gdir" "$site" "$GOLDEN_DB" "$GOLDEN_FILES" "${DEMO_PENDING_UPDATES:-unknown}" || return 1
     demo_golden_verify "$gdir" "$site" || {
         print_error "Post-capture verification failed — golden NOT usable"
         return 1
@@ -1796,6 +1930,14 @@ cmd_golden_live() {
         demo_log "$site" parity-overridden "tier=live"
     fi
 
+    # PENDING DB UPDATES (ops#226). Read-only, before the dump, no override —
+    # see the demo_pending_updates_verdict header for why this one cannot be
+    # traded away the way a config gap can.
+    if ! demo_pending_updates_check_live "$site"; then
+        print_error "Golden NOT captured — the existing image is unchanged."
+        return 1
+    fi
+
     mkdir -p "$gdir"
     local stamp="demo-golden-$$-$(date -u '+%Y%m%d%H%M%S')"
     local rdb="${stamp}.db.sql.gz" rfiles="${stamp}.files.tar.gz"
@@ -1859,7 +2001,7 @@ cmd_golden_live() {
     [[ "$ok" == "true" ]] || { print_error "Golden capture aborted — artifact verification failed."; return 1; }
 
     # 4. Manifest + the same verification the restore will run.
-    demo_manifest_write "$gdir" "$site" "$GOLDEN_DB" "$GOLDEN_FILES" || return 1
+    demo_manifest_write "$gdir" "$site" "$GOLDEN_DB" "$GOLDEN_FILES" "${DEMO_PENDING_UPDATES:-unknown}" || return 1
     demo_golden_verify "$gdir" "$site" || {
         print_error "Post-capture verification failed — golden NOT usable"
         return 1

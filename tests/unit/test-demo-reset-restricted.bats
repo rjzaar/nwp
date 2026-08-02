@@ -264,3 +264,73 @@ _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upl
     ! _wiped
     ! _canary_gone
 }
+
+# ---------------------------------------------------------------------------
+# [G10] pending-update detection (ops#226)
+#
+# A golden captured while a hook_update_N was pending restores a PERMANENTLY
+# pending site: the reset puts back the pre-update schema and never runs
+# updatedb, so the condition survives every night and an operator's manual
+# updatedb is undone at 02:00. `pl demo golden` now refuses such a capture, but
+# images taken before that guard exist, so the reset must SAY so instead of
+# reporting reset-ok.
+# ---------------------------------------------------------------------------
+
+# Replace the sandbox drush with one that answers updatedb:status as told.
+# $1 = the case-arm body for updatedb:status.
+_drush_updatedb_answer() {
+    cat > "${BOX}/var/www/nwd/vendor/bin/drush" <<DRUSH
+#!/bin/bash
+printf 'drush %s\n' "\$*" >> "\$NWD_TEST_TRACE"
+case "\$1" in
+    cget)    echo true ;;
+    sqlq)    case "\$2" in
+                 *sessions*) echo "\${NWD_TEST_NEWEST_SESSION:-0}" ;;
+                 *)          echo 12345678 ;;
+             esac ;;
+    sql:cli) cat >/dev/null ;;
+    updatedb:status) ${1} ;;
+esac
+exit 0
+DRUSH
+    chmod +x "${BOX}/var/www/nwd/vendor/bin/drush"
+}
+
+@test "[G10] control: a site with NO pending updates still reports reset-ok" {
+    # The negative control for the two cases below: this guard must not be a
+    # blanket degrade. (The stock stub prints nothing for updatedb:status,
+    # which is exactly what a clean drush does.)
+    _build_box
+    _rehome
+    _run_action nightly
+    [ "$status" -eq 0 ]
+    grep -q 'reset-ok|' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    run grep -q 'reset-pending-updates' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    [ "$status" -ne 0 ]
+}
+
+@test "[G10] a reset that restores a PENDING update degrades instead of reporting reset-ok" {
+    _build_box
+    _rehome
+    _drush_updatedb_answer 'echo "{\"nwc_moodle_data_update_10001\": {\"module\": \"nwc_moodle_data\"}}"'
+    _run_action nightly
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"PENDING after the restore"* ]]
+    [[ "$output" == *"nwc_moodle_data_update_10001"* ]]
+    # It must name the real remedy: updatedb here is undone by the next reset.
+    [[ "$output" == *"re-capture the golden"* ]]
+    grep -q 'reset-pending-updates' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    # and it must NOT claim a clean reset
+    run grep -q 'reset-ok|' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    [ "$status" -ne 0 ]
+}
+
+@test "[G10] an UNREADABLE update state is degraded too — never silently clean" {
+    _build_box
+    _rehome
+    _drush_updatedb_answer 'exit 9'
+    _run_action nightly
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"could not read the site's update state"* ]]
+    grep -q 'reset-pending-updates|state=unreadable' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+}

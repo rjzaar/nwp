@@ -35,6 +35,15 @@
 #   [G6] Single-flight: flock, so overlapping invocations cannot interleave.
 #   [G7] Every invocation (accepted or refused) appends one line to LOG_FILE.
 #   [G8] Non-zero exit on failure; 3 = "active, retry"; 0 = reset done/no-op.
+#   [G10] PENDING-UPDATE DETECTION (ops#226). After the restore the site is
+#        asked whether it still owes a hook_update_N. A golden captured while
+#        an update was pending re-pends it every single night — the restore
+#        returns the pre-update schema and this script never runs updatedb —
+#        so the condition is permanent and invisible. `pl demo golden` now
+#        REFUSES such a capture, but goldens taken before that guard existed
+#        are still out there, so the reset says so instead of reporting
+#        reset-ok: pending updates (or an unreadable update state) degrade the
+#        run exactly like a failed smoke check.
 #   [G9] FATE MANIFEST (ops#47 impact contract, ops#143). Nothing destructive
 #        runs until the manifest below has been printed AND logged, naming every
 #        component and its fate with sizes read live off this box. This is
@@ -109,6 +118,10 @@ IDLE_WINDOW=1800        # 30 min — matches `pl demo reset --if-idle 30m`
 MIN_INTERVAL=600        # 10 min hard floor between two real resets [G5]
 SMOKE_ATTEMPTS=5
 SMOKE_SLEEP=5
+# [G10] Completion marker for the pending-update probe. A clean site prints
+# NOTHING on stdout (drush puts "No database updates required" on stderr), so
+# emptiness alone cannot tell "no updates" from "the probe never ran".
+PENDING_MARKER='PENDING_UPDATES_PROBE_OK'
 
 ################################################################################
 # Logging [G7]
@@ -528,10 +541,43 @@ fi
 
 drush cr >/dev/null 2>&1 || log "cr-failed" "non-fatal"
 
+# Declared BEFORE the first thing that can set it: [G10] below and the smoke
+# check both degrade the run, and re-initialising it between them would erase
+# whichever spoke first.
+DEGRADED=false
+
+# [G10] Post-restore pending-update detection (ops#226). A golden captured
+# while an update was pending restores a permanently-pending site: the schema
+# comes back pre-update every night and nothing here runs updatedb. Capture now
+# refuses that, but older goldens predate the guard, so a reset that puts one
+# back must SAY so rather than report reset-ok.
+#
+# Fail-closed on the read, not on the site: a probe we cannot read is degraded,
+# not fatal — the data is already restored and the operator needs the report.
+# Clean sites print nothing on stdout, hence the marker.
+PENDING_JSON="$(drush updatedb:status --format=json 2>/dev/null && echo "$PENDING_MARKER")"
+if ! printf '%s\n' "$PENDING_JSON" | grep -qx "$PENDING_MARKER"; then
+    DEGRADED=true
+    log "reset-pending-updates" "state=unreadable"
+    echo "FAIL  could not read the site's update state after the restore — treat the golden as unverified."
+else
+    PENDING_PAYLOAD="$(printf '%s\n' "$PENDING_JSON" | grep -vx "$PENDING_MARKER" | sed '/^[[:space:]]*$/d')"
+    if [[ -n "$PENDING_PAYLOAD" ]]; then
+        PENDING_N="$(printf '%s' "$PENDING_PAYLOAD" | jq -r 'length' 2>/dev/null || echo '?')"
+        if [[ "$PENDING_N" != "0" ]]; then
+            DEGRADED=true
+            log "reset-pending-updates" "pending=${PENDING_N} golden_attests=$(jq -r '.pending_db_updates // "unknown"' "${GOLDEN_DIR}/golden.manifest.json" 2>/dev/null || echo unknown)"
+            echo "FAIL  ${PENDING_N} database update(s) are PENDING after the restore."
+            printf '%s' "$PENDING_PAYLOAD" | jq -r 'if type=="object" then keys_unsorted[] else (.[]|tostring) end' 2>/dev/null | head -10 | sed 's/^/      /'
+            echo "      The golden itself carries them, so running updatedb here is undone at the next reset."
+            echo "      Fix: run the updates, then re-capture the golden (pl demo golden nwd --tier=live)."
+        fi
+    fi
+fi
+
 # Post-restore smoke, retried: the first request after a cache rebuild is a
 # cold full render and on this small shared host that can 5xx once before the
 # caches warm. Persistent failure is real and degrades the exit status.
-DEGRADED=false
 CODE=""
 for _ in $(seq 1 "$SMOKE_ATTEMPTS"); do
     CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DOMAIN}/" 2>/dev/null || echo 000)"

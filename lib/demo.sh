@@ -1100,11 +1100,18 @@ demo_feedback_sync() {
 # Golden manifest
 ################################################################################
 
-# demo_manifest_write <dir> <site> <db_basename> <files_basename>
+# demo_manifest_write <dir> <site> <db_basename> <files_basename> [pending_db_updates]
 # Writes <dir>/golden.manifest.json. Assumes the .sha256 sidecars already
 # exist next to the artifacts (written by the capture step).
+#
+# pending_db_updates is the capture-time attestation from the ops#226 gate:
+#   "0"              the site owed no hook_update_N when this image was taken
+#   "not-applicable" the gate does not cover this kind of site (Moodle)
+#   "unknown"        the image predates the gate, or was written by something
+#                    that does not run it — NOT a clean bill
+# It is recorded so a reset can say which of those it is restoring.
 demo_manifest_write() {
-    local dir="$1" site="$2" db="$3" files="$4"
+    local dir="$1" site="$2" db="$3" files="$4" pending="${5:-unknown}"
     local db_sha files_sha
     db_sha="$(awk '{print $1}' "${dir}/${db}.sha256" 2>/dev/null)" || true
     files_sha="$(awk '{print $1}' "${dir}/${files}.sha256" 2>/dev/null)" || true
@@ -1120,7 +1127,8 @@ demo_manifest_write() {
         printf '  "db_file": "%s",\n' "$db"
         printf '  "db_sha256": "%s",\n' "$db_sha"
         printf '  "files_file": "%s",\n' "$files"
-        printf '  "files_sha256": "%s"\n' "$files_sha"
+        printf '  "files_sha256": "%s",\n' "$files_sha"
+        printf '  "pending_db_updates": "%s"\n' "$pending"
         printf '}\n'
     } > "${dir}/golden.manifest.json"
 }

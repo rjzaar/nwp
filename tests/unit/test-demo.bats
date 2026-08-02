@@ -1218,6 +1218,158 @@ TOTAL_VENDOR 53'" >/dev/null 2>&1 || true
   [ "$status" -eq 0 ]
 }
 
+# --- pending database updates gate (ops#226) ----------------------------------
+#
+# The trap this closes: a golden captured while a hook_update_N is pending
+# restores a PERMANENTLY pending site. The reset puts back the pre-update
+# schema and never runs updatedb, so the update never clears — and an operator
+# who runs updatedb by hand has it undone at 02:00. It nearly landed on
+# 2026-08-02 with nwc_moodle_data_update_10001 (nwc!63), the same night an
+# out-of-order updatedb left live nwd in maintenance mode.
+#
+# Unlike parity there is NO override: a config gap can be a considered
+# trade-off, a pending update in a golden cannot be remedied afterwards.
+
+@test "pending-updates verdict PASSES a site that owes nothing (marker, empty payload)" {
+  run bash -c "source '$DEMO_CMD'
+               demo_pending_updates_verdict demo1 live 'PENDING_UPDATES_PROBE_OK'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Pending database updates: none"* ]]
+}
+
+@test "pending-updates verdict PASSES on an explicitly empty drush payload" {
+  run bash -c "source '$DEMO_CMD'
+               demo_pending_updates_verdict demo1 live '{}
+PENDING_UPDATES_PROBE_OK'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Pending database updates: none"* ]]
+}
+
+@test "pending-updates verdict FAILS and names every pending update" {
+  run bash -c "source '$DEMO_CMD'
+               demo_pending_updates_verdict demo1 live '{
+  \"nwc_moodle_data_update_10001\": {\"module\": \"nwc_moodle_data\", \"update_id\": 10001},
+  \"nwc_help_update_10002\": {\"module\": \"nwc_help\", \"update_id\": 10002}
+}
+PENDING_UPDATES_PROBE_OK'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Pending database updates: 2"* ]]
+  [[ "$output" == *"nwc_moodle_data_update_10001"* ]]
+  [[ "$output" == *"nwc_help_update_10002"* ]]
+  # It must say WHY this is not merely untidy.
+  [[ "$output" == *"nightly reset"* ]]
+  [[ "$output" == *"no override"* ]]
+}
+
+@test "pending-updates verdict is FAIL-CLOSED: an unreadable probe is never a pass" {
+  # No marker at all — ssh died, drush was missing, the site would not bootstrap.
+  run bash -c "source '$DEMO_CMD' ; demo_pending_updates_verdict demo1 live ''"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not complete"* ]]
+
+  # Output, but not the marker: the command errored before finishing.
+  run bash -c "source '$DEMO_CMD'
+               demo_pending_updates_verdict demo1 live 'Bootstrap failed. Run your command with -vvv'"
+  [ "$status" -ne 0 ]
+
+  # Marker present but the payload is not the JSON drush promised.
+  run bash -c "source '$DEMO_CMD'
+               demo_pending_updates_verdict demo1 live 'PHP Fatal error: something
+PENDING_UPDATES_PROBE_OK'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not the JSON"* ]]
+}
+
+@test "a pending-updates refusal is recorded in the demo log (auditable, like every guard)" {
+  bash -c "source '$DEMO_CMD'
+           demo_pending_updates_verdict demo1 live '{\"m_update_10001\": {}}
+PENDING_UPDATES_PROBE_OK'" >/dev/null 2>&1 || true
+  run cat "$(demo_log_file demo1)"
+  [[ "$output" == *"pending-updates-failed"* ]]
+  [[ "$output" == *"pending=1"* ]]
+}
+
+@test "the live pending-updates check asks the real drush and BOTH answers land" {
+  # Drives the actual check function against a fake remote (same harness shape
+  # as the parity staging test), so the command it assembles and the marker it
+  # depends on are exercised, not grepped. The ONLY difference between the two
+  # halves is what drush answers.
+  mkdir -p "${TEST_TMP}/siteroot/vendor/bin"
+  cat > "${TEST_TMP}/harness.sh" <<'EOF'
+source "$DEMO_CMD"                       # BASH_SOURCE != $0 → no dispatch
+demo_kind_of() { echo drupal; }
+demo_rssh() { shift; bash -c "$*"; }     # "remote" == here
+DEMO_LIVE_PATH="$SITEROOT"
+DEMO_LIVE_DRUSHSUDO=""
+demo_pending_updates_check_live demo1
+EOF
+
+  # CLEAN: drush prints its "No database updates required" line on STDERR and
+  # nothing at all on stdout. Only the marker distinguishes this from silence.
+  printf '%s\n%s\n' '#!/bin/bash' 'echo "[success] No database updates required." >&2' \
+    > "${TEST_TMP}/siteroot/vendor/bin/drush"
+  chmod +x "${TEST_TMP}/siteroot/vendor/bin/drush"
+  DEMO_CMD="$DEMO_CMD" SITEROOT="${TEST_TMP}/siteroot" run bash "${TEST_TMP}/harness.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Pending database updates: none"* ]]
+
+  # PENDING: exact status 1 — a 127 "command not found" must not read as a pass.
+  printf '%s\n%s\n' '#!/bin/bash' \
+    'echo "{\"nwc_moodle_data_update_10001\": {\"module\": \"nwc_moodle_data\"}}"' \
+    > "${TEST_TMP}/siteroot/vendor/bin/drush"
+  chmod +x "${TEST_TMP}/siteroot/vendor/bin/drush"
+  DEMO_CMD="$DEMO_CMD" SITEROOT="${TEST_TMP}/siteroot" run bash "${TEST_TMP}/harness.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"nwc_moodle_data_update_10001"* ]]
+  [[ "$output" == *"golden REFUSED"* ]]
+}
+
+@test "golden capture runs the pending-updates gate BEFORE dumping anything (both tiers)" {
+  run bash -c "awk '/^cmd_golden\(\)/,/^}/' '$DEMO_CMD' \
+               | grep -n 'demo_pending_updates_check_local\|ddev export-db'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"demo_pending_updates_check_local"* ]]
+
+  run bash -c "awk '/^cmd_golden_live\(\)/,/^}/' '$DEMO_CMD' \
+               | grep -n 'demo_pending_updates_check_live\|demo_moodle_dump_cmd\|demo_drupal_dump_cmd'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"demo_pending_updates_check_live"* ]]
+}
+
+@test "the pending-updates gate has NO override — --allow-config-gaps does not reach it" {
+  # The parity gate's refusal is wrapped in an allow_gaps test; this one must
+  # not be, or the flag silently buys back the un-buy-back-able.
+  fn="$(awk '/^cmd_golden\(\)/,/^}/' "$DEMO_CMD")"
+  block="$(printf '%s\n' "$fn" | sed -n '/demo_pending_updates_check_local/,/^    fi/p')"
+  [ -n "$block" ]
+  run bash -c "printf '%s\n' \"\$0\" | grep -q 'allow_gaps'" "$block"
+  [ "$status" -ne 0 ]
+  run bash -c "printf '%s\n' \"\$0\" | grep -q 'pending-updates-overridden'" "$block"
+  [ "$status" -ne 0 ]
+}
+
+@test "the golden manifest records the capture-time pending-update attestation" {
+  d="${TEST_TMP}/g"; mkdir -p "$d"
+  printf 'x' > "$d/golden.db.sql.gz"; printf 'y' > "$d/golden.files.tar.gz"
+  ( cd "$d" && sha256sum golden.db.sql.gz > golden.db.sql.gz.sha256 \
+             && sha256sum golden.files.tar.gz > golden.files.tar.gz.sha256 )
+
+  run demo_manifest_write "$d" demo1 golden.db.sql.gz golden.files.tar.gz 0
+  [ "$status" -eq 0 ]
+  run jq -r '.pending_db_updates' "$d/golden.manifest.json"
+  [ "$output" = "0" ]
+
+  # An image written without the attestation is "unknown" — NOT a clean bill.
+  run demo_manifest_write "$d" demo1 golden.db.sql.gz golden.files.tar.gz
+  [ "$status" -eq 0 ]
+  run jq -r '.pending_db_updates' "$d/golden.manifest.json"
+  [ "$output" = "unknown" ]
+
+  # And both capture paths pass the real attestation through.
+  run bash -c "grep -c 'demo_manifest_write \"\$gdir\" \"\$site\" \"\$GOLDEN_DB\" \"\$GOLDEN_FILES\" \"\${DEMO_PENDING_UPDATES:-unknown}\"' '$DEMO_CMD'"
+  [ "$output" -eq 2 ]
+}
+
 # --- G: a code-issuing verb must NAME its tier ---------------------------------
 #
 # `pl demo invite nwd` — the exact command every guide printed — issued three

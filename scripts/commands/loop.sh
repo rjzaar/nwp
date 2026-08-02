@@ -140,10 +140,17 @@ cmd_parts(){
 SCHED_BEGIN="# >>> nwp loop schedule (managed by \`pl loop schedule\`) >>>"
 SCHED_END="# <<< nwp loop schedule <<<"
 SCHED_DEFAULT="30 4 * * *"
-
+# `pl rag`'s work sweep is budgeted, and a sweep that blows its budget is not an
+# error — it degrades every site to UNKNOWN and writes "work sweep did not run"
+# into each issue. Measured on this estate 2026-08-02: a complete sweep of 31
+# sites takes ~13 minutes (it probes tokens and hosts), against a 180 s batch
+# default. So the unattended run would have filed a fleet of honest-but-useless
+# UNKNOWNs every night. A restored schedule that reports nothing usable is only
+# marginally better than no schedule, so the managed block states a budget.
+SCHED_BUDGET_DEFAULT=1800
 _sched_line(){
-    printf '%s %s/scripts/agent-loop/rag-sync.sh >> %s/logs/rag-sync.log 2>&1\n' \
-        "${1:-$SCHED_DEFAULT}" "$RT" "$RT"
+    printf '%s NWP_RAG_TODO_BUDGET=%s %s/scripts/agent-loop/rag-sync.sh >> %s/logs/rag-sync.log 2>&1\n' \
+        "${1:-$SCHED_DEFAULT}" "${2:-$SCHED_BUDGET_DEFAULT}" "$RT" "$RT"
 }
 
 _sched_block(){
@@ -151,10 +158,13 @@ _sched_block(){
     printf '# Stage 1 of the self-healing loop: turn the live RAG state into tracked\n'
     printf '# nwp/ops issues. READ-ONLY (files issues; no bumps, no deploys), which is\n'
     printf '# why the WRITE kill does not stop it — see ops#230 and lib/loop-parts.sh.\n'
+    printf '# NWP_RAG_TODO_BUDGET: seconds allowed for the work sweep. Too small and\n'
+    printf '# every site degrades to UNKNOWN and the issues say so; a full sweep of\n'
+    printf '# this fleet measured ~13 min on 2026-08-02.\n'
     printf '# Managed by: pl loop schedule install|remove. Do not hand-edit this block.\n'
     printf 'SHELL=/bin/bash\n'
     printf 'PATH=%s/.local/bin:/usr/local/bin:/usr/bin:/bin\n' "$HOME"
-    _sched_line "$1"
+    _sched_line "$1" "$2"
     printf '%s\n' "$SCHED_END"
 }
 
@@ -192,11 +202,12 @@ cmd_schedule_status(){
 
 cmd_schedule_write(){
     local action="$1"; shift
-    local execute=0 expr="$SCHED_DEFAULT" target="" a
+    local execute=0 expr="$SCHED_DEFAULT" budget="$SCHED_BUDGET_DEFAULT" target="" a
     while [ $# -gt 0 ]; do
         case "$1" in
             --execute)    execute=1; shift ;;
             --schedule=*) expr="${1#--schedule=}"; shift ;;
+            --budget=*)   budget="${1#--budget=}"; shift ;;
             --host)       target="${2:-}"; shift 2 ;;
             --host=*)     target="${1#--host=}"; shift ;;
             *) print_error "unknown arg: $1"; return 2 ;;
@@ -209,7 +220,7 @@ cmd_schedule_write(){
         if [ "$action" = "install" ]; then
             exec "$PROJECT_ROOT/scripts/commands/host.sh" schedule "$target" install \
                 --name=rag-sync --schedule="$expr" \
-                --command="\$HOME/nwp/scripts/agent-loop/rag-sync.sh" \
+                --command="/usr/bin/env NWP_RAG_TODO_BUDGET=$budget \$HOME/nwp/scripts/agent-loop/rag-sync.sh" \
                 $([ "$execute" = 1 ] && echo --execute)
         else
             exec "$PROJECT_ROOT/scripts/commands/host.sh" schedule "$target" remove \
@@ -224,7 +235,7 @@ cmd_schedule_write(){
     # Strip any existing managed block, then (for install) append a fresh one.
     new="$(printf '%s\n' "$cur" | awk -v b="$SCHED_BEGIN" -v e="$SCHED_END" '$0==b{f=1} !f{print} $0==e{f=0}')"
     if [ "$action" = "install" ]; then
-        new="$(printf '%s\n%s\n' "${new%$'\n'}" "$(_sched_block "$expr")")"
+        new="$(printf '%s\n%s\n' "${new%$'\n'}" "$(_sched_block "$expr" "$budget")")"
     fi
     # Never leave a stray leading blank line behind on an empty crontab.
     new="$(printf '%s\n' "$new" | sed '/./,$!d')"
@@ -266,7 +277,7 @@ cmd_schedule(){
         install|remove) local a="$1"; shift; cmd_schedule_write "$a" "$@" ;;
         -h|--help)
             printf 'pl loop schedule [status]\n'
-            printf 'pl loop schedule install [--schedule="%s"] [--host <role>] [--execute]\n' "$SCHED_DEFAULT"
+            printf 'pl loop schedule install [--schedule="%s"] [--budget=%s] [--host <role>] [--execute]\n' "$SCHED_DEFAULT" "$SCHED_BUDGET_DEFAULT"
             printf 'pl loop schedule remove  [--host <role>] [--execute]\n' ;;
         *) print_error "unknown: pl loop schedule $1 (status|install|remove)"; return 2 ;;
     esac

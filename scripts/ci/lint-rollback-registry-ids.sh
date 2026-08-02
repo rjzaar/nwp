@@ -64,6 +64,46 @@ for reg in "${registries[@]}"; do
         exit 2
     fi
 
+    # UNRECOGNISED IDS. The uniqueness scan below only sees rows whose first
+    # cell looks like `CP<something>`. Anything else was silently skipped —
+    # which means a row could evade the whole gate simply by not using the
+    # prefix, and the run would still print "all ids unique". That is the
+    # failure this file exists to prevent, one level up: not a wrong answer,
+    # but a confident answer about rows it never looked at.
+    #
+    # Found on 2026-08-02: two rows recording LIVE writes (`ops213`, `ops218`)
+    # were added without the prefix and were invisible here. Renamed, and the
+    # skip is now an error rather than a silence.
+    #
+    # Header and separator rows are STRUCTURE, not data, and are exempt.
+    #
+    # They are identified STRUCTURALLY — a separator row (`|---|---|`) and the
+    # row immediately above it — not by matching the header's text. The first
+    # cut of this exemption hard-coded `| # |`, the heading this repo's one
+    # registry happens to use, so a registry headed `| ID | Date | …` had its
+    # header reported as an unrecognised checkpoint. A gate that only tolerates
+    # the file it was written against fails on the next file, and the tempting
+    # fix is to relax the gate rather than the exemption.
+    unrecognised="$(awk '
+        /^\|[[:space:]]*:?-{2,}/ { sep[NR] = 1 }
+        { line[NR] = $0 }
+        END {
+            for (n = 1; n <= NR; n++) {
+                if (line[n] !~ /^\|[[:space:]]/) continue   # not a table row
+                if (sep[n] || sep[n + 1]) continue          # separator, or the header above one
+                if (line[n] ~ /^\|[[:space:]]*CP/) continue # a recognised checkpoint id
+                printf "%d:%s\n", n, line[n]
+            }
+        }' "$reg")"
+    if [ -n "$unrecognised" ]; then
+        echo "UNRECOGNISED CHECKPOINT ID: $reg"
+        echo "    A registry row's first cell must be a CP id (e.g. CP-ops213),"
+        echo "    otherwise the uniqueness check below cannot see it and this gate"
+        echo "    reports a clean run for rows it never examined."
+        printf '%s\n' "$unrecognised" | cut -c1-140 | sed 's/^/        /'
+        rc=1
+    fi
+
     # First cell of a table row, when it looks like a checkpoint id.
     mapfile -t ids < <(grep -oE '^\| *CP[A-Za-z0-9_.-]+' "$reg" | sed 's/^| *//')
 

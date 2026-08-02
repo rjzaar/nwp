@@ -92,6 +92,9 @@
 #       when you convert a parser to yq you must delete its baseline line).
 #   Regenerate deliberately with:  scripts/ci/lint-yq-first.sh --update-baseline
 #   Inspect what it would contain with: scripts/ci/lint-yq-first.sh --list
+#   Audit WHY each row was flagged with:  scripts/ci/lint-yq-first.sh --explain
+#     — a literal `.yml` argument is unambiguous; a taint that arrived through a
+#       variable is where a false positive can hide (ops#196).
 #
 # EXIT
 #   0 — no un-baselined AWK YAML parsers, baseline is exact
@@ -106,11 +109,13 @@ BASELINE="${NWP_YQ_FIRST_BASELINE:-$PROJECT_ROOT/.yq-first-baseline}"
 
 UPDATE_BASELINE=0
 LIST_ONLY=0
+EXPLAIN=0
 ROOTS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --update-baseline) UPDATE_BASELINE=1 ;;
         --list)            LIST_ONLY=1 ;;
+        --explain)         EXPLAIN=1 ;;
         --baseline=*)      BASELINE="${1#*=}" ;;
         --help|-h)
             sed -n '2,60p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -317,7 +322,7 @@ scan_file() {
                     sub(/;[ \t]*do.*$/, "", lst)
                     v = hdr
                     sub(/^[ \t;]*for[ \t]+/, "", v); sub(/[ \t]+in[ \t]*$/, "", v)
-                    if (yamlish(lst, fn)) changed += taint(fn, v)
+                    if (yamlish(lst, fn)) changed += taint(fn, v, i, "R4 for-loop over a YAML glob")
                 }
 
                 # R1/R2/R3 — assignments
@@ -333,7 +338,7 @@ scan_file() {
                     rhs = s
                     if (match(rhs, /[ \t][A-Za-z_][A-Za-z0-9_]*=/))
                         rhs = substr(rhs, 1, RSTART - 1)
-                    if (yamlish(rhs, fn)) changed += taint(fn, v)
+                    if (yamlish(rhs, fn)) changed += taint(fn, v, i, "assignment of a YAML-ish value")
                 }
             }
             if (changed == 0) break
@@ -369,12 +374,19 @@ scan_file() {
     }
 
     # Taint `v` in the narrowest scope bash would give it. Returns 1 if new.
-    function taint(fn, v,   k) {
+    #
+    # `why` records WHERE the taint came from (ops#196): a baseline row is only
+    # auditable if you can see which assignment convinced the linter that a
+    # variable holds a YAML path. Without it, deciding whether one of the 158
+    # rows is a false positive means re-deriving the analysis by hand.
+    function taint(fn, v, srcline, rule,   k) {
         k = (localof[fn SUBSEP v] ? fn : "") SUBSEP v
         if (k in yamlvar) return 0
         yamlvar[k] = 1
+        why[k] = rule " at line " srcline ": " trimw(line[srcline])
         return 1
     }
+    function trimw(t) { gsub(/^[ \t]+|[ \t]+$/, "", t); return substr(t, 1, 110) }
 
     # Bash escapes a single quote inside a single-quoted string as \047"\047"\047
     # (close, double-quoted quote, reopen). That is 3 single quotes, which flips
@@ -394,22 +406,32 @@ scan_file() {
         for (j = length(t); j >= 1; j--) if (substr(t, j, 1) == "\047") return j
         return 0
     }
-    function check(f, ln, args,   a, v) {
+    function check(f, ln, args,   a, v, k) {
         a = args
-        if (a ~ /\.(yml|yaml)([^A-Za-z0-9_]|$)/) { emit(f, ln, a); return }
+        # A LITERAL .yml argument is unambiguous — no scope analysis involved,
+        # so these baseline rows can be trusted without further reading.
+        if (a ~ /\.(yml|yaml)([^A-Za-z0-9_]|$)/) {
+            emit(f, ln, a, "literal .yml/.yaml argument")
+            return
+        }
         while (match(a, /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) {
             v = substr(a, RSTART, RLENGTH)
             gsub(/[${}]/, "", v)
             # in scope here? function-local taint, or a shell global
-            if ((f SUBSEP v) in yamlvar || ("" SUBSEP v) in yamlvar) {
-                emit(f, ln, args); return
+            if ((f SUBSEP v) in yamlvar) {
+                emit(f, ln, args, "$" v " (function-local) tainted by " why[f SUBSEP v])
+                return
+            }
+            if (("" SUBSEP v) in yamlvar) {
+                emit(f, ln, args, "$" v " (global) tainted by " why["" SUBSEP v])
+                return
             }
             a = substr(a, RSTART + RLENGTH)
         }
     }
-    function emit(f, ln, a) {
+    function emit(f, ln, a, reason) {
         gsub(/^[ \t]+|[ \t]+$/, "", a)
-        printf "%s::%s\t%d\t%s\n", FILENAME, f, ln, a
+        printf "%s::%s\t%d\t%s\t%s\n", FILENAME, f, ln, a, reason
     }
     ' "$1"
 }
@@ -426,6 +448,42 @@ cut -f1 "$hits_file" | sort -u > "$hits_file.keys"
 # ------------------------------------------------------------------ inspect
 if [ "$LIST_ONLY" -eq 1 ]; then
     sort "$hits_file"
+    exit 0
+fi
+
+# --explain — ops#196's remaining half. The 158 baseline rows can only be
+# audited if the reason each one was flagged is visible: a LITERAL .yml argument
+# is unambiguous, while a taint that arrived through a variable is exactly where
+# a false positive can hide. Grouped so the two classes can be counted, because
+# "how many of these are real?" was the open question and a number is a better
+# answer than a promise to look.
+if [ "$EXPLAIN" -eq 1 ]; then
+    # Three confidence classes, because "145 need auditing" is not actionable
+    # and most of those 145 are one hop from a literal path.
+    #   LITERAL   the awk argument itself is *.yml/*.yaml — nothing inferred
+    #   DIRECT    the variable was assigned a literal *.yml/*.yaml path
+    #   CHAINED   the taint arrived through another variable or a producer
+    #             command — this is the only class where a false positive can
+    #             realistically hide, and it is the one to read
+    lit=0; direct=0; chained=0
+    while IFS=$'\t' read -r key ln args reason; do
+        [ -n "$key" ] || continue
+        cls="CHAINED"
+        case "$reason" in
+            literal*) cls="LITERAL"; lit=$((lit + 1)) ;;
+            *)
+                case "$reason" in
+                    *.yml*|*.yaml*) cls="DIRECT";  direct=$((direct + 1)) ;;
+                    *)              cls="CHAINED"; chained=$((chained + 1)) ;;
+                esac ;;
+        esac
+        printf '[%-7s] %s\n  line %s: %s\n  WHY: %s\n\n' "$cls" "$key" "$ln" "$args" "$reason"
+    done < <(sort "$hits_file")
+    printf 'TOTAL %s hit(s)\n' "$((lit + direct + chained))"
+    printf '  LITERAL %3s — the awk argument is a *.yml/*.yaml path; nothing inferred\n' "$lit"
+    printf '  DIRECT  %3s — the variable was assigned a literal *.yml/*.yaml path\n' "$direct"
+    printf '  CHAINED %3s — taint arrived via another variable or a producer command;\n' "$chained"
+    printf '                THIS is where an ops#196 false positive can still hide\n'
     exit 0
 fi
 

@@ -884,6 +884,40 @@ moodle_version_direction() {
     fi
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CANONICAL VERSION — what does nwp/ss-moodle-plugins' own main branch say?
+#
+# WHY THIS EXISTS (ops#259). Every other reader in this file answers "are the
+# copies the same as EACH OTHER?". That question has a true-and-useless answer
+# whenever the whole fleet is equally stale: measured 2026-08-03, ssd's dev
+# tree, plugin cache and LIVE all reported local/feedback 2026051704 and drift
+# printed "every compared copy agrees" — while canonical main was 2026080101,
+# the range that added classes/privacy/provider.php. So live Moodle had no
+# GDPR handler for a table holding userid/username/email/ipaddress, and the
+# verb whose job is deployment sameness said OK.
+#
+# This reads the version out of a git REF rather than the checked-out tree,
+# because the cache is a working checkout that is frequently sitting on some
+# feature branch — its worktree is not the canonical answer, its origin/main is.
+#
+# Echoes the numeric version on success. Returns non-zero — printing nothing —
+# when it could not look (not a repo, ref absent, path absent, no version line).
+# The caller MUST render that as CANONICAL-UNKNOWN and must not let it read as
+# agreement.
+# ─────────────────────────────────────────────────────────────────────────────
+moodle_plugin_version_canonical() {
+    local repo="${1%/}" plugin="$2" ref="${3:-origin/main}" blob v
+    [ -n "$repo" ] || return 1
+    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 1
+    git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" >/dev/null 2>&1 || return 1
+    blob="$(git -C "$repo" show "${ref}:${plugin}/version.php" 2>/dev/null)" || return 1
+    [ -n "$blob" ] || return 1
+    v="$(printf '%s\n' "$blob" \
+         | sed -n 's/.*\$plugin->version[[:space:]]*=[[:space:]]*\([0-9]\{6,\}\).*/\1/p' | head -1)"
+    [ -n "$v" ] || return 1
+    printf '%s' "$v"
+}
+
 # moodle_plugin_version_remote <ssh_target> <ssh_opts> <sudo_prefix> <root> <plugin>
 # ─────────────────────────────────────────────────────────────────────────────
 # BACKUP-SUBPLUGIN CAPABILITY — is the module's FEATURE_BACKUP_MOODLE2 claim true?

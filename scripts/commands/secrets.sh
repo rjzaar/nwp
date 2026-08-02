@@ -1064,7 +1064,7 @@ cmd_lint(){
 ################################################################################
 cmd_adopt(){
   need_yq; need_registry
-  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>|host=<role>:<path>:<ref> [--as <id>]"
+  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>|<path>:<ref>|host=<role>:<path>:<ref> [--as <id>]"
   local AS=""; shift || true
   while [ $# -gt 0 ]; do case "$1" in --as) AS="${2:-}"; shift 2;; *) shift;; esac; done
 
@@ -1110,6 +1110,47 @@ cmd_adopt(){
       }]' "$REGISTRY" || die "failed to write registry"
     print_success "adopted $key as registry entry '$AS' (status: adopted-needs-review)"
     print_hint "now give it a checkable scope:  pl secrets probe-scaffold $AS   ·   verify:  pl secrets lint"
+    return 0
+  fi
+
+  # A credential that is a FILE ON THIS HOST rather than a `.secrets.yml` key
+  # was also unadoptable: this verb spoke only dotted keys, so the estate's own
+  # live-box ssh key — the one `servers/live/.nwp-server.yml` names, and which
+  # `pl server health` / `pl drush --tier=live` ride on — could not be entered
+  # into the source of record at all. It was therefore undeclared on EVERY host
+  # that held it. Adopting by local location closes that direction, and lets one
+  # entry name both the canonical and the remote copy so `verify-copy` can
+  # actually compare them.
+  if [[ "$key" == *:* ]] && [[ "$key" != host=* ]] && [[ "$key" != external:* ]]; then
+    local lkind lhost lpath lref
+    IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$key")
+    [ "$lkind" = "bad" ] && die "does not parse as <path>:<ref>: '$key'"
+    [ -n "$lhost" ] && die "internal: host= should have been handled above"
+    local labs; labs=$(loc_abspath "$lpath")
+    [ -f "$labs" ] || die "$labs does not exist — refusing to adopt a location that is not there"
+    loc_read "$lkind" "$labs" "$lref" >/dev/null \
+      || die "nothing readable at $key — refusing to adopt a location the tooling cannot check"
+    if [ "$( { "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null || true; } | grep -cxF "$key" || true)" -gt 0 ]; then
+      die "$key is already declared by a registry entry — see: pl secrets status"
+    fi
+    local lid; lid="${AS:-$(printf '%s' "$lpath" | tr -c 'a-zA-Z0-9' '_' | sed 's/__*/_/g; s/^_//; s/_$//')}"
+    ID="$lid" LOC="$key" "$YQ" e -i '.secrets += [{
+        "id": strenv(ID),
+        "provider": "local",
+        "type": "TODO — describe what this credential is for",
+        "scopes": [],
+        "stored_in": [strenv(LOC)],
+        "rotate_via": "manual",
+        "rotate_url": "",
+        "cadence_days": 365,
+        "expires": "unknown",
+        "last_rotated": "",
+        "owner": "operator",
+        "status": "adopted-needs-review",
+        "notes": "Adopted by `pl secrets adopt` from a LOCAL file location — fill in type/scopes and add a probe: before the next rotation."
+      }]' "$REGISTRY" || die "failed to write registry"
+    print_success "adopted $key as registry entry '$lid' (status: adopted-needs-review)"
+    print_hint "declare its copies:  pl secrets provision $lid --to 'host=<role>:<path>:<ref>'   ·   verify: pl secrets verify-copy $lid"
     return 0
   fi
 
@@ -1398,10 +1439,54 @@ _probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) �
   local idx="$1" prov="$2" val="$3" np j url want got hdr out=""
   np=$("$YQ" e ".secrets[$idx].probe // [] | length" "$REGISTRY" 2>/dev/null)
   [ "${np:-0}" -eq 0 ] 2>/dev/null && return 0
+
+  # ── ssh probes ────────────────────────────────────────────────────────────
+  # Run BEFORE the provider gate, because the credentials that most need a
+  # falsifiable scope claim are the ones with no HTTP surface at all. The
+  # estate's live-box ssh key is the example: it is root-equivalent on the box
+  # that holds the trust root, and until it was adopted it had neither a
+  # registry entry nor any way to state — let alone check — where it does and
+  # does not reach.
+  #
+  #   probe:
+  #     - { name: reaches-live-box, ssh: <user>@<live-host>,
+  #         key: ~/.ssh/<key>, expect_rc: 0 }
+  #     - { name: must-not-reach-x, ssh: <user>@<other>, key: …, expect_rc: 255 }
+  #
+  # A NEGATIVE probe (expect_rc non-zero) is how a LIMIT gets recorded, so that
+  # widening it goes red. Nothing is ever executed on the far side beyond
+  # `true`; BatchMode means a key that is not accepted fails instead of
+  # prompting. The credential VALUE is not passed to ssh — the probe names its
+  # own key file, because for a keypair the "value" this registry can read is
+  # the public half.
+  local nssh=0
+  for ((j=0;j<np;j++)); do
+    local pssh pkey prc pname_s
+    pssh=$("$YQ" e ".secrets[$idx].probe[$j].ssh // \"\"" "$REGISTRY" 2>/dev/null)
+    [ -z "$pssh" ] || [ "$pssh" = "null" ] && continue
+    nssh=$((nssh+1))
+    pkey=$("$YQ" e ".secrets[$idx].probe[$j].key // \"\"" "$REGISTRY" 2>/dev/null)
+    prc=$("$YQ" e ".secrets[$idx].probe[$j].expect_rc // 0" "$REGISTRY" 2>/dev/null)
+    pname_s=$("$YQ" e ".secrets[$idx].probe[$j].name // \"probe$j\"" "$REGISTRY" 2>/dev/null)
+    local -a sargs=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes)
+    if [ -n "$pkey" ] && [ "$pkey" != "null" ]; then
+      local kf="${pkey/#\~/$HOME}"
+      # A probe whose key is not on this host cannot answer the question. Say
+      # so rather than reporting the resulting 255 as a clean negative — "I
+      # could not look" is not "it does not reach".
+      [ -f "$kf" ] || { out="${out}PROBE-BLIND($pname_s key-absent) "; continue; }
+      sargs+=(-o IdentitiesOnly=yes -i "$kf")
+    fi
+    ssh "${sargs[@]}" "$pssh" true >/dev/null 2>&1; got=$?
+    [ "$got" = "$prc" ] || out="${out}SCOPE-DRIFT($pname_s want_rc=$prc got_rc=$got) "
+  done
+  # every probe on this entry was an ssh probe — no HTTP work to do
+  [ "$nssh" -eq "$np" ] && { printf '%s' "$out"; return 0; }
+
   case "$prov" in
     gitlab) hdr="PRIVATE-TOKEN:" ;;
     github|linode) hdr="Authorization: Bearer" ;;
-    *) return 0 ;;
+    *) printf '%s' "$out"; return 0 ;;
   esac
   for ((j=0;j<np;j++)); do
     url=$(expand_placeholders "$("$YQ" e ".secrets[$idx].probe[$j].url // \"\"" "$REGISTRY" 2>/dev/null)")
@@ -2115,6 +2200,236 @@ cmd_verify_copy(){
   done < <(entry_locations "$idx")
   [ "$checked" -eq 0 ] && { print_info "no host=… locations declared for $id"; return 0; }
   [ "$problems" -eq 0 ] && return 0 || return 1
+}
+
+################################################################################
+# provision — put a credential ONTO another host, and DECLARE it in the same
+#   step. The missing half of the registry contract.
+#
+#   Before this verb there was no `pl` way to give another host a credential.
+#   `sync` parses the grammar, sees `host=…`, and prints "SKIP (not writable
+#   from here)"; `write_value_to_location` returns 1 on every `host=` location
+#   with "propagate there". So the only route was `scp` — and a hand-scp'd
+#   secret is UNDECLARED BY CONSTRUCTION. That is not a hypothetical: it is the
+#   defect already recorded against met (70 auth.json files plus a whole
+#   .secrets.yml, 6 of 7 values byte-identical to live, invisible to
+#   rotate/audit forever because nothing ever named them).
+#
+#   The contract here is that the write and the declaration are ONE operation:
+#   · nothing is written unless the target is a parseable host= location;
+#   · nothing is declared unless the write read back clean over ssh;
+#   · a failed write rolls the declaration back, so the registry can never
+#     claim a copy the estate does not have.
+#
+#   The value goes over ssh on STDIN, never in argv — it must not appear in
+#   `ps` on either machine, nor in either shell history.
+#
+# THE PROD BOUNDARY (operator-stated 2026-08-02, permanent; ADR-0028):
+#   The `ver` role owns prod, alone, and is offline by default. It is never fed
+#   a credential by an AI-run host. The rule is *never*, not *not yet*.
+#
+#   Enforced two ways, both fail-closed:
+#
+#   (1) ALLOWLIST. A host is provisionable only if the registry names it in
+#       `ai_provisionable_hosts:`. An estate that has declared nothing can
+#       provision nothing. A denylist would have to be complete to be correct,
+#       and the one time it is not is the time it matters; an allowlist is wrong
+#       in the safe direction.
+#
+#   (2) PROD ROLES are refused even if someone allowlists them, so the two
+#       lists cannot be edited into agreement by accident. No --force, no env
+#       var, no config key gets past this — an escape hatch would make the
+#       boundary a preference rather than a rule.
+#
+#   Host names themselves live in the operator's registry, not in this file:
+#   the repo is the public-release track and refers to hosts by ROLE
+#   (docs/reference/role-vocabulary.md).
+################################################################################
+
+# Prod-trust role labels. Refused unconditionally. The operator's registry may
+# add its own host names under `prod_hosts:`; it can never remove these.
+PROVISION_FORBIDDEN_ROLES="ver verifier signed-deploy prod-agent prod-cluster"
+
+# Entry statuses that must not be spread to another machine: a credential on
+# its way out, or one sitting in the wrong tier, is not one to make more copies
+# of. Widening the blast radius of a token you are about to revoke is strictly
+# worse than doing nothing.
+PROVISION_FORBIDDEN_STATUS="RETIRED REVOKE-PENDING TIER-VIOLATION not-provisioned"
+
+# Build the remote command that writes stdin into <path>:<ref>. Path and ref
+# are not secret and may travel in argv; the VALUE never does — it arrives on
+# stdin and is read into a shell variable on the far side.
+provision_remote_write_cmd(){ # kind path ref -> command string
+  local kind="$1" qp; qp=$(loc_remote_quoted "$2"); local ref="$3"
+  local pre="set -eu; umask 077; d=\$(dirname $qp); [ -d \"\$d\" ] || mkdir -p \"\$d\";"
+  case "$kind" in
+    file) printf '%s cat > %s; chmod 600 %s' "$pre" "$qp" "$qp" ;;
+    yaml) printf '%s [ -f %s ] || : > %s; chmod 600 %s; NWP_V=$(cat); export NWP_V; yq e -i %s.%s = strenv(NWP_V)%s %s' \
+            "$pre" "$qp" "$qp" "$qp" "'" "$ref" "'" "$qp" ;;
+    json) printf '%s [ -f %s ] || echo {} > %s; chmod 600 %s; NWP_V=$(cat); t=$(mktemp); jq --arg v "$NWP_V" %s%s = $v%s %s > "$t" && mv "$t" %s && chmod 600 %s' \
+            "$pre" "$qp" "$qp" "$qp" "'" "$ref" "'" "$qp" "$qp" "$qp" ;;
+    env)  printf '%s [ -f %s ] || : > %s; chmod 600 %s; NWP_V=$(cat); export NWP_V NWP_REF=%s; if grep -qE "^(export )?$NWP_REF=" %s; then perl -i -pe %ss/^(export\\s+)?\\Q$ENV{NWP_REF}\\E=.*/(defined($1) ? $1 : "") . "$ENV{NWP_REF}=\\"$ENV{NWP_V}\\""/e%s %s; else printf %s%%s="%%s"\\n%s "$NWP_REF" "$NWP_V" >> %s; fi' \
+            "$pre" "$qp" "$qp" "$qp" "$(printf '%q' "$ref")" "$qp" "'" "'" "$qp" "'" "'" "$qp" ;;
+    *)    return 1 ;;
+  esac
+}
+
+# The read-back. Deliberately the SAME expression `verify-copy` uses, so a copy
+# provisioned here and a copy audited later are judged by identical arithmetic.
+provision_remote_hash_cmd(){ # kind path ref -> command string
+  local kind="$1" qp; qp=$(loc_remote_quoted "$2"); local ref="$3"
+  case "$kind" in
+    file) printf "head -1 %s | tr -d '\\\\n' | sha256sum | cut -d' ' -f1" "$qp" ;;
+    env)  printf "grep -E '^(export )?%s=' %s | head -1 | sed -E 's/^(export )?%s=//; s/^\"//; s/\"\$//' | tr -d '\\\\n' | sha256sum | cut -d' ' -f1" "$ref" "$qp" "$ref" ;;
+    yaml) printf "yq e '.%s // \"\"' %s | tr -d '\\\\n' | sha256sum | cut -d' ' -f1" "$ref" "$qp" ;;
+    json) printf "jq -r '(%s) // \"\"' %s | tr -d '\\\\n' | sha256sum | cut -d' ' -f1" "$ref" "$qp" ;;
+    *)    return 1 ;;
+  esac
+}
+
+cmd_provision(){
+  need_yq; need_registry
+  local arg="" TO="" ONLY_HOST="" APPLY=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --to)      TO="${2:-}"; shift 2 ;;
+      --to=*)    TO="${1#--to=}"; shift ;;
+      --host)    ONLY_HOST="${2:-}"; shift 2 ;;
+      --host=*)  ONLY_HOST="${1#--host=}"; shift ;;
+      --apply)   APPLY=1; shift ;;
+      --dry-run|-n) APPLY=0; shift ;;
+      --force)   print_warning "--force is not honoured by provision"; shift ;;
+      -*)        die "unknown option: $1" ;;
+      *)         [ -z "$arg" ] && arg="$1"; shift ;;
+    esac
+  done
+  [ -n "$arg" ] || die "usage: pl secrets provision <#|id> [--to host=<role>:<path>:<ref>] [--host=<role>] [--apply]"
+
+  local idx; if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
+
+  local id status; id=$(field "$idx" id); status=$(field "$idx" status)
+  local s; for s in $PROVISION_FORBIDDEN_STATUS; do
+    [ "$status" = "$s" ] && die "$id: status is $status — refusing to make another copy of a credential that is on its way out or in the wrong tier. Fix the entry first."
+  done
+
+  # canonical, read here, never printed
+  local canon ckind chost cpath cref canonval canonhash
+  canon=$(entry_canonical_loc "$idx")
+  [ -n "$canon" ] || die "$id: no machine-readable canonical location on this host"
+  IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+  [ -n "$chost" ] && die "$id: canonical lives on $chost, not here — provision from the host that holds it"
+  canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") \
+    || die "$id: canonical location unreadable ($canon)"
+  canonhash=$(printf '%s' "$canonval" | sha256sum | cut -d' ' -f1)
+
+  # Targets: an explicit --to (may be NEW), else every declared host= copy.
+  local -a targets=(); local -a is_new=()
+  if [ -n "$TO" ]; then
+    case "$TO" in host=*) ;; *) canonval=""; die "--to must be a host= location (got '$TO'). A local copy is what \`pl secrets sync\` is for." ;; esac
+    local tkind thost tpath tref
+    IFS=$'\x1f' read -r tkind thost tpath tref < <(loc_parse "$TO")
+    [ "$tkind" = "bad" ] && { canonval=""; die "--to does not parse as host=<role>:<path>:<ref>: '$TO'"; }
+    targets+=("$TO")
+    if entry_locations "$idx" | grep -qxF "$TO"; then is_new+=(0); else is_new+=(1); fi
+  else
+    local loc lkind lhost
+    while IFS= read -r loc; do
+      [ -z "$loc" ] && continue
+      IFS=$'\x1f' read -r lkind lhost _ _ < <(loc_parse "$loc")
+      [ -n "$lhost" ] || continue
+      [ -n "$ONLY_HOST" ] && [ "$lhost" != "$ONLY_HOST" ] && continue
+      targets+=("$loc"); is_new+=(0)
+    done < <(entry_locations "$idx")
+    if [ "${#targets[@]}" -eq 0 ]; then
+      canonval=""
+      print_info "$id: no host=… copies declared${ONLY_HOST:+ for $ONLY_HOST} — nothing to provision"
+      print_hint "declare and write one:  pl secrets provision $id --to 'host=<role>:<path>:<ref>' --apply"
+      return 0
+    fi
+  fi
+
+  # The allowlist, read once. Absent/empty means nothing is provisionable —
+  # an estate that has declared no agent host has not opted in to having one.
+  local -a ALLOWED=(); local _a
+  while IFS= read -r _a; do [ -n "$_a" ] && ALLOWED+=("$_a"); done \
+    < <("$YQ" e '.ai_provisionable_hosts[]? // ""' "$REGISTRY" 2>/dev/null)
+
+  print_header "Provision $id${APPLY:+}  ·  canonical: $canon"
+  [ "$APPLY" = 0 ] && print_info "DRY RUN — nothing will be written or declared (add --apply)"
+
+  local t n=0 fails=0
+  for ((n=0; n<${#targets[@]}; n++)); do
+    t="${targets[$n]}"
+    local kind host path ref
+    IFS=$'\x1f' read -r kind host path ref < <(loc_parse "$t")
+
+    # ── the boundary. No flag reaches past this. ──────────────────────────────
+    local h forbidden=0
+    for h in $PROVISION_FORBIDDEN_ROLES; do [ "$host" = "$h" ] && forbidden=1; done
+    while IFS= read -r h; do
+      [ -n "$h" ] && [ "$host" = "$h" ] && forbidden=1
+    done < <("$YQ" e '.prod_hosts[]? // ""' "$REGISTRY" 2>/dev/null)
+    if [ "$forbidden" = 1 ]; then
+      canonval=""
+      print_error "  REFUSED  $t"
+      print_error "  '$host' is prod territory (ADR-0028). An AI-run host does not provision it — the operator does, in person."
+      print_error "  This refusal has no --force and no env override: the rule is never, not not-yet."
+      return 1
+    fi
+    if ! printf '%s\n' "${ALLOWED[@]:-}" | grep -qxF "$host"; then
+      canonval=""
+      print_error "  REFUSED  $t"
+      print_error "  '$host' is not in the registry's ai_provisionable_hosts: — refusing to push a credential to a host nobody declared provisionable."
+      print_hint  "  if that is wrong, the operator adds it:  yq e -i '.ai_provisionable_hosts += [\"$host\"]' \$REGISTRY"
+      return 1
+    fi
+
+    if [ "$APPLY" = 0 ]; then
+      print_info "  would write + verify   $t"
+      [ "${is_new[$n]}" = 1 ] && print_info "  would declare (new stored_in row)   $t"
+      continue
+    fi
+
+    local wcmd hcmd rhash
+    wcmd=$(provision_remote_write_cmd "$kind" "$path" "$ref") \
+      || { print_error "  FAILED   $t  (no writer for kind '$kind')"; fails=$((fails+1)); continue; }
+    hcmd=$(provision_remote_hash_cmd "$kind" "$path" "$ref")
+
+    # The value crosses on stdin only.
+    if ! printf '%s' "$canonval" | ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" "$wcmd" >/dev/null 2>&1; then
+      print_error "  FAILED   $t  (remote write did not succeed — nothing declared)"
+      fails=$((fails+1)); continue
+    fi
+
+    rhash=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" "$hcmd" 2>/dev/null)
+    if [ -z "$rhash" ] || loc_is_empty_hash "$rhash"; then
+      print_error "  UNVERIFIED  $t  (wrote, but read back nothing — NOT declaring a copy we cannot see)"
+      fails=$((fails+1)); continue
+    fi
+    if [ "$rhash" != "$canonhash" ]; then
+      print_error "  MISMATCH $t  (read-back differs from canonical — NOT declaring)"
+      fails=$((fails+1)); continue
+    fi
+
+    if [ "${is_new[$n]}" = 1 ]; then
+      IDX="$idx" LOC="$t" "$YQ" e -i '.secrets[env(IDX)|tonumber].stored_in += [strenv(LOC)]' "$REGISTRY" \
+        || { print_error "  DECLARE FAILED  $t"; fails=$((fails+1)); continue; }
+      print_success "  VERIFIED + DECLARED  $t"
+    else
+      print_success "  VERIFIED (already declared)  $t"
+    fi
+  done
+  canonval=""
+
+  if [ "$fails" -gt 0 ]; then
+    print_error "$id: $fails target(s) failed — the registry declares only what was verified."
+    return 1
+  fi
+  [ "$APPLY" = 0 ] && { print_info "$id: dry run — nothing written, nothing declared"; return 0; }
+  print_success "$id: every target holds canonical and is declared in the registry"
+  print_hint "confirm independently:  pl secrets verify-copy $id   ·   pl secrets audit --locations"
+  return 0
 }
 
 ################################################################################
@@ -2925,6 +3240,7 @@ case "$sub" in
   migrate-registry|migrate) cmd_migrate_registry "$@" ;;
   discover-copies|discover) cmd_discover_copies "$@" ;;
   verify-copy)    cmd_verify_copy "$@" ;;
+  provision)      cmd_provision "$@" ;;
   probe-scaffold|probe) cmd_probe_scaffold "$@" ;;
   cron)           cmd_cron "$@" ;;
   registry-track) cmd_registry_track "$@" ;;
@@ -2975,6 +3291,18 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets adopt <dotted.key>  register a .secrets.yml key that lint reported as undeclared
   pl secrets discover-copies     find copies of a known credential the registry does NOT declare
   pl secrets verify-copy <#|id>  check host=… remote copies by SHA-256 over ssh (value never crosses)
+  pl secrets provision <#|id>    put a credential ONTO another host and DECLARE it in one step —
+                                 the write and the stored_in row are the same operation, so a
+                                 copy cannot exist undeclared (the met defect). Value travels on
+                                 stdin, never argv; verified by SHA-256 read-back before the
+                                 registry is touched; a failed write declares nothing.
+                                 DRY-RUN by default — add --apply.
+                                   --to host=<role>:<path>:<ref>   write + declare a NEW copy
+                                   --host=<role>                   re-push declared copies
+                                 FAIL-CLOSED: only hosts named in the registry's
+                                 ai_provisionable_hosts: may be written at all, and prod-trust
+                                 roles are refused even if allowlisted (ADR-0028). No flag,
+                                 env var or config key overrides the prod refusal.
   pl secrets probe-scaffold <#|id> [--force]
                                  write a starter probe: block so the entry's SCOPE claim is checkable.
                                  Supports NEGATIVE probes (expect: 401/403 = "must NOT reach this") —

@@ -301,8 +301,16 @@ _mr_failed_jobs(){
   proj=$(_mr_project) || return 1
   json=$(_mr_api GET "/projects/$proj/pipelines/${pid}/jobs?per_page=100") || return 1
   if _mr_have_yq; then
-    printf '%s' "$json" | "$YQ" e -p=json -r \
-      '.[] | select(.status == "failed") | select(.allow_failure == false) | (.id|tostring) + "\t" + .name' - 2>/dev/null
+    # strenv(TAB), NOT "\t". yq only began expanding "\t" to a real tab after
+    # v4.44.1, which is the version ensure-yq.sh pins onto the runners. The
+    # workstation has v4.50.1, so the "\t" spelling produced a real tab here
+    # and the two characters `\t` there: `awk -F'\t'` then found no separator,
+    # the job-name list came back EMPTY, and the merge verb refused with no
+    # names. Three cases green on this machine, red only in CI (pipeline 1866).
+    # Measured against the pinned binary, not assumed. Same trap already
+    # documented in monitor.sh, lib/pair.sh and lib/gitlab-issues.sh.
+    printf '%s' "$json" | TAB=$'\t' "$YQ" e -p=json -r \
+      '.[] | select(.status == "failed") | select(.allow_failure == false) | (.id|tostring) + strenv(TAB) + .name' - 2>/dev/null
   else
     printf '%s' "$json" | python3 -c 'import json,sys
 try: jobs=json.load(sys.stdin)

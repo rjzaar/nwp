@@ -432,3 +432,24 @@ JSON
   [ "$status" -eq 1 ]
   [ ! -f "$CURL_LOG" ] || ! grep -q '^POST .*/retry$' "$CURL_LOG"
 }
+
+@test "the jobs reader does not spell a tab as yq's \"\\t\" — the runner's yq does not expand it" {
+  # THE CI-ONLY FAILURE, made catchable on a workstation. ensure-yq.sh pins
+  # v4.44.1 onto the runners; this machine has v4.50.1. Measured 2026-08-03
+  # against the pinned binary itself:
+  #     '(.id|tostring) + "\t" + .name'  ->  12\tsecurity:mr-hold   (two chars)
+  #     '... + strenv(TAB) + ...'        ->  12<TAB>security:mr-hold
+  # So `awk -F'\t'` split nothing, the failed-job name list came back empty,
+  # and all three retry cases above passed here and failed in CI (pipeline
+  # 1866). The behaviour cases cannot catch this — they run whatever yq the
+  # machine has — so the assertion is on the SOURCE, where it is version-free.
+  # Comments are stripped first: this very case, and the comment above the
+  # fix, both name the bad spelling on purpose. A guard that its own
+  # explanation satisfies is not a guard — the first cut of this case was
+  # exactly that, and stayed green against the reintroduced defect.
+  code="$(grep -v '^[[:space:]]*#' "$ROOT/lib/gitlab-mr.sh")"
+  run grep -c '"\\\\t"' <<<"$code"
+  [ "$output" = "0" ]
+  run grep -c 'strenv(TAB)' <<<"$code"
+  [ "$output" -ge 1 ]
+}

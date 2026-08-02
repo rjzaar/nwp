@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# miniterm — thin shim to `pl mini term`. One source of truth: the verb.
+# miniterm — thin shim to `pl ai-host term`. One source of truth: the verb.
 # See docs/guides/miniterm.md
 set -euo pipefail
 PL="${NWP_PL:-$HOME/nwp/pl}"
 [[ -x "$PL" ]] || { echo "miniterm: cannot find pl at $PL (set NWP_PL)" >&2; exit 1; }
 case "${1:-}" in
-  -h|--help) exec "$PL" mini help ;;
-  "")        exec "$PL" mini term ;;
-  *)         exec "$PL" mini "$@" ;;
+  -h|--help) exec "$PL" ai-host help ;;
+  "")        exec "$PL" ai-host term ;;
+  *)         exec "$PL" ai-host "$@" ;;
 esac

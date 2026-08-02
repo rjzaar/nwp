@@ -1142,9 +1142,14 @@ main() {
             run_script "logs.sh" "$@"
             ;;
 
-        # Mini-specific utilities (F21 Phase 3a)
+        # AI/LLM-host utilities (F21 Phase 3a). The canonical verb is the ROLE
+        # label `ai-host`, which dispatches through the generic fallback from
+        # scripts/commands/ai-host.sh — so `pl commands` (the doc-truth oracle)
+        # lists it and `docs/guides/miniterm.md` stops citing a verb that could
+        # not be dispatched. `pl mini` stays as an alias: it is what the
+        # operator's fingers and the miniterm shim already type.
         mini)
-            run_script "mini.sh" "$@"
+            run_script "ai-host.sh" "$@"
             ;;
 
         # Cross-site proposal aggregator (F23 §7.4)

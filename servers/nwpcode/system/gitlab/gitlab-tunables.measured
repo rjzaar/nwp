@@ -3,5 +3,5 @@ puma.per_worker_max_memory_mb=UNSET
 puma.workers=1
 sidekiq.memory_killer_max_rss=UNSET
 sidekiq.concurrency=5
-mem.available_mb=1004
-swap.used_mb=278
+mem.available_mb=927
+swap.used_mb=325

@@ -71,7 +71,29 @@ gitlab_tunables_block() {
             *)           printf '%s = %s\n'   "$key" "$val" ;;
         esac
     done < <(gitlab_tunables_declared "$f")
+
+    # Rails env vars. On 18.7 the memory controls live here, not in omnibus
+    # attributes: `gitlab_rails['env']` renders one file per variable into
+    # /opt/gitlab/etc/gitlab-rails/env/, which the puma and sidekiq runit
+    # scripts load with `chpst -e`. Emitted only when declared, so the hash is
+    # never written empty (an empty assignment would clobber the defaults).
+    local envp; envp="$(gitlab_tunables_rails_env "$f")"
+    if [ -n "$envp" ]; then
+        printf "gitlab_rails['env'] = {\n"
+        printf '%s' "$envp"
+        printf "}\n"
+    fi
     printf '%s\n' "$GITLAB_TUNABLES_MARKER_END"
+}
+
+# gitlab_tunables_rails_env <declfile> — the body of the env hash, or empty.
+gitlab_tunables_rails_env() {
+    local f="$1" k v
+    "${YQ:-yq}" e -r '.rails_env // {} | to_entries | .[] | .key + "\t" + (.value|tostring)' "$f" 2>/dev/null \
+    | while IFS=$'\t' read -r k v; do
+        [ -n "$k" ] || continue
+        printf "  '%s' => '%s',\n" "$k" "$v"
+      done
 }
 
 # gitlab_tunables_ci_busy <host> — 0 if a pipeline is running (refuse), 1 if idle.
@@ -121,11 +143,20 @@ gitlab_tunables_run() {
     local before
     before="$($dest 'bash -s' <<'P' 2>/dev/null
 sudo -n gitlab-psql -tAc 'SHOW max_connections' 2>/dev/null | tr -d ' ' | sed 's/^/postgresql.max_connections=/'
-pr=/var/opt/gitlab/gitlab-rails/etc/puma.rb
-v=$(sudo -n grep -oE 'per_worker_max_memory_mb[^0-9]*[0-9]+' "$pr" 2>/dev/null | grep -oE '[0-9]+$')
-printf 'puma.per_worker_max_memory_mb=%s\n' "${v:-UNSET}"
-v=$(sudo -n grep -oE 'SIDEKIQ_MEMORY_KILLER_MAX_RSS[= ]+[0-9]+' /opt/gitlab/sv/sidekiq/run 2>/dev/null | grep -oE '[0-9]+$')
-printf 'sidekiq.memory_killer_max_rss=%s\n' "${v:-UNSET}"
+# The env dir is the artifact that decides behaviour — the runit scripts load
+# it with `chpst -e`. Measuring /opt/gitlab/sv/sidekiq/run instead reported
+# UNSET for a setting that was in force, which is how the first run of this
+# verb produced a false NOT-IN-FORCE on puma.
+E=/opt/gitlab/etc/gitlab-rails/env
+printf 'sidekiq.memory_killer_max_rss=%s\n' "$(sudo -n cat $E/SIDEKIQ_MEMORY_KILLER_MAX_RSS 2>/dev/null || echo UNSET)"
+printf 'puma.worker_max_memory_mb=%s\n' "$(sudo -n cat $E/PUMA_WORKER_MAX_MEMORY 2>/dev/null || echo UNSET)"
+# Also emit each env var under its REAL name. The assertion below compares
+# declared name to measured name directly; deriving one from the other by
+# lowercasing produced a false NOT-IN-FORCE on a value that was correct
+# (SIDEKIQ_MEMORY_KILLER_MAX_RSS vs sidekiq.memory_killer_max_rss).
+for _v in $(sudo -n ls $E 2>/dev/null); do
+  printf 'env.%s=%s\n' "$_v" "$(sudo -n cat $E/$_v 2>/dev/null)"
+done
 awk '/^MemAvailable:/{printf "mem.available_mb=%d\n", $2/1024}' /proc/meminfo
 awk '/^SwapTotal:/{t=$2}/^SwapFree:/{f=$2}END{printf "swap.used_mb=%d\n",(t-f)/1024}' /proc/meminfo
 P
@@ -205,11 +236,20 @@ P
     local after
     after="$($dest 'bash -s' <<'P' 2>/dev/null
 sudo -n gitlab-psql -tAc 'SHOW max_connections' 2>/dev/null | tr -d ' ' | sed 's/^/postgresql.max_connections=/'
-pr=/var/opt/gitlab/gitlab-rails/etc/puma.rb
-v=$(sudo -n grep -oE 'per_worker_max_memory_mb[^0-9]*[0-9]+' "$pr" 2>/dev/null | grep -oE '[0-9]+$')
-printf 'puma.per_worker_max_memory_mb=%s\n' "${v:-UNSET}"
-v=$(sudo -n grep -oE 'SIDEKIQ_MEMORY_KILLER_MAX_RSS[= ]+[0-9]+' /opt/gitlab/sv/sidekiq/run 2>/dev/null | grep -oE '[0-9]+$')
-printf 'sidekiq.memory_killer_max_rss=%s\n' "${v:-UNSET}"
+# The env dir is the artifact that decides behaviour — the runit scripts load
+# it with `chpst -e`. Measuring /opt/gitlab/sv/sidekiq/run instead reported
+# UNSET for a setting that was in force, which is how the first run of this
+# verb produced a false NOT-IN-FORCE on puma.
+E=/opt/gitlab/etc/gitlab-rails/env
+printf 'sidekiq.memory_killer_max_rss=%s\n' "$(sudo -n cat $E/SIDEKIQ_MEMORY_KILLER_MAX_RSS 2>/dev/null || echo UNSET)"
+printf 'puma.worker_max_memory_mb=%s\n' "$(sudo -n cat $E/PUMA_WORKER_MAX_MEMORY 2>/dev/null || echo UNSET)"
+# Also emit each env var under its REAL name. The assertion below compares
+# declared name to measured name directly; deriving one from the other by
+# lowercasing produced a false NOT-IN-FORCE on a value that was correct
+# (SIDEKIQ_MEMORY_KILLER_MAX_RSS vs sidekiq.memory_killer_max_rss).
+for _v in $(sudo -n ls $E 2>/dev/null); do
+  printf 'env.%s=%s\n' "$_v" "$(sudo -n cat $E/$_v 2>/dev/null)"
+done
 awk '/^MemAvailable:/{printf "mem.available_mb=%d\n", $2/1024}' /proc/meminfo
 awk '/^SwapTotal:/{t=$2}/^SwapFree:/{f=$2}END{printf "swap.used_mb=%d\n",(t-f)/1024}' /proc/meminfo
 P
@@ -221,10 +261,14 @@ P
     while IFS=$'\t' read -r key val; do
         case "$key" in
             "postgresql['max_connections']")        printf '%s' "$after" | grep -q "postgresql.max_connections=$val" || { print_error "NOT IN FORCE: max_connections != $val"; ok=0; } ;;
-            "puma['per_worker_max_memory_mb']")     printf '%s' "$after" | grep -q "puma.per_worker_max_memory_mb=$val" || { print_error "NOT IN FORCE: per_worker_max_memory_mb != $val"; ok=0; } ;;
-            "sidekiq['memory_killer_max_rss']")     printf '%s' "$after" | grep -q "sidekiq.memory_killer_max_rss=$val" || { print_error "NOT IN FORCE: memory_killer_max_rss != $val"; ok=0; } ;;
+            "puma['per_worker_max_memory_mb']")     printf '%s' "$after" | grep -q "puma.worker_max_memory_mb=$val" || { print_error "NOT IN FORCE: PUMA_WORKER_MAX_MEMORY != $val"; ok=0; } ;;
         esac
     done < <(gitlab_tunables_declared "$decl")
+    while IFS=$'\t' read -r key val; do
+        [ -n "$key" ] || continue
+        printf '%s' "$after" | grep -qx "env.$key=$val" \
+            || { print_error "NOT IN FORCE: $key != $val"; ok=0; }
+    done < <("${YQ:-yq}" e -r '.rails_env // {} | to_entries | .[] | .key + "\t" + (.value|tostring)' "$decl" 2>/dev/null)
 
     [ "$ok" -eq 1 ] || { print_error "applied, but NOT all values are in force — do not record this as done"; return 5; }
     print_success "all declared tunables are in force on $name (re-measured, not assumed)"

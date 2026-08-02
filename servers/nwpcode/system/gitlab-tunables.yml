@@ -29,22 +29,29 @@
 #    conservative (the usual guidance is 25% = ~1 GB). Left alone.
 
 tunables:
-  # ── sidekiq: the memory killer, which currently never fires ───────────────
-  # Omnibus defaults this to ~2 GB. On a 3.9 GB box that ceiling is unreachable,
-  # so a bloated sidekiq is never recycled — it just sits in swap. Sidekiq's
-  # killer is graceful: it finishes the running job, then restarts the process.
-  # 700000 KB (~683 MB) is below the observed idle 968 MB, so it takes effect
-  # immediately, and comfortably above what a one-person instance needs to do
-  # any single job.
-  # RETIRED 2026-08-02, BEFORE it ever did anything. Applying it and then
-  # MEASURING (rather than trusting the reconfigure's exit code) showed the key
-  # does not exist in this omnibus at all:
-  #     grep -rl memory_killer_max_rss /opt/gitlab/embedded/cookbooks/  -> nothing
-  # GitLab 18.7 replaced the standalone sidekiq memory killer, so chef accepted
-  # the assignment in silence and rendered nothing. A dead setting in a config
-  # file is worse than no setting: it reads as a control that exists.
-  # Left here as a comment, not a value, so nobody re-adds it.
-  #   sidekiq['memory_killer_max_rss']: 700000     # NO-OP on 18.7
+  # ── sidekiq: the memory killer, via the route that WORKS on 18.7 ──────────
+  # RESEARCHED 2026-08-02 against the install itself, after the obvious key
+  # turned out to do nothing.
+  #
+  # `sidekiq['memory_killer_max_rss']` is NOT an omnibus attribute on 18.7 — it
+  # appears nowhere in the shipped cookbooks, so chef accepts the assignment and
+  # renders nothing. But the MECHANISM is very much alive: the Rails app reads
+  # SIDEKIQ_MEMORY_KILLER_MAX_RSS (8 references in gitlab-rails), and omnibus
+  # renders `gitlab_rails['env']` into /opt/gitlab/etc/gitlab-rails/env/, one
+  # file per variable, which the sidekiq runit script loads wholesale
+  # (`exec chpst -e /opt/gitlab/etc/gitlab-rails/env`).
+  #
+  # So the setting moved from an omnibus attribute to a Rails env var, and the
+  # box was still running the 2 GB default — unreachable on a 3.9 GB host, i.e.
+  # a killer that can never fire. 700000 KB (~683 MB) is below the observed idle
+  # 968 MB, so it engages immediately. The killer is graceful: it finishes the
+  # running job before restarting the process.
+  #
+  # UNITS ARE KILOBYTES. 700 here would mean 700 KB and would restart sidekiq
+  # continuously.
+  #
+  # gitlab_rails['env'] is not declared anywhere else in gitlab.rb (checked), so
+  # this adds rather than clobbers.
 
   # ── puma: give the worker a ceiling at all ────────────────────────────────
   # Unset today, and the single worker has grown to 1064 MB. This is MB (not KB
@@ -75,3 +82,9 @@ tunables:
   # overhead and can claim work_mem, so the win is less about steady state than
   # about shrinking the worst-case spike on a box with no headroom.
   postgresql['max_connections']: 100
+
+# Rails environment variables, rendered by omnibus into
+# /opt/gitlab/etc/gitlab-rails/env/<NAME> and loaded by the puma and sidekiq
+# runit scripts. This is where the memory controls actually live on 18.7.
+rails_env:
+  SIDEKIQ_MEMORY_KILLER_MAX_RSS: 700000

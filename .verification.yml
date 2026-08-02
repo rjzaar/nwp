@@ -32842,7 +32842,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''./hidden'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''./hidden'''
               expect_exit: 0
         state:
           verified: false
@@ -32867,7 +32867,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''/tmp/malicious'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''/tmp/malicious'''
               expect_exit: 0
         state:
           verified: false
@@ -32894,7 +32894,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''test&whoami'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''test&whoami'''
               expect_exit: 0
         state:
           verified: true
@@ -32921,7 +32921,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''test site'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''test site'''
               expect_exit: 0
         state:
           verified: false
@@ -33177,7 +33177,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''test`whoami`'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''test`whoami`'''
               expect_exit: 0
         state:
           verified: true
@@ -33204,7 +33204,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''test$(whoami)'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''test$(whoami)'''
               expect_exit: 0
         state:
           verified: true
@@ -33231,7 +33231,7 @@ features:
         checks:
           basic:
             commands:
-            - cmd: '! pl install d ''test|cat /etc/passwd'' 2>/dev/null'
+            - cmd: 'bash -c ''source lib/ui.sh 2>/dev/null; source lib/common.sh; ! validate_sitename "$1" >/dev/null 2>&1'' _ ''test|cat /etc/passwd'''
               expect_exit: 0
         state:
           verified: false

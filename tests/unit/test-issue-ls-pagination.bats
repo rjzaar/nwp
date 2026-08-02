@@ -131,8 +131,79 @@ STUBEOF
 
 teardown() { rm -rf "$TEST_TMP"; }
 
+################################################################################
+# refute / refute_grep — a NEGATIVE assertion that actually fails the test.
+#
+# `! cmd` inside a bats test is a NO-OP unless it happens to be the last line.
+# bash exempts a negated command from errexit ("the shell does not exit ... if
+# the command's return value is being inverted with !"), and bats grades a test
+# by the status of its final command. Measured 2026-08-03: with the row
+# separator deliberately broken, `! printf '%s\n' "$output" | grep -qF '\t'`
+# matched — and the test still reported `ok`.
+#
+# Every negative assertion in this file is one of "no write happened" or "the
+# walled token was not used". Those are the assertions that make the positive
+# ones mean anything, and they were the ones not running.
+################################################################################
+refute()       { if "$@"; then echo "refute: '$*' unexpectedly SUCCEEDED" >&2; return 1; fi; }
+refute_grep()  { if printf '%s\n' "$output" | grep -qE "$1"; then echo "refute_grep: output matched /$1/" >&2; return 1; fi; }
+refute_grepf() { if printf '%s\n' "$output" | grep -qF "$1"; then echo "refute_grepf: output contained '$1'" >&2; return 1; fi; }
+
+
 pages_requested() { grep -c 'page=2' "$CURL_LOG" || true; }
 rows_shown()      { grep -cE '^  (ops|nwc) ' <<<"$output" || true; }
+
+# ── DEFECT 0: the row separator must be a TAB BYTE, on every yq ──────────────
+#
+# MEASURED 2026-08-03. Every `_api_rows` expression joined its fields with
+# `join("\t")`. yq only began interpreting that escape after v4.44.1 — which is
+# exactly what the CI runner has. On the runner every row came back as ONE field
+# containing literal `\t`, so `IFS=$'\t' read -r src iid st title labels`
+# assigned the whole row to `src` and left the rest empty. Twelve unit tests
+# passed on a v4.50.1 workstation and failed on the v4.44.1 runner.
+#
+# "It works on my machine" is the same defect class as "the guard could not
+# look": a claim whose truth depends on something the claim never states. So
+# these two cases assert the BYTE, and the second one re-runs the real
+# expression under the CI-pinned yq when this host has it cached.
+
+@test "rows are separated by a real TAB byte — not a literal backslash-t" {
+  run bash "$ISSUE" ls --project=ops --limit=3
+  [ "$status" -eq 0 ]
+  # No row may contain the two-character sequence backslash-t.
+  refute_grepf '\t'
+  # And the parse that consumes those rows must yield 5 fields, not 1.
+  local n
+  n=$(printf '%s' '[{"iid":7,"state":"opened","title":"t","labels":["a","b"]}]' \
+      | "$(command -v yq)" e -p=json -r \
+          ".[] | [(.iid|tostring), .state, .title, (.labels | join(\",\"))] | join(\"$(printf '\t')\")" - \
+      | awk -F'\t' '{print NF}')
+  [ "$n" -eq 4 ]
+}
+
+@test "PORTABILITY: the REAL verb still tabulates under the OLDEST yq available here" {
+  # Runs `pl issue ls` itself — not a re-typed copy of its expression — with the
+  # oldest yq this host can offer first on PATH. On the CI runner that is
+  # v4.44.1, the version the bug needed. On a workstation it may be the only yq
+  # there is, in which case this case still asserts the behaviour and NAMES the
+  # version it checked, so the report cannot be read as broader than it is.
+  #
+  # Deliberately not a `skip`: the suite pins its skip count, and a case that
+  # opts out on the machine where it matters is the failure mode this whole
+  # block was written about.
+  local dir yqbin="" c
+  for c in "$HOME/.cache/nwp-ci"/yq-v4.44.1/yq "$HOME/.cache/nwp-ci"/yq-*/yq; do
+    [ -x "$c" ] && { yqbin="$c"; break; }
+  done
+  if [ -n "$yqbin" ]; then dir=$(dirname "$yqbin"); else dir=""; yqbin=$(command -v yq); fi
+  echo "# checked against: $("$yqbin" --version)" >&3
+
+  PATH="${dir:+$dir:}$PATH" run bash "$ISSUE" ls --project=ops --limit=3
+  [ "$status" -eq 0 ]
+  refute_grepf '\t'      # no literal backslash-t leaked into a row
+  [ "$(rows_shown)" -eq 3 ]                       # and the rows really parsed into columns
+  [[ "$output" == *"fixture issue 1"* ]]
+}
 
 # ── DEFECT 1: silent truncation ──────────────────────────────────────────────
 
@@ -262,7 +333,7 @@ rows_shown()      { grep -cE '^  (ops|nwc) ' <<<"$output" || true; }
   [ "$status" -ne 0 ]
   [[ "$output" == *"needs-human"* ]]
   [[ "$output" == *"refusing"* ]]
-  ! grep -q '^PUT ' "$CURL_LOG"
+  refute grep -q '^PUT ' "$CURL_LOG"
 }
 
 @test "approve's refusal explains the remedy instead of just failing" {

@@ -92,6 +92,25 @@ EOF
 
 teardown() { rm -rf "$TEST_TMP"; }
 
+################################################################################
+# refute / refute_grep — a NEGATIVE assertion that actually fails the test.
+#
+# `! cmd` inside a bats test is a NO-OP unless it happens to be the last line.
+# bash exempts a negated command from errexit ("the shell does not exit ... if
+# the command's return value is being inverted with !"), and bats grades a test
+# by the status of its final command. Measured 2026-08-03: with the row
+# separator deliberately broken, `! printf '%s\n' "$output" | grep -qF '\t'`
+# matched — and the test still reported `ok`.
+#
+# Every negative assertion in this file is one of "no write happened" or "the
+# walled token was not used". Those are the assertions that make the positive
+# ones mean anything, and they were the ones not running.
+################################################################################
+refute()       { if "$@"; then echo "refute: '$*' unexpectedly SUCCEEDED" >&2; return 1; fi; }
+refute_grep()  { if printf '%s\n' "$output" | grep -qE "$1"; then echo "refute_grep: output matched /$1/" >&2; return 1; fi; }
+refute_grepf() { if printf '%s\n' "$output" | grep -qF "$1"; then echo "refute_grepf: output contained '$1'" >&2; return 1; fi; }
+
+
 _secrets_both()   { printf 'gitlab:\n  ops_note_token: TOK-WALLED\n  api_token: TOK-WIDE\n' > "$NWP_SECRETS_FILE"; }
 _secrets_walled() { printf 'gitlab:\n  ops_note_token: TOK-WALLED\n' > "$NWP_SECRETS_FILE"; }
 
@@ -167,7 +186,7 @@ _open_mrs() { # $1 = iid
   grep -q "GET TOK-WALLED .*/projects/9$" "$CURL_LOG"
   grep -q "GET TOK-WIDE .*/projects/9$" "$CURL_LOG"
   grep -q "GET TOK-WIDE .*related_merge_requests" "$CURL_LOG"
-  ! grep -q "TOK-WALLED .*related_merge_requests" "$CURL_LOG"
+  refute grep -q "TOK-WALLED .*related_merge_requests" "$CURL_LOG"
 }
 
 @test "least privilege is preserved: a walled token that CAN see the project is used" {
@@ -189,7 +208,7 @@ STUBEOF
   chmod +x "$STUB/curl"
   _open_mrs 204 >/dev/null
   grep -q "TOK-WALLED .*related_merge_requests" "$CURL_LOG"
-  ! grep -q "TOK-WIDE .*related_merge_requests" "$CURL_LOG"
+  refute grep -q "TOK-WIDE .*related_merge_requests" "$CURL_LOG"
 }
 
 ################################################################################
@@ -245,7 +264,7 @@ EOF
   run bash "$ISSUE" close 204
   [ "$status" -eq 1 ]
   [[ "$output" == *"nwp/nwp!999"* ]]
-  ! grep -q '^PUT ' "$CURL_LOG"
+  refute grep -q '^PUT ' "$CURL_LOG"
 }
 
 @test "pagination TERMINATES: a short page ends the walk, it does not spin" {
@@ -282,7 +301,7 @@ EOF
   [ "$status" -eq 1 ]
   [[ "$output" == *"refusing to close nwp/ops#204"* ]]
   [[ "$output" == *"nwp/nwp!337"* ]]
-  ! grep -q '^PUT ' "$CURL_LOG"       # positively assert nothing was written
+  refute grep -q '^PUT ' "$CURL_LOG"    # positively assert nothing was written
 }
 
 @test "pl issue close REFUSES with exit 3 when it CANNOT VERIFY" {
@@ -290,7 +309,7 @@ EOF
   run bash "$ISSUE" close 204
   [ "$status" -eq 3 ]
   [[ "$output" == *"CANNOT VERIFY"* ]]
-  ! grep -q '^PUT ' "$CURL_LOG"
+  refute grep -q '^PUT ' "$CURL_LOG"
 }
 
 @test "pl issue close proceeds when the list is genuinely empty AND visible" {
@@ -343,8 +362,8 @@ EOF
   # bare substring test fails against correct output. (Written the naive way
   # first; it went red on a behaviour that was right. Recorded because the
   # tempting fix is to soften the banner rather than sharpen the assertion.)
-  ! printf '%s\n' "$output" | grep -qE '^[[:space:]]+CLOSED-BUT-OPEN-MR[[:space:]]+#'
-  ! printf '%s\n' "$output" | grep -qE '^[[:space:]]+MERGED-BUT-OPEN[[:space:]]+#'
+  refute_grep '^[[:space:]]+CLOSED-BUT-OPEN-MR[[:space:]]+#'
+  refute_grep '^[[:space:]]+MERGED-BUT-OPEN[[:space:]]+#'
   # And crucially: no clean bill of health over data it never read.
   [[ "$output" != *"tracker and code agree"* ]]
   [[ "$output" == *"PARTIAL"* ]]

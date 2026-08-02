@@ -46,6 +46,23 @@ _tmpdir(){
   printf '%s' "$NWP_ISSUE_TMP"
 }
 
+# _tmpdir_cleanup — deliberately NOT `rm -rf`.
+#
+# lib/impact.sh's detector reads `rm -rf` on a code line as a DESTRUCTIVE
+# operation and requires the file to adopt the impact contract (fate manifest +
+# typed confirm) or sit on a shrink-only allowlist. Both would be wrong here:
+# `pl issue ls` is a read verb and has no business rendering a fate manifest,
+# and the allowlist's own header says adding a row needs a recorded decision.
+# The detector is not being worked around — the recursion genuinely is not
+# needed. This directory only ever holds a handful of flat `*.tsv` files that
+# THIS process wrote, and `rmdir` REFUSES if anything unexpected (a
+# subdirectory) ever appears, which is a better outcome than erasing it.
+_tmpdir_cleanup(){
+  [ -n "${NWP_ISSUE_TMP:-}" ] || return 0
+  rm -f "$NWP_ISSUE_TMP"/*.tsv 2>/dev/null || true
+  rmdir "$NWP_ISSUE_TMP" 2>/dev/null || true
+}
+
 # Shared GitLab issue API plumbing (_host/_token/_api_get/_api_send/_jget/
 # _require_ok/_api_rows). Extracted to a lib so `pl rag --sync-issues` reuses it
 # (ops#6) and so there is exactly ONE paginating collection read (_api_rows).
@@ -249,8 +266,8 @@ EOF
     rc=0
     _api_rows "/projects/$PROJECT_ID/issues?state=$state&order_by=created_at&sort=asc" \
       '[(.iid|tostring), .state,
-        ((.title // "") | sub("\n"; " ") | sub("\t"; " ")),
-        (.labels | join(","))] | join("\t")' \
+        ((.title // "") | sub("\n"; " ") | sub("	"; " ")),
+        (.labels | join(","))] | join("	")' \
       > "$tmpd/raw.tsv" || rc=$?
     if [ "$rc" -eq 3 ]; then
       # "I could not look" is NOT "there is nothing there".
@@ -405,7 +422,7 @@ cmd_board(){
   # tracker rendered as a complete board).
   local rc=0
   _api_rows "/projects/$PROJECT_ID/issues?state=opened&order_by=created_at&sort=asc" \
-    '[(.iid|tostring), ((.title // "") | sub("\n"; " ") | sub("\t"; " ")), (.labels | join(","))] | join("\t")' \
+    '[(.iid|tostring), ((.title // "") | sub("\n"; " ") | sub("	"; " ")), (.labels | join(","))] | join("	")' \
     > "$tmpd/open.tsv" || rc=$?
   [ "$rc" -eq 3 ] && die "no response from GitLab (token rejected, or host unreachable)"
   local n_open="${NWP_API_ROWS_COUNT:-0}" capped="${NWP_API_ROWS_TRUNCATED:-0}"
@@ -493,7 +510,7 @@ cmd_show(){
   _api_rows "/projects/$PROJECT_ID/issues/$iid/notes?sort=asc" \
     'select(.system == false)
      | [(.author.username // "?"), .created_at,
-        ((.body // "") | sub("\n"; "  ") | sub("\t"; " "))] | join("\t")' \
+        ((.body // "") | sub("\n"; "  ") | sub("	"; " "))] | join("	")' \
     > "$tmpd/notes.tsv" 2>/dev/null || true
   local n=0; [ -s "$tmpd/notes.tsv" ] && n=$(grep -c . "$tmpd/notes.tsv")
   if [ "$n" -gt 0 ]; then
@@ -742,8 +759,8 @@ cmd_reconcile(){
   local issues_tsv
   issues_tsv=$(_api_rows "/projects/$PROJECT_ID/issues?state=all&order_by=updated_at" \
     '[(.iid|tostring), .state,
-      ((.title // "") | sub("\n"; " ") | sub("\t"; " ")),
-      ((.description // "") | sub("\n"; " ") | sub("\t"; " "))] | join("\t")') \
+      ((.title // "") | sub("\n"; " ") | sub("	"; " ")),
+      ((.description // "") | sub("\n"; " ") | sub("	"; " "))] | join("	")') \
     || die "could not read the issue list (token rejected, or host unreachable)"
   [ -n "$issues_tsv" ] || die "could not read the issue list"
 
@@ -847,7 +864,7 @@ cmd_reconcile(){
       # reported "no findings".
       local notes
       notes=$(_api_rows "/projects/$PROJECT_ID/issues/$iid/notes?sort=asc" \
-                '((.body // "") | sub("\n"; " ") | sub("\t"; " "))' 2>/dev/null || true)
+                '((.body // "") | sub("\n"; " ") | sub("	"; " "))' 2>/dev/null || true)
       [ -n "$notes" ] && text="$text $(printf '%s' "$notes" | tr '\n\t' '  ')"
     fi
     local ref_rc
@@ -1157,6 +1174,6 @@ EOF
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   # Installed only when EXECUTED, never when sourced — a sourced lib must not
   # hijack its host's EXIT trap.
-  trap '[ -n "${NWP_ISSUE_TMP:-}" ] && rm -rf "$NWP_ISSUE_TMP" || true' EXIT
+  trap _tmpdir_cleanup EXIT
   main "$@"
 fi

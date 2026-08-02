@@ -279,10 +279,19 @@ _require_ok(){ # $1=json $2=key-that-must-exist  $3=action-description
 #
 # <path> may already carry a query string; per_page/page are appended.
 # <yq-per-item-expr> is evaluated as `.[] | <expr>` and must emit ONE LINE per
-# item. Use `[...] | join("\t")` after flattening newlines/tabs out of the
-# fields — NOT `@tsv`, whose encoder CSV-quotes any field containing a `"`, so
-# a title like `replace "amened"` renders to the operator as
-# `"replace ""amened"""`.
+# item. Join the fields with a LITERAL TAB BYTE after flattening newlines and
+# tabs out of them.
+#
+# Two traps, both paid for:
+#   * NOT `@tsv`. Its encoder CSV-quotes any field containing a `"`, so a title
+#     like `replace "amened"` renders to the operator as `"replace ""amened"""`.
+#   * NOT `join("\t")`. yq only began interpreting that escape after v4.44.1:
+#     on v4.44.1 — which is what the CI runner has — it joins with a literal
+#     backslash-t, every row arrives as ONE field, and `IFS=$'"'"'\t'"'"' read`
+#     assigns the whole row to the first variable. Measured 2026-08-03: 12 unit
+#     tests passed on a v4.50.1 workstation and failed on the v4.44.1 runner
+#     for exactly this reason. Put a real tab in the expression; both versions
+#     agree about a byte.
 #
 # Prints TSV rows to stdout. Rows are emitted page by page and never merged as
 # JSON: there is no concatenation step that could quietly lose a page.

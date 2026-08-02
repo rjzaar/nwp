@@ -54,7 +54,13 @@ GITLAB_RB='/etc/gitlab/gitlab.rb'
 gitlab_tunables_declared() {
     local f="$1"
     [ -r "$f" ] || return 2
-    "${YQ:-yq}" e -r '.tunables | to_entries | .[] | .key + "\t" + (.value|tostring)' "$f" 2>/dev/null
+    # A REAL TAB via strenv, never the "\t" escape: yq only began expanding that
+    # in v4.45+. CI pins v4.44.1, where it stays a literal backslash-t and the
+    # `IFS=$'\t' read` below silently fails to split — so every tunable would
+    # parse as one field and the verb would quietly declare nothing. It works on
+    # this workstation (v4.50.1) and would have broken anywhere else. Four other
+    # files in this tree already carry comments warning about exactly this.
+    TAB=$'\t' "${YQ:-yq}" e -r '.tunables | to_entries | .[] | .key + strenv(TAB) + (.value|tostring)' "$f" 2>/dev/null
 }
 
 # gitlab_tunables_block <declfile> — the exact managed block to install.
@@ -89,7 +95,7 @@ gitlab_tunables_block() {
 # gitlab_tunables_rails_env <declfile> — the body of the env hash, or empty.
 gitlab_tunables_rails_env() {
     local f="$1" k v
-    "${YQ:-yq}" e -r '.rails_env // {} | to_entries | .[] | .key + "\t" + (.value|tostring)' "$f" 2>/dev/null \
+    TAB=$'\t' "${YQ:-yq}" e -r '.rails_env // {} | to_entries | .[] | .key + strenv(TAB) + (.value|tostring)' "$f" 2>/dev/null \
     | while IFS=$'\t' read -r k v; do
         [ -n "$k" ] || continue
         printf "  '%s' => '%s',\n" "$k" "$v"
@@ -268,7 +274,7 @@ P
         [ -n "$key" ] || continue
         printf '%s' "$after" | grep -qx "env.$key=$val" \
             || { print_error "NOT IN FORCE: $key != $val"; ok=0; }
-    done < <("${YQ:-yq}" e -r '.rails_env // {} | to_entries | .[] | .key + "\t" + (.value|tostring)' "$decl" 2>/dev/null)
+    done < <(TAB=$'\t' "${YQ:-yq}" e -r '.rails_env // {} | to_entries | .[] | .key + strenv(TAB) + (.value|tostring)' "$decl" 2>/dev/null)
 
     [ "$ok" -eq 1 ] || { print_error "applied, but NOT all values are in force — do not record this as done"; return 5; }
     print_success "all declared tunables are in force on $name (re-measured, not assumed)"

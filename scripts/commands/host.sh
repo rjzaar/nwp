@@ -105,7 +105,7 @@ _require() {
 list_all() {
     _require
     print_header "Role -> host bindings"
-    role="" "$YQ" e '.roles | to_entries | .[] | .key + "\t" + ((.value // []) | join(", "))' "$MANIFEST" \
+    role="" TAB=$'\t' "$YQ" e '.roles | to_entries | .[] | .key + strenv(TAB) + ((.value // []) | join(", "))' "$MANIFEST" \
         | while IFS=$'\t' read -r role hosts; do
             printf "  ${BOLD}%-20s${NC} %s\n" "$role" "${hosts:-${DIM}(unbound)${NC}}"
         done

@@ -27,6 +27,9 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 # yaml helpers (yaml_get_all_sites / yaml_get_site_field) per ADR-0015 (yq-first)
 source "$PROJECT_ROOT/lib/yaml-write.sh" 2>/dev/null || true
+# ops#236: lock-vs-vendor truth. `composer audit --locked` grades a DECLARATION;
+# this grades the code on disk.
+source "$PROJECT_ROOT/lib/composer-truth.sh"
 
 CONFIG_FILE="${NWP_CONFIG_FILE:-$PROJECT_ROOT/nwp.yml}"
 STATE_DIR="$PROJECT_ROOT/private/update-awareness"
@@ -209,6 +212,10 @@ moodle_audit_site() {
     fi
     local sec_count=0; [ "$behind" = "1" ] && sec_count=1
     [ "$sec_count" -gt 0 ] && had_sec=1
+    # A divergence is a security finding in its own right: the audited artifact
+    # is not the running artifact, so every advisory count above is about code
+    # that may not be installed. It sets the same fleet-level exit as an advisory.
+    [ "$vendor_state" = "DIVERGES" ] && had_sec=1
 
     local prev_sec=0
     [ -f "$STATE_DIR/$site.json" ] && prev_sec=$(python3 -c "import json;print(json.load(open('$STATE_DIR/$site.json')).get('security_count',0))" 2>/dev/null || echo 0)
@@ -291,6 +298,33 @@ audit_site() {
     local audit_txt=""
     audit_txt=$(cd "$root" && ddev composer audit --locked --no-interaction 2>&1) || true
 
+    ###########################################################################
+    # ops#236 — THE LOCK IS A DECLARATION; vendor/ IS THE CODE THAT RUNS.
+    #
+    # `composer audit --locked` reads composer.lock. On 2026-08-02 nwc's
+    # html/core was a dirty SOURCE install: composer refused to replace it,
+    # ABORTED mid-operation, and left the lock recording guzzle 7.15.2 while
+    # vendor/ still held the vulnerable 7.12.3. This command would have
+    # certified nwc CLEAN while the vulnerable library was the code executing.
+    #
+    # Not a missing check — a PASSING check over the wrong artifact, which is
+    # the shape that ends conversations instead of starting them. And an
+    # auto-fix loop consuming this signal would close security findings on
+    # sites still running vulnerable code.
+    #
+    # A lock/vendor divergence is itself a finding: it means an install aborted.
+    # Three answers, never two — agreement, divergence, or CANNOT VERIFY.
+    ###########################################################################
+    local ct_lock ct_inst ct_txt="" ct_rc=0
+    read -r ct_lock ct_inst <<<"$(composer_truth_paths "$root")"
+    ct_txt=$(composer_truth_compare "$ct_lock" "$ct_inst" 2>&1) || ct_rc=$?
+    local vendor_state="agrees"
+    case "$ct_rc" in
+        0) vendor_state="agrees" ;;
+        1) vendor_state="DIVERGES" ;;
+        *) vendor_state="unverified" ;;
+    esac
+
     local sec_count ignored_count abandoned_count
     sec_count=$(_num_before "$audit_txt" "security vulnerability advisor")
     ignored_count=$(_num_before "$audit_txt" "ignored security")
@@ -323,11 +357,11 @@ audit_site() {
     # Write the record via python json.dump — bulletproof escaping of the
     # ANSI/control chars that composer audit emits (bash printf can't do this safely).
     mkdir -p "$STATE_DIR"
-    AUDIT_TXT="$audit_txt" OUTDATED_TXT="$outdated_txt" python3 - \
+    AUDIT_TXT="$audit_txt" OUTDATED_TXT="$outdated_txt" VENDOR_TXT="$ct_txt" python3 - \
         "$site" "$STAMP" "$sec_count" "$ignored_count" "$abandoned_count" \
-        "$outdated_count" "$stale" "$STATE_DIR/$site.json" <<'PY' 2>/dev/null || true
+        "$outdated_count" "$stale" "$STATE_DIR/$site.json" "$vendor_state" <<'PY' 2>/dev/null || true
 import os, sys, json, re
-site, stamp, sec, ign, ab, outd, stale, path = sys.argv[1:9]
+site, stamp, sec, ign, ab, outd, stale, path, vendor_state = sys.argv[1:10]
 ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 def clean(s): return ansi.sub('', s or '')
 rec = {
@@ -337,8 +371,16 @@ rec = {
   "abandoned_count": int(ab or 0), "outdated_count": int(outd or 0),
   # cache_stale == "composer fell back to the local cache / auth failed", i.e. the
   # advisory set we compared against is not trustworthy. That is not a scan.
-  "cache_stale": (stale == "true"), "scanned": (stale != "true"),
+  # `scanned` means "this site was actually assessed". A tree whose vendor could
+  # not be read was not assessed, whatever the lock said.
+  "cache_stale": (stale == "true"), "scanned": (stale != "true" and vendor_state != "unverified"),
   "stale_reason": ("composer advisory registry could not be fully loaded (rotated auth.json token?)" if stale == "true" else ""),
+  # ops#236 — was the AUDITED artifact the RUNNING artifact?
+  #   agrees      composer.lock and vendor/composer/installed.json match
+  #   DIVERGES    they do not: an install aborted, or vendor/ was hand-edited
+  #   unverified  could not read one of them — NOT the same as "agrees"
+  "vendor_state": vendor_state,
+  "vendor_divergence_text": clean(os.environ.get("VENDOR_TXT", "")),
   "composer_audit_text": clean(os.environ.get("AUDIT_TXT", "")),
   "composer_outdated_text": clean(os.environ.get("OUTDATED_TXT", "")),
 }
@@ -355,6 +397,10 @@ PY
 
     local status="OK"
     [ "$sec_count" -gt 0 ] && status="INSECURE"
+    # DIVERGED outranks a clean advisory count, because the advisory count was
+    # computed about a tree that is not the one on disk.
+    [ "$vendor_state" = "DIVERGES" ]   && status="DIVERGED"
+    [ "$vendor_state" = "unverified" ] && [ "$status" = "OK" ] && status="UNKNOWN"
     [ "$stale" = "true" ] && status="${status}*"
     local secfield="$sec_count"
     [ "$ignored_count" -gt 0 ] && secfield="${sec_count}(+${ignored_count}i)"

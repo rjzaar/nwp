@@ -167,3 +167,20 @@ append_on_branch() { # branch, row
     [ "$status" -ne 0 ]
     echo "$output" | grep -q 'CP2'
 }
+
+@test "the .gitattributes file is TRACKED, not merely present on disk" {
+    # This suite passed locally for hours while the file it tests was NEVER
+    # COMMITTED. .gitignore's root rule is `/*` (deny-all, then allowlist), so
+    # `git add -A` skipped .gitattributes in silence. Every case above then
+    # exercised a copy that existed only in one worktree, and CI failed with
+    # `cp: cannot stat '.../.gitattributes'`.
+    #
+    # The consequence was not cosmetic: MR !333 claimed to end the rollback
+    # registry conflict jam while shipping nothing, and the conflicts duly kept
+    # happening. An attribute file that is not in the repo does nothing for
+    # anybody else — which is the whole point of it.
+    cd "$REPO_ROOT" || return 1
+    git ls-files --error-unmatch .gitattributes
+    run git check-ignore -q .gitattributes
+    [ "$status" -ne 0 ]      # 0 would mean "still ignored"
+}

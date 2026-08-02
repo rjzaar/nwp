@@ -4016,6 +4016,63 @@ main() {
         esac
     done
 
+    ###########################################################################
+    # ops#225 — AN UNRECOGNISED POSITIONAL IS A REFUSAL, NOT A SHRUG.
+    #
+    # `passthru` collects every argument the parse above did not recognise, and
+    # only `codes` and `invite` ever read it. For all other subcommands it was
+    # silently DISCARDED. So `pl demo golden nwd live` did not act on live: the
+    # bare `live` fell into passthru, `tier` kept its `dev` default, and the
+    # verb graded and STAGED A GOLDEN for a different site than the words on the
+    # command line named — with no warning of any kind.
+    #
+    # Measured on this tree before the fix, using the read-only sibling so the
+    # reproduction costs nothing:
+    #
+    #     pl demo status nwd live        -> "Demo status: nwd (dev)"
+    #                                       golden captured 2026-07-25T14:42:09Z
+    #     pl demo status nwd --tier=live -> "Demo status: nwd (live)"
+    #                                       golden captured 2026-08-02T05:35:47Z
+    #
+    # Two different sites, eight days apart, same command line but for the
+    # spelling of one argument. The reported consequence on `golden` was 75
+    # phantom identity-hygiene gaps that vanished when re-run with `--tier=live`
+    # — not merely "wrong target" but "wrong target, plausible output, opposite
+    # conclusion". And `golden` STAGES IMAGES the nightly reset later restores.
+    #
+    # WHY REFUSE RATHER THAN ACCEPT A POSITIONAL TIER. Accepting both spellings
+    # for the estate's most dangerous argument is how this recurs: the next verb
+    # to grow a positional gets to re-decide, and the two spellings drift. The
+    # estate already made this call twice this week — `pl install`'s name
+    # validation and `pl issue create`'s flag refusal. Same answer here.
+    #
+    # `codes` and `invite` take real positionals, so they keep them — but NOT a
+    # tier-shaped one, because no `codes`/`invite` action is named dev/stg/live/
+    # prod and that is precisely the argument this issue is about.
+    ###########################################################################
+    if [[ ${#passthru[@]} -gt 0 ]]; then
+        local _stray _tierish=""
+        for _stray in "${passthru[@]}"; do
+            case "$_stray" in dev|stg|live|prod) _tierish="$_stray"; break ;; esac
+        done
+        if [[ -n "$_tierish" ]]; then
+            print_error "REFUSED: '$_tierish' is not a positional argument — the tier is a FLAG."
+            echo "  You almost certainly meant:  pl demo $sub $site --tier=$_tierish"
+            echo "  A bare tier used to be SILENTLY IGNORED, and the verb acted on tier '$tier'"
+            echo "  instead — a different site, with plausible-looking output (nwp/ops#225)."
+            return 2
+        fi
+        case "$sub" in
+            codes|invite) : ;;   # these genuinely take positional actions
+            *)
+                print_error "REFUSED: unrecognised argument(s) for 'pl demo $sub': ${passthru[*]}"
+                echo "  Nothing consumes them, so continuing would run a DIFFERENT command"
+                echo "  than the one written (nwp/ops#225). Check the spelling, or see:"
+                echo "    pl demo --help"
+                return 2 ;;
+        esac
+    fi
+
     demo_check_tier "$tier" || return 1
 
     # Pair resolution (ops#133 Phase 2). `auto` = pair when the contract opts in

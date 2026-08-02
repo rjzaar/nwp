@@ -642,6 +642,130 @@ check_mail_aliases() {
 }
 
 ################################################################################
+# Live-deploy dependency policy — drush must be a PROD dep (ops#157 item 1)
+#
+# WHY: dev2stg builds staging with `composer install --no-dev`, and stg2live
+# §3.6 then runs `drush updatedb` ON LIVE from that synced vendor. A site with
+# drush in require-dev therefore deploys a drush-less vendor and aborts — AFTER
+# maintenance mode is enabled. That is the 2026-07-29 incident: mt went down for
+# ~25 minutes.
+#
+# stg2live_stg_has_drush() (stg2live.sh, D17) already refuses at deploy time,
+# which stops the outage. But it fires against the STAGING VENDOR, i.e. only
+# once you are already deploying, and the fix from there is a composer edit plus
+# a full staging rebuild. The issue asked for the other half and it was never
+# done: "POLICY: every live-enabled site's composer.json should be checked".
+#
+# This is that sweep, run by code instead of by hand. It reads composer.json —
+# the DECLARATION — so a site is caught before anyone tries to ship it.
+#
+# Deliberately does NOT look at vendor/: an unbuilt or freshly-cloned tree has
+# no vendor at all, and grading that RED would train operators to ignore the
+# check. The declaration is the thing policy is actually about.
+################################################################################
+
+# doctor_composer_drush_placement <composer.json> — echo where drush is declared.
+#
+# Echoes exactly one of: require | require-dev | none | unreadable
+# PURE: no globals, no output beyond the verdict, so bats can table-test it.
+doctor_composer_drush_placement() {
+    local composer="${1:-}"
+    [ -n "$composer" ] && [ -f "$composer" ] || { echo "unreadable"; return 0; }
+    command -v jq >/dev/null 2>&1 || { echo "unreadable"; return 0; }
+
+    # A malformed composer.json must read as "I could not look", never as a
+    # confident "none" — a parse failure that grades green is the exact shape of
+    # a check that cannot fail (ops#214).
+    jq -e . "$composer" >/dev/null 2>&1 || { echo "unreadable"; return 0; }
+
+    # Match the PACKAGE, not the substring: `drupal/drush_language` is not drush.
+    # Vendors differ across the fleet (drush/drush today), so anchor on the
+    # package NAME half rather than hardcoding one vendor.
+    local prod dev
+    prod=$(jq -r '[(.require        // {}) | keys[] | select(split("/")[-1] == "drush")] | length' "$composer" 2>/dev/null || echo 0)
+    dev=$( jq -r '[(."require-dev"  // {}) | keys[] | select(split("/")[-1] == "drush")] | length' "$composer" 2>/dev/null || echo 0)
+
+    if [ "${prod:-0}" -gt 0 ]; then echo "require"
+    elif [ "${dev:-0}" -gt 0 ]; then echo "require-dev"
+    else echo "none"
+    fi
+}
+
+# doctor_site_composer <site-dir> — echo the composer.json that governs the
+# deploy, or nothing. dev/ wins: it is the tree dev2stg builds staging from.
+doctor_site_composer() {
+    local dir="${1:-}" cand
+    dir="${dir%/}"   # the sites/*/ glob supplies a trailing slash
+    for cand in "$dir/dev/composer.json" "$dir/composer.json"; do
+        [ -f "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+    done
+    return 0
+}
+
+check_live_drush_dependency() {
+    local errors=0 found=0
+    local dir name config enabled composer placement
+
+    print_header "Checking Live-Deploy Dependencies (drush in require, not require-dev)"
+
+    if ! command -v yq >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        print_warning "yq and jq are both required for this check — skipping"
+        return 0
+    fi
+
+    for dir in "$PROJECT_ROOT"/sites/*/; do
+        [[ -d "$dir" ]] || continue
+        name=$(basename "$dir")
+        config="$dir/.nwp.yml"
+        [[ -f "$config" ]] || continue
+
+        # Bare path, never `// "false"`: yq's alternative operator treats a real
+        # `enabled: false` as absent and would hand back the fallback. Same trap
+        # lib/project-resolver.sh documents for this exact key.
+        enabled=$(yq eval '.live.enabled' "$config" 2>/dev/null)
+        [[ "$enabled" == "true" ]] || continue
+        found=$((found + 1))
+
+        composer="$(doctor_site_composer "$dir")"
+        if [[ -z "$composer" ]]; then
+            # Moodle and static sites legitimately have no composer.json, and
+            # stg2live's drush step does not apply to them.
+            print_info "$name: live-enabled, no composer.json (not a Composer site — n/a)"
+            continue
+        fi
+
+        placement="$(doctor_composer_drush_placement "$composer")"
+        case "$placement" in
+            require)
+                print_success "$name: drush in require — survives 'composer install --no-dev'"
+                ;;
+            require-dev)
+                print_error "$name: drush is in require-dev — a live deploy would strip it"
+                print_hint "dev2stg runs 'composer install --no-dev', then stg2live runs 'drush updatedb' on live from that vendor."
+                print_hint "Move drush/drush to \"require\" in ${composer#"$PROJECT_ROOT"/}, then rebuild staging with 'pl dev2stg $name'."
+                errors=$((errors + 1))
+                ;;
+            none)
+                # Not an error: a Composer site may genuinely not use drush
+                # (stg2live has NWP_ALLOW_NO_DRUSH=1 for exactly that path).
+                print_info "$name: no drush declared at all — deploys need NWP_ALLOW_NO_DRUSH=1"
+                ;;
+            unreadable)
+                print_warning "$name: composer.json unreadable or malformed — cannot verify (${composer#"$PROJECT_ROOT"/})"
+                ;;
+        esac
+    done
+
+    if [[ $found -eq 0 ]]; then
+        print_info "No live-enabled sites in this checkout (check not applicable)"
+    elif [[ $errors -eq 0 ]]; then
+        print_success "All $found live-enabled site(s) can run drush on live after a --no-dev build"
+    fi
+
+    return $errors
+}
+
+################################################################################
 # Main Function
 ################################################################################
 
@@ -714,6 +838,8 @@ main() {
     echo ""
 
     check_mail_aliases || total_errors=$((total_errors + $?))
+
+    check_live_drush_dependency || total_errors=$((total_errors + $?))
     echo ""
 
     # Print summary

@@ -9,15 +9,20 @@ set -euo pipefail
 # falling back to gitlab.api_token.
 #
 # Usage:
-#   pl issue ls [--all]      list open (or all) nwp/ops issues — # title labels
-#   pl issue show <iid>      show one issue: fields, description, comment thread
-#   pl issue url <iid>       print the web URL for one issue
+#   pl issue ls [--all] [--pending|--approved|--needs-human] [--project=ops|nwc|all]
+#                            list issues across BOTH trackers — src # gate title labels
+#   pl issue approve <ref>   add `agent-eligible` (refuses on `needs-human`)
+#   pl issue show <ref>      show one issue: fields, description, comment thread
+#   pl issue url <ref>       print the web URL for one issue
 #   pl issue create ...      open a new issue (--title/--desc/--label)
-#   pl issue comment <iid>   add a comment   ·  close/reopen/label <iid>
+#   pl issue comment <ref>   add a comment   ·  close/reopen/label <ref>
 #   pl issue work <iid>      create/open isolated worktree ~/nwp-ops<iid> (branch
 #                            ops-<iid>, tools+fleet linked) and LAUNCH Claude in it with
 #                            the first prompt. --no-launch just creates it. Override the
 #                            launcher via NWP_CLAUDE_CMD (e.g. set it to your `co`).
+#
+# <ref> is a bare number (= nwp/ops) or a qualified `ops#179` / `nwc#8`, exactly
+# as `ls` prints it.
 ################################################################################
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
@@ -30,28 +35,362 @@ YQ="$(command -v yq || true)"
 
 die(){ print_error "$*"; exit 1; }
 
+# One scratch dir per process, cleaned by the EXIT trap installed in the
+# executed-as-a-script guard at the bottom. NOT a per-function `trap … RETURN`:
+# a RETURN trap set inside a function stays installed and fires again when the
+# CALLER returns, by which point its `local` is gone — under `set -u` that made
+# `pl issue ls` print a perfect list and then exit 1.
+NWP_ISSUE_TMP=""
+_tmpdir(){
+  [ -n "$NWP_ISSUE_TMP" ] || NWP_ISSUE_TMP=$(mktemp -d)
+  printf '%s' "$NWP_ISSUE_TMP"
+}
+
 # Shared GitLab issue API plumbing (_host/_token/_api_get/_api_send/_jget/
-# _require_ok). Extracted to a lib so `pl rag --sync-issues` reuses it (ops#6).
+# _require_ok/_api_rows). Extracted to a lib so `pl rag --sync-issues` reuses it
+# (ops#6) and so there is exactly ONE paginating collection read (_api_rows).
 source "$PROJECT_ROOT/lib/gitlab-issues.sh"
 
+################################################################################
+# ISSUE SOURCES — the operator has TWO trackers, not one.
+#
+# `pl issue` addressed only nwp/ops (project 21). But tester feedback synced out
+# of nwd by `drush nwc-feedback:sync-to-gitlab` lands in nwp/nwc (project 16) —
+# e.g. nwc#8 "[feedback-2] help topic should be clickable". The operator had no
+# way to see their own testers' reports from `pl` at all.
+#
+# The combined view (rather than a --project flag alone) is the right grain for
+# THIS verb for one concrete reason: the agent-loop already treats the two as a
+# single queue — `AGENT_LOOP_PROJECT_IDS` defaults to "16,21" and it polls both
+# for `agent-eligible`. A queue the machine reads as one and the operator can
+# only read as two is a queue the operator cannot supervise. `--project=` is
+# still there to narrow.
+#
+# TOKENS: nwp/ops keeps the least-privilege ops_note_token. That token cannot
+# see nwp/nwc at all (measured 2026-08-02: `404 Project Not Found`), so the nwc
+# source names the group bot explicitly rather than pretending the project is
+# empty.
+################################################################################
+OPS_PROJECT_ID="${NWP_OPS_PROJECT_ID:-21}"      # nwp/ops — the ops work board
+NWC_PROJECT_ID="${NWP_NWC_PROJECT_ID:-16}"      # nwp/nwc — where tester feedback lands
+SRC_NAME="ops"; SRC_SLUG="nwp/ops"
+
+# _resolve_source <spec> — point PROJECT_ID / SRC_* / the token at one tracker.
+_resolve_source(){
+  local spec="${1:-ops}"
+  case "$spec" in
+    ops|nwp/ops)
+      SRC_NAME="ops"; SRC_SLUG="nwp/ops"; PROJECT_ID="$OPS_PROJECT_ID"
+      GITLAB_TOKEN_EXPR='.gitlab.ops_note_token // .gitlab.api_token // ""' ;;
+    nwc|nwp/nwc|feedback)
+      SRC_NAME="nwc"; SRC_SLUG="nwp/nwc"; PROJECT_ID="$NWC_PROJECT_ID"
+      GITLAB_TOKEN_EXPR='.gitlab.api_token // ""' ;;
+    *[!0-9]*|'')
+      die "unknown issue source: '$spec' (expected: ops | nwc | all | <numeric project id>)" ;;
+    *)
+      if [ "$spec" = "$OPS_PROJECT_ID" ]; then _resolve_source ops; return; fi
+      if [ "$spec" = "$NWC_PROJECT_ID" ]; then _resolve_source nwc; return; fi
+      SRC_NAME="p$spec"; SRC_SLUG=""; PROJECT_ID="$spec"
+      GITLAB_TOKEN_EXPR='.gitlab.ops_note_token // .gitlab.api_token // ""' ;;
+  esac
+}
+
+# _use_ref <ref> — accept `179`, `ops#179`, `nwc#8`, `nwp/nwc#8`, `16#8`; point
+# the plumbing at that tracker and set REF_IID to the bare number. A bare number
+# keeps the historical meaning (nwp/ops), so every existing invocation is
+# unchanged.
+#
+# It sets a GLOBAL rather than printing, because `iid=$(_use_ref …)` would run
+# it in a subshell and throw away the very thing it exists to set — the project
+# it selected. (That is not hypothetical: it was the first cut of this function,
+# and `pl issue show nwc#8` silently read nwp/ops#8 instead.)
+REF_IID=""
+_use_ref(){
+  local a="${1:-}" src
+  case "$a" in
+    *'#'*) src="${a%%#*}"; REF_IID="${a##*#}" ;;
+    *)     src="${SRC_SPEC:-ops}"; REF_IID="$a" ;;
+  esac
+  [ "$src" = "all" ] && src="ops"
+  _resolve_source "$src"
+}
+
+# _issue_web_url <iid> — for the CURRENTLY resolved source.
+_issue_web_url(){
+  local iid="$1"
+  if [ -z "${SRC_SLUG:-}" ]; then
+    SRC_SLUG=$(_api_get "/projects/$PROJECT_ID" | _jget path_with_namespace)
+  fi
+  if [ -n "${SRC_SLUG:-}" ]; then
+    printf 'https://%s/%s/-/issues/%s\n' "$(_host)" "$SRC_SLUG" "$iid"
+  else
+    printf '(project %s, issue %s — no web URL: this token cannot read the project)\n' "$PROJECT_ID" "$iid"
+  fi
+}
+
+################################################################################
+# THE APPROVAL GATE, TOLD HONESTLY.
+#
+# `agent-eligible` is the label the agent-loop polls for. `.loop-paused` has sat
+# in the runtime tree since 2026-07-18, so adding that label today changes
+# nothing — and nothing in `pl issue` said so. A gate that silently does nothing
+# is worse than an absent gate, because the operator believes they acted.
+#
+# The authority is lib/loop-parts.sh (the same check the cron wrappers make), so
+# this cannot drift from what actually gates the loop.
+################################################################################
+# shellcheck source=/dev/null
+[ -f "$PROJECT_ROOT/lib/loop-parts.sh" ] && source "$PROJECT_ROOT/lib/loop-parts.sh"
+
+# _loop_gate_reason → rc 0 + "<reason>\t<exact remedy>" if the fix-loop will NOT
+# run; rc 1 if it will.
+#
+# The remedy is per-cause and checked against the code, not guessed: `pl loop
+# enable all` writes `all=enabled` to the parts state and does NOT delete the
+# legacy `.loop-paused` sentinel (lib/loop-parts.sh:loop_part_set), so telling a
+# sentinel-paused operator to run it would leave the loop just as dead — the
+# same "you acted, nothing happened" failure this whole item is about.
+_loop_gate_reason(){
+  declare -F loop_part_enabled >/dev/null 2>&1 || return 1
+  loop_part_enabled fix-loop >/dev/null 2>&1 && return 1
+  local root; root="$(_loop_nwp_root)"
+  if [ -f "$root/.loop-paused" ]; then
+    local since; since=$(date -r "$root/.loop-paused" +%Y-%m-%d 2>/dev/null || echo "unknown date")
+    printf '.loop-paused sentinel in %s (since %s)\trm %s/.loop-paused   (on EVERY ai-host: pl loop --host <role>)' \
+      "$root" "$since" "$root"
+  elif [ "$(loop_part_raw all 2>/dev/null)" = "disabled" ]; then
+    printf 'loop state all=disabled (%s)\tpl loop enable all' "$(loop_parts_state_file)"
+  else
+    printf 'loop part fix-loop=disabled (%s)\tpl loop enable fix-loop' "$(loop_parts_state_file)"
+  fi
+  return 0
+}
+
+# _warn_if_loop_paused — every command that ADDS `agent-eligible` calls this.
+_warn_if_loop_paused(){
+  local line why fix
+  if line=$(_loop_gate_reason); then
+    why="${line%%$'\t'*}"; fix="${line#*$'\t'}"
+    print_warning "the agent loop is PAUSED — $why"
+    print_warning "the 'agent-eligible' label is recorded but WILL NOT be acted on until the loop is resumed"
+    print_hint "loop state: pl loop status   ·   resume: $fix"
+    return 0
+  fi
+  return 1
+}
+
+# _gate_of <labels-csv> → the approval state of one issue, as one word.
+_gate_of(){
+  local labels=",${1},"
+  local ae=0 nh=0
+  case "$labels" in *,agent-eligible,*) ae=1 ;; esac
+  case "$labels" in *,needs-human,*)    nh=1 ;; esac
+  if   [ "$ae" = 1 ] && [ "$nh" = 1 ]; then printf 'CONFLICT'
+  elif [ "$ae" = 1 ]; then printf 'approved'
+  elif [ "$nh" = 1 ]; then printf 'HUMAN'
+  else printf 'pending'
+  fi
+}
+
+################################################################################
+# cmd_ls — list issues across BOTH trackers, paginated, with the approval gate
+# shown and the row count stated.
+#
+# THE BUG THIS REPLACES: the old body issued one `per_page=100` GET and printed
+# whatever came back. nwp/ops had 136 open issues, so it showed 100 and said
+# nothing. `order_by=created_at&sort=asc` meant the 36 it dropped were the
+# NEWEST — the exact rows an operator opens the list to triage. Silent
+# truncation reads as completeness; that is the defect, not the cap.
+################################################################################
 cmd_ls(){
   [ -n "$YQ" ] || die "yq required"
-  local state="opened"; [ "${1:-}" = "--all" ] && state="all"
-  print_header "nwp/ops issues (project $PROJECT_ID) — state: $state"
-  local json; json=$(_api_get "/projects/$PROJECT_ID/issues?state=$state&per_page=100&order_by=created_at&sort=asc")
-  [ -n "$json" ] || die "no response from GitLab (token rejected, or host unreachable)"
-  # GitLab returns [] for an empty project; surface that clearly.
-  if [ "$("$YQ" e -p=json 'length' <<<"$json" 2>/dev/null)" = "0" ]; then
-    print_warning "no $state issues found in nwp/ops — seed the work board first"; return 0
+  local state="opened" project="all" filter="" limit=0 a
+  for a in "$@"; do
+    case "$a" in
+      --all)          state="all" ;;
+      --pending)      filter="pending" ;;
+      --approved)     filter="approved" ;;
+      --needs-human)  filter="HUMAN" ;;
+      --project=*)    project="${a#*=}" ;;
+      --limit=*)      limit="${a#*=}" ;;
+      -h|--help)
+        cat <<'EOF'
+usage: pl issue ls [--all] [--pending|--approved|--needs-human]
+                   [--project=ops|nwc|all|<id>] [--limit=N]
+
+  (default)       open issues in BOTH nwp/ops and nwp/nwc, fully paginated
+  --all           include closed issues
+  --pending       only issues awaiting YOUR approval decision
+                  (no agent-eligible, no needs-human)
+  --approved      only issues already labelled agent-eligible
+  --needs-human   only issues the agent must not pick up
+  --project=      narrow to one tracker (ops=nwp/ops, nwc=nwp/nwc feedback)
+  --limit=N       cap the rows printed — the cap is always STATED in the footer
+EOF
+        return 0 ;;
+      -*) die "unknown option: $a (try: pl issue ls --help)" ;;
+      *)  die "unexpected arg: $a (try: pl issue ls --help)" ;;
+    esac
+  done
+  [[ "$limit" =~ ^[0-9]+$ ]] || die "--limit must be a number"
+
+  local -a specs=()
+  case "$project" in
+    all) specs=(ops nwc) ;;
+    *)   specs=("$project") ;;
+  esac
+
+  local tmpd; tmpd=$(_tmpdir)
+  local spec rc srcs_read=0 total=0 unreadable="" capped=""
+  local rowfile="$tmpd/rows.tsv"; : > "$rowfile"
+
+  for spec in "${specs[@]}"; do
+    _resolve_source "$spec"
+    rc=0
+    _api_rows "/projects/$PROJECT_ID/issues?state=$state&order_by=created_at&sort=asc" \
+      '[(.iid|tostring), .state,
+        ((.title // "") | sub("\n"; " ") | sub("\t"; " ")),
+        (.labels | join(","))] | join("\t")' \
+      > "$tmpd/raw.tsv" || rc=$?
+    if [ "$rc" -eq 3 ]; then
+      # "I could not look" is NOT "there is nothing there".
+      unreadable="${unreadable}${unreadable:+, }${SRC_SLUG:-project $PROJECT_ID}"
+      continue
+    fi
+    srcs_read=$((srcs_read + 1))
+    [ "${NWP_API_ROWS_TRUNCATED:-0}" = "1" ] && capped="${capped}${capped:+, }${SRC_SLUG:-project $PROJECT_ID}"
+    total=$((total + ${NWP_API_ROWS_COUNT:-0}))
+    if [ -s "$tmpd/raw.tsv" ]; then
+      awk -v src="$SRC_NAME" 'BEGIN{FS=OFS="\t"} {print src, $0}' "$tmpd/raw.tsv" >> "$rowfile"
+    fi
+  done
+
+  if [ "$srcs_read" -eq 0 ]; then
+    die "could not read any issue tracker (${unreadable:-no source}) — token rejected, or host unreachable"
   fi
-  printf "  %-5s %-9s %-46s %s\n" "#" "STATE" "TITLE" "LABELS"
-  printf "  %-5s %-9s %-46s %s\n" "-----" "---------" "----------------------------------------------" "------"
-  "$YQ" e -p=json -o=tsv '.[] | [.iid, .state, .title, (.labels | join(","))]' <<<"$json" 2>/dev/null \
-  | while IFS=$'\t' read -r iid st title labels; do
-      printf "  ${BOLD}%-5s${NC} %-9s %-46.46s %s\n" "$iid" "$st" "$title" "$labels"
+
+  print_header "issues — ${specs[*]} · state: $state${filter:+ · filter: $filter}"
+
+  # Classify + filter into the final render set, counting the gate states over
+  # EVERYTHING read (so the summary describes the queue, not the filtered view).
+  local n_pending=0 n_approved=0 n_human=0 n_conflict=0 shown=0
+  local render="$tmpd/render.tsv"; : > "$render"
+  local src iid st title labels gate
+  while IFS=$'\t' read -r src iid st title labels; do
+    [ -z "$iid" ] && continue
+    gate=$(_gate_of "$labels")
+    case "$gate" in
+      pending)  n_pending=$((n_pending + 1)) ;;
+      approved) n_approved=$((n_approved + 1)) ;;
+      HUMAN)    n_human=$((n_human + 1)) ;;
+      CONFLICT) n_conflict=$((n_conflict + 1)) ;;
+    esac
+    [ -n "$filter" ] && [ "$gate" != "$filter" ] && continue
+    printf '%s\t%s\t%s\t%s\t%s\n' "$src" "$iid" "$st" "$gate" "$title" >> "$render"
+    shown=$((shown + 1))
+  done < "$rowfile"
+
+  local matched="$shown"
+  if [ "$limit" -gt 0 ] && [ "$shown" -gt "$limit" ]; then shown="$limit"; fi
+
+  if [ "$matched" -eq 0 ]; then
+    print_warning "no issues matched${filter:+ the '$filter' filter}"
+  else
+    printf "  %-4s %-5s %-8s %-9s %s\n" "SRC" "#" "STATE" "GATE" "TITLE"
+    printf "  %-4s %-5s %-8s %-9s %s\n" "----" "-----" "--------" "---------" "---------------------------------------------"
+    head -n "$shown" "$render" | while IFS=$'\t' read -r src iid st gate title; do
+      printf "  %-4s ${BOLD}%-5s${NC} %-8s %-9s %-52.52s\n" "$src" "$iid" "$st" "$gate" "$title"
     done
+  fi
+
+  # THE HONEST FOOTER. A number here is a claim about completeness, so every
+  # reason a row might be missing is named.
   echo
-  print_hint "open one in its OWN window:  start a fresh Claude in ~/nwp and say  \"work on nwp/ops#<#>\""
+  printf "  read %d issue(s) from %d tracker(s): %s\n" "$total" "$srcs_read" "${specs[*]}"
+  if [ "$matched" -ne "$shown" ]; then
+    printf "  ${BOLD}showing %d of %d matching (--limit=%d)${NC}\n" "$shown" "$matched" "$limit"
+  elif [ "$matched" -eq 0 ]; then
+    printf "  showing 0 matching row(s)\n"
+  else
+    printf "  showing all %d matching row(s) — nothing hidden\n" "$matched"
+  fi
+  printf "  gate: %d pending · %d approved (agent-eligible) · %d needs-human" \
+    "$n_pending" "$n_approved" "$n_human"
+  [ "$n_conflict" -gt 0 ] && printf " · ${BOLD}%d CONFLICT${NC}" "$n_conflict"
+  echo
+  [ "$n_conflict" -gt 0 ] && \
+    print_warning "$n_conflict issue(s) carry BOTH agent-eligible and needs-human — the loop's poll filters on agent-eligible only, so it WOULD pick them up"
+  [ -n "$unreadable" ] && \
+    print_warning "NOT read (so not counted above): $unreadable — this token cannot see it"
+  [ -n "$capped" ] && \
+    print_warning "page cap reached on: $capped — there may be more issues than shown"
+  # If anything is (or is being looked for as) approved, say whether that label
+  # is actually being acted on.
+  if [ "$n_approved" -gt 0 ] || [ "$n_conflict" -gt 0 ] || [ "$filter" = "approved" ]; then
+    _warn_if_loop_paused || true
+  fi
+  echo
+  print_hint "approve one for the agent:  pl issue approve <src>#<n>   ·   detail: pl issue show <src>#<n>"
+  print_hint "awaiting your decision:     pl issue ls --pending"
+}
+
+################################################################################
+# cmd_approve — the operator's "yes, an agent may work this one".
+#
+# Refuses on `needs-human` and says why. That refusal is load-bearing: the
+# loop's own poll is `?state=opened&labels=agent-eligible` with NO exclusion of
+# needs-human (scripts/agent-loop/agent-loop.sh), so an issue carrying both
+# WOULD be picked up. The policy lives in the nwc feedback classifier
+# (GitLabSyncService: doctrine / member-interior / safeguarding signals force
+# needs-human); this verb is where it is enforced at the point of decision.
+################################################################################
+cmd_approve(){
+  [ -n "$YQ" ] || die "yq required"
+  local ref="" a
+  for a in "$@"; do
+    case "$a" in
+      -h|--help) printf 'usage: pl issue approve <ref>       # ref: 179 | ops#179 | nwc#8\n'; return 0 ;;
+      --project=*) SRC_SPEC="${a#*=}" ;;
+      -*) die "unknown option: $a (usage: pl issue approve <ref>)" ;;
+      *)  [ -z "$ref" ] && ref="$a" || die "unexpected arg: $a" ;;
+    esac
+  done
+  [ -n "$ref" ] || die "usage: pl issue approve <ref>   (ref: 179 | ops#179 | nwc#8)"
+  _use_ref "$ref"; local iid="$REF_IID"
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "not an issue number: '$ref'"
+
+  local json; json=$(_api_get "/projects/$PROJECT_ID/issues/$iid")
+  local title; title=$(printf '%s' "$json" | _jget title)
+  [ -n "$title" ] || die "issue $SRC_NAME#$iid not found (or this token cannot read ${SRC_SLUG:-project $PROJECT_ID})"
+  local labels; labels=$(printf '%s' "$json" | "$YQ" e -p=json '.labels | join(",")' - 2>/dev/null)
+  local state; state=$(printf '%s' "$json" | _jget state)
+
+  case ",${labels}," in
+    *,needs-human,*)
+      print_error "refusing to approve $SRC_NAME#$iid — it is labelled 'needs-human'"
+      printf '    %s\n' "$title"
+      print_info "'needs-human' means an agent must NOT pick this up: it was classified as"
+      print_info "doctrine / member-interior / safeguarding-shaped, or a human already parked it."
+      print_hint "if that classification is wrong, clear it deliberately first:"
+      print_hint "  pl issue label $SRC_NAME#$iid --remove needs-human   &&   pl issue approve $SRC_NAME#$iid"
+      exit 1 ;;
+  esac
+  [ "$state" = "opened" ] || die "refusing to approve $SRC_NAME#$iid — it is $state, not open"
+  case ",${labels}," in
+    *,agent-eligible,*)
+      print_info "$SRC_NAME#$iid is already agent-eligible — nothing to change"
+      _warn_if_loop_paused || print_success "the loop is running and will pick it up"
+      return 0 ;;
+  esac
+
+  local payload; payload=$("$YQ" -n -o=json '{"add_labels": "agent-eligible"}')
+  local resp; resp=$(_api_send PUT "/projects/$PROJECT_ID/issues/$iid" "$payload")
+  _require_ok "$resp" id "approve $SRC_NAME#$iid" >/dev/null
+  print_success "approved $SRC_NAME#$iid — $title"
+  printf '    %s\n' "$(_issue_web_url "$iid")"
+  # The whole point of the verb: never let the operator believe more happened
+  # than did.
+  _warn_if_loop_paused || print_info "the loop is running — it polls agent-eligible every 30 min"
 }
 
 
@@ -61,89 +400,108 @@ cmd_ls(){
 # least-privilege and cannot read code repos — deliberate).
 cmd_board(){
   [ -n "$YQ" ] || die "yq required"
-  local json closed
-  json=$(_api_get "/projects/$PROJECT_ID/issues?state=opened&per_page=100&order_by=created_at&sort=asc")
-  [ -n "$json" ] || die "no response from GitLab (token rejected, or host unreachable)"
-  closed=$(_api_get "/projects/$PROJECT_ID/issues?state=closed&per_page=10&order_by=updated_at&sort=desc")
+  local tmpd; tmpd=$(_tmpdir)
+  # PAGINATED (same bug as cmd_ls had: one per_page=100 GET over a 136-issue
+  # tracker rendered as a complete board).
+  local rc=0
+  _api_rows "/projects/$PROJECT_ID/issues?state=opened&order_by=created_at&sort=asc" \
+    '[(.iid|tostring), ((.title // "") | sub("\n"; " ") | sub("\t"; " ")), (.labels | join(","))] | join("\t")' \
+    > "$tmpd/open.tsv" || rc=$?
+  [ "$rc" -eq 3 ] && die "no response from GitLab (token rejected, or host unreachable)"
+  local n_open="${NWP_API_ROWS_COUNT:-0}" capped="${NWP_API_ROWS_TRUNCATED:-0}"
+  # DELIBERATE cap, and it is labelled as one below.
+  local closed; closed=$(_api_get "/projects/$PROJECT_ID/issues?state=closed&per_page=10&order_by=updated_at&sort=desc")
 
   print_header "nwp/ops board"
 
   echo -e "${BOLD}WORK ITEMS (open):${NC}"
-  printf "  %-5s %-52s %-10s %s
-" "#" "TITLE" "PRIORITY" "FLAGS"
-  "$YQ" e -p=json -o=tsv \
-      '.[] | select((.labels | contains(["rag-auto"])) | not) | [.iid, .title, (.labels | join(","))]' \
-      <<<"$json" 2>/dev/null \
+  printf "  %-5s %-52s %-10s %s\n" "#" "TITLE" "PRIORITY" "FLAGS"
+  # Exact label membership (field 3, comma-separated) — a substring match would
+  # also catch a hypothetical "rag-auto-x".
+  awk -F'\t' 'BEGIN{OFS="\t"} {n=split($3,L,","); hit=0; for(i=1;i<=n;i++) if(L[i]=="rag-auto") hit=1; if(!hit) print}' \
+    "$tmpd/open.tsv" \
   | while IFS=$'\t' read -r iid title labels; do
-      local prio="-" flags=""
+      prio="-"; flags=""
       case ",$labels," in *,priority::high,*) prio="high" ;; *,priority::medium,*) prio="medium" ;; *,priority::low,*) prio="low" ;; esac
       case ",$labels," in *,agent-eligible,*) flags="agent-eligible" ;; esac
-      printf "  ${BOLD}%-5s${NC} %-52.52s %-10s %s
-" "$iid" "$title" "$prio" "$flags"
+      case ",$labels," in *,needs-human,*)    flags="${flags:+$flags+}needs-human" ;; esac
+      printf "  ${BOLD}%-5s${NC} %-52.52s %-10s %s\n" "$iid" "$title" "$prio" "$flags"
     done
 
   echo ""
   echo -e "${BOLD}RAG-AUTO (fleet health, auto-managed — clears when the site goes green):${NC}"
-  "$YQ" e -p=json -o=tsv \
-      '.[] | select(.labels | contains(["rag-auto"])) | [.iid, .title, (.labels | join(","))]' \
-      <<<"$json" 2>/dev/null \
+  local sev
+  awk -F'\t' '{n=split($3,L,","); for(i=1;i<=n;i++) if(L[i]=="rag-auto"){print; break}}' \
+    "$tmpd/open.tsv" \
   | while IFS=$'\t' read -r iid title labels; do
-      local sev="🟠"
+      sev="🟠"
       case ",$labels," in *,security,*) sev="🔴" ;; esac
-      printf "  %s #%-4s %-52.52s
-" "$sev" "$iid" "$title"
+      printf "  %s #%-4s %-52.52s\n" "$sev" "$iid" "$title"
     done
 
   if [ -n "$closed" ] && [ "$("$YQ" e -p=json 'length' <<<"$closed" 2>/dev/null)" != "0" ]; then
     echo ""
-    echo -e "${BOLD}RECENTLY CLOSED:${NC}"
+    # State the cap. "RECENTLY CLOSED" without a number reads as "all of them".
+    echo -e "${BOLD}RECENTLY CLOSED (most recent 10 by update — deliberately capped):${NC}"
     "$YQ" e -p=json -o=tsv '.[] | [.iid, .title, .closed_at]' <<<"$closed" 2>/dev/null \
     | while IFS=$'\t' read -r iid title closed_at; do
-        printf "  ${DIM:-}✓ #%-4s %-52.52s %s${NC}
-" "$iid" "$title" "${closed_at:0:10}"
+        printf "  ${DIM:-}✓ #%-4s %-52.52s %s${NC}\n" "$iid" "$title" "${closed_at:0:10}"
       done
   fi
   echo ""
+  printf "  %d open issue(s) read — all shown\n" "$n_open"
+  [ "$capped" = "1" ] && print_warning "page cap reached — there may be more open issues than shown"
   print_hint "detail: pl issue show <#>   ·   fleet state: pl rag   ·   work queue: pl todo"
+  print_hint "tester feedback lives in nwp/nwc, NOT on this board:  pl issue ls --project=nwc"
 }
 
 cmd_url(){
-  local iid="${1:-}"; [ -n "$iid" ] || die "usage: pl issue url <iid>"
-  printf 'https://%s/nwp/ops/-/issues/%s\n' "$(_host)" "$iid"
+  local ref="${1:-}"; [ -n "$ref" ] || die "usage: pl issue url <ref>   (ref: 179 | ops#179 | nwc#8)"
+  _use_ref "$ref"; local iid="$REF_IID"
+  _issue_web_url "$iid"
 }
 
 # show one issue: header fields + description + the discussion thread (notes)
 cmd_show(){
   [ -n "$YQ" ] || die "yq required"
-  local iid="${1:-}"; [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue show <iid>"
+  local ref="${1:-}"; [ -n "$ref" ] || die "usage: pl issue show <ref>   (ref: 179 | ops#179 | nwc#8)"
+  _use_ref "$ref"; local iid="$REF_IID"
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue show <ref>   (ref: 179 | ops#179 | nwc#8)"
   local json; json=$(_api_get "/projects/$PROJECT_ID/issues/$iid")
   [ -n "$json" ] || die "no response from GitLab (token rejected, or host unreachable)"
   local title state author labels created updated desc
   title=$(printf '%s' "$json" | _jget title)
-  [ -n "$title" ] || die "issue #$iid not found in nwp/ops"
+  [ -n "$title" ] || die "issue #$iid not found in ${SRC_SLUG:-project $PROJECT_ID}"
   state=$(printf '%s'  "$json" | _jget state)
   author=$(printf '%s' "$json" | _jget 'author.username')
   labels=$(printf '%s' "$json" | "$YQ" e -p=json '.labels | join(", ")' - 2>/dev/null)
   created=$(printf '%s' "$json" | _jget created_at)
   updated=$(printf '%s' "$json" | _jget updated_at)
   desc=$(printf '%s'   "$json" | "$YQ" e -p=json '.description // ""' - 2>/dev/null)
-  print_header "nwp/ops#$iid — $title"
+  print_header "${SRC_SLUG:-project $PROJECT_ID}#$iid — $title"
   printf "  ${BOLD}%-9s${NC} %s\n" "state:"   "$state"
   printf "  ${BOLD}%-9s${NC} %s\n" "author:"  "${author:-?}"
   printf "  ${BOLD}%-9s${NC} %s\n" "labels:"  "${labels:-—}"
+  printf "  ${BOLD}%-9s${NC} %s\n" "gate:"    "$(_gate_of "$(printf '%s' "$labels" | tr -d ' ')")"
   printf "  ${BOLD}%-9s${NC} %s\n" "created:" "$created"
   printf "  ${BOLD}%-9s${NC} %s\n" "updated:" "$updated"
-  printf "  ${BOLD}%-9s${NC} %s\n" "url:"     "$(cmd_url "$iid")"
+  printf "  ${BOLD}%-9s${NC} %s\n" "url:"     "$(_issue_web_url "$iid")"
   echo; echo "$desc"; echo
-  # discussion thread (skip GitLab system notes)
-  local notes; notes=$(_api_get "/projects/$PROJECT_ID/issues/$iid/notes?sort=asc&per_page=100")
-  local n; n=$(printf '%s' "$notes" | "$YQ" e -p=json '[.[] | select(.system == false)] | length' - 2>/dev/null)
-  if [ -n "$n" ] && [ "$n" != "0" ]; then
+  # discussion thread (skip GitLab system notes) — PAGINATED: a thread longer
+  # than 100 notes used to lose its tail without saying so.
+  local tmpd; tmpd=$(_tmpdir)
+  _api_rows "/projects/$PROJECT_ID/issues/$iid/notes?sort=asc" \
+    'select(.system == false)
+     | [(.author.username // "?"), .created_at,
+        ((.body // "") | sub("\n"; "  ") | sub("\t"; " "))] | join("\t")' \
+    > "$tmpd/notes.tsv" 2>/dev/null || true
+  local n=0; [ -s "$tmpd/notes.tsv" ] && n=$(grep -c . "$tmpd/notes.tsv")
+  if [ "$n" -gt 0 ]; then
     print_header "Comments ($n)"
-    printf '%s' "$notes" | "$YQ" e -p=json -o=tsv '.[] | select(.system == false) | [.author.username, .created_at, .body]' - 2>/dev/null \
-    | while IFS=$'\t' read -r who when bd; do
-        printf "  ${BOLD}%s${NC} ${DIM}%s${NC}\n    %s\n\n" "$who" "$when" "$bd"
-      done
+    local who when bd
+    while IFS=$'\t' read -r who when bd; do
+      printf "  ${BOLD}%s${NC} ${DIM}%s${NC}\n    %s\n\n" "$who" "$when" "$bd"
+    done < "$tmpd/notes.tsv"
   fi
 }
 
@@ -174,15 +532,17 @@ cmd_create(){
     '{"title": strenv(T), "description": strenv(D), "labels": strenv(L)}')
   local resp iid; resp=$(_api_send POST "/projects/$PROJECT_ID/issues" "$payload")
   iid=$(_require_ok "$resp" iid "create issue")
-  print_success "created nwp/ops#$iid — $title"
-  print_info "$(cmd_url "$iid")"
+  print_success "created ${SRC_SLUG:-nwp/ops}#$iid — $title"
+  print_info "$(_issue_web_url "$iid")"
 }
 
-# add a comment:  pl issue comment <iid> "text"   (or pipe text on stdin)
+# add a comment:  pl issue comment <ref> "text"   (or pipe text on stdin)
 cmd_comment(){
   [ -n "$YQ" ] || die "yq required"
-  case "${1:-}" in -h|--help) printf 'usage: pl issue comment <iid> "text"   (or pipe text on stdin)\n'; return 0 ;; esac
-  local iid="${1:-}"; [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue comment <iid> \"text\""
+  case "${1:-}" in -h|--help) printf 'usage: pl issue comment <ref> "text"   (or pipe text on stdin)\n'; return 0 ;; esac
+  local ref="${1:-}"; [ -n "$ref" ] || die "usage: pl issue comment <ref> \"text\""
+  _use_ref "$ref"; local iid="$REF_IID"
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue comment <ref> \"text\""
   shift
   local body="$*"
   [ -z "$body" ] && [ ! -t 0 ] && body="$(cat)"
@@ -190,22 +550,23 @@ cmd_comment(){
   local payload; payload=$(B="$body" "$YQ" -n -o=json '{"body": strenv(B)}')
   local resp; resp=$(_api_send POST "/projects/$PROJECT_ID/issues/$iid/notes" "$payload")
   _require_ok "$resp" id "comment on #$iid" >/dev/null
-  print_success "commented on nwp/ops#$iid"
+  print_success "commented on ${SRC_SLUG:-project $PROJECT_ID}#$iid"
 }
 
 # close / reopen
-_set_state(){ # $1=iid $2=close|reopen
+_set_state(){ # $1=iid $2=close|reopen  (source already resolved by the caller)
   [ -n "$YQ" ] || die "yq required"
   local iid="$1" ev="$2"
-  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue $ev <iid>"
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue $ev <ref>"
   local payload; payload=$(E="$ev" "$YQ" -n -o=json '{"state_event": strenv(E)}')
   local resp st; resp=$(_api_send PUT "/projects/$PROJECT_ID/issues/$iid" "$payload")
   st=$(_require_ok "$resp" state "$ev #$iid")
-  print_success "nwp/ops#$iid is now: $st"
+  print_success "${SRC_SLUG:-project $PROJECT_ID}#$iid is now: $st"
 }
 cmd_close(){
-  local iid="${1:-}" force=0 a
+  local ref="${1:-}" force=0 a iid=""
   for a in "$@"; do [ "$a" = "--force" ] && force=1; done
+  if [ -n "$ref" ] && [ "$ref" != "--force" ]; then _use_ref "$ref"; iid="$REF_IID"; fi
   # Close guard: an issue with an OPEN merge request against it is not done.
   # Closing it makes the tracker assert completion while the code is unlanded —
   # the exact shape that produced "ops#133 closed 2026-07-25 with Phase 2
@@ -217,29 +578,45 @@ cmd_close(){
   # `issue_open_mrs` escalates the READ to a token that can see the code
   # projects and, crucially, distinguishes 0 from BLIND (rc 3).
   if [ "$force" = "0" ] && [[ "$iid" =~ ^[0-9]+$ ]]; then
+    # CONFLICT RESOLUTION, 2026-08-03 (!320 rebased over !338/ops#235). Two
+    # versions of this guard existed. The one kept is main's, because on
+    # "I cannot read the related MRs" it REFUSES (exit 3); !320's only printed a
+    # warning and closed the issue anyway, which is the precise failure ops#235
+    # was filed about. !320's contribution here — pagination — is kept, but
+    # underneath: `issue_open_mrs` now walks every page (lib/gitlab-issues.sh).
     local open_list rc=0
     open_list=$(issue_open_mrs "$iid") || rc=$?
     case "$rc" in
       1)
-        print_error "refusing to close nwp/ops#$iid: open merge request(s) still reference it"
+        print_error "refusing to close ${SRC_SLUG:-nwp/ops}#$iid: open merge request(s) still reference it"
         printf '%s\n' "$open_list" | sed 's/^/  /'
-        print_hint "land the MR first, or: pl issue close $iid --force"
+        print_hint "land the MR first, or: pl issue close ${ref:-$iid} --force"
         exit 1
         ;;
       3)
         # CANNOT-VERIFY. Refusing here is the whole lesson of ops#235: a guard
         # that cannot look must not report a pass. rc 3 mirrors `pl server health`.
-        print_error "refusing to close nwp/ops#$iid: CANNOT VERIFY whether an MR is open"
+        print_error "refusing to close ${SRC_SLUG:-nwp/ops}#$iid: CANNOT VERIFY whether an MR is open"
         echo "  No available token can read the declared code project(s): $(_code_projects | tr '\n' ' ' | sed 's/ *$//')"
         echo "  An empty related-MR list from a walled token is blindness, not evidence (ops#235)."
-        print_hint "fix the token scope, or override deliberately: pl issue close $iid --force"
+        print_hint "fix the token scope, or override deliberately: pl issue close ${ref:-$iid} --force"
         exit 3
         ;;
     esac
   fi
   _set_state "$iid" close
 }
-cmd_reopen(){ _set_state "${1:-}" reopen; }
+cmd_reopen(){
+  local ref="${1:-}"; [ -n "$ref" ] || die "usage: pl issue reopen <ref>"
+  _use_ref "$ref"; local iid="$REF_IID"
+  _set_state "$iid" reopen
+}
+
+# NOTE: `_open_mrs_for` (the version of this reader shipped on this branch)
+# was DROPPED in the 2026-08-03 rebase. `issue_open_mrs` in lib/gitlab-issues.sh
+# does the same job and two things this one could not: it escalates to a token
+# that can actually SEE the code projects, and it reports blindness as rc 3
+# instead of as an empty list (ops#235). It is now paginated too.
 
 ################################################################################
 # pl issue reconcile — make the tracker agree with what actually landed.
@@ -354,24 +731,20 @@ cmd_reconcile(){
 
   # PAGINATE. The previous single `per_page=100` call silently scanned a
   # TRUNCATED list and then printed "tracker and code agree" — a positive
-  # assertion over data it never read. nwp/ops is already AT the 100 cap, so
-  # every issue past the first page was invisible to this command.
+  # assertion over data it never read. nwp/ops is already PAST the 100 cap, so
+  # every issue on page 2+ was invisible to this command.
   #
-  # The rows are flattened to TSV as they arrive rather than concatenating JSON:
-  # one representation, no merge step that can quietly drop a page.
-  local issues_tsv="" page=0 batch rows
-  while :; do
-    page=$((page + 1))
-    batch=$(_api_get "/projects/$PROJECT_ID/issues?state=all&per_page=100&page=$page&order_by=updated_at")
-    [ -n "$batch" ] || break
-    rows=$(printf '%s' "$batch" | "$YQ" e -p=json -r \
-             '.[] | [(.iid|tostring), .state, .title,
-                     ((.description // "") | sub("\n"; " ") | sub("\t"; " "))] | @tsv' - 2>/dev/null || true)
-    [ -n "$rows" ] || break
-    issues_tsv="${issues_tsv}${rows}"$'\n'
-    [ "$(printf '%s\n' "$rows" | grep -c .)" -lt 100 ] && break
-    [ "$page" -ge 20 ] && break   # 2000 issues is not a tracker, it is a landfill
-  done
+  # This used to be an inline loop here; it is now `_api_rows` in
+  # lib/gitlab-issues.sh, because keeping the fix local to one function is
+  # precisely how `pl issue ls` and `pl issue board` kept the bug (fixed
+  # 2026-08-02). Rows are flattened to TSV as they arrive: one representation,
+  # no merge step that can quietly drop a page.
+  local issues_tsv
+  issues_tsv=$(_api_rows "/projects/$PROJECT_ID/issues?state=all&order_by=updated_at" \
+    '[(.iid|tostring), .state,
+      ((.title // "") | sub("\n"; " ") | sub("\t"; " ")),
+      ((.description // "") | sub("\n"; " ") | sub("\t"; " "))] | join("\t")') \
+    || die "could not read the issue list (token rejected, or host unreachable)"
   [ -n "$issues_tsv" ] || die "could not read the issue list"
 
   # State the SCOPE. "STALE-REF" means "found in none of the repositories this
@@ -469,11 +842,13 @@ cmd_reconcile(){
     # --no-notes to halve the API calls when you only want the state classes.
     local text="$title $desc" ref stale_refs=""
     if [ "$scan_notes" = true ]; then
+      # PAGINATED: a >100-note thread used to lose its tail, so a phantom ref
+      # cited late in a long discussion could not be found and the run still
+      # reported "no findings".
       local notes
-      notes=$(_api_get "/projects/$PROJECT_ID/issues/$iid/notes?per_page=100" 2>/dev/null || true)
-      if [ -n "$notes" ]; then
-        text="$text $("$YQ" e -p=json -r '[.[] | .body] | join(" ")' - <<<"$notes" 2>/dev/null | tr '\n\t' '  ' || true)"
-      fi
+      notes=$(_api_rows "/projects/$PROJECT_ID/issues/$iid/notes?sort=asc" \
+                '((.body // "") | sub("\n"; " ") | sub("\t"; " "))' 2>/dev/null || true)
+      [ -n "$notes" ] && text="$text $(printf '%s' "$notes" | tr '\n\t' '  ')"
     fi
     local ref_rc
     while IFS= read -r ref; do
@@ -518,7 +893,14 @@ cmd_reconcile(){
     else
       printf '  %-20s #%-5s %-58s → %s\n' "$class" "$iid" "${title:0:58}" "$advice"
     fi
-  done < <(printf '%s' "$issues_tsv")
+  # `printf '%s\n'`, NOT `printf '%s'`. `issues_tsv=$(_api_rows …)` strips the
+  # trailing newline (command substitution always does), so the final row
+  # arrives UNTERMINATED and `while read` skips it — the tracker's last issue
+  # was never classified. Caught 2026-08-03 by the ops#235 reconcile test, which
+  # has exactly one issue in its fixture and so lost 100% of its input. A
+  # de-truncation change that reintroduces an off-by-one at the other end is
+  # still a truncation.
+  done < <(printf '%s\n' "$issues_tsv")
 
   if [ "$as_json" = true ]; then
     printf '\n]\n'
@@ -539,11 +921,13 @@ cmd_reconcile(){
   fi
 }
 
-# add/remove labels:  pl issue label <iid> --add a,b --remove c
+# add/remove labels:  pl issue label <ref> --add a,b --remove c
 cmd_label(){
   [ -n "$YQ" ] || die "yq required"
-  case "${1:-}" in -h|--help) printf 'usage: pl issue label <iid> --add a,b [--remove c]\n'; return 0 ;; esac
-  local iid="${1:-}"; [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue label <iid> --add a,b [--remove c]"
+  case "${1:-}" in -h|--help) printf 'usage: pl issue label <ref> --add a,b [--remove c]\n'; return 0 ;; esac
+  local ref="${1:-}"; [ -n "$ref" ] || die "usage: pl issue label <ref> --add a,b [--remove c]"
+  _use_ref "$ref"; local iid="$REF_IID"
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl issue label <ref> --add a,b [--remove c]"
   shift
   local add="" rem=""
   while [ $# -gt 0 ]; do
@@ -555,7 +939,7 @@ cmd_label(){
       # a flag-like arg is never a label name — same class as the
       # `pl issue create --help` bug (fixed in MR !282): `pl issue label 5
       # --typo` must refuse, not PUT the label "--typo"
-      -*) die "unknown option: $1 (usage: pl issue label <iid> --add a,b [--remove c])" ;;
+      -*) die "unknown option: $1 (usage: pl issue label <ref> --add a,b [--remove c])" ;;
       *) [ -z "$add" ] && { add="$1"; shift; } || die "unexpected arg: $1" ;;
     esac
   done
@@ -565,7 +949,9 @@ cmd_label(){
     '{"add_labels": strenv(A), "remove_labels": strenv(R)}')
   local resp; resp=$(_api_send PUT "/projects/$PROJECT_ID/issues/$iid" "$payload")
   local labels; labels=$(_require_ok "$resp" id "label #$iid" >/dev/null; printf '%s' "$resp" | "$YQ" e -p=json '.labels | join(", ")' - 2>/dev/null)
-  print_success "nwp/ops#$iid labels: ${labels:-—}"
+  print_success "${SRC_SLUG:-project $PROJECT_ID}#$iid labels: ${labels:-—}"
+  # Adding the gate label by hand must tell the same truth `approve` does.
+  case ",${add}," in *,agent-eligible,*) _warn_if_loop_paused || true ;; esac
 }
 
 # submit — fold a worktree branch back: commit (tracked changes only), push over SSH,
@@ -682,8 +1068,18 @@ cmd_work(){
 
 main(){
   local sub="${1:-ls}"; shift || true
+  # A --project= flag may precede the ref on the ref-taking subcommands.
+  local -a rest=(); local a
+  for a in "$@"; do
+    case "$a" in --project=*) SRC_SPEC="${a#*=}" ;; *) rest+=("$a") ;; esac
+  done
+  case "$sub" in
+    ls|list|board) : ;;                       # these parse --project themselves
+    *) set -- ${rest[@]+"${rest[@]}"} ;;
+  esac
   case "$sub" in
     ls|list)    cmd_ls "$@" ;;
+    approve|ok) cmd_approve "$@" ;;
     board)      cmd_board "$@" ;;
     show|view)  cmd_show "$@" ;;
     url)        cmd_url "$@" ;;
@@ -697,18 +1093,35 @@ main(){
     submit|fold|mr) cmd_submit "$@" ;;
     -h|--help|help)
       cat <<EOF
-pl issue — the nwp/ops work board (read + write) + per-issue worktrees
+pl issue — the work board (read + write) + per-issue worktrees
+
+  TWO TRACKERS, ONE QUEUE. \`ls\` reads both by default, because the agent-loop
+  already polls both (AGENT_LOOP_PROJECT_IDS="16,21"):
+    ops = nwp/ops (project $OPS_PROJECT_ID)  — ops work board
+    nwc = nwp/nwc (project $NWC_PROJECT_ID)  — tester feedback synced from nwd
+  A <ref> is a bare number (= ops) or qualified: ops#179 · nwc#8
 
   Read:
-    pl issue ls [--all]            list open (or all) nwp/ops issues
-    pl issue show <iid>            show one issue: fields, description, comments
-    pl issue url <iid>             print the web URL for an issue
+    pl issue ls [--all] [--pending|--approved|--needs-human]
+                [--project=ops|nwc|all|<id>] [--limit=N]
+                                   list issues — fully PAGINATED, with the
+                                   approval GATE per row and an honest count
+    pl issue ls --pending          everything awaiting YOUR approval decision
+    pl issue show <ref>            show one issue: fields, description, comments
+    pl issue url <ref>             print the web URL for an issue
 
-  Write (uses the least-privilege gitlab.ops_note_token):
+  Approval gate:
+    pl issue approve <ref>         add 'agent-eligible' so the loop may work it.
+                                   REFUSES if the issue is 'needs-human', and
+                                   says plainly when the loop is paused (in which
+                                   case the label is recorded but not acted on).
+
+  Write (nwp/ops uses the least-privilege gitlab.ops_note_token; nwp/nwc needs
+  the group bot gitlab.api_token — the ops token cannot see that project):
     pl issue create --title "..." [--desc "..."] [--label a,b]
                                    open a new nwp/ops issue
-    pl issue comment <iid> "text"  add a comment (or pipe text on stdin)
-    pl issue close <iid>           close an issue. Exit 1 = an MR referencing it
+    pl issue comment <ref> "text"  add a comment (or pipe text on stdin)
+    pl issue close <ref>           close an issue. Exit 1 = an MR referencing it
                                    is still OPEN. Exit 3 = CANNOT VERIFY (no
                                    token can read the code projects) — refused,
                                    because an empty related-MR list from a walled
@@ -742,5 +1155,8 @@ EOF
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # Installed only when EXECUTED, never when sourced — a sourced lib must not
+  # hijack its host's EXIT trap.
+  trap '[ -n "${NWP_ISSUE_TMP:-}" ] && rm -rf "$NWP_ISSUE_TMP" || true' EXIT
   main "$@"
 fi

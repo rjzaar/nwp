@@ -277,12 +277,16 @@ pl status
 pl rag                       # table; exit 3 if any red
 pl audit                     # refresh the security signal first if stale
 
-# the ticket queue
-pl issue ls                  # open nwp/ops issues
-pl issue show <N>
+# the ticket queue — BOTH trackers the loop polls (nwp/ops + nwp/nwc feedback),
+# fully paginated, with each row's approval GATE shown
+pl issue ls
+pl issue ls --pending        # only what is awaiting YOUR approval decision
+pl issue show <N>            # or a qualified ref: pl issue show nwc#8
 
 # promote one to the agent (THE human act)
-pl issue label <N> --add "kind::config,agent-eligible"
+pl issue approve <N>         # adds agent-eligible; REFUSES a needs-human issue,
+                             # and says so plainly if the loop is paused
+pl issue label <N> --add "kind::config"   # routing labels, as needed
 
 # watch the loop (on the ai-host; ticks at :00 and :30)
 ssh <ai-host> tail -f ~/nwp/logs/agent-loop.log

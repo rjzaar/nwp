@@ -99,6 +99,103 @@ _need_yq(){ [ -n "$YQ" ] || die "yq required"; }
 _mr_web_url(){ printf 'https://%s/nwp/nwp/-/merge_requests/%s\n' "$(_mr_host)" "$1"; }
 
 ################################################################################
+# pl mr create — the other half of ops#216.
+#
+# WHY THIS IS A VERB AND NOT A CURL. Until now every session opened its own MR
+# with a hand-rolled API call, which meant every session also re-decided, from
+# memory, whether the thing it had just written was a sensitive-path change.
+# `pl mr guard` exists precisely because remembering is what fails. Creating
+# through the verb means the guard runs on the MR the moment it exists, in the
+# same breath, rather than whenever CI gets round to it — and the token handling,
+# host resolution and 0600-curl-config contract come from one place.
+#
+# Defaults are read off the work, not asked for: the source branch is the branch
+# you are on, and the title/description default to the HEAD commit's subject and
+# body — which is where the estate already requires the reasoning to live.
+################################################################################
+cmd_create(){
+  _need_yq
+  local src="" target="main" title="" desc="" desc_file="" draft=false remove_src=true
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source=*)  src="${1#*=}"; shift ;;
+      --target=*)  target="${1#*=}"; shift ;;
+      --title=*)   title="${1#*=}"; shift ;;
+      --desc=*)    desc="${1#*=}"; shift ;;
+      --desc-file=*) desc_file="${1#*=}"; shift ;;
+      --draft)     draft=true; shift ;;
+      --keep-branch) remove_src=false; shift ;;
+      -h|--help)
+        printf 'usage: pl mr create [--source=BRANCH] [--target=main] [--title=..] [--desc=..|--desc-file=F] [--draft] [--keep-branch]\n'
+        return 0 ;;
+      -*) die "unknown option: $1 (try: pl mr create --help)" ;;
+      *)  die "unexpected arg: $1" ;;
+    esac
+  done
+  # ARGUMENT VALIDATION HAPPENS BEFORE THE MACHINE IS INSPECTED.
+  # `verify_restic` taught this the expensive way on 2026-08-02: it checked
+  # `command -v restic` before it checked its own flag, so an illegal argument
+  # was silently accepted on any host without restic. Whether these arguments
+  # are legal is a property of the COMMAND; whether a token exists is a property
+  # of the machine. Mixing the order lets one answer the other.
+  [ -n "$src" ] || src="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  [ -n "$src" ] && [ "$src" != "HEAD" ] || die "cannot resolve a source branch (detached HEAD?) — pass --source=BRANCH"
+  [ "$src" != "$target" ] || die "source and target are both '$target' — an MR from a branch to itself is not a review"
+
+  # A branch that exists only locally produces an MR nobody else can fetch, and
+  # GitLab reports that as a confusing 400. Refuse with the real reason.
+  git rev-parse --verify --quiet "refs/remotes/origin/${src}" >/dev/null 2>&1 \
+    || die "origin/${src} does not exist — push the branch first: git push -u origin ${src}"
+  local local_sha remote_sha
+  local_sha=$(git rev-parse --verify --quiet "refs/heads/${src}" 2>/dev/null || true)
+  remote_sha=$(git rev-parse --verify --quiet "refs/remotes/origin/${src}" 2>/dev/null || true)
+  if [ -n "$local_sha" ] && [ "$local_sha" != "$remote_sha" ]; then
+    print_warning "origin/${src} is at ${remote_sha:0:12} but your local ${src} is at ${local_sha:0:12}"
+    print_warning "the MR will review what is PUSHED, not what is in your worktree."
+  fi
+
+  if [ -n "$desc_file" ]; then
+    [ -f "$desc_file" ] || die "no such --desc-file: $desc_file"
+    desc="$(cat "$desc_file")"
+  fi
+  [ -n "$title" ] || title="$(git log -1 --format=%s "$src" 2>/dev/null || true)"
+  [ -n "$title" ] || die "no --title given and the HEAD commit has no subject"
+  [ -n "$desc" ]  || desc="$(git log -1 --format=%b "$src" 2>/dev/null || true)"
+  [ "$draft" = "true" ] && case "$title" in Draft:*|WIP:*) ;; *) title="Draft: $title" ;; esac
+
+  _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
+
+  local proj payload json iid
+  proj=$(_mr_project) || die "cannot resolve the project (no origin remote?)"
+  payload=$(S="$src" T="$target" TI="$title" D="$desc" R="$remove_src" "$YQ" -n -o=json \
+    '{"source_branch": strenv(S), "target_branch": strenv(T), "title": strenv(TI),
+      "description": strenv(D), "remove_source_branch": (strenv(R) == "true")}')
+  json=$(_mr_api POST "/projects/$proj/merge_requests" "$payload") \
+    || die "could not create the merge request (HTTP $(_mr_http_status))"
+  iid=$(printf '%s' "$json" | "$YQ" e -p=json '.iid // ""' - 2>/dev/null | grep -v '^null$')
+  if [ -z "$iid" ]; then
+    local msg; msg=$(printf '%s' "$json" | "$YQ" e -p=json '.message // .error // ""' - 2>/dev/null)
+    die "GitLab refused the merge request (HTTP $(_mr_http_status)): ${msg:-no message}"
+  fi
+
+  print_success "created !$iid — $title"
+  print_info "$(_mr_web_url "$iid")"
+
+  # THE POINT OF DOING THIS THROUGH A VERB: the sensitive-path gate runs now,
+  # on this MR, without anybody choosing to run it. Its exit code is reported
+  # and deliberately does NOT fail the creation — the MR exists either way, and
+  # a held MR is the correct outcome, not an error.
+  echo
+  local grc=0
+  cmd_guard "$iid" --apply || grc=$?
+  case "$grc" in
+    1) print_warning "!$iid is HELD by the sensitive-path gate — that is the gate working." ;;
+    2) print_warning "!$iid — sensitive-path status CANNOT BE VERIFIED; treat it as held." ;;
+  esac
+  return 0
+}
+
+################################################################################
 # pl mr status <iid> — read-only. Says what the FORGE thinks, not what we hope.
 ################################################################################
 cmd_status(){
@@ -509,6 +606,7 @@ EOF
 main(){
   local sub="${1:-list}"; shift || true
   case "$sub" in
+    create|new)  cmd_create "$@" ;;
     status|show) cmd_status "$@" ;;
     list|ls)     cmd_list "$@" ;;
     hold)        cmd_hold "$@" ;;
@@ -516,8 +614,15 @@ main(){
     guard|gate)  cmd_guard "$@" ;;
     -h|--help|help)
       cat <<EOF
-pl mr — hold, release and guard merge requests (a hold the FORGE enforces)
+pl mr — create, hold, release and guard merge requests (a hold the FORGE enforces)
 
+  pl mr create [--source=BRANCH] [--target=main] [--title=..]
+               [--desc=.. | --desc-file=FILE] [--draft] [--keep-branch]
+                                   open an MR for the current branch. Title and
+                                   description default to the HEAD commit's
+                                   subject and body. The sensitive-path guard
+                                   runs on it IMMEDIATELY, so nobody has to
+                                   remember to run it (ops#216)
   pl mr list                       every open MR: held? auto-merge armed?
   pl mr status <iid>               hold state, GitLab's own merge status,
                                    sensitive paths, release record

@@ -53,7 +53,7 @@ ${BOLD}USAGE:${NC}
     pl moodle plugin build  <plugin> [--from=DIR] [--ddev=SITE|--tree=DIR] [--check-only]
     pl moodle plugin deploy <site> <plugin>... --tier=stg|live [--dry-run|--apply] [--no-upgrade]
                             [--from=DIR|--from-canonical] [--allow-downgrade]
-    pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live]
+    pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live] [--no-canonical] [--canonical-ref=REF]
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
     pl moodle policy        <site> --tier=live [--dry-run|--apply] [--disarm]
@@ -1767,38 +1767,46 @@ cmd_core_patch() {
 # plugin drift — version.php across every known copy (item 9)
 ################################################################################
 cmd_plugin_drift() {
-    local site="" want_live="true"
+    local site="" want_live="true" want_canon="true" canon_ref=""
     local -a plugins=() trees=()
     for a in "$@"; do
         case "$a" in
-            --tree=*)  trees+=("${a#*=}") ;;
-            --no-live) want_live="false" ;;
+            --tree=*)         trees+=("${a#*=}") ;;
+            --no-live)        want_live="false" ;;
+            --no-canonical)   want_canon="false" ;;
+            --canonical-ref=*) canon_ref="${a#*=}" ;;
             -*)        print_error "Unknown option: $a"; return 1 ;;
             *)         if [ -z "$site" ]; then site="$a"; else plugins+=("$a"); fi ;;
         esac
     done
-    [ -z "$site" ] && { print_error "usage: pl moodle plugin drift <site> [<plugin>...] [--tree=DIR]... [--no-live]"; return 1; }
+    [ -z "$site" ] && { print_error "usage: pl moodle plugin drift <site> [<plugin>...] [--tree=DIR]... [--no-live] [--no-canonical] [--canonical-ref=REF]"; return 1; }
     _resolve_moodle_site "$site" || return 1
     if [ "${#plugins[@]}" -eq 0 ]; then
         mapfile -t plugins < <(_moodle_configured_plugins "$CONFIG_FILE")
         [ "${#plugins[@]}" -eq 0 ] && { print_error "No plugins given and none configured under .moodle.plugins."; return 1; }
     fi
 
+    # The canonical repo checkout is resolved INDEPENDENTLY of the tree list, so
+    # `--tree=` runs are still measured against canonical rather than silently
+    # dropping the strongest comparison the verb has.
+    local canon_repo="" repo cache
+    repo="$(_moodle_plugins_repo "$CONFIG_FILE")"
+    cache="$(_moodle_plugin_cache "$BASE" "$repo")"
+    canon_repo="${NWP_MOODLE_CANONICAL_REPO:-$cache}"
+    [ -z "$canon_ref" ] && canon_ref="${NWP_MOODLE_CANONICAL_REF:-origin/$(_moodle_plugins_ref "$CONFIG_FILE")}"
+
     # Default tree set: the dev tree, the canonical repo cache, and the legacy
     # in-repo f26 copy (which is exactly the stale one — 2026071101/1.0.0).
     if [ "${#trees[@]}" -eq 0 ]; then
-        local repo cache
-        repo="$(_moodle_plugins_repo "$CONFIG_FILE")"
-        cache="$(_moodle_plugin_cache "$BASE" "$repo")"
         trees=("$PROJECT_ROOT/sites/${BASE}/dev" "$cache")
     fi
 
     print_header "Moodle plugin version drift: ${BASE}"
-    local total_problems=0 p t v seen ver_ref ref_tree copies
+    local total_problems=0 p t v seen ver_ref ref_tree copies max_copy canon_unknown=0
     for p in "${plugins[@]}"; do
         [ -n "$p" ] || continue
         echo "  ${p}"
-        copies=0; ver_ref=""; ref_tree=""; seen=0
+        copies=0; ver_ref=""; ref_tree=""; seen=0; max_copy=""
         for t in "${trees[@]}"; do
             v="$(moodle_plugin_version_local "$t" "$p" 2>/dev/null || true)"
             if [ -z "$v" ]; then
@@ -1806,6 +1814,7 @@ cmd_plugin_drift() {
                 continue
             fi
             copies=$((copies+1))
+            if [ -z "$max_copy" ] || [ "$v" -gt "$max_copy" ] 2>/dev/null; then max_copy="$v"; fi
             if [ -z "$ver_ref" ]; then ver_ref="$v"; ref_tree="$t"; fi
             if [ "$v" != "$ver_ref" ]; then
                 printf '    %-52s %-12s %s\n' "${t}" "$v" "[DRIFT vs ${ver_ref}]"
@@ -1827,6 +1836,7 @@ cmd_plugin_drift() {
                     printf '    %-52s %s\n' "LIVE ${remote_path}/${p}" "(unreachable or absent)"
                 else
                     copies=$((copies+1))
+                    if [ -z "$max_copy" ] || [ "$lv" -gt "$max_copy" ] 2>/dev/null; then max_copy="$lv"; fi
                     if [ -z "$ver_ref" ]; then ver_ref="$lv"; fi
                     if [ "$lv" != "$ver_ref" ]; then
                         printf '    %-52s %-12s %s\n' "LIVE ${remote_path}/${p}" "$lv" "[DRIFT vs ${ver_ref}]"
@@ -1864,6 +1874,39 @@ cmd_plugin_drift() {
             total_problems=$((total_problems+1))
         fi
 
+        # CANONICAL COMPARISON (ops#259). Every check above asks "are the copies
+        # the same as EACH OTHER?" — a question with a true-and-useless answer
+        # when the whole fleet is equally stale. Measured 2026-08-03: ssd's dev
+        # tree, plugin cache and LIVE all said local/feedback 2026051704 and this
+        # verb printed "every compared copy agrees", while canonical main was
+        # 2026080101 — the range that added classes/privacy/provider.php. So live
+        # Moodle had no GDPR handler for a table of userid/username/email/ip and
+        # the sameness verb said OK. Uniform staleness IS the finding.
+        if [ "$want_canon" = "true" ]; then
+            local cver
+            if cver="$(moodle_plugin_version_canonical "$canon_repo" "$p" "$canon_ref" 2>/dev/null)" && [ -n "$cver" ]; then
+                printf '    %-52s %-12s %s\n' "CANONICAL ${canon_ref}" "$cver" "(${canon_repo})"
+                if [ -n "$max_copy" ] && [ "$max_copy" -lt "$cver" ] 2>/dev/null; then
+                    print_error "  BEHIND-CANONICAL: no copy of ${p} is newer than ${max_copy}; ${canon_ref} is at ${cver}."
+                    print_info  "  Everything agreeing on a STALE version is not agreement — merged is not in force (ops#206)."
+                    print_info  "  Fix it: pl moodle plugins sync ${BASE} --apply, then pl moodle plugin deploy ${BASE} ${p} --tier=live --apply"
+                    total_problems=$((total_problems+1))
+                elif [ -n "$max_copy" ] && [ "$max_copy" -gt "$cver" ] 2>/dev/null; then
+                    # Deliberately NOT an error: an unmerged REVIEW branch legitimately
+                    # runs ahead on dev. It is still worth saying out loud, because code
+                    # on LIVE that is ahead of canonical is code no review gate has seen.
+                    print_warning "  AHEAD-OF-CANONICAL: a copy of ${p} is at ${max_copy}, ${canon_ref} is at ${cver} — unmerged work is deployed."
+                fi
+            else
+                # "I could not look" is never "it is fine". Say so, and make the
+                # closing verdict admit the comparison did not happen.
+                printf '    %-52s %s\n' "CANONICAL ${canon_ref}" "[CANONICAL-UNKNOWN — cannot read ${canon_ref}:${p}/version.php in ${canon_repo:-(no repo)}]"
+                canon_unknown=1
+            fi
+        else
+            canon_unknown=1
+        fi
+
         # "I found nothing" must NEVER read as "everything agrees" — that is the
         # vacuous-pass class this programme exists to eliminate.
         if [ "$copies" -lt 2 ]; then
@@ -1883,7 +1926,12 @@ cmd_plugin_drift() {
         print_info  "Canonical source: nwp/ss-moodle-plugins — pl moodle plugins sync ${BASE} --apply"
         return 1
     fi
-    print_status "OK" "every compared copy agrees on \$plugin->version."
+    if [ "$canon_unknown" -eq 1 ]; then
+        print_status "OK" "every compared copy agrees on \$plugin->version — but CANONICAL WAS NOT COMPARED."
+        print_info  "The copies agreeing with each other does not mean they carry what ${canon_ref:-canonical} carries."
+        return 0
+    fi
+    print_status "OK" "every compared copy agrees on \$plugin->version, and matches ${canon_ref}."
     return 0
 }
 

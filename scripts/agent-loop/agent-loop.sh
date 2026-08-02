@@ -182,6 +182,53 @@ PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 # shellcheck disable=SC2016
 SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.[Ss][Ee][Cc][Rr][Ee][Tt][Ss][^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss][Ee][Cc][Rr][Ee][Tt]|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-|loop-)|(^|/)scripts/agent-loop/|(^|/)scripts/ci/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console|snapshot|doc-truth|impact|contracts|verify)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(^|/)contracts/validate\.py$|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
 
+# ---------------------------------------------------------------------------
+# THE OTHER HALF OF THE GATE — CLAUDE.md's "Sensitive File Paths".
+#
+# SENSITIVE_PATH_RE above is an OPERATIONAL denylist: the repo machinery an
+# autonomous agent must not weaken (CI, the loop itself, gitleaks config, keys,
+# the console's authorisation, the deploy verbs). CLAUDE.md's "Sensitive File
+# Paths" is a POLICY list: what requires two-person approval. They are not the
+# same question and neither contains the other. Measured 2026-08-02:
+#
+#   on CLAUDE.md, MISSED by the regex   →  **/settings.php, composer.json,
+#                                          and CLAUDE.md ITSELF
+#   in the regex, ABSENT from CLAUDE.md →  scripts/ci/, scripts/agent-loop/,
+#                                          nwp.yml, .gitleaks.toml, lib/sanitize*,
+#                                          lib/loop-*, contracts/validate.py,
+#                                          *.pem, .github/, stg2live, console/app
+#
+# The first line is why this exists: an agent could push a change to its OWN
+# standing orders and this gate would not have stopped it. The second line is
+# why the obvious fix — "make the loop just use lib/sensitive-paths.sh" — is
+# wrong: it would have silently deleted eleven protections. Naming one file "the
+# single source of truth" is only safe when it is a superset.
+#
+# So the effective gate is the UNION, and CLAUDE.md's half is derived at run
+# time (never copied) so adding a path to the standing order arms this gate on
+# the next run with no code change.
+#
+# FAIL-CLOSED: if lib/sensitive-paths.sh is missing, or CLAUDE.md cannot be
+# parsed, or it yields nothing, this returns 2 and the caller REFUSES. An
+# unreadable policy is not an empty policy — the same rule the diff and grep
+# arms of this gate already follow.
+_SENSITIVE_PATHS_LIB="${NWP_SENSITIVE_PATHS_LIB:-${NWP_ROOT}/lib/sensitive-paths.sh}"
+
+sensitive_path_re_effective() {
+  local pats extra="" p
+  [ -r "$_SENSITIVE_PATHS_LIB" ] || return 2
+  # shellcheck source=/dev/null
+  source "$_SENSITIVE_PATHS_LIB" || return 2
+  declare -F nwp_sensitive_patterns >/dev/null || return 2
+  pats="$(nwp_sensitive_patterns)" || return 2
+  [ -n "$pats" ] || return 2
+  while IFS= read -r p; do
+    [ -n "$p" ] && extra="${extra}|${p}"
+  done <<< "$pats"
+  [ -n "$extra" ] || return 2
+  printf '%s%s\n' "$SENSITIVE_PATH_RE" "$extra"
+}
+
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 
 log() {
@@ -1048,8 +1095,22 @@ EOF
       processed=$((processed + 1))
       continue
     fi
+    # Union of the operational denylist and CLAUDE.md's policy list; refuses
+    # if the policy half cannot be read (see sensitive_path_re_effective).
+    gate_re=""
+    if ! gate_re="$(sensitive_path_re_effective)"; then
+      log "    REFUSING PUSH — could not derive the sensitive-path policy from CLAUDE.md (lib/sensitive-paths.sh missing or unparseable); an unreadable policy is not an empty policy, so the gate refuses"
+      gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
+        '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
+      gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
+        '{"body":"🚫 Agent-loop **refused to push**: the sensitive-path policy could not be read from CLAUDE.md, so the gate could not confirm the change is safe. A gate that cannot see refuses. The worktree was left for inspection and `agent-eligible` was removed."}' \
+        >>"$LOG_FILE" 2>&1 || true
+      rm -rf "$gate_tmp"
+      processed=$((processed + 1))
+      continue
+    fi
     grep_rc=0
-    grep -zE "$SENSITIVE_PATH_RE" "$gate_diff" >"$gate_hits" 2>/dev/null || grep_rc=$?
+    grep -zE "$gate_re" "$gate_diff" >"$gate_hits" 2>/dev/null || grep_rc=$?
     if (( grep_rc != 0 && grep_rc != 1 )); then
       log "    REFUSING PUSH — the sensitive-path scan itself failed (grep rc=${grep_rc}); CANNOT-VERIFY, so the gate refuses (ops#151 F3)"
       gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \

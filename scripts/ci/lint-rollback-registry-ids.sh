@@ -75,11 +75,26 @@ for reg in "${registries[@]}"; do
     # were added without the prefix and were invisible here. Renamed, and the
     # skip is now an error rather than a silence.
     #
-    # Header (`| # |`) and separator (`|---|`) rows are structure, not data.
-    unrecognised="$(grep -nE '^\| ' "$reg" \
-        | grep -vE '^[0-9]+:\| *CP' \
-        | grep -vE '^[0-9]+:\| *#? *\|' \
-        | grep -vE '^[0-9]+:\|[ :-]*\|')"
+    # Header and separator rows are STRUCTURE, not data, and are exempt.
+    #
+    # They are identified STRUCTURALLY — a separator row (`|---|---|`) and the
+    # row immediately above it — not by matching the header's text. The first
+    # cut of this exemption hard-coded `| # |`, the heading this repo's one
+    # registry happens to use, so a registry headed `| ID | Date | …` had its
+    # header reported as an unrecognised checkpoint. A gate that only tolerates
+    # the file it was written against fails on the next file, and the tempting
+    # fix is to relax the gate rather than the exemption.
+    unrecognised="$(awk '
+        /^\|[[:space:]]*:?-{2,}/ { sep[NR] = 1 }
+        { line[NR] = $0 }
+        END {
+            for (n = 1; n <= NR; n++) {
+                if (line[n] !~ /^\|[[:space:]]/) continue   # not a table row
+                if (sep[n] || sep[n + 1]) continue          # separator, or the header above one
+                if (line[n] ~ /^\|[[:space:]]*CP/) continue # a recognised checkpoint id
+                printf "%d:%s\n", n, line[n]
+            }
+        }' "$reg")"
     if [ -n "$unrecognised" ]; then
         echo "UNRECOGNISED CHECKPOINT ID: $reg"
         echo "    A registry row's first cell must be a CP id (e.g. CP-ops213),"

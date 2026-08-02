@@ -1,0 +1,19 @@
+[Unit]
+Description=Tick the NWP session supervisor
+Documentation=file:%h/nwp/docs/guides/session-handover-runbook.md
+
+[Timer]
+# Five minutes is the same cadence the hand-written baton poll used, and it is
+# the right grain: the cost of a tick is one baton read plus (at most) one
+# GitLab call, and the cost of being five minutes late to start a session is
+# nothing.
+OnBootSec=5min
+OnUnitActiveSec=5min
+# Do NOT catch up after a suspend. A laptop that wakes with six missed ticks
+# should run ONE, not six — and the supervisor's own "is a session already
+# running" check should be a backstop, not the primary defence.
+Persistent=false
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

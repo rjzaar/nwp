@@ -71,14 +71,15 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "CANNOT VERIFY: an empty corpus exits 2, not 0" {
-    # "No files to check" must never render as "checked and clean" — the exact
-    # blindness this estate keeps eliminating.
-    rm -rf "$TMP/lib" "$TMP/scripts/commands"
-    run "$SANDBOX"
-    [ "$status" -eq 2 ] || {
-        # the gate globs lib/**/*.sh scripts/**/*.sh; its own copy lives under
-        # scripts/ci, so the corpus is never truly empty in this layout.
-        skip "gate always sees its own copy in this sandbox layout"
-    }
-}
+# REMOVED: "an empty corpus exits 2, not 0".
+#
+# The case could only `skip`, and lint:test-honesty flagged that correctly (H3).
+# It was asserting something STRUCTURALLY UNREACHABLE: the gate globs
+# `lib/**/*.sh scripts/**/*.sh` relative to its own ../.., and its own copy lives
+# at scripts/ci/lint-yq-tab-escape.sh — so `scripts/**/*.sh` always matches at
+# least that file and the corpus can never be empty.
+#
+# The exit-2 branch is therefore dead code in practice. Deleting the case is
+# honest; skipping it would have left a permanent "this is checked" marker over
+# something that cannot be checked. If the gate's corpus ever moves outside its
+# own tree, add the case back — and it will then be constructible.

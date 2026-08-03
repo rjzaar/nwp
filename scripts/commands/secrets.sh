@@ -258,7 +258,12 @@ cmd_status(){
     id=$(field "$i" id); via=$(field "$i" rotate_via); exp=$(field "$i" expires)
     rot=$(field "$i" last_rotated); [ -z "$rot" ] && rot="—"
     st=$(field "$i" status)
-    if [ "$st" = "not-provisioned" ]; then dtxt="·"; col="$DIM"; exp="not-prov"; rot="—"
+    # RETIRED first: the credential does not exist, so its expiry is meaningless.
+    # Colouring a retired row green (or red) is how a phantom credential comes to
+    # look like a live one — the defect that motivated `pl secrets retire`.
+    local ret; ret=$(field "$i" retired)
+    if [ -n "$ret" ]; then dtxt="·"; col="$DIM"; exp="RETIRED"; rot="$ret"
+    elif [ "$st" = "not-provisioned" ]; then dtxt="·"; col="$DIM"; exp="not-prov"; rot="—"
     elif [ -z "$exp" ] || [ "$exp" = "unknown" ]; then dtxt="-"; col="$DIM"; exp="unknown"
     else
       d=$(days_until "$exp"); dtxt="$d"
@@ -271,7 +276,8 @@ cmd_status(){
     # value was SEEN. That fact belongs on the same line as the expiry, or the
     # table quietly reports a green row for a burnt token.
     local dbt=""
-    [ "$("$YQ" e ".secrets[$i].exposure // [] | map(select((.rotated // false) != true)) | length" "$REGISTRY" 2>/dev/null)" != "0" ] \
+    [ -z "$ret" ] \
+      && [ "$("$YQ" e ".secrets[$i].exposure // [] | map(select((.rotated // false) != true)) | length" "$REGISTRY" 2>/dev/null)" != "0" ] \
       && dbt=" ${RED}EXPOSED — rotation OWED${NC}"
     printf "  ${BOLD}%-3s${NC} ${col}%-24s${NC} %-7s ${col}%-7s${NC} %-12s %-12s%b\n" "$((i+1))" "$id" "$via" "$dtxt" "$exp" "$rot" "$dbt"
   done
@@ -761,6 +767,145 @@ exposure_discharge(){
   # rotation log, and a captured success message would end up inside it.
   print_success "  discharged $open exposure rotation-debt record(s) [$refs]" >&2
   printf '%s' "$refs"
+}
+
+################################################################################
+# retire — a credential that is GONE, not rotated (nwp/ops#268)
+#
+# WHY THIS EXISTS
+#   `pl secrets debt` correctly refuses to let a rotation debt lapse: under
+#   ruling D8 an open debt blocks a prod bring-up. But before this verb the ONLY
+#   two ways to discharge one were `rotate` ("here is the new value") and `done`
+#   ("I rotated it by hand"). A credential that was REVOKED AND DELETED with no
+#   replacement fits neither.
+#
+#   So on 2026-08-03 gitlab_nwp_courses_pat was retired with `done`, and the
+#   registry then read:
+#
+#       33  gitlab_nwp_courses_pat   manual  364  expires 2027-08-03
+#
+#   A live credential with 364 days to run, for a token that does not exist. The
+#   operator caught it himself — "I deleted it not rotated it" — which is the
+#   whole problem: the registry stated something untrue and a human had to notice.
+#
+#   The registry's one job is to be right about which credentials exist.
+#
+# WHAT IT DOES
+#   * discharges any open exposure/rotation debt — the credential is gone, so the
+#     debt is genuinely settled, not deferred
+#   * stamps `retired:` + `retired_reason:` and deliberately does NOT write
+#     `expires` or `last_rotated`
+#   * appends to the rotation log as RETIRED, never as a rotation
+#
+# THE GUARD THAT MATTERS
+#   It REFUSES while any declared location still HOLDS a value. A "retired"
+#   credential still sitting in a config file is not retired, it is abandoned —
+#   and it would still be readable by whoever can read that file. Locations it
+#   cannot read (external:, unreachable hosts) are reported as CANNOT VERIFY and
+#   must be acknowledged explicitly with --externals-cleared; they are never
+#   assumed empty, because "I could not look" is not "it is gone".
+################################################################################
+cmd_retire(){
+  need_yq; need_registry
+  local arg="" reason="" force_ext=0 dry=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --reason)             reason="${2:-}"; shift 2 ;;
+      --reason=*)           reason="${1#*=}"; shift ;;
+      --externals-cleared)  force_ext=1; shift ;;
+      --dry-run)            dry=1; shift ;;
+      -h|--help)
+        printf 'usage: pl secrets retire <#|id> --reason="..." [--externals-cleared] [--dry-run]\n'
+        printf '  For a credential that is GONE (revoked/deleted), not rotated.\n'
+        printf '  Refuses while any declared location still holds a value.\n'
+        return 0 ;;
+      -*) die "unknown option: $1" ;;
+      *)  [ -z "$arg" ] && { arg="$1"; shift; } || die "unexpected arg: $1" ;;
+    esac
+  done
+  [ -n "$arg" ] || die 'usage: pl secrets retire <#|id> --reason="..."'
+  [ -n "$reason" ] || die '--reason is required — a retirement nobody explained is indistinguishable from a mistake'
+
+  local idx
+  if [[ "$arg" =~ ^[0-9]+$ ]]; then
+    [ "$arg" -ge 1 ] || die "number must be >= 1"
+    idx=$((arg-1))
+  else
+    idx=$(registry_index_of "$arg")
+  fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
+  local id; id=$(field "$idx" id)
+
+  local already; already=$(field "$idx" retired)
+  [ -n "$already" ] && { print_info "$id is already retired ($already)"; return 0; }
+
+  # ── THE GUARD: no declared location may still hold a value ────────────────
+  local n j held="" blind=""
+  n=$("$YQ" e ".secrets[$idx].stored_in // [] | length" "$REGISTRY" 2>/dev/null); [ "$n" = "null" ] && n=0
+  for ((j=0;j<n;j++)); do
+    local loc parsed kind host path ref v rc
+    loc=$("$YQ" e ".secrets[$idx].stored_in[$j]" "$REGISTRY" 2>/dev/null)
+    parsed=$(loc_parse "$loc") || { blind="${blind}    $loc  (unparseable)"$'\n'; continue; }
+    # loc_parse delimits with \x1f (unit separator), NOT tab. Reading it with
+    # IFS=$'\t' silently produced ONE field, so every location fell through to
+    # "unparseable" and the verb refused everything with CANNOT-VERIFY. Same
+    # shape as the yq "\t" defect: an assumed delimiter that never split.
+    IFS=$'\x1f' read -r kind host path ref <<<"$parsed"
+    case "$kind" in
+      external|bad) blind="${blind}    $loc  (external — cannot be read by any verb)"$'\n'; continue ;;
+    esac
+    if [ -n "$host" ]; then
+      blind="${blind}    $loc  (remote — use pl secrets verify-copy)"$'\n'; continue
+    fi
+    rc=0; v=$(loc_read "$kind" "$path" "$ref") || rc=$?
+    # loc_read's contract: 0 = read a value · 3 = file absent · 4 = present but
+    # EMPTY · 5 = no reader for this kind. rc=4 is exactly the state retire
+    # requires, so it is a PASS, not blindness — treating every non-zero as
+    # "cannot verify" made the verb refuse the very case it exists for.
+    case "$rc" in
+      0) [ -n "$v" ] && held="${held}    $loc  (still holds ${#v} chars)"$'\n' ;;
+      3) : ;;   # the file is gone: the value cannot be there either
+      4) : ;;   # present and empty — cleared
+      *) blind="${blind}    $loc  (unreadable, rc=$rc)"$'\n' ;;
+    esac
+  done
+
+  if [ -n "$held" ]; then
+    print_error "$id: REFUSING to retire — these declared locations STILL HOLD a value:"
+    printf '%s' "$held"
+    print_hint "A retired credential still sitting in a file is not retired, it is abandoned."
+    print_hint "Clear each location first, then retire."
+    return 1
+  fi
+  if [ -n "$blind" ] && [ "$force_ext" -eq 0 ]; then
+    print_error "$id: CANNOT VERIFY these declared locations are empty:"
+    printf '%s' "$blind"
+    print_hint "'I could not look' is not 'it is gone'. Clear them, confirm by hand, then:"
+    print_hint "  pl secrets retire $arg --reason='...' --externals-cleared"
+    return 2
+  fi
+
+  if [ "$dry" -eq 1 ]; then
+    print_warning "DRY RUN — $id would be retired; nothing written."
+    [ -n "$blind" ] && { print_info "unverifiable locations that you would be affirming:"; printf '%s' "$blind"; }
+    return 0
+  fi
+
+  # ── discharge, then stamp. NEVER expires/last_rotated. ────────────────────
+  local when cleared; when=$(date +%F)
+  cleared=$(exposure_discharge "$idx" "$when")
+  NWP_RET_WHEN="$when" NWP_RET_WHY="$reason" "$YQ" e -i \
+    ".secrets[$idx].retired = strenv(NWP_RET_WHEN) | .secrets[$idx].retired_reason = strenv(NWP_RET_WHY)" \
+    "$REGISTRY" || die "could not write the registry"
+
+  [ -f "$ROT_LOG" ] || printf '# Credential rotation — %s\n\nDates only; never paste values.\n\n' "$(date +%Y-%m)" > "$ROT_LOG"
+  printf -- "- [x] %s — RETIRED %s (not rotated; no replacement exists). %s%s\n" \
+    "$id" "$when" "$reason" "${cleared:+ — cleared exposure debt: $cleared}" >> "$ROT_LOG"
+
+  print_success "$id RETIRED $when — no expiry stamped, because no credential exists"
+  [ -n "$cleared" ] && print_info "  exposure debt discharged: $cleared"
+  [ -n "$blind" ] && print_warning "  you affirmed these could not be machine-verified:" && printf '%s' "$blind"
+  print_hint "status now renders it RETIRED; audit and expiry alerts skip it."
 }
 
 cmd_expose(){
@@ -1932,6 +2077,11 @@ cmd_audit(){
     local id prov st recorded canon canonval canonhash live liveexp note col d useexp host
     id=$(field "$i" id); prov=$(field "$i" provider); st=$(field "$i" status); recorded=$(field "$i" expires)
     [ "$st" = "not-provisioned" ] && continue
+    # RETIRED entries are skipped: the credential was revoked/deleted, so probing
+    # it would spend a provider call to learn 401 — and a 401 is what a retired
+    # token is SUPPOSED to return. Counting that as a finding would make every
+    # audit permanently red for work that is finished (ops#268).
+    [ -n "$(field "$i" retired)" ] && continue
 
     host=$(field "$i" rotate_url | sed -E 's|https?://([^/]+).*|\1|')
     { [ -z "$host" ] || [ "$host" = "$(field "$i" rotate_url)" ]; } && host="$host_default"
@@ -3618,6 +3768,7 @@ case "$sub" in
   surfaces)       cmd_surfaces "$@" ;;
   rotate)         cmd_rotate "$@" ;;
   done)           cmd_done "$@" ;;
+  retire)         cmd_retire "$@" ;;
   expose|exposed) cmd_expose "$@" ;;
   debt|debts)     cmd_debt "$@" ;;
   get)            cmd_get "$@" ;;

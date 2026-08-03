@@ -9,6 +9,21 @@ setup() {
 }
 teardown() { rm -rf "$T"; }
 
+
+# Build a sandboxed copy of the verb: PROJECT_ROOT points at the fixture, and
+# get_server_ssh_command is overridden to the ssh stub. The verb no longer
+# contains a literal host or IP (gitleaks forbids it), so the test must supply
+# both the same way the verb resolves them in production.
+_mk_script() {
+    {
+        printf 'get_server_ssh_command() { printf "%%s" "%s"; }\n' "$T/ssh-stub"
+        sed -e "s|^PROJECT_ROOT=.*|PROJECT_ROOT=\"$T\"|" \
+            -e "s|^source .*lib/common.sh.*|true|" \
+            "$ROOT/scripts/commands/reconcile.sh"
+    } > "$T/r.sh"
+    chmod +x "$T/r.sh"
+}
+
 _run_reconcile() { # ssh-stub-behaviour
     # Stub ssh entirely: NWP_RECONCILE_SSH points at a script that answers per
     # our scenario. Also neuter the delegated verbs via a stub pl.
@@ -30,8 +45,8 @@ S
     chmod +x "$T/ssh-stub"
     mkdir -p "$T/sites"
     run env NWP_RECONCILE_SSH="$T/ssh-stub" bash "$ROOT/scripts/commands/reconcile.sh"
-    echo "$output" | grep -E 'checkout-mini' | grep -q 'CANNOT-VERIFY'
-    ! (echo "$output" | grep -qE '^OK +checkout-mini')
+    echo "$output" | grep -q 'CANNOT-VERIFY.*checkout-ai-host'
+    ! (echo "$output" | grep -qE '^OK +checkout-ai-host')
 }
 
 @test "RED-PROOF: a box golden that differs from local is RED and names the consequence" {
@@ -43,8 +58,8 @@ S
 echo "$(printf '%064d' 2)"
 S
     chmod +x "$T/ssh-stub"
-    run env NWP_RECONCILE_SSH="$T/ssh-stub" PROJECT_ROOT_OVERRIDE="$T" bash -c "
-        sed 's|^PROJECT_ROOT=.*|PROJECT_ROOT=\"$T\"|' '$ROOT/scripts/commands/reconcile.sh' > '$T/r.sh' && bash '$T/r.sh'"
+    _mk_script
+    run env NWP_RECONCILE_SSH="$T/ssh-stub" bash "$T/r.sh"
     echo "$output" | grep 'golden-nwd' | grep -q 'RED'
     echo "$output" | grep 'golden-nwd' | grep -qi 'reset restores the box copy'
     [ "$status" -eq 1 ]
@@ -59,9 +74,8 @@ S
 echo "$h"
 S
     chmod +x "$T/ssh-stub"
-    run bash -c "
-        sed 's|^PROJECT_ROOT=.*|PROJECT_ROOT=\"$T\"|' '$ROOT/scripts/commands/reconcile.sh' > '$T/r.sh' &&
-        NWP_RECONCILE_SSH='$T/ssh-stub' bash '$T/r.sh'"
+    _mk_script
+    run env NWP_RECONCILE_SSH="$T/ssh-stub" bash "$T/r.sh"
     # OK is at column 1 of the row — grepping ' OK ' (leading space) missed it
     # and failed this case for a formatting reason, not a logic one.
     echo "$output" | grep -qE '^OK +golden-nwd'

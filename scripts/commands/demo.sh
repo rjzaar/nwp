@@ -71,7 +71,12 @@ ${BOLD}USAGE:${NC}
     pl demo <subcommand> <site> [options]
 
 ${BOLD}SUBCOMMANDS:${NC}
-    golden <site> [--with-pair]   Capture the current state as the golden image
+    golden <site> [--with-pair] [--no-stage]
+                                  Capture the current state as the golden image
+                                  AND stage it to the box (sha256-verified there)
+                                  so the nightly reset restores THIS capture.
+                                  --no-stage captures locally only — the box
+                                  keeps its previous image and the verb says so.
                                   (verified DB dump + files tar + manifest under
                                   sites/<site>/demo-golden/). REFUSES to capture
                                   a site whose own modules' shipped config was
@@ -2009,7 +2014,26 @@ cmd_golden_live() {
 
     demo_log "$site" golden-captured "tier=live host=${DEMO_LIVE_IP} db=$(du -h "$gdir/$GOLDEN_DB" | cut -f1) files=$(du -h "$gdir/$GOLDEN_FILES" | cut -f1)"
     print_status "OK" "Live golden image captured + verified: $gdir"
-    print_hint "Nightly restore will return ${DEMO_LIVE_DOMAIN:-$site} to exactly this state."
+
+    # The survival claim below is EARNED, not assumed. On 2026-08-03 this verb
+    # printed "Nightly restore will return <site> to exactly this state" after
+    # every capture — but capture writes only to this repo, and the nightly
+    # restores from /var/lib/nwp-demo/<site>/golden/ ON THE BOX. Both of that
+    # day's live fixes were reverted overnight while the operator had been told
+    # they were durable. The hint now prints only after the box verifiably
+    # holds this capture (install-box.sh sha256-checks it there), and inverts
+    # into a loud warning otherwise. A message that states the consequence of
+    # the state, rather than the intention of the command, cannot make that
+    # mistake.
+    if [[ "${DEMO_GOLDEN_NO_STAGE:-false}" == "true" ]]; then
+        print_warning "NOT STAGED (--no-stage): the box still holds the PREVIOUS golden."
+        print_warning "Tonight's reset will restore THAT image, not this capture."
+        print_hint    "stage when ready: bash servers/live/demo/install-box.sh ${site} --stage-golden --no-key"
+    elif demo_golden_stage_and_verify "$site"; then
+        print_hint "Nightly restore will return ${DEMO_LIVE_DOMAIN:-$site} to exactly this state (staged + sha256-verified on the box)."
+    else
+        return 1
+    fi
 }
 
 ################################################################################
@@ -3995,6 +4019,11 @@ main() {
         case "$1" in
             --tier=*)   tier="${1#--tier=}"; shift ;;
             --allow-config-gaps) allow_gaps="true"; shift ;;
+            # Capture WITHOUT staging to the box — for taking a point-in-time
+            # copy you do not want the nightly to restore yet. The default is
+            # to stage, because a capture the reset cannot see is a trap (see
+            # cmd_golden_live).
+            --no-stage) DEMO_GOLDEN_NO_STAGE="true"; shift ;;
             --dry-run)  dry_run="true"; shift ;;
             --if-idle)  if_idle="${2:-}"; shift 2 ;;
             --if-idle=*) if_idle="${1#--if-idle=}"; shift ;;

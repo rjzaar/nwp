@@ -1161,3 +1161,40 @@ demo_golden_verify() {
     done
     return 0
 }
+
+# ── demo_golden_stage_and_verify <site> — push the freshly captured golden to
+#    the box, or say loudly that the nightly will NOT restore it (ops#269) ────
+#
+# WHY THIS EXISTS. On 2026-08-03 two live fixes (the ops#218 IG retirement, the
+# ops#228 clip fix) were captured with `pl demo golden` and reported as durable
+# — and the overnight reset REVERTED BOTH. `pl demo golden` writes only to
+# sites/<site>/demo-golden-live/ in this repo; the nightly wrapper restores from
+# /var/lib/nwp-demo/<site>/golden/ ON THE BOX, which still held a two-day-old
+# image. Worse, the verb itself printed "Nightly restore will return <site> to
+# exactly this state" — a claim about an artefact it had never touched. The
+# operator's tester account regained three retired groups overnight, and ssd
+# came up with versiondb BEHIND versiondisk.
+#
+# Staging is delegated to servers/live/demo/install-box.sh --stage-golden, which
+# already does this correctly (scp, root-owned install, `sha256sum -c` ON THE
+# BOX against the uploaded checksums, and a manifest.site check so the wrong
+# half can never be staged). Its exit code therefore IS the box==local proof —
+# no second hash pass here, one implementation, not two (the resolver lesson).
+#
+# NWP_DEMO_INSTALL_BOX overrides the script path (tests stub it).
+demo_golden_stage_and_verify() {
+    local site="$1"
+    local stager="${NWP_DEMO_INSTALL_BOX:-${PROJECT_ROOT:-$HOME/nwp}/servers/live/demo/install-box.sh}"
+    if [[ ! -f "$stager" ]]; then
+        print_error "cannot stage: ${stager} not found — the box still holds the PREVIOUS golden"
+        return 3
+    fi
+    print_info "Staging golden to the box (the artefact the nightly actually restores)…"
+    if ! bash "$stager" "$site" --stage-golden --no-key; then
+        print_error "STAGING FAILED — the capture succeeded LOCALLY, but the box still holds"
+        print_error "the PREVIOUS golden. Tonight's reset will restore THAT, not this capture."
+        print_hint  "retry: bash servers/live/demo/install-box.sh ${site} --stage-golden --no-key"
+        return 1
+    fi
+    return 0
+}

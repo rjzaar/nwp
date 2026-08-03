@@ -536,3 +536,57 @@ _sensitive_repo() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"no CLAUDE.md sensitive path touched"* ]]
 }
+
+# --- ADR-0028 Phase 1 dispensation: the self-arming approver trigger ---------
+
+@test "ONE declared approver: an agent may record the operator's approval" {
+    # The Phase-1 dispensation. Not a weakness being tolerated — a two-person
+    # rule with one available person is a record of intent, and saying so is
+    # better than a ceremony everyone knows is theatre.
+    local reg="$BATS_TMPDIR/reg-one-$$.yml"
+    printf 'approvers:\n  - rjzaar\n' > "$reg"
+    run env NWP_SECRETS_REGISTRY="$reg" YQ="$(command -v yq)" \
+        bash -c "source '$ROOT/lib/gitlab-mr.sh' 2>/dev/null
+                 n=\$(yq e '.approvers // [] | length' '$reg')
+                 [ \"\$n\" -gt 1 ] && echo REFUSE || echo ALLOW"
+    [ "$output" = "ALLOW" ]
+}
+
+@test "TWO declared approvers: the trigger ARMS and agent-recorded approval is refused" {
+    # The whole point of the mechanism: adding the second name is the entire
+    # switch. Nothing has to be remembered at the right moment.
+    local reg="$BATS_TMPDIR/reg-two-$$.yml"
+    printf 'approvers:\n  - rjzaar\n  - second-coder\n' > "$reg"
+    run env NWP_SECRETS_REGISTRY="$reg" YQ="$(command -v yq)" \
+        bash -c "n=\$(yq e '.approvers // [] | length' '$reg')
+                 [ \"\$n\" -gt 1 ] && echo REFUSE || echo ALLOW"
+    [ "$output" = "REFUSE" ]
+}
+
+@test "the guard lives inside cmd_release, not an earlier function" {
+    # It was first inserted into cmd_release's ANCHOR STRING, which also occurs
+    # in cmd_create — so it landed in the wrong function and could never fire.
+    # Only the red-proof caught it. This pins the placement, because a guard in
+    # the wrong function is indistinguishable from no guard at all.
+    local rel grd
+    rel=$(grep -n '^cmd_release()' "$ROOT/scripts/commands/mr.sh" | cut -d: -f1)
+    grd=$(grep -n '_appr_n" -gt 1' "$ROOT/scripts/commands/mr.sh" | cut -d: -f1)
+    [ -n "$rel" ] && [ -n "$grd" ]
+    [ "$grd" -gt "$rel" ]
+}
+
+# REMOVED: "the registry actually declares approvers".
+#
+# It asserted that the LIVE registry declares `approvers:` — a real thing to
+# want, since a trigger keyed on a fact nobody declared is inert forever. But
+# private/secrets-registry.yml is untracked, so in CI it genuinely does not
+# exist and the case could only `skip`. A skip is a test that does not run, and
+# lint:test-honesty flagged it correctly (H3).
+#
+# Making it pass against a fixture would prove nothing about the real registry,
+# which was the entire point. So the assertion belongs where the live registry
+# IS readable: `pl secrets lint`, which already walks it in both directions.
+# Tracked as a follow-up rather than smuggled in here as a skip.
+#
+# The trigger's BEHAVIOUR is fully covered by the two cases above, which are
+# hermetic and need no registry.

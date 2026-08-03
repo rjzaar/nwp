@@ -432,6 +432,39 @@ cmd_release(){
   [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr release <iid> --approved-by=<handle> [--reason=\"...\"]"
   approver="${approver#@}"
   [ -n "$approver" ] || die "--approved-by=<handle> is required — a release names the second pair of eyes"
+
+  # ── ADR-0028 "Phase 1 dispensation": a trigger that arms itself ────────────
+  #
+  # While the registry's `approvers:` fact names exactly ONE human, an agent may
+  # record that person's approval on their explicit instruction. That is a
+  # record of INTENT, not authentication, and is accepted deliberately: a
+  # two-person rule with only one available person is not two-person review, and
+  # pretending otherwise is how real controls come to be ignored.
+  #
+  # The MOMENT a second name is added this refuses agent-recorded approvals —
+  # a second human exists, so the approval must be authenticated (ed25519-sk
+  # Solo touch, ADR-0028 "Signing"). Adding the name is the entire switch.
+  #
+  # Keyed off a DECLARED FACT, never a date or a phase name: inert today,
+  # correct forever, and it arms without anyone remembering to arm it.
+  local _appr_file="${NWP_SECRETS_REGISTRY:-$HOME/nwp/private/secrets-registry.yml}"
+  local _appr_n=0
+  if [ -r "$_appr_file" ] && [ -n "$YQ" ]; then
+    _appr_n=$("$YQ" e '.approvers // [] | length' "$_appr_file" 2>/dev/null || echo 0)
+    [[ "$_appr_n" =~ ^[0-9]+$ ]] || _appr_n=0
+  fi
+  if [ "$_appr_n" -gt 1 ] && [ -z "${NWP_MR_APPROVAL_SIGNATURE:-}" ]; then
+    die "REFUSING: the registry declares $_appr_n approvers, so a second human
+  can sign. Recording an approval on someone's behalf is sanctioned only while
+  there is exactly one (ADR-0028, Phase 1 dispensation).
+
+  @$approver must authenticate it themselves — ed25519-sk Solo touch, per
+  ADR-0028 'Signing'. Set NWP_MR_APPROVAL_SIGNATURE once that path exists.
+
+  Not a bug: adding the second name to approvers: is what turns the
+  record-of-intent into a real two-person rule."
+  fi
+
   _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
 
   local json; json=$(_mr_fetch "$iid") || _mr_die_read "$iid"

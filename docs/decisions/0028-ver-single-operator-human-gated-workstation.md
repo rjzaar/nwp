@@ -111,6 +111,51 @@ ver is a **single-operator, human-gated desktop workstation**, running the **ful
   USB-transferred, TOFU-verified — low ongoing exposure). It may later be unified onto
   `ed25519-sk` but that is not required now.
 
+### MR approval while there is only one human (Phase 1 dispensation)
+
+**Added 2026-08-03 by operator decision.** This records what is actually
+sanctioned, because a control that reads stronger than it is, is worse than a
+control that is honestly scoped.
+
+`pl mr release <iid> --approved-by=<handle>` lifts the D13 sensitive-path hold.
+The gate checks that the approver is **not the MR author** and **not a bot**. It
+does **not** — and today cannot — verify that the named human typed the command.
+An AI agent running `--approved-by=rjzaar` is indistinguishable from the
+operator running it.
+
+**During Phase 1 that is accepted, deliberately, and is not a defect.** There is
+exactly one human on this estate. A "two-person rule" with one person available
+is not two-person review; it is a record of intent. Pretending otherwise would
+mean either blocking all sensitive-path work, or maintaining a ceremony everyone
+knows is theatre — and theatre is how real controls come to be ignored.
+
+So, while the estate has one signer:
+
+- An agent **may** record the operator's approval, **only** on an explicit,
+  in-session instruction from the operator, naming the MR.
+- The `--reason` **must cite that instruction** — what was asked, and when — so
+  the audit trail shows *why* the approval is recorded as the operator's, not
+  merely *that* it is.
+- The release remains bound to the head commit. Pushing re-holds. That part is
+  real enforcement and is unaffected.
+- What this buys is **traceability, not authentication**. Read the release note
+  as "the operator asked for this", never as "a second human reviewed this".
+
+**THE TRIGGER — this dispensation ends by itself.** The registry carries a
+declared `approvers:` fact. While it names one human, the above applies. The
+moment a **second** name appears — a second coder able to sign MRs — the verb
+**refuses agent-recorded approvals** and the approver must authenticate. Nothing
+has to be remembered at the right moment; adding the second name arms it.
+
+This follows the same rule as every other guard here: key off a **declared
+fact**, never off a date, a phase name, or an intention. A guard that is inert
+today, correct forever, and arms itself when the world changes (cf. the
+canonical-phase rule in `CLAUDE.md`) beats one that depends on somebody noticing.
+
+When enforcement does arm, the mechanism is already specified above: the
+`ed25519-sk` Solo touch. A signature the agent cannot produce is the difference
+between recording an approval and *being* one.
+
 ### Hardware tokens (repurposed from the deferred Solo-K plan)
 - The **part-built Solo K → Solo W** (primary WebAuthn + carry token). **Factory-reset
   it first** to clear the half-built keystore credential and PIN.

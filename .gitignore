@@ -302,3 +302,21 @@ docs/security/audit-2026-05/
 # ver provisioning kit: operator-verified tool pins (local trust anchors; see
 # scripts/ver-provision/ver-kit.pins.example) and the assembled kit output
 scripts/ver-provision/ver-kit.pins
+
+# Pair runtime state — NOT source.
+#
+# `pl pair-smoke` and `pl rag` write per-site logs and RAG state under
+# private/pairs/. On 2026-08-03 a `git add -A` in a worktree swept two of them
+# into MR !354 and they became TRACKED on main: private/pairs/ssd.log (a
+# smoke-run log) and private/pairs/ssd.live.rag (RAG state). The next `git pull`
+# on the workstation then ABORTED — "untracked working tree files would be
+# overwritten" — because the same files existed locally as runtime output. A
+# committed log file is a merge conflict waiting for every host that runs the
+# verb.
+#
+# private/ is allowlisted for a few genuine records (token-consumers, rotation
+# logs), which is why these slipped through. Runtime state is excluded
+# explicitly.
+private/pairs/*.log
+private/pairs/*.rag
+private/pairs/*.cv

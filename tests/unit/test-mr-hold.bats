@@ -575,11 +575,18 @@ _sensitive_repo() {
     [ "$grd" -gt "$rel" ]
 }
 
-@test "the registry actually declares approvers (the fact the trigger reads)" {
-    # A trigger keyed on a fact nobody declared is inert forever.
-    local reg="${NWP_SECRETS_REGISTRY:-$HOME/nwp/private/secrets-registry.yml}"
-    if [ ! -r "$reg" ]; then skip "registry not present on this host"; fi
-    run yq e '.approvers // [] | length' "$reg"
-    [ "$status" -eq 0 ]
-    [ "$output" -ge 1 ]
-}
+# REMOVED: "the registry actually declares approvers".
+#
+# It asserted that the LIVE registry declares `approvers:` — a real thing to
+# want, since a trigger keyed on a fact nobody declared is inert forever. But
+# private/secrets-registry.yml is untracked, so in CI it genuinely does not
+# exist and the case could only `skip`. A skip is a test that does not run, and
+# lint:test-honesty flagged it correctly (H3).
+#
+# Making it pass against a fixture would prove nothing about the real registry,
+# which was the entire point. So the assertion belongs where the live registry
+# IS readable: `pl secrets lint`, which already walks it in both directions.
+# Tracked as a follow-up rather than smuggled in here as a skip.
+#
+# The trigger's BEHAVIOUR is fully covered by the two cases above, which are
+# hermetic and need no registry.

@@ -1038,6 +1038,10 @@ check_secret_expiry() {
         id=$(yq eval ".secrets[$i].id // \"\"" "$registry" 2>/dev/null | grep -v '^null$')
         [ -z "$id" ] && continue
         status=$(yq eval ".secrets[$i].status // \"\"" "$registry" 2>/dev/null | grep -v '^null$')
+        # A RETIRED credential has no expiry to alert on — it does not exist
+        # (ops#268). Alerting would keep `pl todo` and `pl rag` amber forever for
+        # work that is finished, which is how real alerts get ignored.
+        [ -n "$(yq eval ".secrets[$i].retired // \"\"" "$registry" 2>/dev/null | grep -v '^null$')" ] && continue
         [ "$status" = "not-provisioned" ] && continue
         expires=$(yq eval ".secrets[$i].expires // \"unknown\"" "$registry" 2>/dev/null | grep -v '^null$')
 

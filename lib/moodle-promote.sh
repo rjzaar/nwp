@@ -382,13 +382,44 @@ _mp_jwks_uri() { printf '%s/.well-known/jwks.json\n' "${1%/}"; }
 # Read the issuer URL for <tier> from a pair contract file.
 # Uses lib/pair.sh's pair_contract_get when available, else a direct yq read.
 # Usage: _mp_issuer_for_tier <contract_file> <tier>
+# Returns the issuer with `<example-prod-domain>` RESOLVED, never the raw
+# placeholder.
+#
+# ops#267(a): `pl moodle smoke` failed after EVERY Moodle deploy because this
+# handed back the contract value verbatim, so the provider discovery probe dialled
+# `https://nwd.<example-prod-domain>/.well-known/openid-configuration` and got
+# 000000. A smoke check that cannot resolve its own target is not a check.
+#
+# lib/demo-pair.sh already solved exactly this — `demo_pair_issuer()` resolves the
+# placeholder from the provider's gitignored `sites/<provider>/.nwp.yml
+# live.domain` and fails closed if that is absent. This file simply never sourced
+# it. Delegating rather than writing a second resolver: two implementations of
+# "where does the placeholder point" is how they drift, and the drifting copy is
+# always the one doing the work.
 _mp_issuer_for_tier() {
-    local contract="$1" tier="$2"
-    if declare -F pair_contract_get >/dev/null 2>&1; then
-        pair_contract_get "$contract" ".endpoints.${tier}.issuer" 2>/dev/null || true
-        return 0
+    local contract="$1" tier="$2" v=""
+    if ! declare -F demo_pair_issuer >/dev/null 2>&1; then
+        # shellcheck source=/dev/null
+        [ -r "${PROJECT_ROOT:-$HOME/nwp}/lib/demo-pair.sh" ] \
+            && source "${PROJECT_ROOT:-$HOME/nwp}/lib/demo-pair.sh" 2>/dev/null || true
     fi
-    _mp_cfg "$contract" ".endpoints.${tier}.issuer" '' 2>/dev/null || true
+    if declare -F demo_pair_issuer >/dev/null 2>&1; then
+        v="$(demo_pair_issuer "$contract" "$tier" 2>/dev/null || true)"
+        [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+    fi
+    # Fallbacks keep the previous behaviour, but a placeholder that survives to
+    # here is reported rather than silently probed.
+    if declare -F pair_contract_get >/dev/null 2>&1; then
+        v="$(pair_contract_get "$contract" ".endpoints.${tier}.issuer" 2>/dev/null || true)"
+    else
+        v="$(_mp_cfg "$contract" ".endpoints.${tier}.issuer" '' 2>/dev/null || true)"
+    fi
+    case "$v" in
+        *'<example-prod-domain>'*)
+            printf 'UNRESOLVED-PLACEHOLDER' >&2
+            printf '%s' "$v"; return 1 ;;
+    esac
+    printf '%s' "$v"
 }
 
 # moodle_oauth_consumer_config <consumer> <tier> <contract_file> <config_file> <out_file>

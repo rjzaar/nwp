@@ -214,7 +214,16 @@ if [ -z "$PROVIDER_BASE" ]; then
     PROVIDER_BASE="$(pair_contract_get "$CONTRACT" ".endpoints.${TIER}.issuer" 2>/dev/null || true)"
 fi
 
-# ── Expand <example-prod-domain> from configuration (ops#267) ────────────────
+# ── Resolve <example-prod-domain> via the EXISTING resolver (ops#267) ────────
+#
+# CORRECTION to this branch's first version: I wrote a bespoke expander here
+# (reading nwp.yml sites.<site>.live.domain) before discovering that
+# lib/demo-pair.sh:demo_pair_issuer() already did exactly this job, reading the
+# provider's sites/<provider>/.nwp.yml live.domain and failing closed. Two
+# implementations of "where does the placeholder point" is how they drift, and
+# the drifting copy is always the one doing the work. So the provider base now
+# delegates; the local helper survives only for the CONSUMER base, which
+# demo_pair_issuer does not cover.
 #
 # The contracts carry `https://nwd.<example-prod-domain>` rather than the real
 # host, deliberately: the gitleaks operator ruleset bans internal hostnames from
@@ -253,6 +262,15 @@ pair_expand_domain() {
     printf '%s' "${url//<example-prod-domain>/$apex}"
 }
 
+if ! declare -F demo_pair_issuer >/dev/null 2>&1; then
+    # shellcheck source=/dev/null
+    [ -r "${NWP_ROOT:-$HOME/nwp}/lib/demo-pair.sh" ] \
+        && source "${NWP_ROOT:-$HOME/nwp}/lib/demo-pair.sh" 2>/dev/null || true
+fi
+if declare -F demo_pair_issuer >/dev/null 2>&1; then
+    _resolved="$(demo_pair_issuer "$CONTRACT" "$TIER" 2>/dev/null || true)"
+    [ -n "$_resolved" ] && PROVIDER_BASE="$_resolved"
+fi
 if [ -n "$PROVIDER_BASE" ]; then
     PROVIDER_BASE="$(pair_expand_domain "$PROVIDER_BASE" "$PROVIDER")" || true
 fi

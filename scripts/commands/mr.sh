@@ -256,12 +256,39 @@ cmd_create(){
 ################################################################################
 # pl mr status <iid> — read-only. Says what the FORGE thinks, not what we hope.
 ################################################################################
+# _mr_die_read <iid> — one honest explanation for "I could not read the MR".
+#
+# The old message was: "cannot read MR !350 (HTTP ) — token rejected, wrong
+# project, or host unreachable". An EMPTY status with three guesses after it.
+# Run outside a git checkout, `_mr_project` fails, no request is ever made, and
+# the operator is told their token might be wrong. Name the actual cause.
+_mr_die_read(){
+  local iid="$1" st; st="$(_mr_http_status)"
+  if ! _mr_project >/dev/null 2>&1; then
+    die "cannot determine the GitLab project — \`pl mr\` derives it from the
+  origin remote, so run it inside a checkout of the repo (cd ~/nwp), or set
+  NWP_MR_PROJECT=<id>. No request was made; this is not a token problem."
+  fi
+  if ! _mr_have_token; then
+    die "no usable token — set NWP_MR_TOKEN, or provide gitlab.api_token /
+  gitlab.ai_host_token in \$MR_SECRETS_FILE. No request was made."
+  fi
+  case "$st" in
+    ''|000) die "cannot reach the forge for MR !$iid (HTTP ${st:-none}) — a
+  connection failure, not an authorisation one. Check the network and retry." ;;
+    401)    die "cannot read MR !$iid — HTTP 401, the token was rejected." ;;
+    403)    die "cannot read MR !$iid — HTTP 403, the token lacks rights here." ;;
+    404)    die "cannot read MR !$iid — HTTP 404, no such MR in this project." ;;
+    *)      die "cannot read MR !$iid (HTTP $st)." ;;
+  esac
+}
+
 cmd_status(){
   _need_yq
   local iid="${1:-}"; [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr status <iid>"
   _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
   local json; json=$(_mr_fetch "$iid") \
-    || die "cannot read MR !$iid (HTTP $(_mr_http_status)) — token rejected, wrong project, or host unreachable"
+    || _mr_die_read "$iid"
 
   local title author state dms sha armed held labels
   title=$(_mr_title "$json"); author=$(_mr_author "$json"); state=$(_mr_state "$json")
@@ -359,7 +386,7 @@ cmd_hold(){
   [ -n "$reason" ] || die "--reason is required: a hold nobody can explain is a hold nobody will respect"
   _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
 
-  local json; json=$(_mr_fetch "$iid") || die "cannot read MR !$iid (HTTP $(_mr_http_status))"
+  local json; json=$(_mr_fetch "$iid") || _mr_die_read "$iid"
   [ "$(_mr_state "$json")" = "opened" ] || die "MR !$iid is $(_mr_state "$json") — nothing to hold"
   local was_armed="no"; _mr_auto_merge_armed "$json" && was_armed="yes"
 
@@ -407,7 +434,7 @@ cmd_release(){
   [ -n "$approver" ] || die "--approved-by=<handle> is required — a release names the second pair of eyes"
   _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
 
-  local json; json=$(_mr_fetch "$iid") || die "cannot read MR !$iid (HTTP $(_mr_http_status))"
+  local json; json=$(_mr_fetch "$iid") || _mr_die_read "$iid"
   local author sha proj
   author=$(_mr_author "$json"); sha=$(_mr_head_sha "$json"); proj=$(_mr_project)
 

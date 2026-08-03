@@ -214,6 +214,105 @@ if [ -z "$PROVIDER_BASE" ]; then
     PROVIDER_BASE="$(pair_contract_get "$CONTRACT" ".endpoints.${TIER}.issuer" 2>/dev/null || true)"
 fi
 
+# ── Resolve <example-prod-domain> via the EXISTING resolver (ops#267) ────────
+#
+# CORRECTION to this branch's first version: I wrote a bespoke expander here
+# (reading nwp.yml sites.<site>.live.domain) before discovering that
+# lib/demo-pair.sh:demo_pair_issuer() already did exactly this job, reading the
+# provider's sites/<provider>/.nwp.yml live.domain and failing closed. Two
+# implementations of "where does the placeholder point" is how they drift, and
+# the drifting copy is always the one doing the work. So the provider base now
+# delegates; the local helper survives only for the CONSUMER base, which
+# demo_pair_issuer does not cover.
+#
+# The contracts carry `https://nwd.<example-prod-domain>` rather than the real
+# host, deliberately: the gitleaks operator ruleset bans internal hostnames from
+# tracked files (docs/reference/role-vocabulary.md). But nothing ever EXPANDED
+# the placeholder, so every provider probe dialled a literal
+# "<example-prod-domain>", failed, and the pair went RED — permanently.
+#
+# The cost was not a red badge. `pl moodle plugin deploy` and `pl stg2live`
+# refuse to promote onto a RED pair (ADR-0031 D5), so the only way to ship
+# anything became `--override-pair` — used 18+ times in one week. A guard that is
+# overridden every single time it fires is not a guard; it is a speed bump that
+# teaches people to reach for the override. ssd has been RAG-red since
+# 2026-07-29 for this reason alone, which also means a REAL pair failure would
+# have been indistinguishable from the standing noise.
+#
+# The apex comes from nwp.yml `sites.<site>.live.domain` (a full host, e.g.
+# sub.apex.tld), so the apex is that value minus its first label. Config is the
+# right home: the contract stays domain-free in git AND resolves at run time.
+#
+# Fails LOUDLY rather than silently probing a placeholder: if the apex cannot be
+# resolved, say so and leave the URL untouched so the error names the cause.
+pair_expand_domain() {
+    local url="$1" site="$2" full apex
+    case "$url" in *'<example-prod-domain>'*) ;; *) printf '%s' "$url"; return 0 ;; esac
+    full="$("${YQ:-yq}" -r ".sites.${site}.live.domain // \"\"" "${NWP_ROOT:-$HOME/nwp}/nwp.yml" 2>/dev/null)"
+    if [ -z "$full" ] || [ "$full" = "null" ]; then
+        print_warning "cannot expand <example-prod-domain>: nwp.yml has no sites.${site}.live.domain"
+        print_hint "  the probe below will fail against the literal placeholder, which is the real defect"
+        printf '%s' "$url"; return 1
+    fi
+    apex="${full#*.}"
+    if [ -z "$apex" ] || [ "$apex" = "$full" ]; then
+        print_warning "cannot derive an apex from sites.${site}.live.domain (expected sub.apex.tld)"
+        printf '%s' "$url"; return 1
+    fi
+    printf '%s' "${url//<example-prod-domain>/$apex}"
+}
+
+if ! declare -F demo_pair_issuer >/dev/null 2>&1; then
+    # shellcheck source=/dev/null
+    [ -r "${NWP_ROOT:-$HOME/nwp}/lib/demo-pair.sh" ] \
+        && source "${NWP_ROOT:-$HOME/nwp}/lib/demo-pair.sh" 2>/dev/null || true
+fi
+if declare -F demo_pair_issuer >/dev/null 2>&1; then
+    _resolved="$(demo_pair_issuer "$CONTRACT" "$TIER" 2>/dev/null || true)"
+    [ -n "$_resolved" ] && PROVIDER_BASE="$_resolved"
+fi
+if [ -n "$PROVIDER_BASE" ]; then
+    PROVIDER_BASE="$(pair_expand_domain "$PROVIDER_BASE" "$PROVIDER")" || true
+fi
+if [ -n "$CONSUMER_BASE" ]; then
+    CONSUMER_BASE="$(pair_expand_domain "$CONSUMER_BASE" "$CONSUMER")" || true
+fi
+
+# ── Derive the CONSUMER base from config when the contract has none (ops#267) ─
+#
+# The third and decisive cause of the permanent RED. `--run` requires BOTH bases,
+# the ssd contract declares no consumer endpoint for any tier, and nothing
+# derived one — so `pl pair-smoke ssd --tier=live --run` could never COMPLETE.
+# It failed with "needs both a provider and a consumer base URL" before probing
+# anything.
+#
+# So "the pair is red" never meant "a probe failed". It meant "the check cannot
+# run", and the two are opposite facts: one is evidence, the other is blindness.
+# Every `--override-pair` in the ledger was overriding an unrunnable check.
+#
+# nwp.yml sites.<site>.live.domain is a full host, which is exactly a base URL.
+pair_site_base() {
+    local site="$1" tier="$2" full
+    full="$("${YQ:-yq}" -r ".sites.${site}.${tier}.domain // \"\"" "${NWP_ROOT:-$HOME/nwp}/nwp.yml" 2>/dev/null)"
+    [ -n "$full" ] && [ "$full" != "null" ] || return 1
+    printf 'https://%s' "$full"
+}
+
+if [ -z "$CONSUMER_BASE" ]; then
+    if CONSUMER_BASE="$(pair_site_base "$CONSUMER" "$TIER")"; then
+        print_info "consumer base derived from nwp.yml sites.${CONSUMER}.${TIER}.domain"
+    else
+        CONSUMER_BASE=""
+    fi
+fi
+if [ -z "$PROVIDER_BASE" ]; then
+    if PROVIDER_BASE="$(pair_site_base "$PROVIDER" "$TIER")"; then
+        print_info "provider base derived from nwp.yml sites.${PROVIDER}.${TIER}.domain"
+    else
+        PROVIDER_BASE=""
+    fi
+fi
+
 print_header "Pair smoke: ${CONSUMER} ↔ ${PROVIDER} @ ${TIER} (contract v${CV})"
 echo "  Provider base: ${PROVIDER_BASE:-<unset>}"
 echo "  Consumer base: ${CONSUMER_BASE:-<unset>}"

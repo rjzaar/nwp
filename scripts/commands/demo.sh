@@ -290,6 +290,10 @@ ${BOLD}ROLE BUNDLES${NC} (decisions §4.4 — sitemanager is never offered):
     tester-copyright-reviewer     + copyright_reviewer role
     tester-safeguarding-reviewer  + safeguarding_reviewer role
 
+  ${BOLD}APPLY-ROUTE BUNDLES${NC} (ops#287 — redeemed on /apply, NOT /demo/join):
+      apply-review                  applies for real; operator approves in the queue
+      apply-auto                    applies for real; admitted immediately
+
 ${BOLD}FILES:${NC}
     sites/<provider>/demo-golden/pair.cut.json
                                     binds the two halves' golden images by

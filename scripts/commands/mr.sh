@@ -251,9 +251,8 @@ cmd_create(){
     return 0
   fi
 
-  payload=$(S="$src" T="$target" TI="$title" D="$desc" R="$remove_src" "$YQ" -n -o=json \
-    '{"source_branch": strenv(S), "target_branch": strenv(T), "title": strenv(TI),
-      "description": strenv(D), "remove_source_branch": (strenv(R) == "true")}')
+  payload=$(_mr_json source_branch "$src" target_branch "$target" title "$title" \
+                      description "$desc" remove_source_branch:bool "$remove_src")
   json=$(_mr_api POST "/projects/$proj/merge_requests" "$payload") \
     || die "could not create the merge request (HTTP $(_mr_http_status))"
   iid=$(printf '%s' "$json" | "$YQ" e -p=json '.iid // ""' - 2>/dev/null | grep -v '^null$')
@@ -521,7 +520,7 @@ Reason: ${reason:-(none given)}
 
 This release is bound to head ${sha:0:12}. Pushing another commit invalidates it
 and the guard will re-hold this MR."
-  local np; np=$(B="$body" "$YQ" -n -o=json '{"body": strenv(B)}')
+  local np; np=$(_mr_json body "$body")
   _mr_api POST "/projects/$proj/merge_requests/$iid/notes" "$np" >/dev/null \
     || die "could not record the release (HTTP $(_mr_http_status)) — nothing was lifted"
 
@@ -909,11 +908,22 @@ cmd_guard(){
       if vjson=$(_mr_fetch "$iid") && _mr_is_draft "$vjson"; then
         echo "HELD: !$iid set to Draft. GitLab will refuse a merge (405) even with auto-merge armed."
       else
-        echo "WARNING: the hold could not be CONFIRMED on !$iid — this job's failure is the only hold in place."
+        echo "HOLD-MECHANISM-FAILED: the Draft hold could not be CONFIRMED on !$iid."
+        echo "  Layer 1 is NOT in force. This job's failure is the only hold, and the"
+        echo "  module docblock is explicit that a red pipeline is the weaker layer:"
+        echo "  it is indistinguishable from a broken build and one allow_failure ends it."
       fi
     else
-      echo "WARNING: could not apply the Draft hold (HTTP $(_mr_http_status))."
-      echo "         This job's failure is the only hold in place — auto-merge cannot fire on a red pipeline."
+      # NOT a warning. ops#281: for months this printed a WARNING while layer 1
+      # silently never applied — $YQ is empty on the runner, so the payload was
+      # empty and every PUT was a 400. A soft word for a failed security control
+      # is how it stays failed; the reader skims "WARNING" and sees the job go red
+      # for what looks like the intended reason.
+      echo "HOLD-MECHANISM-FAILED: could not apply the Draft hold (HTTP $(_mr_http_status))."
+      echo "  Layer 1 (forge-enforced Draft) is NOT in force. Only this job's failure"
+      echo "  is holding the MR, which is the layer that survives neither an"
+      echo "  allow_failure: true nor a habit of retrying until green."
+      echo "  Fix the mechanism — do not merge on the strength of the red pipeline alone."
     fi
   elif [ "$apply" = true ]; then
     # The credential-free path. Say exactly what protection remains.

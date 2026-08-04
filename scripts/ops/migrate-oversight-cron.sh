@@ -27,12 +27,25 @@
 #
 # USAGE
 #   bash scripts/ops/migrate-oversight-cron.sh            # dry run (default)
-#   bash scripts/ops/migrate-oversight-cron.sh --execute  # asks for the ai-host sudo
+#   bash scripts/ops/migrate-oversight-cron.sh --execute
 #
-#   --user-crontab   install into the ai-host user's crontab instead of
-#                    /etc/cron.d (no root needed). Works, but `pl host schedule`
-#                    reads system cron.d, so a user crontab is LESS VISIBLE to
-#                    the tooling. Prefer the root install; this is the fallback.
+#   --user-crontab   force the user-crontab route explicitly.
+#
+# WHICH ROUTE YOU GET, AND WHY IT MATTERS
+#   `pl loop schedule install` has TWO code paths and they land in different
+#   places:
+#     * invoked remotely as `--host <role>`  → writes /etc/cron.d/<name> (NEEDS ROOT)
+#     * invoked ON the host                  → writes that user's crontab (no root)
+#   This script runs the verb ON the ai-host over `ssh -t`, so the normal outcome
+#   is the USER CRONTAB and there is NO sudo prompt. That works — cron fires it as
+#   that user — but `pl host schedule` reads system cron.d, so a user crontab is
+#   LESS VISIBLE to the tooling.
+#
+#   The first version of this script announced "sudo will prompt" and then took a
+#   path where sudo was never involved. The operator noticed the missing prompt
+#   and asked why. That is the estate's recurring defect in miniature: a message
+#   stating the INTENTION of a command rather than the CONSEQUENCE of the state.
+#   Step 3 now REPORTS which route actually took effect.
 #
 # EXIT  0 migrated (or dry run) · 1 refused/failed, nothing removed · 2 usage
 ################################################################################
@@ -81,7 +94,9 @@ fi
 if [ "$EXECUTE" != true ]; then
     say "DRY RUN — nothing will be changed."
     info "would install on the ai-host, verify it, and only then remove the local copy."
-    info "re-run with --execute (you will be asked for the ai-host sudo password)."
+    info "re-run with --execute."
+    info "NOTE: normally there is NO sudo prompt — the verb runs ON the ai-host and"
+    info "writes that user's crontab. Step 3 reports which route actually took effect."
     exit 0
 fi
 
@@ -98,7 +113,8 @@ if [ "$USER_CRONTAB" = true ]; then
     ssh -t "$AI_HOST" "( crontab -l 2>/dev/null | grep -v 'rag-sync'; echo '$LINE' ) | crontab -" \
         || { bad "user-crontab install failed — nothing removed locally"; exit 1; }
 else
-    info "running: pl loop schedule install --host ai-host --execute   (sudo will prompt)"
+    info "running the verb ON the ai-host (writes that user's crontab; sudo only if"
+    info "  the verb chooses the /etc/cron.d route)"
     # -t so the remote sudo can prompt. The verb does the writing.
     ssh -t "$AI_HOST" "cd ~/nwp && ./pl loop schedule install --execute" \
         || { bad "install on the ai-host failed — nothing removed locally"; exit 1; }
@@ -106,10 +122,22 @@ fi
 
 say "3/5  VERIFY the ai-host actually has it (before removing anything)"
 sleep 2
-AFTER_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$AI_HOST" \
-    'crontab -l 2>/dev/null | grep -c rag-sync; sudo -n cat /etc/cron.d/nwp-rag-sync 2>/dev/null | grep -c rag-sync' \
-    2>/dev/null | awk '{s+=$1} END{print s+0}')
-info "ai-host now has ${AFTER_N} rag-sync line(s)"
+# Count the two possible homes SEPARATELY, so the report says WHERE it landed
+# rather than only that something exists somewhere.
+read -r USER_N SYS_N < <(ssh -o BatchMode=yes -o ConnectTimeout=10 "$AI_HOST" \
+    'printf "%s %s\n" "$(crontab -l 2>/dev/null | grep -c rag-sync)" "$(sudo -n cat /etc/cron.d/nwp-rag-sync 2>/dev/null | grep -c rag-sync)"' \
+    2>/dev/null | tail -1)
+USER_N=${USER_N:-0}; SYS_N=${SYS_N:-0}
+AFTER_N=$(( USER_N + SYS_N ))
+info "ai-host: ${USER_N} in the USER crontab, ${SYS_N} in /etc/cron.d"
+if [ "$SYS_N" -gt 0 ]; then
+    good "landed in /etc/cron.d — visible to \`pl host schedule\`"
+elif [ "$USER_N" -gt 0 ]; then
+    info "landed in the USER crontab (no root was needed, hence no sudo prompt)."
+    info "It WILL run. But \`pl host schedule\` reads system cron.d, so this"
+    info "schedule is less visible to the tooling — \`pl loop schedule status\`"
+    info "on the ai-host is the reliable reader."
+fi
 if [ "${AFTER_N:-0}" -lt 1 ]; then
     bad "REFUSING to remove the local copy: the ai-host copy is NOT verified."
     bad "Both copies remain. Duplicate oversight is noisy; absent oversight is invisible."
@@ -129,6 +157,15 @@ say "5/5  Final state"
 info "authoring workstation : $(crontab -l 2>/dev/null | grep -c 'rag-sync' || true) rag-sync line(s)"
 info "ai-host              : ${AFTER_N} rag-sync line(s)"
 good "oversight now has ONE owner: the ai-host."
+echo ""
+bad  "A VERIFIED SCHEDULE IS NOT A VERIFIED JOB."
+info "The ai-host may never have RUN this sweep. `pl loop schedule status` there"
+info "will say UNKNOWN while no log exists — and absence of a log is not evidence"
+info "of health. Prove it once, now, rather than discovering it at 04:30:"
+info "  ssh <ai-host> 'cd ~/nwp && git pull --ff-only && NWP_RAG_TODO_BUDGET=600 ./scripts/agent-loop/rag-sync.sh'"
+info "Also declare the delegation so this host stops reporting NOSCHEDULE:"
+info "  yq -i '.settings.loop.oversight_host = \"<ai-host short hostname>\"' nwp.yml"
+echo ""
 info "confirm any time:  pl reconcile   (the oversight-cron row)"
 echo ""
 info "Record it: add a rollback row noting the move, and that reversing it is"

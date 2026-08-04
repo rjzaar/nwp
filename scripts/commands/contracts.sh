@@ -545,12 +545,25 @@ _crossref_one() {
     fi
 
     # --- 2. consumer smoke_urls point at files that exist --------------------
-    local p rel found root
+    local p rel found root core_blind=0
     while IFS= read -r p; do
         [ -n "$p" ] || continue
         rel="${p%%\?*}"; rel="${rel%%#*}"; rel="${rel#/}"
         if printf '%s\n' "$core_paths" | grep -qxF "$rel"; then
-            [ "$quiet" = true ] || _say "[$pair] url core-exempt  /$rel"
+            # NOT "OK". This branch verifies NOTHING: it says "some core tree we
+            # cannot see is expected to serve this", and then moves on. It read as
+            # a pass for months while auth/oauth2/login.php — a file that exists
+            # in no Moodle, anywhere — sat in this list. The dry-run printed it
+            # healthy; only a live probe ever found the 404 (ops#275).
+            #
+            # Reported as CANNOT-VERIFY so it can never again be mistaken for a
+            # checked path. Deliberately does NOT set bad=1: consumer_roots for a
+            # Moodle pair holds PLUGINS only, so core paths are unverifiable here
+            # by construction, and a gate that is permanently red is a gate people
+            # route around. Making it visible is the honest half that is available
+            # today; verifying it needs a declared core root (follow-up issue).
+            core_blind=$((core_blind + 1))
+            [ "$quiet" = true ] || _warn "[$pair] url CANNOT-VERIFY /$rel — core-exempt: nothing checked this"
             continue
         fi
         found=false
@@ -562,8 +575,14 @@ _crossref_one() {
         else
             _err "[$pair] url MISSING-PATH /$rel — the contract names a consumer endpoint that"
             _err "                          does not exist in the consumer tree. The probe can"
-            _err "                          never go green; declare it under crossref.core_paths"
-            _err "                          if Moodle core serves it."
+            _err "                          never go green."
+            _err "                          If Moodle CORE serves it, declaring it under"
+            _err "                          crossref.core_paths silences this — but understand what"
+            _err "                          that does: it EXEMPTS the path from all checking, it does"
+            _err "                          not verify it. That escape hatch is how"
+            _err "                          auth/oauth2/login.php — a file in no Moodle, anywhere —"
+            _err "                          sat here for months reading as healthy (ops#275). Confirm"
+            _err "                          the file exists in a real core tree FIRST."
             bad=1
         fi
     done < <(_crossref_yq "$contract" '.smoke_urls[] | select(.side == "consumer") | .path')

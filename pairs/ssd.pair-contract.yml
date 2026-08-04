@@ -408,27 +408,49 @@ smoke_urls:
     expect_status: "200"
   - name: oauth_callback
     side: consumer
-    path: "/auth/oauth2/login.php"
+    # WAS /auth/oauth2/login.php, which returns 404 and has never existed —
+    # not on ssd and not in Moodle core (ops#275). It sat in `core_paths`
+    # below, so the corpus check EXEMPTED it and the dry-run printed
+    # "url core-exempt" and passed; only the live probe ever found out.
+    # Measured 2026-08-04: /auth/oauth2/auth.php → 200.
+    path: "/auth/oauth2/auth.php"
     method: GET
-    expect_status: "200,302,303"   # Phase 2 measured 303 on ssd's callback
+    expect_status: "200"
   # ⚠ v1 declared status.php + api.php — neither file has ever existed.
   #   See pairs/ssc.pair-contract.yml for the full note.
   - name: copyright_status
     side: consumer
     path: "/local/nwc_copyright_sync/policy_set.php"
-    method: GET
-    expect_status: "200,403"
+    # WAS GET expect 200,403. The endpoint is POST-only, so GET answers 405 and
+    # the probe could never pass (ops#275). Probing its REAL method is also the
+    # stronger check: POST proves the endpoint actively REFUSES an
+    # unauthenticated caller, where GET-405 would only prove it exists.
+    # Measured 2026-08-04: GET → 405, POST → 401.
+    method: POST
+    expect_status: "401,403"
   - name: feedback_post
     side: consumer
     path: "/local/feedback/submit.php"
-    method: POST
     # MERGE NOTE (2026-07-26) — Phase 2 wrote "200,303,401,403" with the
     # rationale "unauthenticated POST is rejected — that IS the pass". But 200
     # means the endpoint ACCEPTED an anonymous submission, which is the very
     # thing this probe exists to catch; listing it makes the probe pass either
-    # way. 200 is therefore NOT listed. If ssd really answers 200 here, that is
-    # a finding about ssd, not a probe bug. Flagged for the operator.
-    expect_status: "303,401,403"
+    # way. 200 is therefore NOT listed. That reasoning still holds and is why
+    # 200 is absent below.
+    #
+    # ops#275 (2026-08-04) — but POST could not work either. submit.php opens
+    # with `if (REQUEST_METHOD !== 'POST') { http_response_code(405); }` and then
+    # `require_login(null, false, null, false, true)`. That fifth argument is
+    # $preventredirect, so an unauthenticated POST THROWS rather than redirecting
+    # and Moodle renders the exception as 404 — measured 404, not 303/401/403.
+    #
+    # 404 is deliberately NOT accepted: a DELETED endpoint returns 404 too, so a
+    # POST probe cannot tell "correctly rejected" from "gone". Probing GET for
+    # 405 proves both things that matter — the file EXISTS, and it enforces
+    # POST-only — and it cannot pass while the file is absent.
+    # Measured 2026-08-04: GET → 405, POST → 404.
+    method: GET
+    expect_status: "405"
 
 # --- Cross-repo corpus: what `pl contracts crossref` reads (item 8) ----------
 crossref:
@@ -438,5 +460,11 @@ crossref:
   consumer_roots:
     - "sites/ssd/.plugin-src/ss-moodle-plugins"
   core_paths:
-    - "auth/oauth2/login.php"     # core auth_oauth2 (the OIDC callback landing)
+    # WAS auth/oauth2/login.php, described as "core auth_oauth2 (the OIDC
+    # callback landing)". No such file exists in Moodle core. Because it was
+    # listed here it was EXEMPT from the corpus check, so the dry-run reported it
+    # healthy and the mistake survived until a live probe ran (ops#275). An
+    # exemption list is exactly where a wrong path becomes invisible, so entries
+    # here deserve more scrutiny than the probes they excuse.
+    - "auth/oauth2/auth.php"      # core auth_oauth2 login/callback entry point
   core_ws_functions: []

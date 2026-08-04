@@ -739,11 +739,47 @@ host_log_source_cmd() {
         auth)     printf 'tail -n %s /var/log/auth.log 2>/dev/null\n' "$tail" ;;
         systemd)  printf 'journalctl --no-pager -n %s %s 2>/dev/null\n' "$tail" "$sincearg" ;;
         watchdog) printf 'tail -n %s /var/log/syslog 2>/dev/null\n' "$tail" ;;
+        mail)     _host_mail_log_script "$tail" ;;
         *)        return 1 ;;
     esac
 }
 
-HOST_LOG_SOURCES=(nginx php-fpm auth systemd watchdog)
+# _host_mail_log_script <tail>
+# The MTA log is the only source whose SILENCE is itself the answer people want
+# ("did the applicant's confirmation email leave?"), so it is the one source
+# where an unreadable or absent file must not render as an empty tail. It is
+# also the only one that normally needs privilege: mail.log is 0640 syslog:adm.
+#
+# ops#271 gotcha, recorded because it produced a wrong answer once already:
+# `sudo -n wc -l < /var/log/mail.log` has the REDIRECT expanded by the calling
+# shell, so the file is opened as the unprivileged user — "Permission denied"
+# that looks exactly like a count of zero. Every path below is an ARGUMENT.
+_host_mail_log_script() {
+    local tail="$1"
+    cat <<REMOTE
+rc=0; seen=0
+for f in /var/log/mail.log /var/log/mail.err; do
+  [ -e "\$f" ] || continue
+  seen=1
+  printf '==> %s <==\n' "\$f"
+  if [ -r "\$f" ]; then
+    tail -n ${tail} "\$f"
+  elif sudo -n tail -n ${tail} "\$f" 2>/dev/null; then
+    :
+  else
+    printf 'NWPLOG-UNREADABLE: %s — could not read it. This is NOT "no mail was sent".\n' "\$f" >&2
+    rc=4
+  fi
+done
+if [ "\$seen" -eq 0 ]; then
+  printf 'NWPLOG-ABSENT: no /var/log/mail.log or /var/log/mail.err on this host — it may run no MTA, or log elsewhere. This is NOT "no mail was sent".\n' >&2
+  rc=4
+fi
+exit \$rc
+REMOTE
+}
+
+HOST_LOG_SOURCES=(nginx php-fpm auth systemd watchdog mail)
 
 ################################################################################
 # SECTION 8 — repo-hygiene checks (wired into `pl doctor` and `pl verify`).

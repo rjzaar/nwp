@@ -436,6 +436,113 @@ EOF
 }
 
 ################################################################################
+# pl logs --source=mail (ops#271) — "did the confirmation email actually leave?"
+# had NO verb at all, so it was answered by raw ssh. The answer mattered: zero
+# mail had ever been sent from nwd@/ssd@/nwc@/ss@, i.e. the /apply email leg was
+# wired and had never once run. Silence from a mail log must therefore never be
+# allowed to read as "no mail was sent" — that is the exact shape of the recon
+# gotcha: `sudo -n wc -l < /var/log/mail.log` expands the redirect in the CALLING
+# shell, so it reports "Permission denied" while looking like a count of zero.
+################################################################################
+
+@test "pl logs offers a mail source (outbound mail must be readable via a verb)" {
+  run "$PL" logs --sources
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mail"* ]]
+  run "$PL" logs --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mail"* ]]
+}
+
+@test "pl logs --source=mail reads mail.log AND mail.err" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_log_source_cmd mail 200
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/var/log/mail.log"* ]]
+  [[ "$output" == *"/var/log/mail.err"* ]]
+}
+
+@test "pl logs --source=mail never reads a log through a shell REDIRECT (ops#271 gotcha)" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_log_source_cmd mail 200
+  [ "$status" -eq 0 ]
+  # `sudo -n cmd < /var/log/mail.log` runs the redirect as the UNPRIVILEGED
+  # caller: permission-denied that looks like an empty log. Paths are arguments.
+  [[ "$output" != *"< /var/log/mail"* ]]
+  [[ "$output" != *'<"$f"'* ]]
+  [[ "$output" != *'< "$f"'* ]]
+}
+
+@test "pl logs --source=mail is clamped like every other source" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_log_source_cmd mail 999999
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"5000"* ]]
+  [[ "$output" != *"999999"* ]]
+}
+
+@test "an ABSENT mail log is reported, never rendered as 'no mail was sent'" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  local script
+  script="$(host_log_source_cmd mail 200)"
+  # Point the generated script at an empty fixture dir: no mail log exists.
+  mkdir -p "${TMP}/varlog"
+  script="${script//\/var\/log\/mail/${TMP}/varlog/mail}"
+  run bash -c "$script"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"NWPLOG-ABSENT"* ]]
+}
+
+@test "an UNREADABLE mail log is reported, never rendered as 'no mail was sent'" {
+  # Root satisfies `[ -r ]` on any file, so as root this branch cannot fire.
+  # That is CANNOT VERIFY, and it is REFUSED rather than skipped: bats scores a
+  # skip as `ok`, which is the exact dishonesty H3 exists to stop. CI and dev
+  # both run unprivileged, so this never fires here — and where it would, a red
+  # "I could not check" beats a green "checked".
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "REFUSING: run this suite unprivileged — as root the unreadable-log branch cannot be exercised" >&2
+    return 1
+  fi
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  local script
+  script="$(host_log_source_cmd mail 200)"
+  mkdir -p "${TMP}/varlog"
+  printf 'to=<x@example.org>, status=sent\n' > "${TMP}/varlog/mail.log"
+  chmod 000 "${TMP}/varlog/mail.log"
+  script="${script//\/var\/log\/mail/${TMP}/varlog/mail}"
+  # `sudo` must not rescue it here: stub a sudo that always refuses.
+  cat > "${STUBBIN}/sudo" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${STUBBIN}/sudo"
+  PATH="${STUBBIN}:$PATH" run bash -c "$script"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"NWPLOG-UNREADABLE"* ]]
+}
+
+@test "a readable mail log is tailed, and a real 'status=sent' line survives" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  local script
+  script="$(host_log_source_cmd mail 200)"
+  mkdir -p "${TMP}/varlog"
+  printf 'postfix/smtp[1]: to=<x@gmail.com>, status=sent (250 2.0.0 OK)\n' > "${TMP}/varlog/mail.log"
+  script="${script//\/var\/log\/mail/${TMP}/varlog/mail}"
+  run bash -c "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"status=sent"* ]]
+}
+
+@test "pl logs does not report a mail read failure as 'no errors'" {
+  _fixture_manifest
+  : > "${TMP}/empty"
+  _stub_ssh "${TMP}/empty" 4
+  PATH="${STUBBIN}:$PATH" run "$PL" logs ci-host --source=mail
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CANNOT"* ]]
+}
+
+################################################################################
 # pl schedule host / where — cron ownership must be answerable without ssh.
 ################################################################################
 

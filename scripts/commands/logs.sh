@@ -47,11 +47,18 @@ ${BOLD}SOURCES${NC} (fixed set — anything else is refused, not forwarded):
   auth       /var/log/auth.log
   systemd    journalctl (honours --since)
   watchdog   /var/log/syslog
+  mail       /var/log/mail.{log,err} — the MTA. Answers "did that confirmation
+             email actually leave?". Reports UNREADABLE/ABSENT rather than
+             returning an empty tail, because here silence is the answer.
 
 ${BOLD}BOUNDS:${NC}
   --tail defaults to 200 and is clamped to 5000. There is no follow mode and no
   arbitrary-command passthrough: this verb exists so that reading a log never
-  requires an interactive shell on a production box.
+  requires an interactive shell on a production box. Filter LOCALLY —
+  \`pl logs live --source=mail --tail=5000 | grep nwd@\` — because a remote
+  filter is operator text reaching the remote shell, which is what this verb
+  refuses to do. Rotated/compressed logs are NOT read: a clean tail bounds what
+  happened recently, and is not proof that something never happened.
 EOF
 }
 
@@ -93,6 +100,12 @@ main() {
 
     local rc=0
     host_run "$prefix" "$remote" || rc=$?
+    # 4 = the source ran and told us it could not read what it was asked for.
+    # Distinct from unreachable, and emphatically distinct from "nothing logged".
+    if [ "$rc" -eq 4 ]; then
+        print_error "CANNOT VERIFY: $name could not read the $source log (see the NWPLOG- line above) — this is not 'nothing was logged'"
+        return 3
+    fi
     if [ "$rc" -ne 0 ]; then
         print_error "UNREACHABLE: could not read logs on $name (rc=$rc) — this is not 'no errors'"
         return 3

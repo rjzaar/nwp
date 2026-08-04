@@ -63,6 +63,44 @@ fi
 # CANNOT-VERIFY for the whole library, said once and plainly.
 _mr_have_yq(){ [ -n "$YQ" ] && [ -x "$YQ" ]; }
 
+# _mr_json <key> <value> [<key> <value> ...]  → a JSON object on stdout
+#
+# WHY THIS EXISTS (nwp/ops#281). Every write payload in this file was built with
+#   payload=$(T="$title" A="$label" "$YQ" -n -o=json '{"title": strenv(T), ...}')
+# and $YQ is EMPTY on the CI runner, which has no yq. With an empty command name
+# bash runs the assignments and nothing else, so `payload` came back EMPTY, the
+# PUT sent an empty body, GitLab answered 400 — and the D13 hold's LAYER 1 (the
+# Draft) silently never applied. Every CI-applied hold has therefore been resting
+# on layer 2, the red pipeline, which the module docblock itself calls the weaker
+# one: "a red pipeline is indistinguishable from a broken build, it trains people
+# to retry until green, and one allow_failure: true ends it."
+#
+# That is the host-blind-branch shape from CLAUDE.md, occurring inside the gate
+# built to enforce it.
+#
+# python3 is the right dependency here: it is already this file's fallback for
+# READING json (_mr_jget), it is present wherever Drupal/Drush run, and building
+# a two-key object is not a job that needs a YAML processor. Values are passed as
+# argv, never interpolated, so quotes/newlines/unicode in a title or a note body
+# cannot break the payload or inject a field.
+# A key may carry a ":bool" suffix to emit a real JSON boolean rather than a
+# string — `remove_source_branch:bool "true"` → {"remove_source_branch": true}.
+# Explicit on purpose: the yq expression this replaces wrote
+# `(strenv(R) == "true")`, and quietly turning that field into the STRING "true"
+# would be a type change hidden inside a bug fix.
+_mr_json(){
+    python3 -c 'import json,sys
+a = sys.argv[1:]
+out = {}
+for i in range(0, len(a) - 1, 2):
+    k, v = a[i], a[i + 1]
+    if k.endswith(":bool"):
+        out[k[:-5]] = (v == "true")
+    else:
+        out[k] = v
+print(json.dumps(out))' "$@"
+}
+
 _mr_require_yq(){
   _mr_have_yq && return 0
   command -v python3 >/dev/null 2>&1 && return 0
@@ -421,8 +459,7 @@ _mr_apply_hold(){
 
   # 2. draft
   new_title=$(_mr_draft_title "$title")
-  payload=$(T="$new_title" A="$label" "$YQ" -n -o=json \
-    '{"title": strenv(T), "add_labels": strenv(A)}')
+  payload=$(_mr_json title "$new_title" add_labels "$label")
   _mr_api PUT "/projects/$proj/merge_requests/$iid" "$payload" >/dev/null || return 1
 
   # 3. explain, once
@@ -445,7 +482,7 @@ $(printf '%s\n' "$paths" | sed 's/^/  - /')"
 
 Release it deliberately, with a second pair of eyes:
     pl mr release $iid --approved-by=<handle> --reason='...'"
-    local np; np=$(B="$body" "$YQ" -n -o=json '{"body": strenv(B)}')
+    local np; np=$(_mr_json body "$body")
     _mr_api POST "/projects/$proj/merge_requests/$iid/notes" "$np" >/dev/null || true
   fi
   return 0
@@ -502,8 +539,7 @@ _mr_lift_hold(){
   json=$(_mr_fetch "$iid") || return 1
   title=$(_mr_title "$json")
   new_title=$(_mr_undraft_title "$title")
-  payload=$(T="$new_title" R="$MR_HOLD_LABEL_SENSITIVE,$MR_HOLD_LABEL_MANUAL" "$YQ" -n -o=json \
-    '{"title": strenv(T), "remove_labels": strenv(R)}')
+  payload=$(_mr_json title "$new_title" remove_labels "$MR_HOLD_LABEL_SENSITIVE,$MR_HOLD_LABEL_MANUAL")
   _mr_api PUT "/projects/$proj/merge_requests/$iid" "$payload" >/dev/null || return 1
   return 0
 }

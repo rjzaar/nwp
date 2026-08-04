@@ -494,7 +494,15 @@ EOF
 }
 
 @test "an UNREADABLE mail log is reported, never rendered as 'no mail was sent'" {
-  if [ "$(id -u)" -eq 0 ]; then skip "root can read anything"; fi
+  # Root satisfies `[ -r ]` on any file, so as root this branch cannot fire.
+  # That is CANNOT VERIFY, and it is REFUSED rather than skipped: bats scores a
+  # skip as `ok`, which is the exact dishonesty H3 exists to stop. CI and dev
+  # both run unprivileged, so this never fires here — and where it would, a red
+  # "I could not check" beats a green "checked".
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "REFUSING: run this suite unprivileged — as root the unreadable-log branch cannot be exercised" >&2
+    return 1
+  fi
   source "${REPO_ROOT}/lib/host-capture.sh"
   local script
   script="$(host_log_source_cmd mail 200)"

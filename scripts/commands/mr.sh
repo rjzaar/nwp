@@ -96,7 +96,33 @@ source "$PROJECT_ROOT/lib/gitlab-mr.sh"
 
 _need_yq(){ [ -n "$YQ" ] || die "yq required"; }
 
-_mr_web_url(){ printf 'https://%s/nwp/nwp/-/merge_requests/%s\n' "$(_mr_host)" "$1"; }
+# The MR's web URL, for the project this repo actually IS.
+#
+# WAS hardcoded to /nwp/nwp/, so every link printed for any other project was a
+# 404. `pl mr create` in the nwc profile repo announced
+# ".../nwp/nwp/-/merge_requests/70" for an MR that lives in nwp/nwc, and the
+# operator followed it to a Project Not Found — twice, because `pl mr status`
+# repeats the same field. A verb that hands you a wrong link costs more time than
+# one that hands you none.
+#
+# _mr_project() returns the path URL-ENCODED for the API (nwp%2Fnwc); a web URL
+# needs it decoded back to a real slash. NWP_MR_PROJECT / CI_PROJECT_ID may make
+# it a numeric id, which has no web path — GitLab redirects /projects/<id> so
+# fall back to that rather than inventing a slug.
+_mr_web_url(){
+    local proj host
+    host="$(_mr_host)"
+    proj="$(_mr_project 2>/dev/null || true)"
+    if [ -z "$proj" ]; then
+        printf 'https://%s/-/merge_requests/%s (project unresolved)\n' "$host" "$1"
+        return 0
+    fi
+    proj="${proj//%2F//}"
+    case "$proj" in
+        ''|*[!0-9]*) printf 'https://%s/%s/-/merge_requests/%s\n' "$host" "$proj" "$1" ;;
+        *)           printf 'https://%s/projects/%s/-/merge_requests/%s\n' "$host" "$proj" "$1" ;;
+    esac
+}
 
 ################################################################################
 # pl mr create — the other half of ops#216.
@@ -507,7 +533,28 @@ and the guard will re-hold this MR."
   fi
   print_success "!$iid released by @$approver, bound to head ${sha:0:12}"
   [ -n "$sens" ] && print_info "sensitive paths: $(printf '%s\n' "$sens" | tr '\n' ' ')"
-  print_hint "merging is still a human action — this only removed the hold"
+
+  # THE PIPELINE MUST BE TOLD. Lifting the Draft is only layer 1; layer 2 of the
+  # hold is the gate job's own RED result, and a release does not re-run a job
+  # that has already finished. Without this the MR is released and unmergeable at
+  # the same time, and the web UI still says blocked with nothing explaining why.
+  # That is exactly the catch-22 the operator hit on !350 (ops#283).
+  #
+  # This is not self-approval: the retried job re-runs the gate, which looks for a
+  # release record bound to the CURRENT head. It passes on its own evidence or it
+  # goes red again.
+  local retried rc
+  retried=$(_mr_retry_gate_job "$iid"); rc=$?
+  case $rc in
+    0) print_info "re-ran the held gate job (#$retried) so the pipeline re-evaluates the release" ;;
+    2) print_warning "could not re-run the gate job (HTTP $(_mr_http_status)) — the release IS recorded," 
+       print_warning "but the pipeline will stay red until that job is retried by hand." ;;
+    *) print_info "no failed gate job to re-run (pipeline may not have run yet)" ;;
+  esac
+
+  print_hint "merging is still a human action — this only removed the hold."
+  print_hint "Wait for the pipeline to go green, then merge here:"
+  print_hint "  $(_mr_web_url "$iid")"
 }
 
 ################################################################################

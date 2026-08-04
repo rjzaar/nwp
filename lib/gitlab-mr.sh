@@ -452,6 +452,50 @@ Release it deliberately, with a second pair of eyes:
 }
 
 # _mr_lift_hold <iid> — undraft and drop the hold labels. Nothing else.
+# _mr_retry_gate_job <iid>
+# Re-run the sensitive-path hold job after a release, so the PIPELINE reflects
+# the release.
+#
+# THE CATCH-22 THIS CLOSES. `pl mr release` recorded the approval and lifted the
+# Draft, then printed "merging is still a human action". True — but the operator
+# went to the MR and it still said blocked, because layer 2 of the hold is the
+# gate job's own RED result, and a release does not re-run an already-finished
+# job. So the MR was released and unmergeable at the same time, with nothing on
+# screen explaining why. The operator asked, reasonably, whether there was a
+# better way; there is, and it is this.
+#
+# Retrying is safe and is not self-approval: the job re-executes
+# scripts/ci/sensitive-path-hold-gate.sh, which looks for a release record bound
+# to the CURRENT head. If the release is real the gate passes on its own
+# evidence; if it is not, the job goes red again. Nothing is asserted here that
+# the gate does not re-verify.
+#
+# Emits the new job id on stdout. Returns 1 if there is nothing to retry (no
+# pipeline, or no failed gate job) — which is not an error, and 2 if the retry
+# call itself failed.
+_mr_retry_gate_job(){
+    local iid="$1" proj json pid jid
+    proj=$(_mr_project) || return 1
+    json=$(_mr_fetch "$iid") || return 1
+    pid=$(printf '%s' "$json" | _mr_jget 'head_pipeline.id')
+    [ -n "$pid" ] || return 1
+
+    # Find the FAILED job whose name marks it as the hold gate. Matched on name
+    # rather than position: the pipeline's job list is not ordered by contract.
+    jid=$(_mr_api GET "/projects/$proj/pipelines/$pid/jobs?per_page=100" \
+        | python3 -c 'import json,sys
+try: js=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for j in js if isinstance(js,list) else []:
+    if j.get("status")=="failed" and "mr-hold" in (j.get("name") or ""):
+        print(j.get("id")); break' 2>/dev/null)
+    [ -n "$jid" ] || return 1
+
+    _mr_api POST "/projects/$proj/jobs/$jid/retry" >/dev/null || return 2
+    printf '%s\n' "$jid"
+    return 0
+}
+
 _mr_lift_hold(){
   local iid="$1" proj json title new_title payload
   proj=$(_mr_project) || return 1

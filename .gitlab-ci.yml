@@ -255,6 +255,28 @@ lint:registry-ids:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   tags:
     - nwp
+
+# yq "\t" escape gate (2026-08-03).
+#
+# yq only expands "\t" to a real tab from v4.45. THIS RUNNER PINS v4.44.1, where
+# it stays a literal backslash-t, so `.a + "\t" + .b` emits one field and the
+# `IFS=$'\t' read` on the other end silently fails to split. Nothing errors; the
+# loop just does nothing, or does it wrong.
+#
+# It is a gate rather than a comment because FOUR files already carried prose
+# warning about this exact trap (lib/gitlab-issues.sh, lib/pair.sh,
+# lib/gitlab-mr.sh, scripts/commands/monitor.sh) and a fifth and sixth instance
+# were still written — on workstations with newer yq, where the bug is
+# invisible. Four warnings did not prevent them. A red pipeline will.
+lint:yq-tab:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-yq-tab-escape.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
   allow_failure: false
 
 # Snapshot gate — a committed *.bundle must be able to rebuild what it claims

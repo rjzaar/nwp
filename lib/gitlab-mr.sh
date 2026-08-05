@@ -352,6 +352,26 @@ _mr_is_draft(){
 
 _mr_title(){    printf '%s' "$1" | _mr_jget title; }
 _mr_author(){   printf '%s' "$1" | _mr_jget 'author.username'; }
+
+# _mr_token_user — the username the FORGE associates with our token.
+# Empty + rc 1 when it cannot be established.
+#
+# WHY IT MATTERS. `--approved-by=<handle>` is a string the caller types; nothing
+# checks that the caller IS that person. The gate compensates by refusing a
+# release note whose Approved-By equals the MR author (see _mr_release_record),
+# so an author cannot self-approve under their own name — but they could type
+# somebody else's. The two-step flow's real backstop was that a HUMAN, whose
+# identity the forge knows, finally clicked Merge.
+#
+# `--merge` removes that click, so it must put a forge-verified identity back in
+# its place: the token's own user. That is checked, not asserted.
+_mr_token_user(){
+  local json
+  json=$(_mr_get "/user") || return 1
+  local u; u=$(printf '%s' "$json" | _mr_jget 'username')
+  [ -n "$u" ] || return 1
+  printf '%s' "$u"
+}
 _mr_head_sha(){ printf '%s' "$1" | _mr_jget sha; }
 _mr_state(){    printf '%s' "$1" | _mr_jget state; }
 _mr_detailed_merge_status(){ printf '%s' "$1" | _mr_jget detailed_merge_status; }

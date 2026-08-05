@@ -594,6 +594,44 @@ and the guard will re-hold this MR."
   # merging now would race a pipeline that is deliberately re-checking the release
   # we have only just recorded. Merging before that lands would defeat the point
   # of re-running it.
+  # TWO-PERSON, RESTORED AS A CHECK. An existing guard in
+  # tests/unit/test-mr-release-pipeline.bats forbade cmd_release from merging at
+  # all — "the verb re-runs the CHECK, it never merges" — and it was right to:
+  # dropping the human Merge click removes the only step whose actor the FORGE
+  # can identify. `--approved-by` is a string the caller types.
+  #
+  # So --merge does not merely skip that step, it replaces it with a stronger
+  # one: the token's own forge-verified user must not be the MR author. An author
+  # can no longer release-and-merge their own MR in one command, under any handle
+  # they care to type — which is more than the UI click guaranteed, since the UI
+  # let an author merge their own MR once someone had left a release note.
+  local mr_json mr_author tok_user
+  mr_json=$(_mr_fetch "$iid") || {
+    print_error "cannot re-read !$iid to check who authored it — NOT merging."
+    print_info  "The release IS recorded. Merge by hand: $(_mr_web_url "$iid")"
+    return 1
+  }
+  mr_author=$(_mr_author "$mr_json")
+  if ! tok_user=$(_mr_token_user); then
+    # "I could not establish who I am" is never "I am somebody else".
+    print_error "could not establish this token's forge identity (GET /user) — NOT merging."
+    print_info  "--merge requires a verified identity distinct from the author."
+    print_info  "The release IS recorded. Merge by hand: $(_mr_web_url "$iid")"
+    return 1
+  fi
+  if [ -z "$mr_author" ]; then
+    print_error "could not read !$iid's author — NOT merging (cannot check two-person)."
+    return 1
+  fi
+  if [ "$tok_user" = "$mr_author" ]; then
+    print_error "REFUSING --merge: this token belongs to @$tok_user, who AUTHORED !$iid."
+    print_info  "A release lifts a hold; it is not a second pair of eyes when the"
+    print_info  "same person does both. --approved-by is a string you typed; this is"
+    print_info  "the identity the forge sees, and it is the one that has to differ."
+    print_info  "The release IS recorded. Have someone else merge: $(_mr_web_url "$iid")"
+    return 1
+  fi
+  print_info "merging as @$tok_user (author is @$mr_author — distinct, so two-person holds)"
   print_info "waiting for the pipeline to re-evaluate the release before merging…"
   local waited=0 st
   while [ "$waited" -lt "${NWP_MR_MERGE_TIMEOUT:-600}" ]; do

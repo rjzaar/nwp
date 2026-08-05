@@ -97,7 +97,15 @@ print_hint() {
 # Requires START_TIME to be set before calling
 show_elapsed_time() {
     local label="${1:-Operation}"
-    local end_time=$(date +%s)
+    # NWP_NOW lets a caller FREEZE the clock. Without it this function samples
+    # `date` a second time, after START_TIME was computed from an earlier sample —
+    # so a test that sets START_TIME to "now minus 3665" gets 3666 whenever the
+    # second ticks over between the two reads, and asserts 01:01:05 against
+    # 01:01:06. That race reddened an unrelated pipeline on 2026-08-04 (ops#289)
+    # while passing every time locally; a loaded CI runner just widens the window.
+    #
+    # Production callers pass nothing and behave exactly as before.
+    local end_time="${NWP_NOW:-$(date +%s)}"
     local elapsed=$((end_time - ${START_TIME:-$end_time}))
     local hours=$((elapsed / 3600))
     local minutes=$(((elapsed % 3600) / 60))

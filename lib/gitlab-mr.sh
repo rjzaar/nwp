@@ -394,7 +394,13 @@ _mr_auto_merge_armed(){
 # "Mark as ready" once is the document-shaped hold again, wearing a badge.
 _mr_has_hold_label(){
   local labels
-  labels=$(printf '%s' "$1" | "$YQ" e -p=json -r '.labels | join(",")' - 2>/dev/null)
+  # NOT yq: $YQ is EMPTY on the CI runner, so this silently returned no labels
+  # and every hold-label check answered "not held" there (the ops#281 class,
+  # found while building the release guard). python3 is always present.
+  labels=$(printf '%s' "$1" | python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print(""); raise SystemExit
+print(",".join(d.get("labels") or []))' 2>/dev/null)
   case ",$labels," in
     *",$MR_HOLD_LABEL_MANUAL,"*|*",$MR_HOLD_LABEL_SENSITIVE,"*) return 0 ;;
   esac
@@ -532,6 +538,81 @@ for j in js if isinstance(js,list) else []:
     printf '%s\n' "$jid"
     return 0
 }
+
+# _mr_assert_project <iid> [<expected-project>]
+# Refuse when the project resolved from the CURRENT DIRECTORY is not the one the
+# caller meant.
+#
+# THE INCIDENT (2026-08-06). The operator ran `pl mr release 80` from ~/nwp to
+# release nwp/nwc!80 (the php-lint fix). The verb resolves its project from the
+# git remote of wherever it runs, so it targeted nwp/nwp!80 — a DIFFERENT,
+# long-merged MR — and cheerfully posted a release note onto it. Every line of
+# output said SUCCESS. The real MR stayed held, and the operator went looking at
+# a page that said "already merged" and reasonably concluded the tooling was
+# confused.
+#
+# MR numbering is PER PROJECT, so `!80` is ambiguous the moment more than one
+# project is in play — and this estate has two that are worked on in the same
+# breath (nwp/nwp and nwp/nwc). An ambiguous identifier that silently picks one
+# is worse than one that asks.
+#
+# So a WRITE verb states which project it is about, out loud, before it writes.
+# The check is cheap: the MR must exist in the resolved project AND its title
+# must be non-empty. A 404 here means "you are in the wrong directory", which is
+# a far more useful message than a success on the wrong MR.
+#
+# Returns 0 when the MR exists in the resolved project, 1 when it does not.
+# The project as a HUMAN reads it — "nwp/nwc", not "nwp%2Fnwc". Printed before
+# any write so the operator can see which project a verb is about without having
+# to know that it is inferred from the current directory.
+_mr_project_human(){
+    local p
+    p="$(_mr_project 2>/dev/null || true)"
+    [ -n "$p" ] || { printf '(project unresolved)'; return 0; }
+    printf '%s' "${p//%2F//}"
+}
+
+# The head pipeline's status, or "none". Deliberately a bare word so callers can
+# case on it; an unreadable answer is "unknown", never "success".
+_mr_pipeline_status(){
+    local json st
+    json=$(_mr_fetch "$1" 2>/dev/null) || { printf 'unknown'; return 0; }
+    st=$(printf '%s' "$json" | _mr_jget 'head_pipeline.status')
+    printf '%s' "${st:-none}"
+}
+
+# WHY EXISTENCE IS THE WRONG TEST — learned the hard way, twice.
+# The first version asked "does !N exist in the resolved project?". It does: BOTH
+# projects have an !80 and an !81. So the guard passed and the verb posted a
+# release onto the wrong project's MR — reproducing, while under test, the exact
+# bug it was written to prevent.
+#
+# The property that actually distinguishes them is SEMANTIC, not positional: a
+# release only means anything on an MR that is currently HELD. A merged MR, a
+# closed one, or an open one that was never held cannot be released — there is no
+# hold to lift. Both misfires were against MERGED MRs, so this catches them
+# whichever project the directory resolves to.
+#
+# Echoes a word describing what was found; returns 0 only for 'held'. The caller
+# prints it, because "!80 here is a merged MR titled X" tells the operator they
+# are in the wrong directory far better than a bare refusal.
+_mr_assert_releasable(){
+    local iid="$1" json state draft labels
+    _mr_project >/dev/null 2>&1 || { printf 'unresolved'; return 1; }
+    json=$(_mr_fetch "$iid" 2>/dev/null) || { printf 'missing'; return 1; }
+    [ -n "$(_mr_title "$json")" ] || { printf 'missing'; return 1; }
+    state=$(printf '%s' "$json" | _mr_jget 'state')
+    [ "$state" = "opened" ] || { printf '%s' "$state"; return 1; }
+    draft=$(printf '%s' "$json" | _mr_jget 'draft')
+    # Held = Draft (layer 1) OR a hold label. Reuses the existing
+    # _mr_has_hold_label rather than a second reader — a duplicate label parser is
+    # how the two drift apart.
+    if [ "$draft" = "true" ] || _mr_has_hold_label "$json"; then
+        printf 'held'; return 0
+    fi
+    printf 'not-held'; return 1
+}
+
 
 _mr_lift_hold(){
   local iid="$1" proj json title new_title payload

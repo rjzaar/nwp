@@ -442,14 +442,15 @@ cmd_hold(){
 ################################################################################
 cmd_release(){
   _need_yq
-  local iid="" approver="" reason=""
+  local iid="" approver="" reason="" do_merge=false
   while [ $# -gt 0 ]; do
     case "$1" in
       --approved-by)   approver="${2:-}"; shift 2 ;;
       --approved-by=*) approver="${1#*=}"; shift ;;
       --reason)        reason="${2:-}"; shift 2 ;;
       --reason=*)      reason="${1#*=}"; shift ;;
-      -h|--help) printf 'usage: pl mr release <iid> --approved-by=<handle> [--reason="..."]\n'; return 0 ;;
+      --merge)         do_merge=true; shift ;;
+      -h|--help) printf 'usage: pl mr release <iid> --approved-by=<handle> [--reason="..."] [--merge]\n'; return 0 ;;
       -*) die "unknown option: $1 (usage: pl mr release <iid> --approved-by=<handle>)" ;;
       *) [ -z "$iid" ] && { iid="$1"; shift; } || die "unexpected arg: $1" ;;
     esac
@@ -457,6 +458,32 @@ cmd_release(){
   [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr release <iid> --approved-by=<handle> [--reason=\"...\"]"
   approver="${approver#@}"
   [ -n "$approver" ] || die "--approved-by=<handle> is required — a release names the second pair of eyes"
+
+  # WHICH PROJECT, SAID OUT LOUD, BEFORE ANY WRITE (ops#293).
+  # MR numbers are per-project and this estate works two projects in the same
+  # breath. On 2026-08-06 `pl mr release 80` run from ~/nwp released nwp/nwp!80 —
+  # a long-merged MR — instead of the intended nwp/nwc!80, printed SUCCESS, and
+  # left the real MR held. An ambiguous identifier that silently picks one is
+  # worse than one that asks.
+  local relstate
+  relstate=$(_mr_assert_releasable "$iid") || {
+    case "$relstate" in
+      merged|closed)
+        print_error "!$iid in $(_mr_project_human) is a ${relstate} MR — nothing to release."
+        print_info  "MR numbers are PER PROJECT and this directory resolves to $(_mr_project_human)."
+        print_info  "You almost certainly meant a different project's !$iid. cd there and re-run." ;;
+      not-held)
+        print_error "!$iid in $(_mr_project_human) is open but NOT held — nothing to release."
+        print_info  "A release lifts a hold. This MR carries neither Draft nor a hold label." ;;
+      missing)
+        print_error "!$iid does not exist in $(_mr_project_human)." ;;
+      *)
+        print_error "could not determine whether !$iid is releasable — refusing to write." ;;
+    esac
+    print_info "Nothing was changed."
+    return 1
+  }
+  print_info "project: $(_mr_project_human)  (resolved from this directory's git remote)"
 
   # ── ADR-0028 "Phase 1 dispensation": a trigger that arms itself ────────────
   #
@@ -551,9 +578,45 @@ and the guard will re-hold this MR."
     *) print_info "no failed gate job to re-run (pipeline may not have run yet)" ;;
   esac
 
-  print_hint "merging is still a human action — this only removed the hold."
-  print_hint "Wait for the pipeline to go green, then merge here:"
-  print_hint "  $(_mr_web_url "$iid")"
+  if [ "$do_merge" != true ]; then
+    print_hint "merging is still a human action — this only removed the hold."
+    print_hint "Wait for the pipeline to go green, then merge here:"
+    print_hint "  $(_mr_web_url "$iid")"
+    return 0
+  fi
+
+  # --merge: the operator asked "why do I need to release and merge. Can't the
+  # merge be the release?" (2026-08-05). The two-person property is that the
+  # AUTHOR is not the approver — the approver merging is not a weakening of it,
+  # it IS the approval. So this is one action with the same record.
+  #
+  # It must WAIT, not merge immediately: the release just re-ran the gate job, so
+  # merging now would race a pipeline that is deliberately re-checking the release
+  # we have only just recorded. Merging before that lands would defeat the point
+  # of re-running it.
+  print_info "waiting for the pipeline to re-evaluate the release before merging…"
+  local waited=0 st
+  while [ "$waited" -lt "${NWP_MR_MERGE_TIMEOUT:-600}" ]; do
+    st=$(_mr_pipeline_status "$iid")
+    case "$st" in
+      success) break ;;
+      failed|canceled)
+        print_error "pipeline is $st — NOT merging."
+        print_info  "The release is recorded; fix the pipeline and merge when it is green."
+        return 1 ;;
+    esac
+    sleep 20; waited=$((waited + 20))
+    printf '.' >&2
+  done
+  printf '\n' >&2
+  if [ "$st" != "success" ]; then
+    # Never merge on an unknown verdict. "I ran out of patience" is not "green".
+    print_warning "pipeline still '$st' after ${waited}s — NOT merging."
+    print_info    "The release IS recorded. Merge when it goes green: $(_mr_web_url "$iid")"
+    return 1
+  fi
+  print_success "pipeline green after ${waited}s — merging"
+  cmd_merge "$iid"
 }
 
 ################################################################################

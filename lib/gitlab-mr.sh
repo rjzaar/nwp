@@ -123,6 +123,12 @@ _mr_jget(){
   if _mr_have_yq; then
     "$YQ" e -p=json ".$1 // \"\"" - 2>/dev/null | grep -v '^null$'
   else
+    # JSON SPELLING, not Python's. python prints True/False where yq prints
+    # true/false, so every `[ "$x" = "true" ]` comparison against a _mr_jget
+    # result silently evaluated FALSE wherever yq is absent — i.e. on the CI
+    # runner, for draft, merge_when_pipeline_succeeds and is_bot alike. Caught by
+    # a Draft MR reading as not-held once a test suite was finally made genuinely
+    # yq-less (ops#293).
     python3 -c 'import json,sys
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
@@ -130,7 +136,10 @@ v=d
 for part in sys.argv[1].split("."):
     v = v.get(part) if isinstance(v, dict) else None
     if v is None: break
-print("" if v is None else v)' "$1"
+if v is None: print("")
+elif v is True: print("true")
+elif v is False: print("false")
+else: print(v)' "$1"
   fi
 }
 
@@ -330,7 +339,14 @@ _mr_sensitive_paths(){
 # _mr_is_draft <mr-json> → 0 when GitLab itself considers this a draft.
 _mr_is_draft(){
   local json="$1" d
-  d=$(printf '%s' "$json" | "$YQ" e -p=json '.draft // .work_in_progress // false' - 2>/dev/null)
+  # Via _mr_jget, which has the python fallback. Read with a raw "$YQ" this
+  # returned EMPTY on the CI runner, so the hold CONFIRMATION step — the one that
+  # decides between "HELD" and "HOLD-MECHANISM-FAILED" — answered "not draft" for
+  # every MR there, including ones whose hold had just been applied successfully.
+  # ops#281 fixed the write and left the read (ops#293).
+  d=$(printf '%s' "$json" | _mr_jget 'draft')
+  [ "$d" = "true" ] && return 0
+  d=$(printf '%s' "$json" | _mr_jget 'work_in_progress')
   [ "$d" = "true" ]
 }
 

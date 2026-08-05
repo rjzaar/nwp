@@ -24,24 +24,73 @@
 # for a hold, and the wrong-project case falls out for free — as do two shapes
 # nobody had thought about, a closed MR and an open MR that was never held.
 #
-# EVERY CASE HERE RUNS WITH YQ EMPTY, as the CI runner does. That is not
-# incidental: _mr_has_hold_label parsed labels with $YQ, so on the runner it
-# answered "no hold label" for every MR — a guard keyed on it would have called
-# every held MR releasable. Found while writing this file, fixed in the same
-# change, and this is the case that would have caught it.
+# EVERY CASE HERE RUNS WITH YQ EMPTY, as the CI runner does — and setup() sets it
+# AFTER sourcing, because lib/gitlab-mr.sh resolves YQ on load and silently
+# overwrote an earlier assignment. The first version of this file set it before,
+# so it was NOT yq-less and said it was; a meta case now asserts the condition
+# instead of asserting it in a comment. tests/unit/test-mr-json-yqless.bats has
+# the same defect and is fixed under ops#293.
+#
+# That premise is load-bearing: _mr_has_hold_label parsed labels with $YQ, so on
+# the runner it answered "no hold label" for every MR — a guard keyed on it would
+# have called every held MR releasable. Found while writing this file, fixed in
+# the same change, and this is the case that would have caught it.
 
 bats_require_minimum_version 1.5.0
 
 setup() {
     REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-    YQ=""                                  # as the runner has it — see docblock
     export MR_STATUS_FILE="$(mktemp)"
     # shellcheck source=/dev/null
     source "$REPO_ROOT/lib/ui.sh" 2>/dev/null || true
     # shellcheck source=/dev/null
     source "$REPO_ROOT/lib/gitlab-mr.sh"
+    # AFTER the source, and that ordering is the whole point. lib/gitlab-mr.sh
+    # resolves YQ itself on load, so a `YQ=""` set BEFORE sourcing is silently
+    # overwritten with the real binary — which is what the first version of this
+    # file did, and what tests/unit/test-mr-json-yqless.bats has been doing since
+    # ops#281 despite a docblock insisting otherwise. Measured: YQ inside a test
+    # came back /home/rob/.local/bin/yq. Those suites were never yq-less, which is
+    # precisely the blindness they were written to remove (ops#293).
+    YQ=""
     # A resolvable project, so 'unresolved' never masks a real verdict.
     _mr_project(){ printf 'nwp%%2Fnwc'; }
+}
+
+@test "RED-PROOF: booleans come back in JSON spelling, not Python's" {
+    # The bug this ordering fix exposed, and the reason it matters. python printed
+    # True where yq prints true, so `[ "$draft" = "true" ]` was FALSE on the CI
+    # runner for every MR — _mr_assert_releasable called a Draft MR 'not-held',
+    # which is the guard failing open in exactly the environment it must not.
+    run _mr_jget 'draft' <<<'{"draft":true}'
+    [ "$output" = "true" ]
+    run _mr_jget 'x' <<<'{"x":false}'
+    [ "$output" = "false" ]
+    # and a missing key stays empty rather than becoming the string "None"
+    run _mr_jget 'nope' <<<'{"x":1}'
+    [ -z "$output" ]
+}
+
+@test "RED-PROOF: _mr_is_draft works without yq — it CONFIRMS the D13 hold" {
+    # It read .draft with a raw "$YQ", so on the runner it answered 'not draft'
+    # for every MR, including ones whose hold had just been applied. That is the
+    # difference between printing HELD and printing HOLD-MECHANISM-FAILED.
+    run _mr_is_draft '{"draft":true}'
+    [ "$status" -eq 0 ]
+    run _mr_is_draft '{"draft":false}'
+    [ "$status" -ne 0 ]
+    run _mr_is_draft '{"work_in_progress":true}'
+    [ "$status" -eq 0 ]
+    run _mr_is_draft '{}'
+    [ "$status" -ne 0 ]
+}
+
+@test "meta: YQ really IS empty in here — the claim this file rests on" {
+    # Without this the yq-less premise is a comment, not a condition. It was a
+    # comment for the first version of this file, and still is for ops#281's.
+    [ -z "$YQ" ] || { echo "YQ=[$YQ] — this suite is NOT running yq-less"; false; }
+    run _mr_have_yq
+    [ "$status" -ne 0 ]
 }
 teardown() { rm -f "$MR_STATUS_FILE"; }
 

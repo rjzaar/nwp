@@ -300,20 +300,93 @@ _mr_fetch(){
 # on a large MR returns the whole patch text, which we neither need nor want to
 # hold in memory. Renames report BOTH sides — a rename INTO a sensitive path and
 # a rename OUT of one are each worth a hold.
+# _mr_diff_paths <json> → one path per line, or rc 1 if the page cannot be READ.
+#
+# Separated out so "I could not parse this" is expressible at all. The inline
+# version could only `break`, which the caller then saw as an empty page.
+_mr_diff_paths(){
+  if _mr_have_yq; then
+    "$YQ" e -p=json -r '.[] | [.new_path, .old_path] | .[]' - <<<"$1" 2>/dev/null || return 1
+    return 0
+  fi
+  # yq is ABSENT ON THE CI RUNNER, and this function is the gate's only source of
+  # truth about which files an MR touches. Read with a bare "$YQ" it produced
+  # nothing there, the loop broke, and the gate reported an empty change set —
+  # i.e. "nothing sensitive" — for every MR in CI (ops#293, the ops#281 class).
+  printf '%s' "$1" | python3 -c 'import json,sys
+try: rows = json.load(sys.stdin)
+except Exception: sys.exit(1)
+if not isinstance(rows, list): sys.exit(1)
+for r in rows:
+    if not isinstance(r, dict): sys.exit(1)
+    for k in ("new_path", "old_path"):
+        v = r.get(k)
+        if v: print(v)' || return 1
+}
+
+# _mr_changed_files <iid> → one repo-relative path per line.
+# rc 0 = read successfully (may legitimately be empty) · 1 = COULD NOT READ.
+#
+# THE RETURN CODE IS THE POINT. This used to `return 0` unconditionally, so a
+# page it could not parse and an MR with no files were the same answer: rc 0,
+# no output. The caller reads empty output as "could not look" only because it
+# separately knows an MR always has files — a coincidence, not a contract. Now
+# an unreadable page fails, and the caller is told.
 _mr_changed_files(){
-  local iid="$1" proj json page=0 rows
+  local iid="$1" proj json page=0 rows out="" rc=0
   proj=$(_mr_project) || return 1
   while :; do
     page=$((page + 1))
     json=$(_mr_get "/projects/$proj/merge_requests/$iid/diffs?per_page=100&page=$page") || return 1
     [ -n "$json" ] || break
-    rows=$("$YQ" e -p=json -r '.[] | [.new_path, .old_path] | .[]' - <<<"$json" 2>/dev/null) || break
+    rows=$(_mr_diff_paths "$json") || { rc=1; break; }
     [ -n "$rows" ] || break
-    printf '%s\n' "$rows"
+    out="${out}${rows}"$'\n'
     [ "$(printf '%s\n' "$rows" | grep -c .)" -lt 100 ] && break
     [ "$page" -ge 30 ] && break
-  done | grep -v '^null$' | sort -u
+  done
+  [ "$rc" -eq 0 ] || return 1
+  printf '%s' "$out" | grep -v '^null$' | sort -u | grep -v '^$' || true
   return 0
+}
+
+# _mr_diff_ready <iid> — wait until GitLab has finished PREPARING the diff.
+# rc 0 = ready · 1 = still not ready (or unreadable) within the timeout.
+#
+# WHY THIS EXISTS. GitLab computes an MR's diff asynchronously. For the first
+# seconds after creation it reports detailed_merge_status=preparing, diff_refs
+# null, and an EMPTY changeset. `pl mr create` ran the sensitive-path gate the
+# instant after the POST, read that empty changeset, and concluded "could not
+# look" — when the true answer was "not yet". Measured on !368: empty at
+# creation, three files moments later, correct verdict from an unchanged gate.
+#
+# So CANNOT VERIFY was the normal outcome of creating an MR. Combined with a
+# cannot-verify path that applied no hold, the gate was decoration on every new
+# MR. Distinguishing "not yet" from "cannot" is the whole job.
+#
+# `checking` is included deliberately: CLAUDE.md's merge-automation rule is that
+# checking means retry, not failure.
+_mr_diff_ready(){
+  local iid="$1" json st refs tries=0 max
+  local timeout="${NWP_MR_DIFF_TIMEOUT:-60}" poll="${NWP_MR_DIFF_POLL:-3}"
+  # Bounded by ATTEMPTS, not by elapsed time, so the tests can drive it with
+  # poll=0 and no sleeping. A time-only bound made poll=0 mean "give up at once",
+  # which is not the same knob at all.
+  if [ "$poll" -gt 0 ]; then max=$(( timeout / poll + 1 )); else max=$(( timeout > 0 ? timeout : 1 )); fi
+  while :; do
+    tries=$((tries + 1))
+    json=$(_mr_fetch "$iid" 2>/dev/null) || return 1
+    st=$(printf '%s' "$json" | _mr_jget 'detailed_merge_status')
+    refs=$(printf '%s' "$json" | _mr_jget 'diff_refs.base_sha')
+    case "$st" in
+      preparing|checking|unchecked|"") ;;
+      *) [ -n "$refs" ] && return 0 ;;
+    esac
+    # Falling out is a REFUSAL, never a pass — "I ran out of patience" is not
+    # "the diff is ready and empty".
+    [ "$tries" -lt "$max" ] || return 1
+    [ "$poll" -gt 0 ] && sleep "$poll"
+  done
 }
 
 # _mr_sensitive_paths <iid> → sensitive subset of the MR's changed files.

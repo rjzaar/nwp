@@ -33,14 +33,26 @@ setup() {
     REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
     # THE POINT OF THE WHOLE FILE. Not a convenience — the defect is invisible
     # with yq present, so every case below runs as the runner does.
-    YQ=""
     export MR_STATUS_FILE="$(mktemp)"
     # shellcheck source=/dev/null
     source "$REPO_ROOT/lib/ui.sh" 2>/dev/null || true
     # shellcheck source=/dev/null
     source "$REPO_ROOT/lib/gitlab-mr.sh"
+    # AFTER the source. lib/gitlab-mr.sh resolves YQ on load, so a YQ=""
+    # set BEFORE sourcing is silently overwritten with the real binary —
+    # which is what this file did, so it has never once run yq-less despite
+    # a docblock insisting it does. Measured: YQ=[/home/rob/.local/bin/yq]
+    # from inside a test (ops#293).
+    YQ=""
 }
 teardown() { rm -f "$MR_STATUS_FILE"; }
+
+@test "meta: YQ really IS empty in here — the premise this file rests on" {
+    # Asserted, not narrated. It was narrated, and was false the whole time.
+    [ -z "$YQ" ] || { echo "YQ=[$YQ] — this suite is NOT yq-less"; false; }
+    run _mr_have_yq
+    [ "$status" -ne 0 ]
+}
 
 @test "RED-PROOF: _mr_json builds a real object with NO yq on PATH" {
     run _mr_json title "Draft: something" add_labels "hold::sensitive"

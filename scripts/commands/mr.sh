@@ -273,7 +273,7 @@ cmd_create(){
   cmd_guard "$iid" --apply || grc=$?
   case "$grc" in
     1) print_warning "!$iid is HELD by the sensitive-path gate — that is the gate working." ;;
-    2) print_warning "!$iid — sensitive-path status CANNOT BE VERIFIED; treat it as held." ;;
+    2) print_warning "!$iid — sensitive-path status CANNOT BE VERIFIED; the gate held it." ;;
   esac
   return 0
 }
@@ -738,6 +738,50 @@ EOF
 #   1 — held (or should be held): sensitive path with no valid release
 #   2 — CANNOT VERIFY (no diff, unreadable CLAUDE.md). Fail closed.
 ################################################################################
+# _mr_hold_unverifiable <iid> <apply> — hold an MR whose sensitivity could not be
+# determined. Fail-closed's action half: saying "treat it as held" and holding
+# nothing is not failing closed, it is failing open with a warning.
+_mr_hold_unverifiable(){
+  local iid="$1" apply="$2"
+  if [ "$apply" != true ]; then
+    echo "       (read-only: re-run with --apply to hold it, or hold it by hand)"
+    return 0
+  fi
+  if [ -z "$iid" ] || ! _mr_have_token; then
+    echo "NOT ENFORCED AS DRAFT: no MR-capable token here, so the hold could not be"
+    echo "  applied. Nothing is holding this MR except this command's exit code."
+    return 0
+  fi
+  # Same host check the sensitive-path hold does. Without it this would dial the
+  # placeholder domain, take an HTTP 000, and report HOLD-MECHANISM-FAILED — true,
+  # but blaming the mechanism for what is really "I do not know the address".
+  if ! _mr_host_ok; then
+    echo "NOT ENFORCED AS DRAFT: the forge host could not be determined (no"
+    echo "  NWP_GITLAB_HOST, no CI_SERVER_HOST, no .secrets.yml), so no hold could"
+    echo "  be applied. Nothing is holding this MR except this command's exit code."
+    return 0
+  fi
+  echo ""
+  if _mr_apply_hold "$iid" \
+       "the sensitive-path gate could not determine what this MR changes, so it is held until someone can" \
+       "$MR_HOLD_LABEL_MANUAL" ""; then
+    local vjson
+    if vjson=$(_mr_fetch "$iid") && _mr_is_draft "$vjson"; then
+      echo "HELD: !$iid set to Draft because its sensitivity could NOT be verified."
+      echo "  This is the gate failing closed. Re-run \`pl mr guard $iid\` once the"
+      echo "  diff is readable; if it is clean, release it the ordinary way."
+    else
+      echo "HOLD-MECHANISM-FAILED: the Draft hold could not be CONFIRMED on !$iid,"
+      echo "  and its sensitivity is ALSO unverified. Nothing is holding this MR."
+      echo "  Do not merge it on the strength of a red pipeline alone."
+    fi
+  else
+    echo "HOLD-MECHANISM-FAILED: could not apply the Draft hold (HTTP $(_mr_http_status)),"
+    echo "  and the change set was unreadable too. Nothing is holding this MR."
+    echo "  Fix the mechanism before merging — both layers are absent, not one."
+  fi
+}
+
 cmd_guard(){
   local iid="${CI_MERGE_REQUEST_IID:-}" apply=false base="" head_ref="HEAD" ci=false
   while [ $# -gt 0 ]; do
@@ -778,17 +822,45 @@ cmd_guard(){
   # request with no changed files is not a thing.
   #
   # So when the range comes back empty and there IS an MR to ask about, ask.
+  local read_failed=false
   if [ -z "$files" ] && [ -n "$iid" ] && _mr_have_token; then
-    files=$(_mr_changed_files "$iid") || files=""
     source="GitLab !$iid"
+    files=$(_mr_changed_files "$iid") || { files=""; read_failed=true; }
+    # "NOT YET" IS NOT "CANNOT". GitLab prepares diffs asynchronously; for the
+    # first seconds after creation it reports detailed_merge_status=preparing,
+    # diff_refs null and an empty changeset. `pl mr create` runs this gate the
+    # instant after the POST, so a single read made CANNOT VERIFY the NORMAL
+    # outcome of creating an MR (measured on !368: empty at creation, three files
+    # moments later, correct verdict from an unchanged gate — ops#293). So when
+    # the answer is empty, wait for the diff to be ready and ask once more.
+    if [ -z "$files" ] && [ "$read_failed" = false ]; then
+      echo "changeset empty on first read — waiting for GitLab to finish preparing the diff…"
+      if _mr_diff_ready "$iid"; then
+        files=$(_mr_changed_files "$iid") || { files=""; read_failed=true; }
+      fi
+    fi
   fi
   if [ -z "$files" ]; then
     if [ -n "$iid" ]; then
       echo "ERROR: the change set for !$iid came back EMPTY (tried: ${source:-no usable source})."
       echo "       A merge request with no changed files is not a thing, so this is"
       echo "       'could not look', NOT 'nothing sensitive'. Failing closed."
-      echo "       Usual causes: a shallow clone, a stale origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main},"
-      echo "       or a HEAD identical to the target."
+      if [ "$read_failed" = true ]; then
+        echo "       The diff pages could not be READ (parse or transport failure) —"
+        echo "       distinct from an empty answer, and never treated as one."
+      else
+        echo "       Usual causes: GitLab has not finished preparing the diff (it is"
+        echo "       still 'preparing' after the wait — retry in a moment), a shallow"
+        echo "       clone, a stale origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}, or a HEAD identical to the target."
+      fi
+      # FAIL CLOSED FOR REAL. This used to `return 2` here and leave the MR
+      # untouched, while cmd_create printed "treat it as held" — an instruction to
+      # a human in place of the action the verb could take itself. Measured on
+      # !368: 'CANNOT BE VERIFIED; treat it as held' with draft:False, labels:[],
+      # i.e. fully mergeable, with nothing on the forge recording that anything
+      # was unverified. An MR whose sensitivity cannot be established is PRECISELY
+      # the case a hold exists for (ops#293).
+      _mr_hold_unverifiable "$iid" "$apply"
       return 2
     fi
     if [ -n "$base" ] && git rev-parse --verify --quiet "$base" >/dev/null 2>&1; then

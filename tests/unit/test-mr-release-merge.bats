@@ -24,17 +24,25 @@
 # for a hold, and the wrong-project case falls out for free — as do two shapes
 # nobody had thought about, a closed MR and an open MR that was never held.
 #
-# EVERY CASE HERE RUNS WITH YQ EMPTY, as the CI runner does — and setup() sets it
+# EVERY CASE HERE RUNS WITH YQ EMPTY — and setup() sets it
 # AFTER sourcing, because lib/gitlab-mr.sh resolves YQ on load and silently
 # overwrote an earlier assignment. The first version of this file set it before,
 # so it was NOT yq-less and said it was; a meta case now asserts the condition
 # instead of asserting it in a comment. tests/unit/test-mr-json-yqless.bats has
 # the same defect and is fixed under ops#293.
 #
-# That premise is load-bearing: _mr_has_hold_label parsed labels with $YQ, so on
-# the runner it answered "no hold label" for every MR — a guard keyed on it would
-# have called every held MR releasable. Found while writing this file, fixed in
-# the same change, and this is the case that would have caught it.
+# That premise is load-bearing: _mr_has_hold_label parsed labels with $YQ, so
+# WHERE YQ IS ABSENT it answered "no hold label" for every MR, and a guard keyed
+# on it would call every held MR releasable — failing open.
+#
+# "WHERE YQ IS ABSENT", not "on the CI runner". An earlier version of this file
+# and its commit message said the latter, and that is FALSE: lib/gitlab-mr.sh
+# resolves yq by absolute candidate path, so job security:mr-hold of pipeline
+# 1964 read `files changed: 3` and gave the right verdict without ever
+# bootstrapping yq. These are LATENT defects — they bite on a host with no yq at
+# any candidate path (a fresh workstation, mons, a new runner), which is worth
+# fixing because the library advertises this fallback, but is not a live CI
+# failure. Corrected here rather than left standing (ops#293).
 
 bats_require_minimum_version 1.5.0
 

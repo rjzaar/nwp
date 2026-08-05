@@ -224,7 +224,14 @@ Line 2"
 ################################################################################
 
 @test "show_elapsed_time: shows elapsed time with default label" {
-    export START_TIME=$(($(date +%s) - 65))  # 1 minute 5 seconds ago
+    # Clock FROZEN (ops#289). These tests are about FORMATTING, so the passage
+    # of time has no business in them. Previously START_TIME came from one
+    # `date` and show_elapsed_time read another, so a second ticking over
+    # between the two turned 01:01:05 into 01:01:06 — a real race that
+    # reddened an unrelated pipeline while passing every time on an idle
+    # workstation. A loaded CI runner just widens the window.
+    export NWP_NOW=1000000000
+    export START_TIME=$((NWP_NOW - 65))  # 1 minute 5 seconds ago
     run show_elapsed_time
     [ "$status" -eq 0 ]
     [[ "$output" == *"Operation completed"* ]]
@@ -232,7 +239,8 @@ Line 2"
 }
 
 @test "show_elapsed_time: shows elapsed time with custom label" {
-    export START_TIME=$(($(date +%s) - 125))  # 2 minutes 5 seconds ago
+    export NWP_NOW=1000000000
+    export START_TIME=$((NWP_NOW - 125))  # 2 minutes 5 seconds ago
     run show_elapsed_time "Custom task"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Custom task completed"* ]]
@@ -240,14 +248,16 @@ Line 2"
 }
 
 @test "show_elapsed_time: handles hours correctly" {
-    export START_TIME=$(($(date +%s) - 3665))  # 1 hour 1 minute 5 seconds ago
+    export NWP_NOW=1000000000
+    export START_TIME=$((NWP_NOW - 3665))  # 1 hour 1 minute 5 seconds ago
     run show_elapsed_time "Long task"
     [ "$status" -eq 0 ]
     [[ "$output" == *"01:01:05"* ]]
 }
 
 @test "show_elapsed_time: handles zero elapsed time" {
-    export START_TIME=$(date +%s)
+    export NWP_NOW=1000000000
+    export START_TIME=$NWP_NOW
     run show_elapsed_time "Quick task"
     [ "$status" -eq 0 ]
     [[ "$output" == *"00:00:00"* ]]

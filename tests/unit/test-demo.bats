@@ -485,13 +485,19 @@ run_invite() {
   ! grep -qE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$CFILE"
 }
 
-@test "invite --all covers all five bundles; --bundles narrows; unknown refuses" {
+@test "invite --all covers EVERY bundle; --bundles narrows; unknown refuses" {
+  # Counted from DEMO_BUNDLES rather than hardcoded (ops#287 took it from five to
+  # seven by adding the apply-route codes, and a literal turned that into a test
+  # failure that looked like a defect). --all means ALL: the operator drafting an
+  # invitation gets every code type, including the two that go to /apply, in one
+  # pass. A number written here again would only have to be chased next time.
+  local total="${#DEMO_BUNDLES[@]}"
   run_invite --all
   [ "$status" -eq 0 ]
-  jq -e '.codes | length == 5' "$(demo_codes_file demo1)"
+  jq -e ".codes | length == ${total}" "$(demo_codes_file demo1)"
   run_invite --bundles tester-member
   [ "$status" -eq 0 ]
-  jq -e '.codes | length == 6' "$(demo_codes_file demo1)"
+  jq -e ".codes | length == $((total + 1))" "$(demo_codes_file demo1)"
   run_invite --bundles tester-member,not-a-bundle
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unknown bundle"* ]]

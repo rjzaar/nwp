@@ -44,6 +44,13 @@ DEMO_BUNDLES=(
     tester-content-manager
     tester-copyright-reviewer
     tester-safeguarding-reviewer
+    # APPLY-ROUTE codes (ops#287). Redeemed on /apply, NOT /demo/join: they
+    # stand in for the confirmation email, which the demo tier suppresses, so an
+    # application can actually complete. Both halves refuse the wrong door —
+    # DemoAccountFactory::createForBundle() and DemoJoinForm reject these, and
+    # the /apply handler rejects a tester-* code.
+    apply-review
+    apply-auto
 )
 
 # Reset window (decisions §4.3): fire 01:00 Australia/Melbourne, retry every
@@ -620,6 +627,8 @@ demo_invite_level_label() {
         tester-content-manager)       echo "CONTENT MANAGER TESTER" ;;
         tester-copyright-reviewer)    echo "COPYRIGHT REVIEWER TESTER" ;;
         tester-safeguarding-reviewer) echo "SAFEGUARDING REVIEWER TESTER" ;;
+        apply-review)                 echo "APPLICANT (OPERATOR REVIEWS)" ;;
+        apply-auto)                   echo "APPLICANT (JOINS IMMEDIATELY)" ;;
         *)                            echo "TESTER" ;;
     esac
 }
@@ -633,6 +642,42 @@ demo_invite_level_block() {
     printf '──────── %s ────────\n\n' "$label"
     printf 'Your code:  %s\n\n' "$code"
     case "$bundle" in
+        apply-review|apply-auto)
+            cat <<BLOCK
+This code is for the JOIN FORM, not the quick-login page. It is how we test that
+applying to join actually works from end to end.
+
+Go to ${cb}/apply and put this code in the "Invite code"
+box at the top, then fill in the rest and submit.
+
+Why the code matters: the demo site deliberately sends no email, so the usual
+"confirm your email address" step can never arrive. Your code does that job
+instead — it proves you were invited, which is what the email was for.
+BLOCK
+            if [ "$bundle" = "apply-auto" ]; then
+                cat <<'BLOCK'
+
+You will be admitted straight away, so you can carry on and look around.
+
+Worth telling us:
+  * did the form make sense, and was anything asked too early or twice?
+  * after joining, did you land somewhere that told you what to do next?
+  * were you put into the guilds you picked on the form?
+BLOCK
+            else
+                cat <<'BLOCK'
+
+Your application then waits for the operator to approve it — that is deliberate,
+because we are testing the review step too. You will not get an email; ask the
+operator to approve you.
+
+Worth telling us:
+  * did the form make sense, and was anything asked too early or twice?
+  * after submitting, was it clear what happens next and roughly how long?
+  * once approved, were you put into the guilds you picked on the form?
+BLOCK
+            fi
+            ;;
         tester-member)
             cat <<BLOCK
 This is the everyday member experience — what most people who join will see.

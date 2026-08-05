@@ -243,6 +243,21 @@ DIFFS_ONE='[{"new_path":"CLAUDE.md","old_path":"CLAUDE.md"},{"new_path":"lib/x.s
 
 # Load the command file. It guards `main "$@"` on BASH_SOURCE, so sourcing is
 # safe and gives access to cmd_guard directly.
+#
+# EVERY CASE BELOW PASSES --base=HEAD --head=HEAD, and that is not cosmetic.
+#
+# The gate PREFERS the git range and only falls back to the API when the range is
+# empty — and the API path is what these cases stub. With `--base=` the gate
+# derives a base from CI_MERGE_REQUEST_DIFF_BASE_SHA / _TARGET_BRANCH_NAME. Those
+# are UNSET on a workstation, so no range is computed and the API path runs; they
+# are SET in CI, so `git diff origin/main...HEAD` returns the real four files, the
+# API path never runs, and every stub below goes unused.
+#
+# That is exactly what happened: all eight behavioural cases passed here and
+# failed in CI, which could only report "Executed 3666 instead of expected 3674".
+# An explicit --base skips the derivation entirely and HEAD...HEAD is empty by
+# construction, so the fallback is reached on any host. setup() also clears the
+# variables, so neither mechanism alone is load-bearing.
 _load_cmd(){
     # shellcheck source=/dev/null
     source "$REPO_ROOT/scripts/commands/mr.sh" 2>/dev/null || true
@@ -266,6 +281,11 @@ _load_cmd(){
     # case below would measure the host check rather than the hold. Deliberately
     # unroutable: nothing here should ever dial it — every API call is stubbed.
     export NWP_GITLAB_HOST="forge.invalid.test"
+    # Belt and braces with the explicit --base above: if these leak in from a CI
+    # environment the gate derives a real diff range and stops consulting the
+    # stubs at all.
+    unset CI_MERGE_REQUEST_DIFF_BASE_SHA CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    unset CI_MERGE_REQUEST_IID
     # The sensitive-path route also reads the NOTES api, to see whether a release
     # record already exists. Unstubbed it dials the invalid host, takes an HTTP
     # 000 and fails closed — correctly, but that measures the notes call rather
@@ -277,7 +297,7 @@ _load_cmd(){
     # The measured defect: 'CANNOT BE VERIFIED; treat it as held' with
     # draft:False, labels:[] — fully mergeable, nothing recorded on the forge.
     _load_cmd
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [ "$status" -eq 2 ]
     grep -q 'HOLD_ATTEMPTED iid=1' "$HOLD_LOG" || {
         echo "cmd_guard returned 2 WITHOUT attempting a hold:"; cat "$HOLD_LOG"; false; }
@@ -286,7 +306,7 @@ _load_cmd(){
 
 @test "RED-PROOF (A): and it says HELD, naming the reason as unverifiability" {
     _load_cmd
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [[ "$output" == *"HELD"* ]]
     [[ "$output" == *"could NOT be verified"* ]] || {
         echo "the hold does not say WHY it was held"; false; }
@@ -297,7 +317,7 @@ _load_cmd(){
     # Both layers absent must be said in the words that are not skimmable.
     _load_cmd
     _mr_apply_hold(){ printf 'HOLD_ATTEMPTED iid=%s\n' "$1" >> "$HOLD_LOG"; return 1; }
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [ "$status" -eq 2 ]
     [[ "$output" == *"HOLD-MECHANISM-FAILED"* ]]
     [[ "$output" == *"Nothing is holding this MR"* ]]
@@ -308,7 +328,7 @@ _load_cmd(){
     # The PUT succeeded but the MR does not read as Draft: that is not a hold.
     _load_cmd
     _mr_is_draft(){ return 1; }
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [[ "$output" == *"HOLD-MECHANISM-FAILED"* ]]
     [[ "$output" != *"HELD: !1 set to Draft because"* ]]
     rm -f "$HOLD_LOG"
@@ -317,7 +337,7 @@ _load_cmd(){
 @test "WITHOUT --apply nothing is written, and it says so" {
     # Read-only must stay read-only; the refusal is still exit 2.
     _load_cmd
-    run cmd_guard 1 --base=
+    run cmd_guard 1 --base=HEAD --head=HEAD
     [ "$status" -eq 2 ]
     [ ! -s "$HOLD_LOG" ] || { echo "wrote a hold in read-only mode"; cat "$HOLD_LOG"; false; }
     [[ "$output" == *"re-run with --apply"* ]]
@@ -330,7 +350,7 @@ _load_cmd(){
     _load_cmd
     _mr_changed_files(){ printf 'lib/gitlab-mr.sh\nREADME.md\n'; }
     _mr_diff_ready(){ return 0; }
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [ "$status" -eq 0 ]
     [ ! -s "$HOLD_LOG" ] || { echo "held a clean MR"; cat "$HOLD_LOG"; false; }
     rm -f "$HOLD_LOG"
@@ -340,7 +360,7 @@ _load_cmd(){
     _load_cmd
     _mr_changed_files(){ printf 'CLAUDE.md\n'; }
     _mr_diff_ready(){ return 0; }
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [ "$status" -eq 1 ]
     grep -q 'HOLD_ATTEMPTED' "$HOLD_LOG" || { echo "a CLAUDE.md change was NOT held"; false; }
     rm -f "$HOLD_LOG"
@@ -351,7 +371,7 @@ _load_cmd(){
     # not "GitLab has not finished preparing the diff", the real cause on !368.
     _load_cmd
     _mr_changed_files(){ printf ''; }    # readable, but empty: the preparing case
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [[ "$output" == *"preparing"* ]] || {
         echo "the empty-changeset diagnosis never mentions async preparation"; false; }
     rm -f "$HOLD_LOG"
@@ -368,7 +388,7 @@ _load_cmd(){
         return 0
     }
     _mr_diff_ready(){ return 0; }
-    run cmd_guard 1 --apply --base=
+    run cmd_guard 1 --apply --base=HEAD --head=HEAD
     [ "$status" -eq 0 ]
     [ "$(cat "$n")" -ge 2 ] || { echo "only read the changeset once: $(cat "$n")"; false; }
     rm -f "$n" "$HOLD_LOG"

@@ -69,6 +69,12 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
+# impact_rm_scratch: the tree's single audited primitive for removing a
+# throwaway directory this process created (lib/impact.sh). The MR-fetch dir
+# below is a `mktemp -d` made a few lines earlier — not scope a human cares
+# about — but a bare `rm -rf` is indistinguishable from the real thing to any
+# scanner, so it goes through the audited primitive instead.
+source "$PROJECT_ROOT/lib/impact.sh"
 
 DECISIONS_PROJECT="${NWP_OPS_PROJECT_ID:-21}"
 DECISIONS_LABEL="${NWP_DECISIONS_LABEL:-needs-decision}"
@@ -196,7 +202,7 @@ cmd_decisions(){
     fi
     printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)" "$manifest"
     local rc=$?
-    [ -n "$mrdir" ] && rm -rf "$mrdir"
+    [ -n "$mrdir" ] && impact_rm_scratch "$mrdir" >/dev/null
     return $rc
 }
 

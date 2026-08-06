@@ -163,6 +163,17 @@ class GitLab:
         return self._req("POST", f"/projects/{self._proj(project)}/issues/{int(iid)}/notes",
                          {"body": body}, project=project)
 
+    def post_mr_note(self, project: str, iid: int, body: str) -> dict:
+        """A comment on a merge request — the Review pane's ONLY MR write.
+        Merging is deliberately impossible from here (ADR-0032): the operator's
+        merge click happens on the MR page, authenticated as themselves."""
+        body = (body or "").strip()
+        if not body or len(body) > 20_000:
+            return {"ok": False, "error": "empty or oversized note"}
+        return self._req("POST",
+                         f"/projects/{self._proj(project)}/merge_requests/{int(iid)}/notes",
+                         {"body": body}, project=project)
+
     def add_label(self, project: str, iid: int, label: str) -> dict:
         if not label or len(label) > 100:
             return {"ok": False, "error": "bad label"}

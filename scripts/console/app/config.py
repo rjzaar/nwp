@@ -69,6 +69,17 @@ ISSUE_PROJECTS = [
 # no hint that the other 96 existed.
 ISSUE_MAX_PAGES = int(_env("NWP_CONSOLE_ISSUE_MAX_PAGES", "4"))
 
+# The MR projects the Review pane may post a tagged comment to. The pane's
+# DATA comes from `pl decisions --json` (one queue, one source — ops#295);
+# this list only bounds the write path, the same way OPS_PROJECT bounds issue
+# writes. Approve itself is a deep-link: no merge credential exists here
+# (ADR-0032 — a machine never merges, and this host is AI-reachable).
+REVIEW_MR_PROJECTS = [
+    p.strip()
+    for p in _env("NWP_CONSOLE_REVIEW_MR_PROJECTS", "nwp/nwp,nwp/nwc").split(",")
+    if p.strip()
+]
+
 # Label chips offered as one-click filters, beyond "all". These are the states
 # the approval workflow turns on: `agent-eligible` is what the agent-loop polls
 # for, `needs-human` is the nwc-feedback policy label that forbids an agent

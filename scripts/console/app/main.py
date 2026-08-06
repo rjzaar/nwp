@@ -47,8 +47,11 @@ from .scope import Scope, ScopeError, ScopeLeak
 from .store import AuditLog, ProjectStore, StoreError, UserStore
 from .store import credential_label as store_credential_label
 
-# Tab order = the whole UI: one full-screen pane at a time.
+# Tab order = the whole UI: one full-screen pane at a time. Review sits first:
+# it is the operator's ONE queue (decisions + open MRs, ops#295) — the thing
+# they open the console to answer.
 PANES = [
+    ("review", "Review"),
     ("fleet", "Fleet"), ("issues", "Issues"), ("todo", "Todo"), ("demo", "Demo"),
     ("backups", "Backups"), ("ci", "CI"), ("quokka", "Quokka"), ("visuals", "Visuals"),
 ]
@@ -774,6 +777,22 @@ def tab_counts(request: Request, sc: Scope = Depends(scoped("viewer"))):
     except Exception:  # noqa: BLE001
         pass
 
+    def _review_count():
+        q = _gather_review(sc)
+        if q.get("scoped_out"):
+            return "", False
+        if not q.get("ok"):
+            # Unreadable is an ALERT, not a zero: a broken queue must not
+            # look like an empty one from the tab bar.
+            return "", True
+        data = q.get("data") or {}
+        d = len(data.get("decisions") or [])
+        projects = (data.get("mrs") or {}).get("projects") or []
+        m = sum(len(p.get("items") or []) for p in projects)
+        bits = ([f"{d}d"] if d else []) + ([f"{m}mr"] if m else [])
+        return (f"({' '.join(bits)})" if bits else ""), any(not p.get("ok") for p in projects)
+
+    add("review", _review_count)
     # The fleet tab flags itself when the state it is showing is stale, so a
     # dead publisher is visible from the tab bar, not only inside the pane.
     add("fleet", lambda: (lambda rag, _r, prov: (parsers.fmt_rag_tab(rag), bool(prov.get("stale"))))(*_gather_rag(sc)))
@@ -863,6 +882,83 @@ def pane_issues(request: Request, state: str = "opened", label: str = "",
         tab="issues",
         tab_count=parsers.fmt_n_tab(r["shown"]) if r.get("ok") else "",
         tab_alert=bool(r.get("any_unreadable")),
+    )
+
+
+# -- review: the operator's ONE queue (ops#295) ------------------------------
+# Decisions + open MRs, read from `pl decisions --json` and NOTHING else: the
+# verb is the single source (its docblock says the console reads it — this pane
+# is what makes that claim true). Growing a second fetch path here would be the
+# drift ADR-0032 removed from review mode.
+REVIEW_GATES = {
+    "blocks-testers": ("BLOCKS TESTERS", "Phase 1 cannot finish until this is answered"),
+    "blocks-prod": ("BLOCKS PROD", "Phase 2 cannot start"),
+    "shapes-design": ("SHAPES DESIGN", "nothing is stopped, but building first means rework"),
+    "housekeeping": ("HOUSEKEEPING", "real, small, nothing downstream"),
+}
+
+
+def _gather_review_raw(force: bool = False) -> dict:
+    r = run_pl_cached(config.NWP_ROOT, ["decisions", "--json"],
+                      ttl=config.PANE_CACHE_TTL, timeout=120, force=force)
+    if r.get("rc") != 0:
+        # "I could not look" must never render as "nothing to review".
+        return {"ok": False,
+                "error": (r.get("err") or r.get("out") or f"pl decisions rc={r.get('rc')}")[:300]}
+    try:
+        data = json.loads(r.get("out") or "")
+    except ValueError:
+        return {"ok": False, "error": "unparseable output from `pl decisions --json`"}
+    return {"ok": True, "data": data,
+            "cached": bool(r.get("cached")), "age": int(r.get("age") or 0)}
+
+
+def _gather_review(sc: Scope, force: bool = False) -> dict:
+    """Scoped wrapper. The queue is estate governance (nwp/ops decisions, repo
+    MRs), so a project-scoped caller gets a refusal marker — never a filtered
+    subset that would imply the estate has nothing waiting."""
+    if not sc.all_sites:
+        return {"ok": False, "scoped_out": True, "error": ""}
+    return _gather_review_raw(force=force)
+
+
+@app.get("/panes/review", response_class=HTMLResponse)
+def pane_review(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
+    q = _gather_review(sc, force=bool(force))
+    if q.get("scoped_out"):
+        return _pane(request, "pane_review.html",
+                     {"scoped_out": True, "q": q,
+                      "decisions": [], "mrs": {"projects": []}, "mr_total": 0,
+                      "gates": REVIEW_GATES},
+                     sc, tab="review")
+    data = (q.get("data") or {}) if q.get("ok") else {}
+    decisions = data.get("decisions") or []
+    mrs = data.get("mrs") or {"projects": [], "open_total": 0}
+    mr_total = sum(len(p.get("items") or []) for p in mrs.get("projects") or [])
+    any_unreadable = (not q.get("ok")) or any(
+        not p.get("ok") for p in mrs.get("projects") or [])
+    bits = []
+    if decisions:
+        bits.append(f"{len(decisions)}d")
+    if mr_total:
+        bits.append(f"{mr_total}mr")
+    return _pane(
+        request,
+        "pane_review.html",
+        {
+            "q": q,
+            "decisions": decisions,
+            "mrs": mrs,
+            "mr_total": mr_total,
+            "gates": REVIEW_GATES,
+            "write_project": config.OPS_PROJECT,
+            "mr_note_projects": list(config.REVIEW_MR_PROJECTS),
+            "gitlab_ok": gitlab.has_token(),
+        },
+        sc,
+        tab="review",
+        tab_count=(f"({' '.join(bits)})" if bits else ""),
+        tab_alert=any_unreadable,
     )
 
 
@@ -1518,6 +1614,63 @@ def issue_close(request: Request, iid: int, sc: Scope = Depends(scoped("operator
     audit.append(sc.user, sc.global_role, "issue.close", {"iid": iid, "ok": r.get("ok")},
                  r.get("ok", False), project=sc.project_id)
     return _pane(request, "issue_action_result.html", {"iid": iid, "verb": "close", "r": r}, sc, redactable=False)
+
+
+# -- Review pane writes (operator+, estate-level only) -----------------------
+# Everything here is a NOTE. Approval-of-a-decision is a note because the note
+# IS the instruction the next session acts on; approval-of-an-MR is not here at
+# all — that is the merge click on the MR page (ADR-0032). The [console-review]
+# tag is applied server-side so a session can find operator instructions with
+# one search, whatever the client sent.
+REVIEW_TAG = "**[console-review]**"
+
+
+def _require_estate(sc: Scope) -> None:
+    if not sc.all_sites:
+        raise HTTPException(status_code=403, detail="the review queue is estate-level")
+
+
+@app.post("/review/decision/{iid}/approve", response_class=HTMLResponse)
+def review_decision_approve(request: Request, iid: int, sc: Scope = Depends(scoped("operator"))):
+    _guard_origin(request)
+    _require_estate(sc)
+    body = (f"{REVIEW_TAG} APPROVED — proceed with the recommendation as written in the "
+            f"`## Decision` block of this issue. (Recorded from the console Review pane "
+            f"by `{sc.user}`; this note is the instruction.)")
+    r = gitlab.post_note(config.OPS_PROJECT, _iid_ok(iid), body)
+    audit.append(sc.user, sc.global_role, "review.approve", {"iid": iid, "ok": r.get("ok")},
+                 r.get("ok", False), project=sc.project_id)
+    return _pane(request, "issue_action_result.html",
+                 {"iid": iid, "verb": "approve recommendation", "r": r}, sc, redactable=False)
+
+
+@app.post("/review/decision/{iid}/note", response_class=HTMLResponse)
+def review_decision_note(request: Request, iid: int, body: str = Form(...),
+                         sc: Scope = Depends(scoped("operator"))):
+    _guard_origin(request)
+    _require_estate(sc)
+    r = gitlab.post_note(config.OPS_PROJECT, _iid_ok(iid), f"{REVIEW_TAG} {body.strip()}")
+    audit.append(sc.user, sc.global_role, "review.note", {"iid": iid, "ok": r.get("ok"), "len": len(body)},
+                 r.get("ok", False), project=sc.project_id)
+    return _pane(request, "issue_action_result.html",
+                 {"iid": iid, "verb": "review note", "r": r}, sc, redactable=False)
+
+
+@app.post("/review/mr/note", response_class=HTMLResponse)
+def review_mr_note(request: Request, project: str = Form(...), iid: int = Form(...),
+                   body: str = Form(...), sc: Scope = Depends(scoped("operator"))):
+    _guard_origin(request)
+    _require_estate(sc)
+    # The allowlist bounds the write path exactly as OPS_PROJECT bounds issue
+    # writes; a POSTed project name is attacker-chosen until proven otherwise.
+    if project not in config.REVIEW_MR_PROJECTS:
+        raise HTTPException(status_code=400, detail="unknown MR project")
+    r = gitlab.post_mr_note(project, _iid_ok(iid), f"{REVIEW_TAG} {body.strip()}")
+    audit.append(sc.user, sc.global_role, "review.mr_note",
+                 {"project": project, "iid": iid, "ok": r.get("ok"), "len": len(body)},
+                 r.get("ok", False), project=sc.project_id)
+    return _pane(request, "issue_action_result.html",
+                 {"iid": iid, "verb": f"note on {project}!{iid}", "r": r}, sc, redactable=False)
 
 
 @app.post("/ci/retry", response_class=HTMLResponse)

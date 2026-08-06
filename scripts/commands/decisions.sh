@@ -49,11 +49,19 @@ set -uo pipefail
 # block as `Depends-on: #N` — the flow-chart shape the operator found useful in
 # DECISIONS-RESEARCH, expressed as data instead of a drawing that also drifts.
 #
+# ── OPEN MERGE REQUESTS ARE PART OF THE QUEUE ─────────────────────────────────
+#
+# Under solo review mode (ADR-0032) the merge click on the MR page IS the
+# approval, so an open MR is an operator action exactly like a needs-decision
+# issue. One queue, one verb: this verb lists both, and the Review pane of the
+# NWP Console renders this verb's --json rather than growing a rival source.
+# An MR project the token cannot read is reported CANNOT-READ, never as empty.
+#
 # ── USAGE ─────────────────────────────────────────────────────────────────────
-#   pl decisions                 grouped, ordered, plain language
-#   pl decisions --json          machine-readable (the NWP Console reads this)
+#   pl decisions                 grouped, ordered, plain language (+ open MRs)
+#   pl decisions --json          machine-readable (the NWP Console Review pane reads this)
 #   pl decisions --all           include issues with no ## Decision block
-#   pl decisions <iid>           one decision in full
+#   pl decisions <iid>           one decision in full (MR section omitted)
 #
 # Exit: 0 decisions listed (or none) · 1 could not read the tracker
 ################################################################################
@@ -61,6 +69,12 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
+# impact_rm_scratch: the tree's single audited primitive for removing a
+# throwaway directory this process created (lib/impact.sh). The MR-fetch dir
+# below is a `mktemp -d` made a few lines earlier — not scope a human cares
+# about — but a bare `rm -rf` is indistinguishable from the real thing to any
+# scanner, so it goes through the audited primitive instead.
+source "$PROJECT_ROOT/lib/impact.sh"
 
 DECISIONS_PROJECT="${NWP_OPS_PROJECT_ID:-21}"
 DECISIONS_LABEL="${NWP_DECISIONS_LABEL:-needs-decision}"
@@ -92,12 +106,60 @@ _dec_fetch(){
     return $rc
 }
 
+# Open MRs for one project path, written to $2. Same token discipline as
+# _dec_fetch. `-f` matters: the walled ops_note_token answers HTTP 404 for a
+# project it cannot see, and without -f that 404 body would parse as an empty
+# list — the exact "unreadable renders as clean" failure this repo keeps
+# re-learning (ops#281 shape). With -f curl exits non-zero and the renderer
+# says CANNOT-READ instead.
+_dec_fetch_mrs_one(){
+    local proj="$1" out="$2" tok cfg host rc
+    # Precedence is REVERSED from _dec_fetch, deliberately: the ops_note_token
+    # is walled to nwp/ops and 404s on the MR projects, while the group bot
+    # (api_token) reads them. Each fetch leads with the token that can see its
+    # target; the other stays as fallback for estates keyed differently.
+    tok=$(yq e '.gitlab.api_token // .gitlab.ops_note_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    [ -n "$tok" ] || return 2
+    host="$(_dec_host)"
+    [ -n "$host" ] || return 3
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+    curl -sS -f -K "$cfg" --get \
+        --data-urlencode "state=opened" \
+        --data-urlencode "per_page=50" \
+        "https://${host}/api/v4/projects/${proj//\//%2F}/merge_requests" > "$out" 2>/dev/null
+    rc=$?
+    rm -f "$cfg"
+    return $rc
+}
+
+# The MR projects are overridable but default to where work actually lands.
+DECISIONS_MR_PROJECTS="${NWP_DECISIONS_MR_PROJECTS:-nwp/nwp nwp/nwc}"
+
+# Fetch every MR project into a manifest the renderer reads: one TSV row per
+# project — path, body file, ok|unreadable. Prints the manifest path.
+_dec_fetch_mrs(){
+    local mrdir manifest p i=0
+    mrdir=$(mktemp -d)
+    manifest="$mrdir/manifest.tsv"
+    : > "$manifest"
+    for p in $DECISIONS_MR_PROJECTS; do
+        i=$((i+1))
+        if _dec_fetch_mrs_one "$p" "$mrdir/mrs$i.json"; then
+            printf '%s\t%s\tok\n' "$p" "$mrdir/mrs$i.json" >> "$manifest"
+        else
+            printf '%s\t%s\tunreadable\n' "$p" "$mrdir/mrs$i.json" >> "$manifest"
+        fi
+    done
+    printf '%s\n' "$manifest"
+}
+
 # The parser + renderer live in python3, not yq: this reads prose out of markdown
 # bodies, which is string work, and python3 is already this repo's fallback for
 # JSON (lib/gitlab-mr.sh) and present wherever Drupal runs. ops#281 is the standing
 # reminder that reaching for yq on a host that lacks it fails SILENTLY.
 _dec_render(){
-    python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3"
+    python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3" "${4:-}"
 }
 
 cmd_decisions(){
@@ -107,7 +169,7 @@ cmd_decisions(){
             --json) mode="json"; shift ;;
             --all)  all=true; shift ;;
             -h|--help)
-                sed -n '3,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+                sed -n '3,66p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
                 return 0 ;;
             [0-9]*) only="$1"; shift ;;
             *) print_error "unknown option: $1"; return 1 ;;
@@ -127,12 +189,21 @@ cmd_decisions(){
         print_info  "This is not 'no decisions' — it is 'I could not look'."
         return 1
     fi
-    if [ -z "$json" ] || [ "$json" = "[]" ]; then
-        [ "$mode" = "json" ] && { printf '{"count": 0, "decisions": []}\n'; return 0; }
-        print_success "No decisions are waiting. Nothing is blocked on you."
-        return 0
+    # No decisions is NOT "nothing to render": open MRs are still the
+    # operator's queue, so the renderer always runs (it handles []).
+    [ -z "$json" ] && json="[]"
+
+    # A single-decision view (`pl decisions <iid>`) omits the MR section, so
+    # only fetch MRs when the whole queue is being rendered.
+    local manifest="" mrdir=""
+    if [ -z "$only" ]; then
+        manifest=$(_dec_fetch_mrs)
+        mrdir=$(dirname "$manifest")
     fi
-    printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)"
+    printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)" "$manifest"
+    local rc=$?
+    [ -n "$mrdir" ] && impact_rm_scratch "$mrdir" >/dev/null
+    return $rc
 }
 
 cmd_decisions "$@"

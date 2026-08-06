@@ -160,3 +160,68 @@ PY
     grep -q 'no gitlab.server.domain configured' "$REPO_ROOT/scripts/commands/decisions.sh"
     grep -q 'will not guess which forge is yours' "$REPO_ROOT/scripts/commands/decisions.sh"
 }
+
+# ── open MRs in the same queue (ops#295) ──────────────────────────────────────
+# Under solo review mode (ADR-0032) the merge click IS the approval, so an open
+# MR is an operator action exactly like a needs-decision issue. The renderer
+# takes a manifest of per-project MR fetches; a project whose fetch failed is
+# CANNOT-READ, never an empty (= clean-looking) list.
+
+_mr_manifest() { # writes manifest with one readable project (1 MR) + one failed
+    printf '%s' '[{"iid":371,"title":"review pane","web_url":"https://h/nwp/nwp/-/merge_requests/371","draft":false,"detailed_merge_status":"mergeable","has_conflicts":false,"source_branch":"b","author":{"username":"bot"},"updated_at":"2026-08-06T09:00:00Z","labels":[],"description":"What: the pane."}]' > "$TMP/mrs1.json"
+    printf 'nwp/nwp\t%s\tok\n'        "$TMP/mrs1.json" >  "$TMP/manifest"
+    printf 'nwp/nwc\t%s\tunreadable\n' "$TMP/mrs2.json" >> "$TMP/manifest"
+}
+
+@test "open MRs render in the queue, before the decisions" {
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    _mr_manifest
+    run bash -c "python3 '$RENDER' text '' h '$TMP/manifest' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"AWAITING YOUR MERGE"* ]]
+    [[ "$output" == *"nwp/nwp!371"* ]]
+    # ordering: the MR section comes before the decisions header
+    first="${output%%decision(s) waiting*}"
+    [[ "$first" == *"AWAITING YOUR MERGE"* ]]
+}
+
+@test "RED-PROOF: an unreadable MR project is CANNOT-READ, not an empty list" {
+    # The walled ops token 404s outside nwp/ops; without this, its projects
+    # would render as 'no open MRs' — unreadable masquerading as clean.
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    _mr_manifest
+    run bash -c "python3 '$RENDER' text '' h '$TMP/manifest' < '$TMP/j'"
+    [[ "$output" == *"nwp/nwc"* ]]
+    [[ "$output" == *"CANNOT-READ"* ]]
+}
+
+@test "--json carries the MRs for the console Review pane" {
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    _mr_manifest
+    run bash -c "python3 '$RENDER' json '' h '$TMP/manifest' < '$TMP/j'"
+    run python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+ps=d['mrs']['projects']
+print(d['mrs']['open_total'], ps[0]['ok'], ps[0]['items'][0]['iid'], ps[1]['ok'], 'CANNOT-READ' in ps[1]['error'])" <<<"$output"
+    [ "$output" = "1 True 371 False True" ]
+}
+
+@test "no decisions + open MRs still renders the queue, not 'nothing is blocked'" {
+    printf '%s' '[]' > "$TMP/j"
+    _mr_manifest
+    run bash -c "python3 '$RENDER' text '' h '$TMP/manifest' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"nwp/nwp!371"* ]]
+    [[ "$output" == *"merge requests above are the whole queue"* ]]
+}
+
+@test "callers without a manifest keep the old contract (no MR section)" {
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    run bash -c "python3 '$RENDER' text '' h < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"AWAITING YOUR MERGE"* ]]
+    run bash -c "python3 '$RENDER' json '' h < '$TMP/j'"
+    run python3 -c "import json,sys; d=json.load(sys.stdin); print(d['mrs']['open_total'], len(d['mrs']['projects']))" <<<"$output"
+    [ "$output" = "0 0" ]
+}

@@ -125,6 +125,72 @@ the estate acquires operations that only one session knows how to repeat.
 enumerating served nginx roots before `pl server roots` was written. Take the reading, then
 *write the verb*, which is exactly how `pl server roots` came to exist.
 
+## STANDING ORDER: ONE reviewer today — and `approvers:` is the whole switch
+
+**Operator ruling, 2026-08-06, stated twice and asked to be made permanent:**
+
+> *"The current system is just you and me. We don't need the extra overhead of two
+> checks for now. It should only be happening once I approve the shift and there is
+> a second human dev in the system. Until then I should be able to approve/merge
+> once and only in one spot which is the MR location."*
+
+**The number of humans who review a change is declared ONCE**, as `approvers:` in
+`private/secrets-registry.yml`. Everything reads it through one accessor,
+`_mr_approver_count` → `_mr_review_mode` in `lib/gitlab-mr.sh`.
+
+| `approvers:` | mode | what it means |
+|---|---|---|
+| one name | `solo` — today | Clicking **Merge on the MR page** is the whole approval. No release step; `pl mr release` is unnecessary and `--merge` is refused, because a shell would be a second approval spot. A sensitive-path MR is **reported** — here and as a note on the MR — not held. |
+| two or more | `team` | A sensitive-path MR is **held as Draft** until somebody who is **not** its author records a release bound to the head commit. |
+
+**Adding the second name is the entire switch.** It is simultaneously the operator
+approving the shift and the second human dev existing — the two conditions of the
+ruling above — so there is no flag to remember, and no way to be in team mode with
+nobody available to be the second pair of eyes. This is the same declared-fact
+pattern `cmd_release`'s ADR-0028 dispensation already used: *"inert today, correct
+forever, and it arms without anyone remembering to arm it."*
+
+**`.nwp-review-mode` is a GENERATED PROJECTION, not a policy.** `private/` is a
+separate repository, so a CI job cannot read the registry at all. The count is
+projected into that tracked file so CI can see it; **the registry wins wherever it
+is readable**, and a pre-commit hook refuses to commit a projection that disagrees.
+Regenerate with `pl mr review-mode sync`. Never hand-edit it to change behaviour —
+there is deliberately no `pl mr review-mode set`, and asking for one is an error
+that explains why.
+
+**Do not add a second reader, a config option, a per-project override, or an "if
+it's sensitive then two people" special case.** `tests/unit/test-review-mode.bats`
+fails if a second reader of the fact appears. A policy expressed in several places
+is a policy that drifts, and the operator asked specifically that this not "drift
+back into complexity".
+
+**What does NOT change between the modes** — and it is why solo is safe:
+
+> **A machine never merges. A human merges.**
+
+Auto-merge is disarmed in both modes, and every verb that could merge refuses when
+the token's **forge-verified** identity is a bot (`_mr_merge_actor_ok`). Solo mode
+removes the *second* human, never the human. The 2026-08-01 incident was a sweeper
+merging an MR nobody had approved; nothing here relaxes that. **You — the AI — hold
+a bot token, so you cannot merge in either mode. That is deliberate: propose, and
+let the operator click.**
+
+**Do not "helpfully" restore two-person review.** If a gate feels too permissive,
+that is the operator's call to make by adding a name to `approvers:`, not a special
+case you add to a verb.
+
+**Fail-closed direction:** no readable registry, no projection, or an unrecognised
+value reads as **`team`**, the stricter mode. The tempting default is today's, but
+then a typo or a bad checkout silently switches the estate to single-approval — the
+permissive direction. `pl mr review-mode` reports **NOT DECLARED** in that case, so
+"I could not read the policy" never looks like a decision somebody made. This
+nearly bit for real: `.nwp-review-mode` was silently gitignored on first writing
+(the root `.gitignore` denies `/*`), so it would have been present locally and
+absent in CI — and because the fallback is `team`, that surfaced as CI holding
+everything rather than as two-person review silently switched off.
+
+See [ADR-0032](docs/decisions/0032-review-mode-follows-approvers.md).
+
 ## STANDING ORDER: a check that has never been proven to fail is not a check
 
 **Recorded 2026-08-02, after one night found SIX of them.** Before you believe a

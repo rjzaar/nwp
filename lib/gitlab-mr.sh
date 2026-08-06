@@ -438,6 +438,163 @@ _mr_author(){   printf '%s' "$1" | _mr_jget 'author.username'; }
 #
 # `--merge` removes that click, so it must put a forge-verified identity back in
 # its place: the token's own user. That is checked, not asserted.
+# ── REVIEW MODE ───────────────────────────────────────────────────────────────
+#
+# HOW MANY HUMANS REVIEW A CHANGE. One fact, one reader, and the fact is one the
+# estate ALREADY declares.
+#
+# Operator ruling 2026-08-06: "The current system is just you and me... It should
+# only be happening once I approve the shift and there is a second human dev in
+# the system. Until then I should be able to approve/merge once and only in one
+# spot which is the MR location."
+#
+# THE FACT IS `approvers:` IN THE SECRETS REGISTRY, not a new setting. That list
+# already exists and cmd_release already keys the ADR-0028 Phase 1 dispensation
+# off it, with the rationale spelled out there: "Keyed off a DECLARED FACT, never
+# a date or a phase name: inert today, correct forever, and it arms without anyone
+# remembering to arm it." Adding the second name IS the shift, and IS the second
+# human dev existing — one act, in one place, no flag to remember.
+#
+# So this does NOT invent a second declaration. Inventing one is what the operator
+# meant by "drift back into complexity": two places naming the same fact, free to
+# disagree, with nothing noticing.
+#
+# WHY A TRACKED PROJECTION EXISTS ANYWAY. private/ is a SEPARATE repository, so CI
+# cannot read the registry at all — which is why that existing check silently does
+# nothing in a pipeline. The sensitive-path gate runs IN CI and must know the mode.
+# `.nwp-review-mode` is therefore a generated, tracked PROJECTION of the count, not
+# an independent switch:
+#
+#     registry `approvers:`  ── truth, human-edited, private repo
+#              │
+#              └─ pl mr review-mode sync ──► .nwp-review-mode  ── tracked, CI reads this
+#
+# The registry WINS wherever it is readable, so the projection can never quietly
+# override the truth; it is only consulted when the truth is out of reach. A
+# pre-commit hook refuses to commit a projection that disagrees, so the two cannot
+# drift apart unnoticed — drift is DETECTED, not assumed away.
+#
+# FAIL-CLOSED, AND NOTE THE DIRECTION. Nothing readable at all reads as `team`, the
+# STRICTER mode. The tempting default is today's, but then a typo or a bad checkout
+# silently switches the estate to single-approval — the permissive direction. This
+# nearly bit for real: .nwp-review-mode was silently gitignored on first writing
+# (the root .gitignore denies /*), so it would have been present locally and absent
+# in CI. Because the fallback is `team`, that mistake would have shown up as CI
+# holding everything — annoying and visible — rather than as two-person review
+# silently switched off in the pipeline.
+
+# _mr_review_mode_file — the CI-readable projection. Resolved when CALLED: a value
+# computed at source time cannot be overridden by a caller later, which is exactly
+# the trap that made the yq-less suites run WITH yq for months (ops#293).
+_mr_review_mode_file(){ printf '%s' "${NWP_REVIEW_MODE_FILE:-$PROJECT_ROOT/.nwp-review-mode}"; }
+
+# _mr_approver_registry — where the TRUTH lives.
+_mr_approver_registry(){ printf '%s' "${NWP_SECRETS_REGISTRY:-$HOME/nwp/private/secrets-registry.yml}"; }
+
+# _mr_approver_count — how many humans are declared able to approve.
+# Prints the count and rc 0; rc 1 = could not read it (which is NOT "zero").
+_mr_approver_count(){
+  local f n
+  f=$(_mr_approver_registry)
+  [ -r "$f" ] || return 1
+  if _mr_have_yq; then
+    n=$("$YQ" e '.approvers // [] | length' "$f" 2>/dev/null)
+  else
+    # No yq: count list items under approvers: without one. Deliberately narrow —
+    # a top-level `approvers:` block of `- name` lines, which is the shape in use.
+    n=$(awk '
+      /^approvers:[[:space:]]*$/ { inb=1; next }
+      inb && /^[[:space:]]*-[[:space:]]*[^[:space:]]/ { c++; next }
+      inb && /^[^[:space:]#]/ { inb=0 }
+      END { print c+0 }' "$f" 2>/dev/null)
+  fi
+  [[ "$n" =~ ^[0-9]+$ ]] || return 1
+  printf '%s' "$n"
+}
+
+# _mr_review_mode_raw — the projection's declared word, or empty.
+_mr_review_mode_raw(){
+  local f; f=$(_mr_review_mode_file)
+  [ -r "$f" ] || return 0
+  # First non-blank, non-comment line. The file is mostly rationale.
+  grep -vE '^[[:space:]]*(#|$)' "$f" 2>/dev/null | head -1 | tr -d '[:space:]'
+}
+
+# _mr_review_mode — THE ONLY function anything asks. solo | team.
+#
+# Precedence, and each step earns its place:
+#   1. NWP_REVIEW_MODE   — so tests can drive both branches and CI can pin one
+#   2. approvers: count  — the TRUTH; >1 human means two-person review
+#   3. the projection    — only when the truth is unreachable (i.e. in CI)
+#   4. team              — fail closed
+_mr_review_mode(){
+  if [ -n "${NWP_REVIEW_MODE:-}" ]; then
+    case "$NWP_REVIEW_MODE" in solo) printf 'solo'; return 0 ;; team) printf 'team'; return 0 ;; esac
+    printf 'team'; return 0
+  fi
+  local n
+  if n=$(_mr_approver_count); then
+    # 0 declared approvers is not "nobody reviews" — it is an unfinished registry,
+    # so it must not read as solo.
+    [ "$n" -eq 1 ] && { printf 'solo'; return 0; }
+    printf 'team'; return 0
+  fi
+  case "$(_mr_review_mode_raw)" in
+    solo) printf 'solo' ;;
+    team) printf 'team' ;;
+    *)    printf 'team' ;;
+  esac
+}
+
+# _mr_review_mode_source — where the answer came from, so no caller has to guess
+# and no report can present a fallback as somebody's decision.
+# Prints: env | registry | projection | fallback
+_mr_review_mode_source(){
+  [ -n "${NWP_REVIEW_MODE:-}" ] && { printf 'env'; return 0; }
+  _mr_approver_count >/dev/null 2>&1 && { printf 'registry'; return 0; }
+  case "$(_mr_review_mode_raw)" in solo|team) printf 'projection'; return 0 ;; esac
+  printf 'fallback'
+}
+
+# _mr_review_mode_is_declared — 0 when the mode was actually READ from somewhere,
+# 1 when we fell back to team because we could not tell.
+_mr_review_mode_is_declared(){
+  [ "$(_mr_review_mode_source)" != fallback ]
+}
+
+# _mr_review_mode_drift — 0 when truth and projection agree (or truth is out of
+# reach, in which case there is nothing to compare). 1 when they DISAGREE.
+#
+# This is the anti-drift mechanism, and it is a measurement rather than a hope:
+# the pre-commit hook fails on it, so a projection that contradicts the registry
+# cannot reach CI.
+_mr_review_mode_drift(){
+  local n want got
+  n=$(_mr_approver_count) || return 0
+  [ "$n" -eq 1 ] && want=solo || want=team
+  got=$(_mr_review_mode_raw)
+  case "$got" in solo|team) ;; *) return 1 ;; esac
+  [ "$got" = "$want" ]
+}
+
+# _mr_merge_actor_ok — THE INVARIANT THAT HOLDS IN BOTH MODES:
+#
+#         A MACHINE NEVER MERGES. A HUMAN MERGES.
+#
+# Solo mode removes the SECOND human, not the human. The 2026-08-01 incident was
+# a sweeper merging an MR no person had approved, and this is what keeps that
+# fixed once the Draft hold is no longer doing it. Every verb that could merge
+# calls this, in either mode.
+#
+# Keyed on the token's forge-verified identity, not on a typed handle or a name
+# in a config. rc 0 = a human may merge · 1 = a bot, refuse · 2 = could not tell.
+_mr_merge_actor_ok(){
+  local u
+  u=$(_mr_token_user) || return 2
+  _mr_handle_is_bot "$u" && return 1
+  return 0
+}
+
 _mr_token_user(){
   local json
   json=$(_mr_get "/user") || return 1
@@ -562,6 +719,39 @@ _mr_undraft_title(){
   printf '%s' "${1:-}" | sed -E 's/^[[:space:]]*((Draft|draft|DRAFT|WIP|wip):[[:space:]]*)+//'
 }
 
+# _mr_disarm_automerge <iid> — cancel any armed merge_when_pipeline_succeeds.
+#
+# ONE IMPLEMENTATION, called by the Draft hold and by solo mode alike. This is
+# the half of the 2026-08-01 fix that matters in EVERY review mode: the incident
+# was a sweeper arming auto-merge and the MR merging itself the moment CI went
+# green. Solo mode drops the Draft (it would cost the operator a second click)
+# but must never drop this.
+#
+# A 404 means it was not armed, which is the desired end state, so it is not an
+# error.
+_mr_disarm_automerge(){
+  local iid="$1" proj
+  proj=$(_mr_project) || return 1
+  _mr_api DELETE "/projects/$proj/merge_requests/$iid/merge_when_pipeline_succeeds" >/dev/null 2>&1 || true
+  return 0
+}
+
+# _mr_note_once <iid> <marker> <body> — post a note unless <marker> is already in
+# the discussion. Extracted from _mr_apply_hold so solo mode reuses the
+# idempotence rather than reimplementing it; a second copy is how one of them
+# starts spamming an MR on every pipeline run.
+_mr_note_once(){
+  local iid="$1" marker="$2" body="$3" proj notes np
+  proj=$(_mr_project) || return 1
+  notes=$(_mr_notes "$iid" 2>/dev/null || true)
+  printf '%s' "$notes" | grep -q "$marker" && return 0
+  np=$(_mr_json body "$body")
+  _mr_api POST "/projects/$proj/merge_requests/$iid/notes" "$np" >/dev/null || return 1
+  return 0
+}
+
+MR_SOLO_MARKER="<!-- nwp:solo-review-sensitive-paths -->"
+
 _mr_apply_hold(){
   local iid="$1" reason="${2:-}" label="${3:-$MR_HOLD_LABEL_MANUAL}" paths="${4:-}"
   local proj json title new_title payload
@@ -569,8 +759,8 @@ _mr_apply_hold(){
   json=$(_mr_fetch "$iid") || return 1
   title=$(_mr_title "$json")
 
-  # 1. disarm auto-merge (404 simply means it was not armed)
-  _mr_api DELETE "/projects/$proj/merge_requests/$iid/merge_when_pipeline_succeeds" >/dev/null 2>&1 || true
+  # 1. disarm auto-merge
+  _mr_disarm_automerge "$iid"
 
   # 2. draft
   new_title=$(_mr_draft_title "$title")

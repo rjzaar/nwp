@@ -30,6 +30,18 @@
 # release hint prints that link as the next action.
 
 setup() {
+    # PINNED TO TEAM MODE. This suite tests the two-person machinery — the Draft
+    # hold, the release record, the sensitive-path refusal — and that machinery is
+    # switched OFF in solo mode (ADR-0032), which is what the estate now declares.
+    # Pinning keeps these cases meaningful: team mode is disabled, NOT deleted, so
+    # its tests must keep passing or the switch would arm onto untested code.
+    export NWP_REVIEW_MODE=team
+    # A HUMAN token. cmd_merge now refuses a bot, and refuses when it cannot tell
+    # (ADR-0032: "a machine never merges"). Unstubbed, _mr_token_user has no API to
+    # reach, returns rc 1, and every case here died on that refusal before reaching
+    # its own assertion.
+    _mr_token_user(){ printf 'a-human'; }
+    _mr_handle_is_bot(){ return 1; }
     REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
     TMP="$(mktemp -d "${BATS_TMPDIR:-/tmp}/mrrel.XXXXXX")"
     export MR_STATUS_FILE="$TMP/status"

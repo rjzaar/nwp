@@ -1,0 +1,53 @@
+# GENERATED PROJECTION — DO NOT DECIDE POLICY HERE.
+#
+# This file exists for ONE reason: CI cannot read the truth. Regenerate it with
+#
+#     pl mr review-mode sync
+#
+# ── WHERE THE TRUTH LIVES ────────────────────────────────────────────────────
+#
+# The number of humans who review a change is declared ONCE, as `approvers:` in
+# private/secrets-registry.yml. That list already existed, and cmd_release already
+# keys the ADR-0028 Phase 1 dispensation off it:
+#
+#     "Keyed off a DECLARED FACT, never a date or a phase name: inert today,
+#      correct forever, and it arms without anyone remembering to arm it."
+#
+# One name  → solo: one reviewer, and the Merge click on the MR page IS the
+#             approval. No release step, nothing to type.
+# Two names → team: a sensitive-path MR is held as Draft until somebody who is
+#             NOT its author records a release bound to the head commit.
+#
+# ADDING THE SECOND NAME IS THE ENTIRE SWITCH. It is simultaneously the operator
+# approving the shift and the second human dev existing — the two conditions of
+# the 2026-08-06 ruling — so there is no separate flag to remember, and no way to
+# be in team mode without a second person to be the second pair of eyes.
+#
+# ── SO WHY DOES THIS FILE EXIST ──────────────────────────────────────────────
+#
+# `private/` is a SEPARATE repository. A CI job checks out nwp/nwp and cannot see
+# the registry at all — which is why that existing check silently does nothing in a
+# pipeline. The sensitive-path gate runs in CI and has to know the mode, so the
+# count is projected here, where CI can read it.
+#
+# The registry WINS wherever it is readable, so this file can never quietly
+# override the truth; it is consulted only when the truth is out of reach. A
+# pre-commit hook refuses to commit a projection that disagrees with the registry,
+# so the two cannot drift apart unnoticed.
+#
+# ── WHAT NEVER CHANGES, IN EITHER MODE ───────────────────────────────────────
+#
+#         A MACHINE NEVER MERGES. A HUMAN MERGES.
+#
+# Auto-merge is disarmed either way, and every verb that could merge refuses when
+# the token's forge-verified identity is a bot. Solo removes the SECOND human,
+# never the human. The 2026-08-01 incident was a sweeper merging an MR nobody had
+# approved; nothing here relaxes that.
+#
+# ── FAIL-CLOSED DIRECTION ────────────────────────────────────────────────────
+#
+# Nothing readable — no registry, no projection, an unrecognised word — reads as
+# `team`, the STRICTER mode. The tempting default is today's, but then a typo or a
+# bad checkout silently switches the estate to single-approval, which is the
+# permissive direction. An unreadable policy must cost friction, never protection.
+solo

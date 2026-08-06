@@ -64,6 +64,12 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
+    # PINNED TO TEAM MODE. This suite tests the two-person machinery — the Draft
+    # hold, the release record, the sensitive-path refusal — and that machinery is
+    # switched OFF in solo mode (ADR-0032), which is what the estate now declares.
+    # Pinning keeps these cases meaningful: team mode is disabled, NOT deleted, so
+    # its tests must keep passing or the switch would arm onto untested code.
+    export NWP_REVIEW_MODE=team
     REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
     export MR_STATUS_FILE="$(mktemp)"
     # shellcheck source=/dev/null

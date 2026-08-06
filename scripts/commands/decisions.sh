@@ -154,12 +154,80 @@ _dec_fetch_mrs(){
     printf '%s\n' "$manifest"
 }
 
+# Latest note for one queued issue, written to $2. Why: ops#143 sat FOUR DAYS
+# in this queue as the sole blocks-prod item after two comments on it said
+# "recommend close" — the verb rendered the stale ## Decision block and never
+# looked at the conversation. The renderer flags a decision whose newest
+# comment reads as a resolution, so a solved problem cannot silently keep
+# claiming to block a phase.
+_dec_fetch_note_one(){
+    local iid="$1" out="$2" tok cfg host rc
+    tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    [ -n "$tok" ] || return 2
+    host="$(_dec_host)"
+    [ -n "$host" ] || return 3
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+    curl -sS -f -K "$cfg" --get \
+        --data-urlencode "sort=desc" \
+        --data-urlencode "order_by=created_at" \
+        --data-urlencode "per_page=1" \
+        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}/notes" > "$out" 2>/dev/null
+    rc=$?
+    rm -f "$cfg"
+    return $rc
+}
+
+# One latest-note file per queued issue, in a dir the renderer reads.
+# Best-effort per issue: a note fetch that fails simply leaves no file, and the
+# renderer treats no-file as "no staleness signal", never as an error.
+_dec_fetch_notes(){
+    local json="$1" notesdir iid
+    notesdir=$(mktemp -d)
+    for iid in $(printf '%s' "$json" | python3 -c 'import json,sys
+try:
+    for i in json.load(sys.stdin): print(i["iid"])
+except Exception: pass' 2>/dev/null); do
+        _dec_fetch_note_one "$iid" "$notesdir/$iid.json" || rm -f "$notesdir/$iid.json"
+    done
+    printf '%s\n' "$notesdir"
+}
+
+# ── THE TWO DECISION LABELS, DECLARED ─────────────────────────────────────────
+# This queue renders `needs-decision` = "the operator must answer NOW to
+# unblock the current phase". A second vocabulary exists: `decision::wanted`
+# (the 2026-08-03 triage), marking decision-SHAPED backlog — ~50 open issues,
+# including go-live prerequisites. Rendering all of them would drown the queue;
+# hiding their existence made the queue lie by omission (the operator read "5
+# decisions waiting" as the whole decision surface — audit 2026-08-06). So the
+# split is deliberate and DECLARED: this verb counts the others and says so in
+# the footer, and promoting one is a label edit, not new machinery.
+_dec_fetch_outside_count(){
+    local tok cfg host total
+    tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    [ -n "$tok" ] || return 2
+    host="$(_dec_host)"
+    [ -n "$host" ] || return 3
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+    total=$(curl -sS -f -K "$cfg" --get -o /dev/null -D - \
+        --data-urlencode "labels=decision::wanted" \
+        --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
+        --data-urlencode "state=opened" \
+        --data-urlencode "per_page=1" \
+        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" 2>/dev/null \
+        | tr -d '\r' | awk -F': ' 'tolower($1)=="x-total"{print $2}')
+    rm -f "$cfg"
+    [ -n "$total" ] || return 1
+    printf '%s\n' "$total"
+}
+
 # The parser + renderer live in python3, not yq: this reads prose out of markdown
 # bodies, which is string work, and python3 is already this repo's fallback for
 # JSON (lib/gitlab-mr.sh) and present wherever Drupal runs. ops#281 is the standing
 # reminder that reaching for yq on a host that lacks it fails SILENTLY.
 _dec_render(){
-    python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3" "${4:-}"
+    python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3" "${4:-}" "${5:-}" "${6:-}"
 }
 
 cmd_decisions(){
@@ -193,16 +261,22 @@ cmd_decisions(){
     # operator's queue, so the renderer always runs (it handles []).
     [ -z "$json" ] && json="[]"
 
-    # A single-decision view (`pl decisions <iid>`) omits the MR section, so
-    # only fetch MRs when the whole queue is being rendered.
-    local manifest="" mrdir=""
+    # A single-decision view (`pl decisions <iid>`) omits the MR section and
+    # the footer, so only fetch MRs / notes / the outside count for the full
+    # queue. The outside count is best-effort: "" renders no footer number —
+    # but the renderer still prints the label-split line, because the SPLIT is
+    # a fact about the queue even when the count could not be read.
+    local manifest="" mrdir="" notesdir="" outside=""
     if [ -z "$only" ]; then
         manifest=$(_dec_fetch_mrs)
         mrdir=$(dirname "$manifest")
+        notesdir=$(_dec_fetch_notes "$json")
+        outside=$(_dec_fetch_outside_count) || outside=""
     fi
-    printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)" "$manifest"
+    printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)" "$manifest" "$notesdir" "$outside"
     local rc=$?
     [ -n "$mrdir" ] && impact_rm_scratch "$mrdir" >/dev/null
+    [ -n "$notesdir" ] && impact_rm_scratch "$notesdir" >/dev/null
     return $rc
 }
 

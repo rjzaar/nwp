@@ -954,6 +954,7 @@ def pane_review(request: Request, force: int = 0, sc: Scope = Depends(scoped("vi
             "write_project": config.OPS_PROJECT,
             "mr_note_projects": list(config.REVIEW_MR_PROJECTS),
             "gitlab_ok": gitlab.has_token(),
+            "outside_queue": data.get("outside_queue") or {},
         },
         sc,
         tab="review",

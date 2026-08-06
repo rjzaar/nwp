@@ -1,7 +1,9 @@
-import json, re, sys
+import json, os, re, sys
 
 mode, only_iid, host = sys.argv[1], sys.argv[2], sys.argv[3]
 mrs_manifest = sys.argv[4] if len(sys.argv) > 4 else ""
+notes_dir = sys.argv[5] if len(sys.argv) > 5 else ""
+outside_count = sys.argv[6] if len(sys.argv) > 6 else ""
 try:
     issues = json.load(sys.stdin)
 except Exception:
@@ -77,6 +79,35 @@ def sort_key(r):
     return (GATES[r["gate"]][0], -blocking, len(r["depends_on"]), r["iid"])
 rows.sort(key=sort_key)
 
+# ── Staleness: does the newest comment read as a resolution? ──────────────────
+# ops#143 sat here four days as the sole blocks-prod item while its two newest
+# comments both said "recommend close" — the ## Decision block is a snapshot,
+# and nothing compared it against the conversation. A match is a FLAG, not a
+# verdict: the operator is told to read the comment, never to skip the issue.
+STALE_PAT = re.compile(
+    r"recommend(?:ed|ing)?\s+clos(?:e|ing)|ALREADY DONE|\bFIXED\s*[—-]"
+    r"|overtaken by events|\bOBE\b|^\*\*CLOSING\b",
+    re.I | re.M)
+
+def latest_note(iid):
+    if not notes_dir:
+        return None
+    try:
+        data = json.load(open(os.path.join(notes_dir, f"{iid}.json")))
+    except (OSError, ValueError):
+        return None
+    if isinstance(data, list) and data:
+        return data[0].get("body") or ""
+    return None
+
+for r in rows:
+    note = latest_note(r["iid"])
+    if note and STALE_PAT.search(note):
+        r["possibly_stale"] = True
+        r["stale_hint"] = re.sub(r"\s+", " ", note).strip()[:200]
+    else:
+        r["possibly_stale"] = False
+
 if only_iid:
     rows = [r for r in rows if str(r["iid"]) == only_iid]
     if not rows:
@@ -138,7 +169,10 @@ if mrs_manifest:
     mrs["open_total"] = sum(len(p["items"]) for p in mrs["projects"])
 
 if mode == "json":
-    print(json.dumps({"count": len(rows), "decisions": rows, "mrs": mrs}, indent=2))
+    out = {"count": len(rows), "decisions": rows, "mrs": mrs,
+           "outside_queue": {"label": "decision::wanted",
+                             "count": int(outside_count) if outside_count.isdigit() else None}}
+    print(json.dumps(out, indent=2))
     sys.exit(0)
 
 B, D, R = "\033[1m", "\033[2m", "\033[0m"
@@ -166,11 +200,29 @@ if mrs["projects"]:
                     print(f"    {D}status: {m['merge_status']} · by {m['author']}{R}")
                 print(f"    {m['url']}\n")
 
+def footer():
+    """The label split, declared. `needs-decision` renders here; ~dozens of
+    decision-SHAPED issues carry only `decision::wanted` (2026-08-03 triage)
+    and deliberately do not — but a queue that hides their existence lies by
+    omission (audit 2026-08-06). Printed even when the count could not be
+    read, because the split is a fact about the queue either way."""
+    if only_iid:
+        return
+    D2, R2 = "\033[2m", "\033[0m"
+    if outside_count.isdigit() and int(outside_count) > 0:
+        print(f"{D2}Beyond this queue: {outside_count} open issue(s) carry decision::wanted but not")
+        print(f"needs-decision — decision-shaped backlog, not rendered here. Promote one with:")
+        print(f"  pl issue label <iid> --add needs-decision{R2}")
+    elif not outside_count:
+        print(f"{D2}(The decision::wanted backlog count could not be read this run — that tier")
+        print(f"still exists; this queue renders needs-decision only.){R2}")
+
 if not rows:
     if mrs["open_total"]:
         print("No decisions are waiting — the merge requests above are the whole queue.")
     else:
         print("No decisions are waiting. Nothing is blocked on you.")
+    footer()
     sys.exit(0)
 
 incomplete = [r for r in rows if not r["complete"]]
@@ -184,6 +236,9 @@ for r in rows:
         _, head, why = GATES[current]
         print(f"{B}══ {head} ══{R}  {D}{why}{R}\n")
     print(f"  {B}#{r['iid']}  {r['title']}{R}")
+    if r.get("possibly_stale"):
+        print(f"    {B}⚠ possibly already resolved{R} — newest comment: {D}“{r['stale_hint']}”{R}")
+        print(f"    {D}Read it before deciding — a ## Decision block can outlive its answer (the ops#143 lesson).{R}")
     if not r["complete"]:
         # Never silently skipped: an unreadable decision still blocks.
         print(f"    {D}(no ## Decision block yet — the question is buried in the issue){R}")
@@ -206,3 +261,5 @@ for r in rows:
 if incomplete:
     print(f"{D}{len(incomplete)} of these have no ## Decision block. They are listed because")
     print(f"they still block you — but reading them means opening the issue.{R}")
+
+footer()

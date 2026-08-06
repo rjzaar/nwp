@@ -94,6 +94,12 @@ This is not "nothing to review" — it is "the console could not look".</p>
         <strong>{{ d.title }}</strong>
         <span class="labels">{% for l in d.labels %}{% if l != 'needs-decision' %}<span class="chip">{{ l }}</span>{% endif %}{% endfor %}</span>
       </p>
+      {% if d.possibly_stale %}
+      {# The ops#143 lesson: a ## Decision block can outlive its answer. This is
+         a flag to READ the comment, never a reason to hide the issue. #}
+      <p class="warnfg">⚠ possibly already resolved — newest comment:
+        <span class="muted">“{{ d.stale_hint }}”</span></p>
+      {% endif %}
       {% if not d.complete %}
       <p class="warnfg">(no <code>## Decision</code> block yet — the question is buried in the issue,
         and it still blocks you)</p>
@@ -129,6 +135,13 @@ This is not "nothing to review" — it is "the console could not look".</p>
     </div>
   {% endfor %}
 </section>
+
+{% if outside_queue and outside_queue.count %}
+<p class="muted">Beyond this queue: <strong>{{ outside_queue.count }}</strong> open issue(s) carry
+<code>decision::wanted</code> but not <code>needs-decision</code> — decision-shaped backlog,
+deliberately not rendered here. Promote one with
+<code>pl issue label &lt;iid&gt; --add needs-decision</code>.</p>
+{% endif %}
 
 {% if can_act and not gitlab_ok %}
 <p class="muted">Write actions need the walled bot token on the console host

@@ -225,3 +225,75 @@ print(d['mrs']['open_total'], ps[0]['ok'], ps[0]['items'][0]['iid'], ps[1]['ok']
     run python3 -c "import json,sys; d=json.load(sys.stdin); print(d['mrs']['open_total'], len(d['mrs']['projects']))" <<<"$output"
     [ "$output" = "0 0" ]
 }
+
+# ── staleness + the declared label split (audit 2026-08-06) ───────────────────
+# ops#143 sat four days as the sole blocks-prod item after two comments said
+# "recommend close" — the ## Decision block is a snapshot and nothing compared
+# it to the conversation. The renderer now flags it. And ~50 decision::wanted
+# issues were invisible: the footer declares the split instead of hiding it.
+
+_note() { # iid text -> writes notes/<iid>.json in the API's newest-first shape
+    mkdir -p "$TMP/notes"
+    python3 - "$1" "$2" > "$TMP/notes/$1.json" <<'PY'
+import json,sys
+print(json.dumps([{"body": sys.argv[2], "created_at": "2026-08-06T00:00:00Z"}]))
+PY
+}
+
+@test "a decision whose newest comment says 'recommend close' is FLAGGED, not hidden" {
+    _issue 143 blocks-prod "A solved problem" > "$TMP/j"
+    _note 143 "**FIXED — both decision points answered. Recommend close.**"
+    run bash -c "python3 '$RENDER' text '' h '' '$TMP/notes' '' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"possibly already resolved"* ]]
+    [[ "$output" == *"Recommend close"* ]]
+    # flagged, NOT dropped — the issue still renders in full
+    [[ "$output" == *"#143"* ]]
+    [[ "$output" == *"Recommend:"* ]]
+}
+
+@test "an ordinary comment does NOT trip the staleness flag" {
+    _issue 1 blocks-testers "A live decision" > "$TMP/j"
+    _note 1 "Adding more context about the options here."
+    run bash -c "python3 '$RENDER' text '' h '' '$TMP/notes' '' < '$TMP/j'"
+    [[ "$output" != *"possibly already resolved"* ]]
+}
+
+@test "no notes dir = no staleness signal, old callers keep their contract" {
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    run bash -c "python3 '$RENDER' text '' h < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"possibly already resolved"* ]]
+}
+
+@test "the footer declares the decision::wanted backlog with a count" {
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    run bash -c "python3 '$RENDER' text '' h '' '' 48 < '$TMP/j'"
+    [[ "$output" == *"48 open issue(s) carry decision::wanted"* ]]
+    [[ "$output" == *"pl issue label"* ]]
+}
+
+@test "an unreadable outside count still DECLARES the split (no silent omission)" {
+    _issue 1 blocks-testers "A decision" > "$TMP/j"
+    run bash -c "python3 '$RENDER' text '' h '' '' '' < '$TMP/j'"
+    [[ "$output" == *"could not be read"* ]]
+    [[ "$output" == *"needs-decision only"* ]]
+}
+
+@test "--json carries possibly_stale, stale_hint and outside_queue" {
+    _issue 143 blocks-prod "Solved" > "$TMP/j"
+    _note 143 "Triage: ALREADY DONE (bucket C). Recommend close."
+    run bash -c "python3 '$RENDER' json '' h '' '$TMP/notes' 48 < '$TMP/j'"
+    run python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+r=d['decisions'][0]
+print(r['possibly_stale'], 'ALREADY DONE' in r['stale_hint'], d['outside_queue']['count'], d['outside_queue']['label'])" <<<"$output"
+    [ "$output" = "True True 48 decision::wanted" ]
+}
+
+@test "the single-decision view (<iid>) renders no footer" {
+    _issue 7 blocks-testers "One decision" > "$TMP/j"
+    run bash -c "python3 '$RENDER' text 7 h '' '' 48 < '$TMP/j'"
+    [[ "$output" != *"decision::wanted"* ]]
+}

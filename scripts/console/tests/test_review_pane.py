@@ -38,8 +38,11 @@ QUEUE = {
          "unblocks": "the practice half of every lesson page", "depends_on": []},
         {"iid": 188, "title": "avc retirement", "url": "https://h/nwp/ops/-/issues/188",
          "labels": ["needs-decision"], "complete": False, "gate": "housekeeping",
-         "what": "", "options": [], "recommend": "", "unblocks": "", "depends_on": []},
+         "what": "", "options": [], "recommend": "", "unblocks": "", "depends_on": [],
+         "possibly_stale": True,
+         "stale_hint": "Triage: ALREADY DONE (bucket C). Recommend close."},
     ],
+    "outside_queue": {"label": "decision::wanted", "count": 48},
     "mrs": {
         "open_total": 1,
         "projects": [
@@ -198,3 +201,22 @@ def test_mr_note_is_bounded_by_the_allowlist(mod, monkeypatch):
     assert r.status_code == 200
     assert called["project"] == "nwp/nwp" and called["iid"] == 371
     assert called["body"].startswith("**[console-review]**")
+
+
+def test_stale_decision_is_flagged_not_hidden(mod, monkeypatch):
+    """The ops#143 lesson: a ## Decision block can outlive its answer. The pane
+    flags it and still renders the issue — a flag to read, never a hide."""
+    _fake_queue(mod, monkeypatch, QUEUE)
+    body = _client(mod).get("/panes/review").text
+    assert "possibly already resolved" in body
+    assert "ALREADY DONE" in body
+    assert "avc retirement" in body  # still rendered in full
+
+
+def test_outside_queue_backlog_is_declared(mod, monkeypatch):
+    """~50 decision::wanted issues were invisible to the queue — hiding their
+    existence made '5 decisions waiting' read as the whole decision surface."""
+    _fake_queue(mod, monkeypatch, QUEUE)
+    body = _client(mod).get("/panes/review").text
+    assert "decision::wanted" in body
+    assert "48" in body

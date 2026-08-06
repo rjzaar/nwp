@@ -101,6 +101,31 @@ demo_pair_contract_for() {
     return 1
 }
 
+# pair_contract_for_any <site>
+# Echo the path of ANY pair contract naming <site> — including the real,
+# student-bearing pair the demo gate above deliberately excludes. This exists
+# for exactly ONE class of caller: a content-only tool the operator has
+# explicitly pointed at the real pair (ops#222 — the ssc catalogue restore,
+# approved from the Review pane 2026-08-06). Callers MUST pair it with a loud
+# banner and an explicit opt-in flag; resolving the real pair silently would
+# undo the demo gate's whole point. Destructive paired verbs (golden/reset)
+# must never call this.
+pair_contract_for_any() {
+    local site="${1:-}" dir f prov cons
+    [[ -n "$site" ]] || return 1
+    dir="$(demo_pair_dir)"
+    [[ -d "$dir" ]] || return 1
+    for f in "$dir"/*.pair-contract.yml; do
+        [[ -f "$f" ]] || continue
+        prov="$(demo_pair_get "$f" '.provider')"
+        cons="$(demo_pair_get "$f" '.consumer')"
+        [[ "$prov" == "$site" || "$cons" == "$site" ]] || continue
+        printf '%s\n' "$f"
+        return 0
+    done
+    return 1
+}
+
 demo_pair_provider() { demo_pair_get "$1" '.provider'; }
 demo_pair_consumer() { demo_pair_get "$1" '.consumer'; }
 demo_pair_label()    { demo_pair_get "$1" '.pair'; }

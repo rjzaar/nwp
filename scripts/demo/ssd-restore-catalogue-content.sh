@@ -32,7 +32,7 @@ source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/common.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"
 
-SITE="ssd"; TIER="dev"; CHECK="false"
+SITE="ssd"; TIER="dev"; CHECK="false"; REAL_PAIR="false"
 PAYLOAD="$REPO_ROOT/servers/live/demo/ssd-catalogue-content.json"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,6 +40,7 @@ while [[ $# -gt 0 ]]; do
         --tier=*)    TIER="${1#--tier=}"; shift ;;
         --payload=*) PAYLOAD="${1#--payload=}"; shift ;;
         --check)     CHECK="true"; shift ;;
+        --real-pair) REAL_PAIR="true"; shift ;;
         *) print_error "Unknown option '$1'"; exit 1 ;;
     esac
 done
@@ -59,7 +60,29 @@ if [[ "$TIER" != "live" ]]; then
     }
 fi
 
-CONTRACT="$(demo_pair_contract_for "$SITE")" || { print_error "REFUSED: no demo-enabled pair contract names '$SITE'."; exit 1; }
+# Contract resolution. The demo gate stays the default: this is demo-tier
+# tooling and the real, student-bearing pair must never be reachable by
+# accident. --real-pair is the deliberate exception for THIS script only —
+# it exists because the operator approved running this content-only,
+# validator-gated, additive merge against the real catalogue (ops#222,
+# approved from the Review pane 2026-08-06). The banner is the point: nobody
+# runs this against the real pair without reading what they are doing.
+if CONTRACT="$(demo_pair_contract_for "$SITE")"; then
+    :
+elif [[ "$REAL_PAIR" == "true" ]] && CONTRACT="$(pair_contract_for_any "$SITE")"; then
+    print_status "WARN" "REAL PAIR: '$SITE' is not demo-enabled — this is the real, student-bearing site."
+    print_status "WARN" "Proceeding under --real-pair (content-only additive merge, operator-approved: ops#222)."
+    print_status "WARN" "Contract: $CONTRACT"
+else
+    if pair_contract_for_any "$SITE" >/dev/null 2>&1; then
+        print_error "REFUSED: '$SITE' is named only by a NON-demo pair contract — the real pair."
+        print_error "This tool refuses it by default. If the operator has approved a content-only"
+        print_error "restore against the real site (see ops#222), pass --real-pair explicitly."
+    else
+        print_error "REFUSED: no pair contract names '$SITE'."
+    fi
+    exit 1
+fi
 CLI_PHP="${CLI_PHP:-$(demo_pair_get "$CONTRACT" '.oidc.cli_php_version' '8.3')}"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT

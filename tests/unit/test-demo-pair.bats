@@ -1406,3 +1406,30 @@ _line_of() { printf '%s\n' "$1" | grep -n "^$2" | head -1 | cut -d: -f1; }
   printf '%s\n' "$body" | grep -q 'demo_is_live "\$tier" && \[\[ "\$with_pair" != "yes" \]\]'
   printf '%s\n' "$body" | grep -q 'opt-IN only at live'
 }
+
+# ── pair_contract_for_any — the deliberate real-pair exception (ops#222) ──────
+# One content-only tool may resolve the real pair under an explicit operator-
+# approved flag. The demo gate must be UNCHANGED by its existence.
+
+@test "ops#222: pair_contract_for_any resolves the NON-demo (real) contract" {
+  run bash -c "source '$DEMO_LIB'; pair_contract_for_any real"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"real.pair-contract.yml"* ]]
+}
+
+@test "ops#222: the demo gate still refuses the real pair — for_any changes nothing" {
+  run bash -c "source '$DEMO_LIB'; demo_pair_contract_for real"
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#222: pair_contract_for_any also finds demo contracts (superset, not a fork)" {
+  run bash -c "source '$DEMO_LIB'; pair_contract_for_any cons"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cons.pair-contract.yml"* ]]
+}
+
+@test "ops#222: destructive paired verbs never call pair_contract_for_any" {
+  # The function's contract: content-only callers only. golden/reset resolving
+  # the real pair would put the student site one flag from a nightly wipe.
+  ! grep -n "pair_contract_for_any" "${REPO_ROOT}/scripts/commands/demo.sh"
+}

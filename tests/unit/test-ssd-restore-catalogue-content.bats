@@ -216,3 +216,23 @@ JSON
   run php -l "$RESTORE"
   [ "$status" -eq 0 ]
 }
+
+# ── --real-pair (ops#222, operator-approved 2026-08-06) ───────────────────────
+
+@test "ops#222: without --real-pair the wrapper refuses a real-pair site BY NAME and says the remedy" {
+  grep -q 'REFUSED.*NON-demo pair contract' "$WRAPPER"
+  grep -q 'pass --real-pair explicitly' "$WRAPPER"
+}
+
+@test "ops#222: --real-pair path is loud — banner names the real site and the approval" {
+  grep -q 'REAL PAIR' "$WRAPPER"
+  grep -q 'operator-approved: ops#222' "$WRAPPER"
+}
+
+@test "ops#222: --real-pair only affects contract resolution, not the tier gate" {
+  # prod must stay refused even with --real-pair: the flag appears nowhere
+  # near the tier case statement.
+  run bash -c "bash '$WRAPPER' --site=ssd --tier=prod --real-pair 2>&1"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED: tier 'prod'"* ]]
+}

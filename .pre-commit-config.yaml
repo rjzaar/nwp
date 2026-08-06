@@ -16,6 +16,17 @@ repos:
   # extra args via this file's `args:`, so we re-author the entry locally.
   - repo: local
     hooks:
+      # The review mode is derived from `approvers:` in the private registry, and
+      # projected into the tracked .nwp-review-mode because CI cannot read that repo.
+      # Only a host with BOTH can compare them — i.e. here, not CI — which is why this
+      # is a pre-commit hook: a projection contradicting the declared fact never
+      # reaches a pipeline. Exits 2 (reported, not passed) where the registry is absent.
+      - id: review-mode-projection
+        name: "review mode matches the approvers list (anti-drift)"
+        entry: scripts/ci/lint-review-mode-projection.sh
+        language: script
+        pass_filenames: false
+        always_run: true
       - id: gitleaks
         name: gitleaks (operator-specific ruleset)
         entry: gitleaks git --pre-commit --redact --staged --verbose --config=.gitleaks.toml --no-banner

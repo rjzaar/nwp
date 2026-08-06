@@ -120,6 +120,22 @@ scripts/commands/.rollback/**
 !.secrets.data.example.yml
 !.nwp-developer.example.yml
 
+# THE CI-READABLE PROJECTION OF THE REVIEW MODE MUST BE TRACKED.
+#
+# The review mode is DERIVED from `approvers:` in private/secrets-registry.yml,
+# which is a separate repo that CI cannot read. .nwp-review-mode is the generated
+# projection CI reads instead, so it has to be tracked. `.gitignore` denies
+# everything at the root (`/*`) and allowlists back, so it was silently ignored on
+# first writing — present on the workstation, ABSENT in CI.
+#
+# Worth recording which way that failed: an unreadable mode resolves to `team`, the
+# stricter one, so the symptom would have been CI holding every sensitive-path MR
+# while `pl mr review-mode` said solo locally. Annoying, and visible. Had it
+# defaulted to `solo`, the same bug would have silently disabled two-person review
+# in the pipeline with nothing complaining. Fail-closed picked the direction where a
+# mistake costs friction, not protection.
+!.nwp-review-mode
+
 # Pair contracts (ADR-0031 / ops#75): the template + the committable per-pair
 # contracts (versions + public URLs only — no secrets). Deployed-version + RAG
 # STATE lives in private/pairs/ which the private/ deny rule above keeps out.

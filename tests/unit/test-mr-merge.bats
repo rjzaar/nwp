@@ -31,6 +31,18 @@
 # passes locally and fails only on the runner.
 
 setup() {
+    # PINNED TO TEAM MODE. This suite tests the two-person machinery — the Draft
+    # hold, the release record, the sensitive-path refusal — and that machinery is
+    # switched OFF in solo mode (ADR-0032), which is what the estate now declares.
+    # Pinning keeps these cases meaningful: team mode is disabled, NOT deleted, so
+    # its tests must keep passing or the switch would arm onto untested code.
+    export NWP_REVIEW_MODE=team
+    # A HUMAN token. cmd_merge now refuses a bot, and refuses when it cannot tell
+    # (ADR-0032: "a machine never merges"). Unstubbed, _mr_token_user has no API to
+    # reach, returns rc 1, and every case here died on that refusal before reaching
+    # its own assertion.
+    _mr_token_user(){ printf 'a-human'; }
+    _mr_handle_is_bot(){ return 1; }
   ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
   MR="$ROOT/scripts/commands/mr.sh"
   # SCRUB THE RUNNER'S ENVIRONMENT — including CI_MERGE_REQUEST_DIFF_BASE_SHA,
@@ -83,6 +95,15 @@ path="${url#*/api/v4}"
 echo "$meth $path" >> "$CURL_LOG"
 emit() { printf '%s\n%s' "$1" "${2:-200}"; }     # body \n http_code (write-out)
 case "$meth $path" in
+    # WHO AM I. cmd_merge refuses a bot token, and refuses when it cannot tell
+    # (ADR-0032: "a machine never merges"). This suite runs mr.sh as a SUBPROCESS,
+    # so a bats function stub cannot reach it — the answer must come from the curl
+    # stub like every other call. Default is a human; a case wanting the bot
+    # refusal writes $STATE/whoami.json instead.
+    "GET /user")
+        emit "$(cat "$STATE/whoami.json" 2>/dev/null || echo '{"username":"a-human","bot":false}')" ;;
+    "GET /users?username="*)
+        emit "$(cat "$STATE/userlookup.json" 2>/dev/null || echo '[{"username":"a-human","bot":false}]')" ;;
   "GET "*"/merge_requests?state=opened&source_branch="*)
       emit "$(cat "$STATE/existing.json" 2>/dev/null || echo '[]')" ;;
   "GET "*"/merge_requests?state=opened&per_page="*)
@@ -452,4 +473,26 @@ JSON
   [ "$output" = "0" ]
   run grep -c 'strenv(TAB)' <<<"$code"
   [ "$output" -ge 1 ]
+}
+
+@test "REFUSES to merge when the token is a BOT — a machine never merges" {
+    # ADR-0032's cross-mode invariant, exercised through the real subprocess rather
+    # than a function stub. Solo mode drops the Draft hold, so this refusal is what
+    # stands between an armed automation and a merged MR.
+    printf '%s' '{"username":"group_9_bot_53ae5a1df066ec501e8867f7276f66b1","bot":true}' > "$STATE/whoami.json"
+    printf '%s' '{"iid":900,"state":"opened","draft":false,"detailed_merge_status":"mergeable","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" merge 900
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"A machine never merges"* ]]
+    ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "REFUSES when the token identity cannot be established at all" {
+    # "I could not tell whether I am a bot" is not "I am a human".
+    printf '%s' '{"message":"401 Unauthorized"}' > "$STATE/whoami.json"
+    printf '%s' '{"iid":900,"state":"opened","draft":false,"detailed_merge_status":"mergeable","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" merge 900
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"could not establish this token's forge identity"* ]]
+    ! grep -q 'PUT .*/merge$' "$CURL_LOG"
 }

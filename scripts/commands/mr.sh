@@ -273,7 +273,7 @@ cmd_create(){
   cmd_guard "$iid" --apply || grc=$?
   case "$grc" in
     1) print_warning "!$iid is HELD by the sensitive-path gate — that is the gate working." ;;
-    2) print_warning "!$iid — sensitive-path status CANNOT BE VERIFIED; treat it as held." ;;
+    2) print_warning "!$iid — sensitive-path status CANNOT BE VERIFIED; the gate held it." ;;
   esac
   return 0
 }
@@ -442,14 +442,15 @@ cmd_hold(){
 ################################################################################
 cmd_release(){
   _need_yq
-  local iid="" approver="" reason=""
+  local iid="" approver="" reason="" do_merge=false
   while [ $# -gt 0 ]; do
     case "$1" in
       --approved-by)   approver="${2:-}"; shift 2 ;;
       --approved-by=*) approver="${1#*=}"; shift ;;
       --reason)        reason="${2:-}"; shift 2 ;;
       --reason=*)      reason="${1#*=}"; shift ;;
-      -h|--help) printf 'usage: pl mr release <iid> --approved-by=<handle> [--reason="..."]\n'; return 0 ;;
+      --merge)         do_merge=true; shift ;;
+      -h|--help) printf 'usage: pl mr release <iid> --approved-by=<handle> [--reason="..."] [--merge]\n'; return 0 ;;
       -*) die "unknown option: $1 (usage: pl mr release <iid> --approved-by=<handle>)" ;;
       *) [ -z "$iid" ] && { iid="$1"; shift; } || die "unexpected arg: $1" ;;
     esac
@@ -457,6 +458,32 @@ cmd_release(){
   [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr release <iid> --approved-by=<handle> [--reason=\"...\"]"
   approver="${approver#@}"
   [ -n "$approver" ] || die "--approved-by=<handle> is required — a release names the second pair of eyes"
+
+  # WHICH PROJECT, SAID OUT LOUD, BEFORE ANY WRITE (ops#293).
+  # MR numbers are per-project and this estate works two projects in the same
+  # breath. On 2026-08-06 `pl mr release 80` run from ~/nwp released nwp/nwp!80 —
+  # a long-merged MR — instead of the intended nwp/nwc!80, printed SUCCESS, and
+  # left the real MR held. An ambiguous identifier that silently picks one is
+  # worse than one that asks.
+  local relstate
+  relstate=$(_mr_assert_releasable "$iid") || {
+    case "$relstate" in
+      merged|closed)
+        print_error "!$iid in $(_mr_project_human) is a ${relstate} MR — nothing to release."
+        print_info  "MR numbers are PER PROJECT and this directory resolves to $(_mr_project_human)."
+        print_info  "You almost certainly meant a different project's !$iid. cd there and re-run." ;;
+      not-held)
+        print_error "!$iid in $(_mr_project_human) is open but NOT held — nothing to release."
+        print_info  "A release lifts a hold. This MR carries neither Draft nor a hold label." ;;
+      missing)
+        print_error "!$iid does not exist in $(_mr_project_human)." ;;
+      *)
+        print_error "could not determine whether !$iid is releasable — refusing to write." ;;
+    esac
+    print_info "Nothing was changed."
+    return 1
+  }
+  print_info "project: $(_mr_project_human)  (resolved from this directory's git remote)"
 
   # ── ADR-0028 "Phase 1 dispensation": a trigger that arms itself ────────────
   #
@@ -472,12 +499,13 @@ cmd_release(){
   #
   # Keyed off a DECLARED FACT, never a date or a phase name: inert today,
   # correct forever, and it arms without anyone remembering to arm it.
-  local _appr_file="${NWP_SECRETS_REGISTRY:-$HOME/nwp/private/secrets-registry.yml}"
+  # Via _mr_approver_count — ONE reader of this fact. This block used to count
+  # `approvers:` itself with a local yq call, and _mr_review_mode now keys off the
+  # same list, so a second counter here is precisely the duplication the operator
+  # meant by "drift back into complexity": two places reading one fact, free to
+  # disagree. The shared accessor also works without yq, which this did not.
   local _appr_n=0
-  if [ -r "$_appr_file" ] && [ -n "$YQ" ]; then
-    _appr_n=$("$YQ" e '.approvers // [] | length' "$_appr_file" 2>/dev/null || echo 0)
-    [[ "$_appr_n" =~ ^[0-9]+$ ]] || _appr_n=0
-  fi
+  _appr_n=$(_mr_approver_count) || _appr_n=0
   if [ "$_appr_n" -gt 1 ] && [ -z "${NWP_MR_APPROVAL_SIGNATURE:-}" ]; then
     die "REFUSING: the registry declares $_appr_n approvers, so a second human
   can sign. Recording an approval on someone's behalf is sanctioned only while
@@ -551,9 +579,102 @@ and the guard will re-hold this MR."
     *) print_info "no failed gate job to re-run (pipeline may not have run yet)" ;;
   esac
 
-  print_hint "merging is still a human action — this only removed the hold."
-  print_hint "Wait for the pipeline to go green, then merge here:"
-  print_hint "  $(_mr_web_url "$iid")"
+  if [ "$do_merge" != true ]; then
+    print_hint "merging is still a human action — this only removed the hold."
+    print_hint "Wait for the pipeline to go green, then merge here:"
+    print_hint "  $(_mr_web_url "$iid")"
+    return 0
+  fi
+
+  # --merge: the operator asked "why do I need to release and merge. Can't the
+  # merge be the release?" (2026-08-05). The two-person property is that the
+  # AUTHOR is not the approver — the approver merging is not a weakening of it,
+  # it IS the approval. So this is one action with the same record.
+  #
+  # It must WAIT, not merge immediately: the release just re-ran the gate job, so
+  # merging now would race a pipeline that is deliberately re-checking the release
+  # we have only just recorded. Merging before that lands would defeat the point
+  # of re-running it.
+  # SOLO MODE: THE ONE APPROVAL POINT IS THE MR PAGE, so --merge is refused here.
+  #
+  # Operator ruling 2026-08-06: "I should be able to approve/merge once and only
+  # in one spot which is the MR location." A second way to merge — from a shell,
+  # by whoever holds the token — is a second spot, and it is the one an automation
+  # would reach for. Refusing is not an inconvenience to the operator: in solo mode
+  # nothing is held, so there is nothing to release and no reason to run this verb
+  # before merging at all.
+  if [ "$(_mr_review_mode)" = solo ]; then
+    print_error "REFUSING --merge: this estate is in SOLO review mode."
+    print_info  "The single approval point is the MR page — click Merge there, and that"
+    print_info  "click IS the approval. In solo mode nothing is held, so there is no"
+    print_info  "release to lift and no need to run this verb first."
+    print_info  "  $(_mr_web_url "$iid")"
+    print_info  "\`pl mr review-mode\` explains the modes; --merge becomes available in team"
+    print_info  "mode, where it requires an identity distinct from the author."
+    return 1
+  fi
+
+  # TWO-PERSON, RESTORED AS A CHECK. An existing guard in
+  # tests/unit/test-mr-release-pipeline.bats forbade cmd_release from merging at
+  # all — "the verb re-runs the CHECK, it never merges" — and it was right to:
+  # dropping the human Merge click removes the only step whose actor the FORGE
+  # can identify. `--approved-by` is a string the caller types.
+  #
+  # So --merge does not merely skip that step, it replaces it with a stronger
+  # one: the token's own forge-verified user must not be the MR author. An author
+  # can no longer release-and-merge their own MR in one command, under any handle
+  # they care to type — which is more than the UI click guaranteed, since the UI
+  # let an author merge their own MR once someone had left a release note.
+  local mr_json mr_author tok_user
+  mr_json=$(_mr_fetch "$iid") || {
+    print_error "cannot re-read !$iid to check who authored it — NOT merging."
+    print_info  "The release IS recorded. Merge by hand: $(_mr_web_url "$iid")"
+    return 1
+  }
+  mr_author=$(_mr_author "$mr_json")
+  if ! tok_user=$(_mr_token_user); then
+    # "I could not establish who I am" is never "I am somebody else".
+    print_error "could not establish this token's forge identity (GET /user) — NOT merging."
+    print_info  "--merge requires a verified identity distinct from the author."
+    print_info  "The release IS recorded. Merge by hand: $(_mr_web_url "$iid")"
+    return 1
+  fi
+  if [ -z "$mr_author" ]; then
+    print_error "could not read !$iid's author — NOT merging (cannot check two-person)."
+    return 1
+  fi
+  if [ "$tok_user" = "$mr_author" ]; then
+    print_error "REFUSING --merge: this token belongs to @$tok_user, who AUTHORED !$iid."
+    print_info  "A release lifts a hold; it is not a second pair of eyes when the"
+    print_info  "same person does both. --approved-by is a string you typed; this is"
+    print_info  "the identity the forge sees, and it is the one that has to differ."
+    print_info  "The release IS recorded. Have someone else merge: $(_mr_web_url "$iid")"
+    return 1
+  fi
+  print_info "merging as @$tok_user (author is @$mr_author — distinct, so two-person holds)"
+  print_info "waiting for the pipeline to re-evaluate the release before merging…"
+  local waited=0 st
+  while [ "$waited" -lt "${NWP_MR_MERGE_TIMEOUT:-600}" ]; do
+    st=$(_mr_pipeline_status "$iid")
+    case "$st" in
+      success) break ;;
+      failed|canceled)
+        print_error "pipeline is $st — NOT merging."
+        print_info  "The release is recorded; fix the pipeline and merge when it is green."
+        return 1 ;;
+    esac
+    sleep 20; waited=$((waited + 20))
+    printf '.' >&2
+  done
+  printf '\n' >&2
+  if [ "$st" != "success" ]; then
+    # Never merge on an unknown verdict. "I ran out of patience" is not "green".
+    print_warning "pipeline still '$st' after ${waited}s — NOT merging."
+    print_info    "The release IS recorded. Merge when it goes green: $(_mr_web_url "$iid")"
+    return 1
+  fi
+  print_success "pipeline green after ${waited}s — merging"
+  cmd_merge "$iid"
 }
 
 ################################################################################
@@ -637,6 +758,23 @@ EOF
 
     # THE HOLD IS CHECKED FIRST, and against the forge's own view. A held MR is
     # not a "not ready yet" to be waited out; it is a refusal.
+    # A MACHINE NEVER MERGES. Checked before anything else, and in BOTH review
+    # modes. Solo mode drops the Draft hold, so this becomes the thing standing
+    # between an armed automation and a merged MR — which is exactly what went
+    # wrong on 2026-08-01. Keyed on the token's forge-verified identity, not on a
+    # name in a config or a handle somebody typed.
+    local _actor_rc=0
+    _mr_merge_actor_ok || _actor_rc=$?
+    case "$_actor_rc" in
+      1) print_error "REFUSING: this token is a BOT (@$(_mr_token_user 2>/dev/null)). A machine never merges."
+         print_info  "A human merges, on the MR page. In solo review mode that click IS the approval."
+         print_info  "  $(_mr_web_url "$iid")"
+         return 1 ;;
+      2) print_error "REFUSING: could not establish this token's forge identity (GET /user)."
+         print_info  "\"I could not tell whether I am a bot\" is not \"I am a human\". Merge by hand:"
+         print_info  "  $(_mr_web_url "$iid")"
+         return 1 ;;
+    esac
     if _mr_is_draft "$json"; then
       print_error "!$iid is HELD (draft) — refusing. pl mr status $iid"
       return 1
@@ -738,6 +876,146 @@ EOF
 #   1 — held (or should be held): sensitive path with no valid release
 #   2 — CANNOT VERIFY (no diff, unreadable CLAUDE.md). Fail closed.
 ################################################################################
+# _mr_hold_unverifiable <iid> <apply> — hold an MR whose sensitivity could not be
+# determined. Fail-closed's action half: saying "treat it as held" and holding
+# nothing is not failing closed, it is failing open with a warning.
+_mr_hold_unverifiable(){
+  local iid="$1" apply="$2"
+  if [ "$apply" != true ]; then
+    echo "       (read-only: re-run with --apply to hold it, or hold it by hand)"
+    return 0
+  fi
+  if [ -z "$iid" ] || ! _mr_have_token; then
+    echo "NOT ENFORCED AS DRAFT: no MR-capable token here, so the hold could not be"
+    echo "  applied. Nothing is holding this MR except this command's exit code."
+    return 0
+  fi
+  # Same host check the sensitive-path hold does. Without it this would dial the
+  # placeholder domain, take an HTTP 000, and report HOLD-MECHANISM-FAILED — true,
+  # but blaming the mechanism for what is really "I do not know the address".
+  if ! _mr_host_ok; then
+    echo "NOT ENFORCED AS DRAFT: the forge host could not be determined (no"
+    echo "  NWP_GITLAB_HOST, no CI_SERVER_HOST, no .secrets.yml), so no hold could"
+    echo "  be applied. Nothing is holding this MR except this command's exit code."
+    return 0
+  fi
+  echo ""
+  if _mr_apply_hold "$iid" \
+       "the sensitive-path gate could not determine what this MR changes, so it is held until someone can" \
+       "$MR_HOLD_LABEL_MANUAL" ""; then
+    local vjson
+    if vjson=$(_mr_fetch "$iid") && _mr_is_draft "$vjson"; then
+      echo "HELD: !$iid set to Draft because its sensitivity could NOT be verified."
+      echo "  This is the gate failing closed. Re-run \`pl mr guard $iid\` once the"
+      echo "  diff is readable; if it is clean, release it the ordinary way."
+    else
+      echo "HOLD-MECHANISM-FAILED: the Draft hold could not be CONFIRMED on !$iid,"
+      echo "  and its sensitivity is ALSO unverified. Nothing is holding this MR."
+      echo "  Do not merge it on the strength of a red pipeline alone."
+    fi
+  else
+    echo "HOLD-MECHANISM-FAILED: could not apply the Draft hold (HTTP $(_mr_http_status)),"
+    echo "  and the change set was unreadable too. Nothing is holding this MR."
+    echo "  Fix the mechanism before merging — both layers are absent, not one."
+  fi
+}
+
+################################################################################
+# pl mr review-mode [sync] — report the estate's review policy, and regenerate the
+# CI-readable projection of it.
+#
+# THERE IS DELIBERATELY NO `set` SUBCOMMAND. The mode is not a switch somebody
+# flips; it is derived from `approvers:` in private/secrets-registry.yml. Adding the
+# second name is the entire shift — simultaneously the operator approving it and
+# the second human dev existing, which are the two conditions of the 2026-08-06
+# ruling. A `set` verb would be a way to be in team mode with nobody to be the
+# second reviewer, or in solo mode with two devs, and both are incoherent.
+#
+# `sync` only copies the derived value into .nwp-review-mode so CI can read it. It
+# cannot change the answer.
+################################################################################
+cmd_review_mode(){
+  local sub="${1:-show}"
+  case "$sub" in
+    show|"") ;;
+    sync) ;;
+    -h|--help) printf 'usage: pl mr review-mode [sync]\n'; return 0 ;;
+    set) die "there is no 'set' — the mode is DERIVED from approvers: in
+  private/secrets-registry.yml. Add or remove a name there and the mode follows;
+  then run \`pl mr review-mode sync\` and commit .nwp-review-mode so CI agrees.
+  A settable mode would let team mode exist with nobody to be the second pair of
+  eyes, which is not a policy, it is a gap." ;;
+    *) die "unknown: pl mr review-mode $sub (try: show | sync)" ;;
+  esac
+
+  local mode src proj file reg n
+  mode=$(_mr_review_mode); src=$(_mr_review_mode_source)
+  file=$(_mr_review_mode_file); reg=$(_mr_approver_registry)
+  proj=$(_mr_review_mode_raw); [ -n "$proj" ] || proj="(none)"
+  n=$(_mr_approver_count) || n="unreadable"
+
+  if [ "$sub" = sync ]; then
+    [ "$n" != unreadable ] || die "cannot read $reg — nothing to project.
+  Run this where the registry is readable (it lives in the private repo);
+  a CI job cannot, which is the reason the projection exists."
+    local want; [ "$n" -eq 1 ] && want=solo || want=team
+    if [ "$proj" = "$want" ]; then
+      print_info "already in sync: $want ($n approver(s))"
+      return 0
+    fi
+    local tmp; tmp=$(mktemp)
+    if [ -r "$file" ]; then
+      # Rewrite ONLY the value line — the file is mostly rationale and it must survive.
+      awk -v want="$want" 'BEGIN{done=0}
+        /^[[:space:]]*(#|$)/ { print; next }
+        { if (!done) { print want; done=1 } else { print } }
+        END { if (!done) print want }' "$file" > "$tmp"
+    else
+      printf '%s\n' "$want" > "$tmp"
+    fi
+    mv "$tmp" "$file"
+    print_success "projection updated: ${proj} -> ${want}  (${n} approver(s) declared)"
+    print_info "COMMIT ${file#$PROJECT_ROOT/} — CI reads it from the branch under test,"
+    print_info "so an uncommitted change applies to your shell and not to the pipeline."
+    return 0
+  fi
+
+  print_header "review mode: $mode"
+  case "$src" in
+    registry)   printf '  %-14s %s\n' "from:" "approvers: in ${reg/#$HOME/~} ($n declared)" ;;
+    projection) printf '  %-14s %s\n' "from:" "${file#$PROJECT_ROOT/} — the registry was not readable here"
+                print_info "(expected in CI: private/ is a separate repo)" ;;
+    env)        printf '  %-14s %s\n' "from:" "NWP_REVIEW_MODE — an explicit override" ;;
+    fallback)   print_warning "NOT DECLARED — no registry, no projection. This is the"
+                print_warning "FAIL-CLOSED default, not a decision anyone made." ;;
+  esac
+  printf '  %-14s %s\n' "projection:" "$proj"
+  echo
+  if [ "$mode" = solo ]; then
+    print_info "ONE reviewer. You approve by clicking Merge on the MR page — that click IS"
+    print_info "the approval. \`pl mr release\` is not needed, and \`--merge\` is refused,"
+    print_info "because a shell would be a second approval spot."
+    print_info "Sensitive-path MRs are REPORTED (here and as a note on the MR), not held."
+  else
+    print_info "TWO reviewers. A sensitive-path MR is held as Draft until somebody who is"
+    print_info "NOT its author records a release bound to the head commit:"
+    print_info "  pl mr release <iid> --approved-by=<handle> --reason='...'"
+  fi
+  echo
+  print_info "In BOTH modes: a machine never merges. Auto-merge is disarmed and every merge"
+  print_info "verb refuses a bot token. Solo removes the SECOND human, not the human."
+  echo
+  if ! _mr_review_mode_drift; then
+    print_error "DRIFT: the registry says $([ "$n" -eq 1 ] 2>/dev/null && echo solo || echo team) but the projection says $proj."
+    print_error "CI reads the projection, so CI is enforcing the wrong policy right now."
+    print_info  "  pl mr review-mode sync   # then commit ${file#$PROJECT_ROOT/}"
+    return 1
+  fi
+  print_hint "To move to two-person review: add the second name to approvers: in"
+  print_hint "${reg/#$HOME/~}, then \`pl mr review-mode sync\` and commit."
+  return 0
+}
+
 cmd_guard(){
   local iid="${CI_MERGE_REQUEST_IID:-}" apply=false base="" head_ref="HEAD" ci=false
   while [ $# -gt 0 ]; do
@@ -778,17 +1056,45 @@ cmd_guard(){
   # request with no changed files is not a thing.
   #
   # So when the range comes back empty and there IS an MR to ask about, ask.
+  local read_failed=false
   if [ -z "$files" ] && [ -n "$iid" ] && _mr_have_token; then
-    files=$(_mr_changed_files "$iid") || files=""
     source="GitLab !$iid"
+    files=$(_mr_changed_files "$iid") || { files=""; read_failed=true; }
+    # "NOT YET" IS NOT "CANNOT". GitLab prepares diffs asynchronously; for the
+    # first seconds after creation it reports detailed_merge_status=preparing,
+    # diff_refs null and an empty changeset. `pl mr create` runs this gate the
+    # instant after the POST, so a single read made CANNOT VERIFY the NORMAL
+    # outcome of creating an MR (measured on !368: empty at creation, three files
+    # moments later, correct verdict from an unchanged gate — ops#293). So when
+    # the answer is empty, wait for the diff to be ready and ask once more.
+    if [ -z "$files" ] && [ "$read_failed" = false ]; then
+      echo "changeset empty on first read — waiting for GitLab to finish preparing the diff…"
+      if _mr_diff_ready "$iid"; then
+        files=$(_mr_changed_files "$iid") || { files=""; read_failed=true; }
+      fi
+    fi
   fi
   if [ -z "$files" ]; then
     if [ -n "$iid" ]; then
       echo "ERROR: the change set for !$iid came back EMPTY (tried: ${source:-no usable source})."
       echo "       A merge request with no changed files is not a thing, so this is"
       echo "       'could not look', NOT 'nothing sensitive'. Failing closed."
-      echo "       Usual causes: a shallow clone, a stale origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main},"
-      echo "       or a HEAD identical to the target."
+      if [ "$read_failed" = true ]; then
+        echo "       The diff pages could not be READ (parse or transport failure) —"
+        echo "       distinct from an empty answer, and never treated as one."
+      else
+        echo "       Usual causes: GitLab has not finished preparing the diff (it is"
+        echo "       still 'preparing' after the wait — retry in a moment), a shallow"
+        echo "       clone, a stale origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}, or a HEAD identical to the target."
+      fi
+      # FAIL CLOSED FOR REAL. This used to `return 2` here and leave the MR
+      # untouched, while cmd_create printed "treat it as held" — an instruction to
+      # a human in place of the action the verb could take itself. Measured on
+      # !368: 'CANNOT BE VERIFIED; treat it as held' with draft:False, labels:[],
+      # i.e. fully mergeable, with nothing on the forge recording that anything
+      # was unverified. An MR whose sensitivity cannot be established is PRECISELY
+      # the case a hold exists for (ops#293).
+      _mr_hold_unverifiable "$iid" "$apply"
       return 2
     fi
     if [ -n "$base" ] && git rev-parse --verify --quiet "$base" >/dev/null 2>&1; then
@@ -840,6 +1146,61 @@ cmd_guard(){
     echo "No sensitive path — but a hold:: label is present: this MR is under a STANDING hold."
     why="a standing hold:: label is set on this MR and no release record exists for this head"
     hold_label="$MR_HOLD_LABEL_MANUAL"
+  fi
+
+  # 2b. SOLO REVIEW MODE — one reviewer, one approval, at the MR page.
+  #
+  # Operator ruling 2026-08-06: "We don't need the extra overhead of two checks
+  # for now... I should be able to approve/merge once and only in one spot which
+  # is the MR location."
+  #
+  # So in solo mode this job does NOT hold. Holding would set the MR to Draft,
+  # and the operator would then have to un-draft AND merge — two actions in two
+  # places, which is the friction being removed. The job still REPORTS which
+  # CLAUDE.md paths are touched, both here and as a note ON THE MR, because "the
+  # one spot" has to be where the information is.
+  #
+  # WHAT IS KEPT, and it is the part that actually fixed 2026-08-01: auto-merge is
+  # disarmed, so nothing self-merges. The incident was a sweeper merging an MR no
+  # person had approved. Solo mode removes the SECOND human, never the human —
+  # `pl mr merge` and `pl mr release --merge` both refuse a bot caller in either
+  # mode (_mr_merge_actor_ok).
+  #
+  # Placed BEFORE the release-record machinery on purpose: in solo mode there is
+  # no release record to look for, so asking for one would fail closed for a
+  # reason that no longer applies.
+  if [ "$(_mr_review_mode)" = solo ]; then
+    echo ""
+    echo "SOLO REVIEW MODE — one reviewer. NOT held."
+    echo "  The paths above are CLAUDE.md's two-person class, and you are being told"
+    echo "  so you can decide. Clicking Merge on the MR page IS the approval; there"
+    echo "  is no release step to run first."
+    if [ "$apply" = true ] && [ -n "$iid" ] && _mr_have_token && _mr_host_ok; then
+      _mr_disarm_automerge "$iid"
+      echo "  auto-merge disarmed — nothing will merge this without you clicking it."
+      local sbody
+      sbody="$MR_SOLO_MARKER
+**Sensitive paths touched** — CLAUDE.md lists these as the two-person approval
+class. This estate is in **solo review mode** (\`.nwp-review-mode\`), so this MR
+is **not held**: your Merge click here is the approval, and there is no
+\`pl mr release\` step to run first.
+
+$(printf '%s\n' "$sens" | sed 's/^/  - /')
+
+Auto-merge has been disarmed, so nothing merges this without you. To arm
+two-person review later — when there is a second human dev — run
+\`pl mr review-mode set team --reason='...'\`; this MR would then be held as Draft
+until somebody other than its author released it."
+      _mr_note_once "$iid" "$MR_SOLO_MARKER" "$sbody" \
+        && echo "  the paths are recorded as a note on the MR (posted once)." \
+        || echo "  NOTE-FAILED: could not post the note; the paths are only in this log."
+    elif [ "$apply" = true ]; then
+      echo "  (no token/host here, so auto-merge could NOT be disarmed and no note"
+      echo "   was posted — this log is the only record)"
+    fi
+    echo ""
+    echo "  pl mr review-mode      # what this means, and how to arm two-person review"
+    return 0
   fi
 
   # 3. IS IT RELEASED? Only a record bound to the CURRENT head counts.
@@ -1000,6 +1361,10 @@ pl mr — create, merge, hold, release and guard merge requests
 Exit codes for guard:  0 clear/released · 1 held · 2 cannot verify (fail closed)
 EOF
       ;;
+    # NO `shift` here: main() already shifted the subcommand off. The other arms
+    # do not shift either, and adding one ate `set` so that `review-mode set team`
+    # arrived as `review-mode team`.
+    review-mode) cmd_review_mode "$@" ;;
     *) die "unknown subcommand: $sub (try: pl mr --help)" ;;
   esac
 }

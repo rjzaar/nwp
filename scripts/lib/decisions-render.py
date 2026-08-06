@@ -1,6 +1,7 @@
 import json, re, sys
 
 mode, only_iid, host = sys.argv[1], sys.argv[2], sys.argv[3]
+mrs_manifest = sys.argv[4] if len(sys.argv) > 4 else ""
 try:
     issues = json.load(sys.stdin)
 except Exception:
@@ -82,15 +83,96 @@ if only_iid:
         print(f"No open decision #{only_iid}.", file=sys.stderr)
         sys.exit(1)
 
-if mode == "json":
-    print(json.dumps({"count": len(rows), "decisions": rows}, indent=2))
-    sys.exit(0)
+# ── Open MRs, from the manifest decisions.sh fetched ──────────────────────────
+# Under solo review mode (ADR-0032) the merge click IS the approval, so an open
+# MR belongs in the same queue as a needs-decision issue. A project whose fetch
+# failed carries ok=False and an error — it is rendered as CANNOT-READ, never
+# dropped: an unreadable forge must not look like an empty one.
+def mr_row(m: dict) -> dict:
+    desc = (m.get("description") or "").strip()
+    return {
+        "project": "",  # filled by caller
+        "iid": m.get("iid"),
+        "title": m.get("title") or "",
+        "url": m.get("web_url") or "",
+        "draft": bool(m.get("draft")),
+        "merge_status": m.get("detailed_merge_status") or m.get("merge_status") or "",
+        "has_conflicts": bool(m.get("has_conflicts")),
+        "source_branch": m.get("source_branch") or "",
+        "author": ((m.get("author") or {}).get("username")) or "",
+        "updated_at": m.get("updated_at") or "",
+        "labels": m.get("labels") or [],
+        # The pane renders this as the MR's explanation; 4000 chars keeps the
+        # What/Why/Risk sections `pl mr create` writes without shipping a book.
+        "description": desc[:4000],
+    }
 
-if not rows:
-    print("No decisions are waiting. Nothing is blocked on you.")
+mrs = {"projects": [], "open_total": 0}
+if mrs_manifest:
+    try:
+        manifest_lines = open(mrs_manifest).read().splitlines()
+    except OSError:
+        manifest_lines = []
+    for line in manifest_lines:
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        proj, path, status = parts
+        entry = {"project": proj, "ok": False, "error": "", "items": []}
+        if status != "ok":
+            entry["error"] = "CANNOT-READ (token walled to another project, or forge unreachable)"
+        else:
+            try:
+                data = json.load(open(path))
+                if isinstance(data, list):
+                    entry["ok"] = True
+                    for m in data:
+                        row = mr_row(m)
+                        row["project"] = proj
+                        entry["items"].append(row)
+                else:
+                    entry["error"] = "CANNOT-READ (unexpected response shape)"
+            except (OSError, ValueError):
+                entry["error"] = "CANNOT-READ (unparseable response)"
+        mrs["projects"].append(entry)
+    mrs["open_total"] = sum(len(p["items"]) for p in mrs["projects"])
+
+if mode == "json":
+    print(json.dumps({"count": len(rows), "decisions": rows, "mrs": mrs}, indent=2))
     sys.exit(0)
 
 B, D, R = "\033[1m", "\033[2m", "\033[0m"
+
+# MRs render FIRST: in solo mode an open green MR is the single most actionable
+# item on the operator's plate — PICKUP docs kept putting "merge !N" at the top
+# by hand; this is that ordering, held by code instead of by discipline.
+if mrs["projects"]:
+    unread = [p for p in mrs["projects"] if not p["ok"]]
+    if mrs["open_total"] or unread:
+        print(f"\n{B}══ AWAITING YOUR MERGE ══{R}  {D}solo mode: the merge click on the MR page is the approval{R}\n")
+        for p in mrs["projects"]:
+            if not p["ok"]:
+                print(f"  {B}{p['project']}{R}: {p['error']}")
+                continue
+            for m in p["items"]:
+                flags = []
+                if m["draft"]:
+                    flags.append("DRAFT")
+                if m["has_conflicts"]:
+                    flags.append("CONFLICTS")
+                flag_s = f"  [{' '.join(flags)}]" if flags else ""
+                print(f"  {B}{p['project']}!{m['iid']}{R}  {m['title']}{flag_s}")
+                if m["merge_status"]:
+                    print(f"    {D}status: {m['merge_status']} · by {m['author']}{R}")
+                print(f"    {m['url']}\n")
+
+if not rows:
+    if mrs["open_total"]:
+        print("No decisions are waiting — the merge requests above are the whole queue.")
+    else:
+        print("No decisions are waiting. Nothing is blocked on you.")
+    sys.exit(0)
+
 incomplete = [r for r in rows if not r["complete"]]
 print(f"\n{B}{len(rows)} decision(s) waiting{R}")
 print(f"{D}Read in order — later ones may not make sense until earlier ones are answered.{R}\n")

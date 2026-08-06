@@ -1,0 +1,140 @@
+{% include "_tabcount.html" %}
+
+{# ---------------------------------------------------------------------------
+   The operator's ONE queue (ops#295): open MRs + needs-decision issues, read
+   from `pl decisions --json` and nothing else. Approve-on-an-MR is a DEEP
+   LINK — the merge click happens on the MR page as the operator themselves
+   (ADR-0032: a machine never merges, and no human credential sits on this
+   host). Every write here is a [console-review]-tagged note: the note is the
+   instruction the next session acts on. Skip is client-side only — R3 says
+   the console is the window, not the store.
+   --------------------------------------------------------------------------- #}
+
+{% if scoped_out %}
+<p class="muted">The review queue is estate-level (decisions in the ops tracker plus open
+merge requests). It is not shown inside a project scope.</p>
+{% else %}
+
+<div class="review-head">
+  <span class="muted">one queue: open MRs + needs-decision issues · source <code>pl decisions --json</code>
+    {%- if q.cached %} · cached {{ q.age }}s ago{% endif %}</span>
+  <button class="ghost" hx-get="/panes/review?force=1" hx-target="#pane-body"
+          hx-indicator="#pane-spin">refresh</button>
+</div>
+
+{% if not q.ok %}
+{# The load-bearing honesty line: a queue the console could not read must
+   never render as an empty (= good news) queue. #}
+<p class="warnfg">⚠ CANNOT-VERIFY: the queue could not be read ({{ q.error }}).
+This is not "nothing to review" — it is "the console could not look".</p>
+{% else %}
+
+<section class="review-mrs">
+  <h3>Awaiting your merge
+    <span class="muted">— solo mode: the merge click on the MR page is the approval</span></h3>
+  {% for p in mrs.projects %}
+    {% if not p.ok %}
+    <p class="warnfg">⚠ {{ p.project }}: {{ p.error }} — open MRs there are
+      <strong>not shown</strong>, which is not the same as none existing.</p>
+    {% elif not p['items'] %}
+    <p class="ok">No open MRs in {{ p.project }}.</p>
+    {% else %}
+      {% for m in p['items'] %}
+      <div class="rev-card">
+        <p>
+          <a href="{{ m.url }}" target="_blank" rel="noopener"><strong>{{ p.project }}!{{ m.iid }}</strong></a>
+          <strong>{{ m.title }}</strong>
+          {% if m.draft %}<span class="chip">DRAFT</span>{% endif %}
+          {% if m.has_conflicts %}<span class="warnfg">CONFLICTS</span>{% endif %}
+          <span class="muted">{{ m.merge_status }} · {{ m.author }} · {{ m.updated_at[:10] }}</span>
+        </p>
+        {% if m.description %}
+        <details><summary>explanation</summary>
+          <pre class="mono rev-desc">{{ m.description }}</pre></details>
+        {% endif %}
+        <p>
+          <a class="primary-link" href="{{ m.url }}" target="_blank" rel="noopener">Review / Approve on GitLab →</a>
+          {% if can_act %}
+          <details class="inline"><summary>comment</summary>
+            <form hx-post="/review/mr/note" hx-target="#rev-mr-{{ p.project|replace('/','-') }}-{{ m.iid }}">
+              <input type="hidden" name="project" value="{{ p.project }}">
+              <input type="hidden" name="iid" value="{{ m.iid }}">
+              <textarea name="body" rows="3" required
+                placeholder="instruction or question — tagged [console-review]; the next session acts on it"></textarea>
+              <button class="primary">Post</button>
+            </form>
+            <div id="rev-mr-{{ p.project|replace('/','-') }}-{{ m.iid }}"></div>
+          </details>
+          {% endif %}
+          <button class="ghost" onclick="this.closest('.rev-card').style.display='none'">skip</button>
+        </p>
+      </div>
+      {% endfor %}
+    {% endif %}
+  {% else %}
+  <p class="muted">This queue carried no MR feed — the console host's <code>pl decisions</code>
+    predates the MR extension. Deploy the current checkout.</p>
+  {% endfor %}
+</section>
+
+<section class="review-decisions">
+  <h3>Decisions
+    <span class="muted">— read in order; later ones may not make sense until earlier ones are answered</span></h3>
+  {% if not decisions %}
+  <p class="ok">No decisions are waiting. Nothing is blocked on you.</p>
+  {% endif %}
+  {% set ns = namespace(gate='') %}
+  {% for d in decisions %}
+    {% if d.gate != ns.gate %}{% set ns.gate = d.gate %}
+    <h4>{{ gates[d.gate][0] if d.gate in gates else d.gate }}
+      <span class="muted">— {{ gates[d.gate][1] if d.gate in gates else '' }}</span></h4>
+    {% endif %}
+    <div class="rev-card">
+      <p><a href="{{ d.url }}" target="_blank" rel="noopener">#{{ d.iid }}</a>
+        <strong>{{ d.title }}</strong>
+        <span class="labels">{% for l in d.labels %}{% if l != 'needs-decision' %}<span class="chip">{{ l }}</span>{% endif %}{% endfor %}</span>
+      </p>
+      {% if not d.complete %}
+      <p class="warnfg">(no <code>## Decision</code> block yet — the question is buried in the issue,
+        and it still blocks you)</p>
+      {% else %}
+      {% if d.what %}<p>{{ d.what }}</p>{% endif %}
+      {% if d.options %}
+      <ul class="rev-options">{% for o in d.options %}<li>{{ o }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if d.recommend %}<p><strong>Recommend:</strong> {{ d.recommend }}</p>{% endif %}
+      {% if d.unblocks %}<p class="muted">Unblocks: {{ d.unblocks }}</p>{% endif %}
+      {% if d.depends_on %}
+      <p class="muted">Answer after: {% for dep in d.depends_on %}#{{ dep }}{{ ", " if not loop.last }}{% endfor %}</p>
+      {% endif %}
+      {% endif %}
+      <p>
+        {% if can_act %}
+        <form hx-post="/review/decision/{{ d.iid }}/approve" hx-target="#rev-dec-{{ d.iid }}" class="inline">
+          <button class="primary"
+                  hx-confirm="Approve the recommendation on #{{ d.iid }} as written?">Approve recommended</button>
+        </form>
+        <details class="inline"><summary>comment / different answer</summary>
+          <form hx-post="/review/decision/{{ d.iid }}/note" hx-target="#rev-dec-{{ d.iid }}">
+            <textarea name="body" rows="3" required
+              placeholder="your answer or question — tagged [console-review]; the next session acts on it"></textarea>
+            <button class="primary">Post</button>
+          </form>
+        </details>
+        {% endif %}
+        <a href="{{ d.url }}" target="_blank" rel="noopener">open issue →</a>
+        <button class="ghost" onclick="this.closest('.rev-card').style.display='none'">skip</button>
+      </p>
+      <div id="rev-dec-{{ d.iid }}"></div>
+    </div>
+  {% endfor %}
+</section>
+
+{% if can_act and not gitlab_ok %}
+<p class="muted">Write actions need the walled bot token on the console host
+(<code>~/.config/nwp-console/gitlab.token</code>) — reads come from <code>pl</code> and still work.
+Approve-on-GitLab links work regardless.</p>
+{% endif %}
+
+{% endif %}{# q.ok #}
+{% endif %}{# scoped_out #}

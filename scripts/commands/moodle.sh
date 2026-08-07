@@ -55,6 +55,7 @@ ${BOLD}USAGE:${NC}
                             [--from=DIR|--from-canonical|--from-nwptoolkit]
                             [--allow-downgrade] [--override-pair]
     pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live] [--no-canonical] [--canonical-ref=REF]
+    pl moodle plugin lock   <site>              # what pl recorded as deployed (version+release+repo commit)
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
     pl moodle core-patch status <site> [--root=DIR|--live]
     pl moodle privacy       <site> --tier=live [--component=<frankenstyle>]... [--all] [--verbose]
@@ -430,12 +431,13 @@ cmd_plugin_deploy() {
     #    same directory for the freshness gate, the Art.9 assertion and the
     #    rsync. Asserting one tree while shipping another is the fail-open.
     local p ts type name
-    local -a src_dirs=()
+    local -a src_dirs=() src_origins=()
     print_header "Plugin source resolution"
     for p in "${plugins[@]}"; do
         _moodle_resolve_source "$CONFIG_FILE" "$BASE" "$p" \
             "$explicit_from" "$force_toolkit" "$force_canonical" || return 1
         src_dirs+=("$MOODLE_SRC_DIR")
+        src_origins+=("$MOODLE_SRC_ORIGIN")
         printf '    %-28s %s\n      └─ %s\n' "$p" "[$MOODLE_SRC_ORIGIN]" "$MOODLE_SRC_DIR"
     done
 
@@ -559,6 +561,27 @@ cmd_plugin_deploy() {
             "$sudo_prefix" "$ssh_opts" "$apply" || return 1
         i=$((i+1))
     done
+
+    # 9b. LOCKFILE (ops#73) — record WHAT shipped and WHERE FROM, per plugin.
+    #     APPLY only: a dry run deployed nothing, so it records nothing. Sits
+    #     after the rsync (it records what IS on the target) and before the
+    #     upgrade (the bytes are the deployed fact whether or not upgrade.php
+    #     then succeeds). A failed record fails the VERB loudly — the deploy
+    #     has applied, and "applied but unrecorded" must never read as OK.
+    if [ "$apply" = "true" ]; then
+        local lockfile="$PROJECT_ROOT/sites/${BASE}/.nwp-plugins.lock.yml"
+        i=0
+        for p in "${plugins[@]}"; do
+            if ! moodle_lock_record "$lockfile" "$BASE" "$tier" "$p" "${src_dirs[$i]}" "${src_origins[$i]}"; then
+                print_error "Deploy APPLIED but the plugin lockfile was NOT updated for '${p}'."
+                print_info  "  The bytes are on ${ssh_target}:${remote_path}/${p} — fix the record, do not re-ship blindly:"
+                print_info  "  expected lockfile: ${lockfile}"
+                return 1
+            fi
+            i=$((i+1))
+        done
+        print_status "OK" "Lockfile updated: ${lockfile}"
+    fi
 
     # 10. Upgrade unless --no-upgrade.
     if [ "$no_upgrade" != "true" ]; then
@@ -2039,6 +2062,29 @@ cmd_plugin_drift() {
 }
 
 ################################################################################
+# plugin lock — report the per-tree plugin lockfile (ops#73 / ADR-0031 D4)
+#
+#   pl moodle plugin lock <site>
+#
+# Read-only. Prints what `pl moodle plugin deploy --apply` has recorded as
+# deployed for this site — version, release, source origin and (when the source
+# was a tracked git checkout) the canonical repo commit. The lockfile is a
+# CLAIM; the box is the fact — `pl moodle plugin drift` measures the box.
+################################################################################
+cmd_plugin_lock() {
+    local site=""
+    for a in "$@"; do
+        case "$a" in
+            -*) print_error "Unknown option: $a"; return 1 ;;
+            *)  [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle plugin lock <site>"; return 1; }
+    _resolve_moodle_site "$site" || return 1
+    moodle_lock_report "$PROJECT_ROOT/sites/${BASE}/.nwp-plugins.lock.yml" "$BASE"
+}
+
+################################################################################
 # course restore — guarded bulk course import from .mbz backups
 #
 #   pl moodle course restore <site> --tier=live|dev --from=DIR
@@ -2947,7 +2993,8 @@ case "$SUB" in
             build)  cmd_plugin_build  "$@" ;;
             deploy) cmd_plugin_deploy "$@" ;;
             drift)  cmd_plugin_drift  "$@" ;;
-            *) print_error "Unknown 'plugin' subcommand: ${PSUB:-(none)} (build|deploy|drift)"; exit 1 ;;
+            lock)   cmd_plugin_lock   "$@" ;;
+            *) print_error "Unknown 'plugin' subcommand: ${PSUB:-(none)} (build|deploy|drift|lock)"; exit 1 ;;
         esac
         ;;
     cli)         cmd_cli         "$@" ;;

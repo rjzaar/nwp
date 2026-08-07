@@ -1,0 +1,50 @@
+# classes/ssd.class.yml — site class declaration (ADR-0036 / ops#162 / ops#234)
+# TRACKED on purpose: nwp.yml is never committed and sites/* is gitignored, so
+# neither can carry a claim a reviewer needs to see.
+#
+# Operator ruling nwp/ops#234, 2026-08-07: "YES — declare the demo class …
+# ssd: nwp_demo_mode read from the mdl_config TABLE, not config.php — the
+# ops#170 lesson … Record the SAME probe lib/demo-live-moodle.sh reads."
+site: ssd
+class: demo
+classified_by: "operator"
+classified_at: "2026-08-07"
+classified_ref: "nwp/ops#234"
+
+art9:
+  # class demo permits exactly this posture (classes/registry.yml).
+  posture: none-stored
+
+  # DEMO-SHAPED evidence (ops#162): a demo is synthetic BY DESIGN, so the
+  # demo-mode assertion REPLACES the member cap, and no expires: is required —
+  # a demo is a standing class property, not an expiring exemption.
+  evidence:
+    # Counts member_count + formation_rows across the practice/depthcontent
+    # member tables. The script ships at classes/probe-art9-rows.php; on the
+    # box it belongs at admin/cli/probe_art9_rows.php (containment: pl moodle
+    # cli refuses paths outside admin/cli/ or a declared plugin's own cli/).
+    # The 2026-08-07 reading was taken with the same script via the staged-PHP
+    # transport (lib/demo-pair.sh demo_moodle_php_run) pending that deploy.
+    probe_cmd: "pl moodle cli ssd --tier=live --execute -- admin/cli/probe_art9_rows.php"
+    # The SAME fact every golden/reset verb refuses without (ops#170 lesson:
+    # the marker lives in the mdl_config TABLE — config.php reads it UNSET):
+    # lib/demo-live-moodle.sh demo_moodle_is_demo(), surfaced by
+    # `pl demo status ssd --tier=live` and re-readable as
+    # get_config('core','nwp_demo_mode') from any admin/cli probe.
+    demo_mode_probe_cmd: "pl demo status ssd --tier=live"
+    max_age_days: 30
+    attestation:
+      at: "2026-08-07"
+      by: "operator-directed session (nwp/ops#234 ruling)"
+      # probe: art9-rows v1 @ 2026-08-07T09:50:43Z — member_count: 4 (the
+      # @demo.invalid personas + orphan), formation_rows: 0,
+      # consent_tables_present: false.
+      formation_rows: 0
+      # nwp_demo_mode=1 read from mdl_config 2026-08-07 (staged probe); the
+      # same fact gated today's paired golden captures, which REFUSE when it
+      # is not 1 (demo.sh:989).
+      demo_mode: true
+
+# nwt (same ruling): live.enabled is FALSE in sites/nwt/.nwp.yml, so an honest
+# live probe is impossible — per the ruling's own branch, nwt is NOT declared
+# and is noted for refresh-or-retire instead.

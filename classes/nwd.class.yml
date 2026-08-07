@@ -1,0 +1,39 @@
+# classes/nwd.class.yml — site class declaration (ADR-0036 / ops#162 / ops#234)
+# TRACKED on purpose: nwp.yml is never committed and sites/* is gitignored, so
+# neither can carry a claim a reviewer needs to see.
+#
+# Operator ruling nwp/ops#234, 2026-08-07: "YES — declare the demo class …
+# nwd: nwc_demo_access.settings.demo_mode."
+site: nwd
+class: demo
+classified_by: "operator"
+classified_at: "2026-08-07"
+classified_ref: "nwp/ops#234"
+
+art9:
+  # class demo permits exactly this posture (classes/registry.yml).
+  posture: none-stored
+
+  # DEMO-SHAPED evidence (ops#162): a demo is synthetic BY DESIGN, so the
+  # demo-mode assertion REPLACES the member cap, and no expires: is required —
+  # a demo is a standing class property, not an expiring exemption.
+  evidence:
+    # classes/probe-art9-rows-nwd.php counts entities of every Art.9 (Tier A)
+    # type the ERASURE REGISTRY declares (Art9ErasureService::art9EntityFields
+    # — the same registry the presave gate and eraseMember() consume, so the
+    # probe cannot drift from the erasure surface), split into rows owned by
+    # DEMO-FENCED accounts (@demo.invalid — synthetic by construction, wiped
+    # nightly) vs anyone else. The demo-class claim is that the REAL count is
+    # zero; fenced rows are the seeded personas' own synthetic state.
+    probe_cmd: "pl drush nwd --tier=live --execute --script classes/probe-art9-rows-nwd.php"
+    demo_mode_probe_cmd: "pl drush nwd --tier=live --execute -- config:get nwc_demo_access.settings demo_mode"
+    max_age_days: 30
+    attestation:
+      at: "2026-08-07"
+      by: "operator-directed session (nwp/ops#234 ruling)"
+      # probe 2026-08-07: fenced_total: 3 (level_verification 1,
+      # member_skill_progress 1, ratification 1 — all owned by @demo.invalid
+      # personas), real_total: 0. Recorded reading = the REAL count.
+      formation_rows: 0
+      # config:get nwc_demo_access.settings demo_mode → true (2026-08-07).
+      demo_mode: true

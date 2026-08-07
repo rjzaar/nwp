@@ -25,9 +25,14 @@ set -euo pipefail
 # as `ls` prints it.
 ################################################################################
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
-source "$PROJECT_ROOT/lib/ui.sh"
-source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
+# Two roots, deliberately (ops#307): the LIBRARIES always come from the tree
+# this script sits in (a fixture estate has no lib/), while the ESTATE root —
+# the git repo, the singleton state — honours an existing PROJECT_ROOT so tests
+# can run cmd_work against a fixture instead of leaking branches into ~/nwp.
+SELF_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+PROJECT_ROOT="${PROJECT_ROOT:-$SELF_ROOT}"
+source "$SELF_ROOT/lib/ui.sh"
+source "$SELF_ROOT/lib/common.sh" 2>/dev/null || true
 
 SECRETS_FILE="${NWP_SECRETS_FILE:-$PROJECT_ROOT/.secrets.yml}"
 PROJECT_ID="${NWP_OPS_PROJECT_ID:-21}"          # nwp/ops
@@ -66,7 +71,7 @@ _tmpdir_cleanup(){
 # Shared GitLab issue API plumbing (_host/_token/_api_get/_api_send/_jget/
 # _require_ok/_api_rows). Extracted to a lib so `pl rag --sync-issues` reuses it
 # (ops#6) and so there is exactly ONE paginating collection read (_api_rows).
-source "$PROJECT_ROOT/lib/gitlab-issues.sh"
+source "$SELF_ROOT/lib/gitlab-issues.sh"
 
 ################################################################################
 # ISSUE SOURCES — the operator has TWO trackers, not one.
@@ -157,7 +162,7 @@ _issue_web_url(){
 # this cannot drift from what actually gates the loop.
 ################################################################################
 # shellcheck source=/dev/null
-[ -f "$PROJECT_ROOT/lib/loop-parts.sh" ] && source "$PROJECT_ROOT/lib/loop-parts.sh"
+[ -f "$SELF_ROOT/lib/loop-parts.sh" ] && source "$SELF_ROOT/lib/loop-parts.sh"
 
 # _loop_gate_reason → rc 0 + "<reason>\t<exact remedy>" if the fix-loop will NOT
 # run; rc 1 if it will.
@@ -1026,6 +1031,26 @@ cmd_submit(){
   print_hint "after it merges (auto-closes nwp/ops#$iid):  git worktree remove \"$root\" && git branch -d $branch"
 }
 
+# Link entries of a shared singleton dir that git did NOT check out into the
+# worktree (ops#307). Bounded depth; never touches anything that exists (a
+# tracked file from the branch always wins); skips .git. Depth 3 covers the
+# real shapes: private/pairs/<file> and sites/<site>/<env>.
+_wt_link_missing(){
+  local src="$1" dst="$2" depth="$3" e name
+  [ "$depth" -le 0 ] && return 0
+  for e in "$src"/* "$src"/.[!.]*; do
+    [ -e "$e" ] || continue
+    name="$(basename "$e")"
+    [ "$name" = ".git" ] && continue
+    if [ ! -e "$dst/$name" ]; then
+      ln -s "$e" "$dst/$name" 2>/dev/null || true
+    elif [ -d "$e" ] && [ -d "$dst/$name" ] && [ ! -L "$dst/$name" ]; then
+      _wt_link_missing "$e" "$dst/$name" $((depth-1))
+    fi
+  done
+  return 0
+}
+
 cmd_work(){
   command -v git >/dev/null || die "git required"
   local n="" base="" launch=1
@@ -1065,10 +1090,21 @@ cmd_work(){
   # local config). Link those so the ONE fleet/secret store is SHARED (not duplicated)
   # and `pl` actually works inside the worktree. Different windows isolate their CODE
   # edits; the fleet itself stays a single shared resource.
+  #
+  # ops#307: private/ and sites/ are PARTIALLY TRACKED, so a whole-dir link only
+  # when absent left every worktree with a real skeleton dir SHADOWING the shared
+  # state — the pair guard then read a BLANK ledger and refused a deploy the real
+  # ledger permitted (observed 2026-08-07, ops#279). So: link the whole thing when
+  # absent, and when git checked out a partial dir, descend and link the MISSING
+  # children instead. Tracked files came from the branch and are never touched.
   local s
   for s in .secrets.yml nwp.yml private sites; do
-    if [ -e "$PROJECT_ROOT/$s" ] && [ ! -e "$wt/$s" ]; then
+    [ -e "$PROJECT_ROOT/$s" ] || continue
+    if [ ! -e "$wt/$s" ]; then
       ln -s "$PROJECT_ROOT/$s" "$wt/$s" && print_info "linked shared state → $s"
+    elif [ -d "$PROJECT_ROOT/$s" ] && [ ! -L "$wt/$s" ]; then
+      _wt_link_missing "$PROJECT_ROOT/$s" "$wt/$s" 3 \
+        && print_info "linked missing shared state under → $s/"
     fi
   done
   echo

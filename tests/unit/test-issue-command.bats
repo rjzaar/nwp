@@ -98,3 +98,58 @@ teardown() { rm -rf "$TEST_TMP"; }
   [[ "$output" == *"pl issue create"* ]]
   [ ! -f "$CURL_LOG" ]
 }
+
+# ── cmd_work singleton linking (ops#307) ─────────────────────────────────────
+#
+# WHY: cmd_work linked private/ and sites/ only when ABSENT — but both are
+# partially tracked, so every worktree got real skeleton dirs SHADOWING the
+# shared estate state. Observed 2026-08-07 (ops#279): the ADR-0031 pair guard
+# read the worktree's blank ledger and refused a deploy the real ledger
+# permitted, and the --override-pair rows scattered into the worktree.
+# The fix links MISSING CHILDREN (bounded depth) instead of skipping the dir.
+
+_work_fixture() {
+  # A fixture "estate": tracked skeleton + gitignored singletons, like ~/nwp.
+  FIX="$TEST_TMP/estate"
+  mkdir -p "$FIX"
+  git -C "$FIX" init -q -b main
+  git -C "$FIX" config user.email t@t; git -C "$FIX" config user.name t
+  mkdir -p "$FIX/private/pairs" "$FIX/sites/ss" "$FIX/scripts/commands"
+  echo tracked > "$FIX/private/pairs/tracked.log"
+  echo tracked > "$FIX/sites/ss/tracked.txt"
+  printf 'private/pairs/*.cv\nsites/ssd/\nnwp.yml\n.secrets.yml\n' > "$FIX/.gitignore"
+  git -C "$FIX" add -A && git -C "$FIX" commit -qm fixture
+  # The gitignored singleton state the worktree must still reach:
+  echo 3 > "$FIX/private/pairs/ssd.provider.live.cv"
+  mkdir -p "$FIX/sites/ssd"
+  echo siteconfig > "$FIX/sites/ssd/.nwp.yml"
+  echo config > "$FIX/nwp.yml"
+  export HOME="$TEST_TMP/home"; mkdir -p "$HOME"
+}
+
+@test "issue work: a worktree resolves the gitignored SINGLETON state, not a blank shadow (ops#307)" {
+  _work_fixture
+  PROJECT_ROOT="$FIX" run bash "$ISSUE" work 7 --no-launch
+  [ "$status" -eq 0 ]
+  wt="$HOME/nwp-ops7"
+  # Tracked skeleton is real files from the branch, untouched:
+  [ -f "$wt/private/pairs/tracked.log" ]
+  [ ! -L "$wt/private/pairs/tracked.log" ]
+  # The gitignored ledger entry INSIDE a tracked dir must resolve to the estate copy:
+  [ -e "$wt/private/pairs/ssd.provider.live.cv" ]
+  [ "$(cat "$wt/private/pairs/ssd.provider.live.cv")" = "3" ]
+  # A whole gitignored site dir must resolve too:
+  [ -e "$wt/sites/ssd/.nwp.yml" ]
+  # And the flat singletons still link as before:
+  [ -e "$wt/nwp.yml" ]
+}
+
+@test "issue work: linking never overwrites something the worktree already has (ops#307)" {
+  _work_fixture
+  PROJECT_ROOT="$FIX" run bash "$ISSUE" work 8 --no-launch
+  [ "$status" -eq 0 ]
+  wt="$HOME/nwp-ops8"
+  # tracked.log came from git, and must still be the branch's copy:
+  [ "$(cat "$wt/private/pairs/tracked.log")" = "tracked" ]
+  [ ! -L "$wt/private/pairs/tracked.log" ]
+}

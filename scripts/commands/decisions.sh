@@ -62,6 +62,15 @@ set -uo pipefail
 #   pl decisions --json          machine-readable (the NWP Console Review pane reads this)
 #   pl decisions --all           include issues with no ## Decision block
 #   pl decisions <iid>           one decision in full (MR section omitted)
+#   pl decisions promote <iid> [--gate=blocks-testers|blocks-prod|shapes-design|housekeeping]
+#                              [--block-file=FILE] [--dry-run]
+#                                promote a decision::wanted issue into the red
+#                                tier: adds needs-decision AND scaffolds the
+#                                ## Decision block if the issue has none, so a
+#                                promoted issue is readable the moment it
+#                                appears (ops#305, ruling A). An existing block
+#                                is never rewritten; --block-file supplies a
+#                                real block instead of the TODO scaffold.
 #
 # Exit: 0 decisions listed (or none) · 1 could not read the tracker
 ################################################################################
@@ -265,14 +274,120 @@ _dec_render(){
     python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
 }
 
+# ── promote (ops#305, ruling A) ───────────────────────────────────────────────
+#
+# The 2026-08-07 audit found 55 decision::wanted issues that never became
+# needs-decision — not a considered backlog, an ACCUMULATION at a manual label
+# edit. Only 4 of the 55 carried a ## Decision block, so promoting one bare
+# produced an INCOMPLETE red entry the operator still had to open. This verb
+# makes promotion one command that leaves the entry READABLE: label + block in
+# a single tracker write. The planner is pure (decisions-promote-plan.py) and
+# unit-tested; this function is the thin API shell around it.
+cmd_promote(){
+    local iid="" gate="shapes-design" blockfile="" dryrun=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --gate=*)       gate="${1#*=}"; shift ;;
+            --block-file=*) blockfile="${1#*=}"; shift ;;
+            --dry-run)      dryrun=true; shift ;;
+            [0-9]*)         iid="$1"; shift ;;
+            *) print_error "unknown option: $1"; return 1 ;;
+        esac
+    done
+    [ -n "$iid" ] || { print_error "usage: pl decisions promote <iid> [--gate=…] [--block-file=FILE] [--dry-run]"; return 1; }
+    case "$gate" in
+        blocks-testers|blocks-prod|shapes-design|housekeeping|phase1|phase2) ;;
+        *) print_error "unknown gate '$gate' (blocks-testers|blocks-prod|shapes-design|housekeeping)"; return 1 ;;
+    esac
+    [ -n "$blockfile" ] && [ ! -f "$blockfile" ] && { print_error "no such file: $blockfile"; return 1; }
+
+    local tok host cfg
+    tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    [ -n "$tok" ] || { print_error "CANNOT-VERIFY: no GitLab token — nothing was promoted."; return 1; }
+    host="$(_dec_host)"
+    [ -n "$host" ] || { print_error "CANNOT-VERIFY: no gitlab.server.domain — nothing was promoted."; return 1; }
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+
+    local issue plan
+    issue=$(curl -sS -f -K "$cfg" \
+        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}" 2>/dev/null) \
+        || { rm -f "$cfg"; print_error "could not read nwp/ops#${iid} — nothing was promoted."; return 1; }
+
+    plan=$(printf '%s' "$issue" | python3 -c '
+import json,sys
+i = json.load(sys.stdin)
+print(json.dumps({"description": i.get("description") or "",
+                  "labels": i.get("labels") or [],
+                  "gate": sys.argv[1]}))' "$gate" \
+        | python3 "$PROJECT_ROOT/scripts/lib/decisions-promote-plan.py" \
+            ${blockfile:+--block-file="$blockfile"}) \
+        || { rm -f "$cfg"; print_error "planner refused — nothing was promoted."; return 1; }
+
+    local already needs_label has_new
+    already=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["already_promoted"])')
+    needs_label=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["needs_label"])')
+    has_new=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["new_description"] is not None)')
+
+    if [ "$already" = "True" ]; then
+        rm -f "$cfg"
+        print_status "OK" "nwp/ops#${iid} is already promoted (label + block present) — nothing to do."
+        return 0
+    fi
+    if [ "$dryrun" = true ]; then
+        rm -f "$cfg"
+        print_header "promote nwp/ops#${iid} — dry run"
+        [ "$needs_label" = "True" ] && print_info "would add label: ${DECISIONS_LABEL}"
+        if [ "$has_new" = "True" ]; then
+            print_info "would prepend this block (original description kept below):"
+            printf '%s' "$plan" | python3 -c 'import json,sys
+d = json.load(sys.stdin)["new_description"]
+print("\n".join("    " + l for l in d.splitlines()[:14]))'
+        else
+            print_info "issue already carries a ## Decision block — description untouched."
+        fi
+        print_status "OK" "[dry-run] nothing written."
+        return 0
+    fi
+
+    # One PUT carries both halves; a payload file keeps the body off argv.
+    local payload resp
+    payload=$(mktemp); chmod 600 "$payload"
+    printf '%s' "$plan" | python3 -c '
+import json,sys
+plan = json.load(sys.stdin)
+out = {}
+if plan["needs_label"]:
+    out["add_labels"] = sys.argv[1]
+if plan["new_description"] is not None:
+    out["description"] = plan["new_description"]
+print(json.dumps(out))' "$DECISIONS_LABEL" > "$payload"
+    resp=$(curl -sS -f -K "$cfg" -X PUT \
+        -H "Content-Type: application/json" --data @"$payload" \
+        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}" 2>/dev/null)
+    local rc=$?
+    rm -f "$cfg" "$payload"
+    if [ $rc -ne 0 ] || ! printf '%s' "$resp" | python3 -c '
+import json,sys
+i = json.load(sys.stdin)
+sys.exit(0 if "needs-decision" in (i.get("labels") or []) else 1)'; then
+        print_error "promotion write FAILED for nwp/ops#${iid} — check the issue before retrying."
+        return 1
+    fi
+    print_status "OK" "promoted nwp/ops#${iid}: label added$( [ "$has_new" = "True" ] && echo ", ## Decision block scaffolded" )."
+    [ "$has_new" = "True" ] && print_info "the block carries TODOs — fill them (or re-run with --block-file) before the operator reads it."
+    return 0
+}
+
 cmd_decisions(){
     local mode="text" only="" all=false
+    if [ "${1:-}" = "promote" ]; then shift; cmd_promote "$@"; return $?; fi
     while [ $# -gt 0 ]; do
         case "$1" in
             --json) mode="json"; shift ;;
             --all)  all=true; shift ;;
             -h|--help)
-                sed -n '3,66p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+                sed -n '3,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
                 return 0 ;;
             [0-9]*) only="$1"; shift ;;
             *) print_error "unknown option: $1"; return 1 ;;

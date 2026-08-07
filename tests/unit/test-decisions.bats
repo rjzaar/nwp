@@ -431,3 +431,93 @@ PY
     [ "$status" -eq 0 ]
     [[ "$output" == "True 1 go-live" ]]
 }
+
+# ── promote (ops#305): the decision::wanted → needs-decision promotion verb ──
+#
+# RULING A (2026-08-07): promotion gets a verb that adds the label AND
+# scaffolds the ## Decision block, so a promoted issue is READABLE the moment
+# it appears in the red tier — 51 of the 55 unpromoted issues carry no block,
+# and promoting one bare produces an INCOMPLETE red entry the operator still
+# has to open. The planner below is pure (stdin JSON → stdout JSON); the API
+# wiring in decisions.sh stays thin.
+
+_plan() { # description labels-csv [gate] [blockfile]
+    local promote="$REPO_ROOT/scripts/lib/decisions-promote-plan.py"
+    python3 - "$1" "$2" "${3:-shapes-design}" <<'PY' | python3 "$promote" ${4:+--block-file="$4"}
+import json,sys
+desc, labels, gate = sys.argv[1], sys.argv[2], sys.argv[3]
+print(json.dumps({"description": desc, "labels": [l for l in labels.split(",") if l], "gate": gate}))
+PY
+}
+
+@test "promote plan: a blockless issue gets a scaffold PREPENDED, original kept" {
+    run _plan "The diagnosis prose." "decision::wanted"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert p["needs_label"] is True
+assert p["already_promoted"] is False
+d = p["new_description"]
+assert d is not None and d.startswith("## Decision"), d
+assert "**Gate:** shapes-design" in d
+assert "The diagnosis prose." in d, "original description must survive below the scaffold"
+assert d.index("## Decision") < d.index("The diagnosis prose.")
+'
+}
+
+@test "promote plan: an issue that already HAS a block only needs the label" {
+    run _plan $'## Decision\n\n**Gate:** blocks-prod\n\n**What:** X.' "decision::wanted"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert p["needs_label"] is True
+assert p["new_description"] is None, "never rewrite an existing block"
+'
+}
+
+@test "promote plan: already labelled + already blocked is a NO-OP, reported as such" {
+    run _plan $'## Decision\n\n**Gate:** phase1\n\n**What:** X.' "needs-decision,decision::wanted"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert p["already_promoted"] is True
+assert p["needs_label"] is False
+assert p["new_description"] is None
+'
+}
+
+@test "promote plan: the chosen gate lands in the scaffold" {
+    run _plan "prose" "decision::wanted" "blocks-testers"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert "**Gate:** blocks-testers" in p["new_description"]
+'
+}
+
+@test "promote plan: a provided block is used VERBATIM instead of the scaffold" {
+    blockfile="$TMP/block.md"
+    printf '## Decision\n\n**Gate:** housekeeping\n\n**What:** A real question.\n' > "$blockfile"
+    run _plan "old prose" "decision::wanted" "shapes-design" "$blockfile"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+d = p["new_description"]
+assert "A real question." in d
+assert "TODO" not in d, "a provided block replaces the scaffold, not joins it"
+assert "old prose" in d
+'
+}
+
+@test "promote plan: REFUSES a provided block that is not a ## Decision block" {
+    blockfile="$TMP/notablock.md"
+    printf 'just some text\n' > "$blockfile"
+    run _plan "old prose" "decision::wanted" "shapes-design" "$blockfile"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"## Decision"* ]]
+}

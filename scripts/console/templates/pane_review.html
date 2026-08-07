@@ -78,8 +78,11 @@ This is not "nothing to review" — it is "the console could not look".</p>
 </section>
 
 <section class="review-decisions">
-  <h3>Decisions
-    <span class="muted">— read in order; later ones may not make sense until earlier ones are answered</span></h3>
+  {# RED / AMBER (ops#279). Red = a decision is NEEDED, amber = WANTED. Red is
+     always first, and the two are visually distinct because the operator asked
+     to tell them apart at a glance — same vocabulary as `pl rag`. #}
+  <h3><span class="rag-red">●</span> RED — decision needed
+    <span class="muted">({{ decisions|length }}) — nothing moves until these are answered; read in order</span></h3>
   {% if not decisions %}
   <p class="ok">No decisions are waiting. Nothing is blocked on you.</p>
   {% endif %}
@@ -136,11 +139,44 @@ This is not "nothing to review" — it is "the console could not look".</p>
   {% endfor %}
 </section>
 
-{% if outside_queue and outside_queue.count %}
+{# ── AMBER: the decision::wanted tier, now RENDERED (ops#279) ──────────────
+   Was a count in a footer. A number told the operator ~50 existed and gave
+   them no way to act on it; an ordered list is the difference between a
+   backlog and a queue. Compact on purpose — the red tier must stay readable.
+   Fail-closed: attempted-but-unreadable says so and never renders as empty. #}
+{% if outside_queue and outside_queue.attempted and not outside_queue.readable %}
+<section class="review-amber">
+  <h3><span class="rag-amber">●</span> AMBER — decision wanted</h3>
+  <p class="warnfg">⚠ CANNOT-VERIFY: the <code>decision::wanted</code> tier could not be read.
+  That tier still exists — this queue is showing <code>needs-decision</code> only.
+  Do not read the absence of an amber section as an empty backlog.</p>
+</section>
+{% elif outside_queue and outside_queue.issues %}
+<section class="review-amber">
+  <h3><span class="rag-amber">●</span> AMBER — decision wanted
+    <span class="muted">({{ outside_queue.issues|length }}) — real questions, but nothing is
+    standing still waiting for them</span></h3>
+  <p class="muted">Ordered by declared gate where there is one, otherwise by labels that already
+  exist (<code>go-live-prereq</code>, <code>security</code>, <code>priority::*</code>) — so the
+  order is <em>partly inferred</em>. Treat it as a reading sequence, not a ruling.
+  Promote one with <code>pl issue label &lt;iid&gt; --add needs-decision</code>.</p>
+  {% set ns2 = namespace(bucket='') %}
+  {% for a in outside_queue.issues %}
+    {% if a.bucket != ns2.bucket %}{% set ns2.bucket = a.bucket %}
+    <h4 class="amber-bucket">{{ a.bucket|replace('-', ' ')|title }}</h4>
+    {% endif %}
+    <p class="rev-amber-row">
+      <a href="{{ a.url }}" target="_blank" rel="noopener">#{{ a.iid }}</a>
+      <strong>{{ a.title }}</strong>
+      <span class="muted">— {{ a.why }}</span>
+      {% if a.what %}<br><span class="muted">{{ a.what[:180] }}</span>{% endif %}
+    </p>
+  {% endfor %}
+</section>
+{% elif outside_queue and outside_queue.count %}
 <p class="muted">Beyond this queue: <strong>{{ outside_queue.count }}</strong> open issue(s) carry
-<code>decision::wanted</code> but not <code>needs-decision</code> — decision-shaped backlog,
-deliberately not rendered here. Promote one with
-<code>pl issue label &lt;iid&gt; --add needs-decision</code>.</p>
+<code>decision::wanted</code> but not <code>needs-decision</code> — decision-shaped backlog.
+Promote one with <code>pl issue label &lt;iid&gt; --add needs-decision</code>.</p>
 {% endif %}
 
 {% if can_act and not gitlab_ok %}

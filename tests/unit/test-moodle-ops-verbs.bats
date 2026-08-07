@@ -62,6 +62,7 @@ moodle:
   cli_php_version: "8.2"
   plugins:
     - path: auth/nwc
+    - path: local/practice
 EOF
 }
 
@@ -105,15 +106,79 @@ teardown() { rm -rf "${TEST_TMP}"; }
 }
 
 @test "a6: pl moodle cli refuses a script path outside admin/cli" {
-  run bash "$MOODLE" cli ssd --tier=live --dry-run -- ../../etc/passwd
+  # a non-cli path hits the generic containment arm…
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -- lib/upgrade.php
   [ "$status" -ne 0 ]
   [[ "$output" == *"admin/cli"* ]]
+  # …and traversal is refused even earlier, by the '..' guard (ops#279 moved it
+  # ahead of the shape check so a dotted path can never reach the plugin arm)
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -- ../../etc/passwd
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".."* ]]
 }
 
 @test "a7: pl moodle cli refuses with no script given" {
   run bash "$MOODLE" cli ssd --tier=live --dry-run --
   [ "$status" -ne 0 ]
   [[ "$output" == *"No CLI script"* ]]
+}
+
+# ── (a8–a11) a DECLARED plugin's OWN cli/ dir — ops#279 ──────────────────────
+# WHY: half the estate's Moodle CLI scripts do not live in admin/cli at all.
+# `local/practice/cli/sync_practice_defs.php` is the ONLY way to populate the
+# practice-checkpoint definitions, and refusing it pushed the 2026-08-07 ops#279
+# runbook toward raw ssh — the exact idiom the standing order forbids and
+# `lint:doc-truth`'s raw-remote-cli rule fails a guide for.
+#
+# Containment is NOT relaxed, it is re-stated: the plugin must be one the SITE
+# ITSELF DECLARES in `.moodle.plugins[].path`, the dir must be that plugin's own
+# `cli/`, and the leaf must be a bare `<name>.php`. A plugin the site does not
+# run is not reachable, so this cannot become an arbitrary-file php runner.
+
+@test "a8: pl moodle cli ACCEPTS a declared plugin's own cli/ script" {
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -- local/practice/cli/sync_practice_defs.php --from-db
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"local/practice/cli/sync_practice_defs.php"* ]]
+  # the box knowledge must still be carried — a second entry point is not a
+  # second set of rules
+  [[ "$output" == *"php8.2"* ]]
+  [[ "$output" == *"max_input_vars=5000"* ]]
+}
+
+@test "a9: pl moodle cli REFUSES a cli/ script of a plugin the site does not declare" {
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -- local/evil/cli/pwn.php
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"local/evil"* ]]
+  [[ "$output" == *"declare"* ]]
+}
+
+@test "a10: pl moodle cli REFUSES traversal dressed as a plugin cli/ path" {
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -- local/practice/cli/../../../etc/passwd.php
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".."* ]]
+}
+
+@test "a11: pl moodle cli REFUSES a declared plugin's NON-cli directory" {
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -- local/practice/classes/engine.php
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cli/"* ]]
+}
+
+# ── (a12–a13) -y/--yes — ops#279 ─────────────────────────────────────────────
+# WHY: lib/impact.sh's no-TTY refusal says "and -y not given", but moodle.sh
+# never parsed -y — so every live --apply from a non-interactive session (the
+# operator-approved 2026-08-07 consent-arc deploy, any CI job) aborted with an
+# error naming a flag that did not exist. delete.sh/cutover.sh already parse it.
+
+@test "a12: pl moodle cli parses -y (the flag impact_confirm's own refusal names)" {
+  run bash "$MOODLE" cli ssd --tier=live --dry-run -y -- admin/cli/purge_caches.php
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Unknown option"* ]]
+}
+
+@test "a13: pl moodle plugin deploy parses -y" {
+  run bash "$MOODLE" plugin deploy ssd local/practice --tier=live -y
+  [[ "$output" != *"Unknown option: -y"* ]]
 }
 
 # ── (b) pl moodle maintenance ────────────────────────────────────────────────

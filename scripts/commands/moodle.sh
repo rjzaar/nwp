@@ -380,6 +380,7 @@ cmd_plugin_deploy() {
             --allow-ungated)   allow_ungated="true" ;;
             --allow-downgrade) allow_downgrade="true" ;;
             --override-pair)   override_pair="true" ;;
+            -y|--yes)      AUTO_CONFIRM=true ;;
             -*)            print_error "Unknown option: $a"; return 1 ;;
             *)             if [ -z "$site" ]; then site="$a"; else plugins+=("$a"); fi ;;
         esac
@@ -785,6 +786,7 @@ cmd_upgrade() {
             --dry-run)         mode="dry-run" ;;
             --apply)           mode="apply" ;;
             --no-maintenance)  no_maint="true" ;;
+            -y|--yes)          AUTO_CONFIRM=true ;;
             -*)                print_error "Unknown option: $a"; return 1 ;;
             *)                 [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
         esac
@@ -1036,6 +1038,7 @@ cmd_cli() {
             --tier=*)    tier="${1#*=}" ;;
             --dry-run)   explicit_mode="dry-run" ;;
             --execute|--apply) explicit_mode="execute" ;;
+            -y|--yes)    AUTO_CONFIRM=true ;;
             --root=*)    root_override="${1#*=}" ;;
             -h|--help)   print_info "usage: pl moodle cli <site> --tier=stg|live [--dry-run|--execute] -- <admin/cli script> [args...]"; return 0 ;;
             -*)          print_error "Unknown option: $1"; return 1 ;;
@@ -1051,17 +1054,35 @@ cmd_cli() {
     fi
     _resolve_moodle_site "$site" || return 1
 
-    # The script must live under admin/cli. This is a *containment* rule, not a
-    # convenience: `pl moodle cli` runs as www-data on a live host, and a
-    # traversing path would turn it into an arbitrary-file php runner.
+    # The script must live under admin/cli — OR directly under the cli/ dir of
+    # a plugin this site itself DECLARES (ops#279: sync_practice_defs.php lives
+    # at local/practice/cli/, and refusing it pushed a runbook toward raw ssh).
+    # This is a *containment* rule, not a convenience: `pl moodle cli` runs as
+    # www-data on a live host, and a traversing path would turn it into an
+    # arbitrary-file php runner. The plugin arm RESTATES containment rather
+    # than relaxing it: the plugin must appear in .moodle.plugins[].path, the
+    # dir must be that plugin's own cli/, the leaf a bare <name>.php.
     local script="${cli_args[0]}"
+    case "$script" in *..*) print_error "Refusing a path containing '..': ${script}"; return 1 ;; esac
     case "$script" in
         admin/cli/*.php) ;;
-        *) print_error "Refusing '${script}': the script must be a repo-relative admin/cli/<name>.php path."
+        */cli/*.php)
+            local plug="${script%%/cli/*}" leaf=""
+            leaf="${script#"${plug}/cli/"}"
+            if [[ "$leaf" == */* ]]; then
+                print_error "Refusing '${script}': only a bare <name>.php directly under the plugin's cli/ dir."
+                return 1
+            fi
+            if ! _moodle_configured_plugins "$CONFIG_FILE" | grep -qx -- "$plug"; then
+                print_error "Refusing '${script}': '${plug}' is not a plugin this site declares in .moodle.plugins[].path."
+                print_info  "  (containment: admin/cli/ or a DECLARED plugin's own cli/ only — declare the plugin in sites/${BASE}/.nwp.yml first)"
+                return 1
+            fi
+            ;;
+        *) print_error "Refusing '${script}': the script must be a repo-relative admin/cli/<name>.php path, or a declared plugin's cli/<name>.php."
            print_info  "  (containment: this runs as www-data on a live host — no traversal, no arbitrary path)"
            return 1 ;;
     esac
-    case "$script" in *..*) print_error "Refusing a path containing '..': ${script}"; return 1 ;; esac
 
     if [ "$tier" != "live" ]; then
         print_error "tier=stg is a local ddev tier for Moodle — use 'ddev exec php admin/cli/...' in sites/${BASE}/stg,"

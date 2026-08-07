@@ -95,6 +95,11 @@ ${BOLD}OPTIONS:${NC}
                         the live host instead of the resolved remote_path — for
                         the pl cutover fresh-build side docroot before the flip.
                         Must be absolute and its basename must start with <site>.
+    --script <file>     Run a LOCAL .php file on the target via drush php:script.
+                        The file is staged OUTSIDE the docroot (0600, www-data),
+                        run, and removed on every exit path. Args after -- are
+                        forwarded to the script. Use this instead of packing a
+                        multi-statement probe into php:eval on a command line.
     --                  Everything after this is passed to drush VERBATIM
 
 ${BOLD}BEHAVIOUR:${NC}
@@ -113,6 +118,7 @@ ${BOLD}EXAMPLES:${NC}
     pl drush nwc --tier=live --execute -- pm:uninstall tracer nwp_lockdown -y
     pl drush nwc --tier=stg -- updatedb -y            # local DDEV staging
     pl drush nwc --tier=live --root=/var/www/nwc-20260720 --execute -- site:install social -y
+    pl drush nwd --tier=live --execute --script=scripts/demo/nwd-consent-claim.php
 
 ${BOLD}NOTES:${NC}
     * Replaces raw \`ssh … "… drush …"\` one-liners (§6 P1-4). Raw ssh drush is
@@ -136,6 +142,10 @@ EXPLICIT_MODE=""
 # (e.g. a fresh-build side docroot /var/www/<site>-<ts> during pl cutover, before
 # the symlink flip) instead of the resolved live remote_path. live tier only.
 ROOT_OVERRIDE=""
+# SCRIPT_FILE: a LOCAL .php file to run on the target through `drush php:script`.
+# The file is staged to the target, executed, and removed. See the block above
+# run_live() for why this belongs in the verb and not in a hand-rolled ssh.
+SCRIPT_FILE=""
 DRUSH_ARGS=()
 SAW_SEP="no"
 
@@ -152,6 +162,8 @@ while [[ $# -gt 0 ]]; do
         --tier)      shift; TIER="${1:-}" ;;
         --root=*)    ROOT_OVERRIDE="${1#*=}" ;;
         --root)      shift; ROOT_OVERRIDE="${1:-}" ;;
+        --script=*)  SCRIPT_FILE="${1#*=}" ;;
+        --script)    shift; SCRIPT_FILE="${1:-}" ;;
         -*)          print_error "Unknown option: $1"; show_help; exit 1 ;;
         *)           if [[ -z "$SITE" ]]; then SITE="$1"; else
                          print_error "Unexpected argument: $1 (drush args go after --)"; exit 1
@@ -176,8 +188,61 @@ case "$TIER" in
     *)   print_error "Unknown tier: '$TIER' — only dev|stg|live are allowed"; exit 1 ;;
 esac
 
-if [[ ${#DRUSH_ARGS[@]} -eq 0 ]]; then
+################################################################################
+# --script: run a LOCAL php file on the target through `drush php:script`.
+#
+# WHY THIS IS A FLAG AND NOT AN SSH ONE-LINER
+# -------------------------------------------
+# Every non-trivial Drupal-side probe needs a FILE: a multi-statement php:eval
+# on a command line has to survive two shell quoting layers, and the moment it
+# does not, the failure is a syntax error miles from the code that caused it.
+# The Moodle half already had this (`demo_moodle_php_run` in lib/demo-pair.sh);
+# the Drupal half did not, and docs/guides/art9-golive-runbook.md §6 called that
+# out in writing — "If it ever needs staging on its own, that is a missing pl
+# verb, not a licence for a one-liner — file it." This is that verb.
+#
+# The staged copy inherits everything the verb already guarantees: the live
+# dry-run default, the ADR-0028 deploy gate, the live.enabled check and the
+# host resolution. A hand-rolled `scp && ssh sudo -u www-data drush` reproduces
+# the effect and drops all four.
+#
+# CONTAINMENT
+#   * The file is staged OUTSIDE the docroot (a mkstemp path under /tmp, mode
+#     0600, owned by www-data). Staging PHP anywhere under the webroot would
+#     make the probe itself web-reachable for as long as it existed.
+#   * It is removed on EVERY exit path, including failure and interrupt, via a
+#     trap — a probe that survives its own run is a backdoor.
+#   * Local-side: the file must exist, be readable and end in .php. A directory
+#     or a missing path is refused rather than silently producing an empty run.
+################################################################################
+if [[ -n "$SCRIPT_FILE" ]]; then
+    if [[ ! -f "$SCRIPT_FILE" ]]; then
+        print_error "--script: no such file '$SCRIPT_FILE'"
+        exit 1
+    fi
+    if [[ ! -r "$SCRIPT_FILE" ]]; then
+        print_error "--script: '$SCRIPT_FILE' is not readable"
+        exit 1
+    fi
+    if [[ "$SCRIPT_FILE" != *.php ]]; then
+        print_error "--script: '$SCRIPT_FILE' must be a .php file (drush php:script refuses anything else)"
+        exit 1
+    fi
+    # Reject a php:script/php:eval already in DRUSH_ARGS: two script sources in
+    # one invocation is always a mistake, and picking one silently is worse.
+    for _a in ${DRUSH_ARGS[@]+"${DRUSH_ARGS[@]}"}; do
+        case "$_a" in
+            php:script|php|scr|php:eval|ev|eval)
+                print_error "--script cannot be combined with '$_a' — pass ONE script source."
+                print_info  "Args after '--' are forwarded to the script, not re-parsed as a drush command."
+                exit 1 ;;
+        esac
+    done
+fi
+
+if [[ ${#DRUSH_ARGS[@]} -eq 0 && -z "$SCRIPT_FILE" ]]; then
     print_error "No drush arguments given — pass them after '--', e.g. pl drush $SITE --tier=$TIER -- cr"
+    print_info  "Or run a local php file on the target: pl drush $SITE --tier=$TIER --script=probe.php"
     exit 1
 fi
 
@@ -220,6 +285,72 @@ _display_drush_args() {
 }
 
 ################################################################################
+# --script staging (see the --script validation block above for the rationale).
+#
+# Both helpers rewrite DRUSH_ARGS in place to
+#     php:script <staged-path> [original args...]
+# so everything downstream — the plan print, the redaction, the quoting, the
+# candidate loop — keeps working unchanged.
+################################################################################
+
+# The staged path, recorded so the cleanup trap can find it after any exit.
+_STAGED_LOCAL=""
+_STAGED_REMOTE=""
+
+# _drush_script_cleanup — remove the staged copy on EVERY exit path.
+# A probe that outlives its own run is a backdoor, so this is a trap and not a
+# line at the end of the happy path.
+_drush_script_cleanup() {
+    if [[ -n "$_STAGED_LOCAL" && -f "$_STAGED_LOCAL" ]]; then
+        rm -f "$_STAGED_LOCAL"
+    fi
+    if [[ -n "$_STAGED_REMOTE" && -n "${_STAGED_SSH_TARGET:-}" ]]; then
+        # shellcheck disable=SC2086
+        ssh $(nwp_ssh_opts "$BASE_NAME") -o BatchMode=yes -o ConnectTimeout=20 \
+            "$_STAGED_SSH_TARGET" \
+            "${_STAGED_SUDO:-} rm -f $(printf '%q' "$_STAGED_REMOTE")" >/dev/null 2>&1 || true
+    fi
+}
+trap _drush_script_cleanup EXIT INT TERM
+
+# _stage_script_ddev <project_dir> — copy the script into the ddev project root
+# (which is ABOVE the docroot, so it is never web-reachable) and rewrite
+# DRUSH_ARGS to run it. No-op unless --script was given.
+_stage_script_ddev() {
+    [[ -n "$SCRIPT_FILE" ]] || return 0
+    local dir="$1"
+    local base=".nwp-drush-script-$$.php"
+    _STAGED_LOCAL="${dir%/}/$base"
+    umask 077
+    cp "$SCRIPT_FILE" "$_STAGED_LOCAL" || {
+        print_error "--script: could not stage into $dir"
+        exit 1
+    }
+    # ddev mounts the project root at /var/www/html inside the container.
+    # The literal `--` is REQUIRED: without it drush parses the script's own
+    # arguments as drush options and dies on the first one it does not know
+    # ("The --base-url option does not exist"). Putting it here means no caller
+    # has to remember it, and a caller that passes its own `--` still works.
+    DRUSH_ARGS=(php:script "/var/www/html/$base" -- ${DRUSH_ARGS[@]+"${DRUSH_ARGS[@]}"})
+}
+
+# _stage_script_live <ssh_target> <sudo_prefix> — push the script to a 0600
+# www-data-owned file OUTSIDE the docroot on the live host. Called only after
+# the deploy gate has passed, so a refused gate never leaves a file behind.
+_stage_script_live() {
+    [[ -n "$SCRIPT_FILE" ]] || return 0
+    local target="$1" sudo_prefix="$2"
+    # shellcheck disable=SC2086
+    ssh $(nwp_ssh_opts "$BASE_NAME") -o BatchMode=yes -o ConnectTimeout=20 "$target" \
+        "umask 077 && ${sudo_prefix} -u www-data tee $(printf '%q' "$_STAGED_REMOTE") >/dev/null \
+         && ${sudo_prefix} chmod 600 $(printf '%q' "$_STAGED_REMOTE")" \
+        < "$SCRIPT_FILE" || {
+        print_error "--script: could not stage $(basename "$SCRIPT_FILE") on live"
+        exit 1
+    }
+}
+
+################################################################################
 # DEV tier — local DDEV development site. Runs directly (no gate; local only).
 # Mirrors STG; resolves the dev project (sites/<site>/dev) instead of stg. Added
 # so feedback/agent-loop drush verbs (nwc-feedback:*) can be exercised on the
@@ -236,6 +367,8 @@ run_dev() {
         print_error "Dev site not found at $dev_dir"
         exit 1
     fi
+
+    _stage_script_ddev "$dev_dir"
 
     print_info "Target: local DDEV dev ($dev_dir)"
     print_info "Command: ddev drush $(_display_drush_args)"
@@ -262,6 +395,8 @@ run_stg() {
         print_error "Staging site not found at $stg_dir — run 'pl dev2stg $BASE_NAME' first"
         exit 1
     fi
+
+    _stage_script_ddev "$stg_dir"
 
     # Print the plan (drush args verbatim except a redacted --token).
     print_info "Target: local DDEV staging ($stg_dir)"
@@ -342,6 +477,21 @@ run_live() {
     local sudo_prefix=""
     [[ "$ssh_user" == "gitlab" ]] && sudo_prefix="sudo"
 
+    # --script: fix the staged path NOW so the printed plan names the exact file
+    # that will run, then rewrite DRUSH_ARGS to invoke it. Staging itself waits
+    # until after the deploy gate (below) — a refused gate must leave nothing.
+    # /tmp, not the docroot: PHP under the webroot is web-reachable while it
+    # exists, however briefly.
+    if [[ -n "$SCRIPT_FILE" ]]; then
+        _STAGED_REMOTE="/tmp/.nwp-drush-script-$$-$(date +%s).php"
+        _STAGED_SSH_TARGET="${ssh_user}@${server_ip}"
+        _STAGED_SUDO="$sudo_prefix"
+        # `--` before the forwarded args: drush otherwise claims them as its own
+        # options. See _stage_script_ddev for the failure this prevents.
+        DRUSH_ARGS=(php:script "$_STAGED_REMOTE" -- ${DRUSH_ARGS[@]+"${DRUSH_ARGS[@]}"})
+        print_info "--script: $SCRIPT_FILE → ${_STAGED_SSH_TARGET}:${_STAGED_REMOTE} (0600 www-data, removed after)"
+    fi
+
     local qargs
     qargs=$(_quote_drush_args)
 
@@ -377,6 +527,9 @@ run_live() {
     # tier (unconfigured); on ver it requires a live Solo touch. Fail-closed.
     deploy_gate_require "$BASE_NAME" "live" \
         "run drush on live: drush ${DRUSH_ARGS[*]}" || exit 1
+
+    # Gate passed — now, and only now, put the file on the box.
+    _stage_script_live "${ssh_user}@${server_ip}" "$sudo_prefix"
 
     print_header "Running drush on live"
     # Candidate probing is EXPECTED to fail on some layouts (no PATH drush for

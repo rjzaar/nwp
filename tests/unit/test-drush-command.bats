@@ -329,3 +329,67 @@ EOF
   [ "$status" -eq 0 ]
   [ "$(cat "$SSH_COUNT_FILE")" -eq 3 ]
 }
+
+# ── --script: run a LOCAL php file on the target (nwp/ops#279) ───────────────
+#
+# The flag exists because docs/guides/art9-golive-runbook.md §6 said staging a
+# probe on its own "is a missing pl verb, not a licence for a one-liner". These
+# tests pin the four things that make it safe rather than merely convenient:
+# the file is validated locally, it is staged OUTSIDE the docroot, drush is told
+# where the script's own args begin, and nothing is staged during a dry-run.
+
+@test "--script refuses a file that does not exist" {
+  run bash "$DRUSH" nwc --tier=live --script="${TEST_TMP}/nope.php"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no such file"* ]]
+}
+
+@test "--script refuses a non-.php file (drush php:script would reject it remotely)" {
+  echo 'echo 1;' > "${TEST_TMP}/probe.txt"
+  run bash "$DRUSH" nwc --tier=live --script="${TEST_TMP}/probe.txt"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must be a .php file"* ]]
+}
+
+@test "--script refuses being combined with an explicit php:script/php:eval" {
+  echo '<?php' > "${TEST_TMP}/probe.php"
+  run bash "$DRUSH" nwc --tier=live --script="${TEST_TMP}/probe.php" -- php:eval 'echo 1;'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ONE script source"* ]]
+}
+
+@test "--script plans php:script against a /tmp path, never inside the docroot" {
+  echo '<?php' > "${TEST_TMP}/probe.php"
+  run bash "$DRUSH" nwc --tier=live --script="${TEST_TMP}/probe.php"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"drush php:script /tmp/.nwp-drush-script-"* ]]
+  # The staged path must NOT be under the site's remote_path: PHP under the
+  # webroot is web-reachable for as long as it exists.
+  [[ "$output" != *"php:script /var/www/nwc"* ]]
+}
+
+@test "--script inserts the -- separator so drush does not claim the script's args" {
+  # Without the separator drush parses --base-url as its own option and dies
+  # with "The --base-url option does not exist" — observed on nwd live.
+  echo '<?php' > "${TEST_TMP}/probe.php"
+  run bash "$DRUSH" nwc --tier=live --script="${TEST_TMP}/probe.php" -- --base-url=https://x.example
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".php -- --base-url=https://x.example"* ]]
+}
+
+@test "--script stages NOTHING on a dry-run (the default for live)" {
+  echo '<?php' > "${TEST_TMP}/probe.php"
+  run bash "$DRUSH" nwc --tier=live --script="${TEST_TMP}/probe.php"
+  [ "$status" -eq 0 ]
+  # Dry-run must announce and stop; a staged file would require an ssh, and the
+  # fixture host is unroutable, so any staging attempt would surface here.
+  [[ "$output" == *"[dry-run]"* ]]
+  [[ "$output" != *"could not stage"* ]]
+}
+
+@test "no drush args and no --script is still refused, and names both ways in" {
+  run bash "$DRUSH" nwc --tier=live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No drush arguments given"* ]]
+  [[ "$output" == *"--script"* ]]
+}

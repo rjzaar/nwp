@@ -72,10 +72,25 @@ the gate again. `depthcontent_mastery`, `local_practice_log` and
 `enforce_contribution_gate=true`, Trialing mode, CC0 contribution gate, retired
 (no-op) freeze. All paths verified 2026-07-26.
 
-> `ssd` has **no NWC Moodle plugins deployed at all** (`auth/nwc`,
+> **Superseded 2026-08-07 (ops#279).** The claim below — that `ssd` had "no NWC
+> Moodle plugins deployed at all" — was true when written and is now false. All
+> three plugins (`auth/nwc`, `mod/depthcontent`, `local/practice`) are deployed
+> AND installed on `ssd` live, `\auth_nwc\consent` loads, and the gate returns
+> true for every demo persona. Verified by execution, not by grep:
+>
+> ```bash
+> scripts/demo/ssd-consent-arc.sh  --site=ssd --tier=live --check   # Moodle half
+> scripts/demo/nwd-consent-claim.sh --site=nwd --tier=live          # claim in a token
+> ```
+>
+> The second is the one that matters for this runbook's §6: it mints a real
+> token, calls the real `/oauth/userinfo`, and asserts `art9_consent=true` for a
+> consenting member **and `false` for a Trialing one**. A probe that only ever
+> sees `true` cannot tell a working claim from a hardcoded one.
+>
+> Historical text: *"`ssd` has no NWC Moodle plugins deployed at all (`auth/nwc`,
 > `mod/depthcontent`, `local/practice` are all ABSENT) and the nwd→ssd consent
-> push reports `skipped: moodle_not_configured`. The Drupal-side journey is
-> complete; the **cross-app** demo half is a separate piece of work.
+> push reports `skipped: moodle_not_configured`."*
 
 ---
 
@@ -216,8 +231,20 @@ pl drush nwc --tier=live --execute -- php:script art9_nwd_journey.php
 ```
 
 > The probe file itself is staged with the same `--code-only` deploy that ships
-> the release, not by a hand `scp`. If it ever needs staging on its own, that is
-> a missing `pl` verb, not a licence for a one-liner — file it.
+> the release, not by a hand `scp`.
+>
+> **The missing verb this paragraph used to ask for now exists (ops#279):**
+> `pl drush <site> --tier=live --execute --script=<local.php>` stages a local
+> `.php` outside the docroot (0600, `www-data`), runs it via `drush php:script`,
+> and removes it on every exit path — inheriting the dry-run default, the
+> ADR-0028 gate and the `live.enabled` check that a hand-rolled `scp`+`ssh`
+> silently drops. Two gotchas are handled inside the verb rather than left to
+> callers: a literal `--` is inserted before the script's own arguments (drush
+> otherwise claims them: *"The --base-url option does not exist"*), and callers
+> must not rely on drush's exit status, because drush reports **any** `exit()` a
+> `php:script` makes — `exit(0)` included — as "terminated abnormally" and
+> returns 1. Have the script print its verdict and parse that, failing closed
+> when no verdict line appears.
 
 Expect **ALL DEMO-TIER JOURNEY PATHS PASSED**:
 

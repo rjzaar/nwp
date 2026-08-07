@@ -87,6 +87,33 @@ fi
 PROVIDER="$(pair_contract_get "$CONTRACT" '.provider' 2>/dev/null || echo '?')"
 [ -z "$PROVIDER_BASE" ] && PROVIDER_BASE="$(pair_contract_get "$CONTRACT" ".endpoints.${TIER}.issuer" 2>/dev/null || true)"
 
+# ops#308: the TRACKED contract deliberately REDACTS live domains (the
+# live-domain rule), so on the live tier the issuer reads
+# "https://nwd.<example-prod-domain>" — a placeholder, not a host, and the
+# probe curled it literally and failed every deploy's smoke. The real hosts
+# live in the gitignored site configs; resolve from there when the contract
+# value is redacted or missing, and default the consumer base the same way.
+# An explicit --provider-base/--consumer-base always wins (set above).
+_smoke_site_base(){
+    local cfgfile="${PROJECT_ROOT:-$REPO_ROOT}/sites/$1/.nwp.yml" dom=""
+    if command -v yq >/dev/null 2>&1 && [ -f "$cfgfile" ]; then
+        dom="$(yq e '.live.domain // ""' "$cfgfile" 2>/dev/null | grep -v '^null$')"
+    fi
+    [ -n "$dom" ] && printf 'https://%s' "$dom"
+    return 0
+}
+if [ "$TIER" = "live" ]; then
+    case "$PROVIDER_BASE" in ''|*'<'*) PROVIDER_BASE="$(_smoke_site_base "$PROVIDER")" ;; esac
+    [ -z "$CONSUMER_BASE" ] && CONSUMER_BASE="$(_smoke_site_base "$CONSUMER")"
+fi
+
+# ops#308: nwc/nwd expose NO OIDC discovery document — the contract's own v2
+# note replaced that probe with JWKS ("that probe could never go green";
+# measured 2026-08-07: discovery=404, jwks=200). Path from the contract, with
+# the estate's known-good default.
+JWKS_PATH="$(pair_contract_get "$CONTRACT" '.oidc.jwks' 2>/dev/null || true)"
+[ -n "$JWKS_PATH" ] || JWKS_PATH="/.well-known/jwks.json"
+
 print_header "Moodle smoke: ${CONSUMER} ↔ ${PROVIDER} @ ${TIER} (${MODE})"
 echo "  Provider base: ${PROVIDER_BASE:-<unset>}"
 echo "  Consumer base: ${CONSUMER_BASE:-<unset>}"
@@ -98,7 +125,7 @@ echo ""
 print_info "Moodle promotion smoke plan:"
 echo "   [1] bootstrap   php ${MOODLE_ROOT:-<moodle-root>}/admin/cli/checks.php"
 echo "   [2] consumer    GET ${CONSUMER_BASE:-<consumer-base>}/login/index.php            expect 200,303"
-echo "   [3] provider    GET ${PROVIDER_BASE:-<provider-base>}/.well-known/openid-configuration  expect 200"
+echo "   [3] provider    GET ${PROVIDER_BASE:-<provider-base>}${JWKS_PATH}  expect 200"
 echo ""
 
 if [ "$MODE" != "run" ]; then
@@ -136,20 +163,29 @@ if [ -n "$CONSUMER_BASE" ]; then
         200|303) print_status "OK"   "consumer login → $code" ;;
         *)       print_status "FAIL" "consumer login → $code (expected 200/303)"; fails=$((fails+1)) ;;
     esac
+elif [ "$TIER" = "live" ]; then
+    # ops#308 fail-closed: on live both bases are resolvable by construction
+    # (contract + site config). Empty means "could not resolve", and a smoke
+    # that skips what it could not resolve is a blind pass.
+    print_status "FAIL" "consumer login → could not resolve a consumer base (contract/site config) — CANNOT VERIFY"
+    fails=$((fails+1))
 else
     print_status "WARN" "consumer login → no --consumer-base — skipped"
 fi
 
-# 3. provider OIDC discovery.
+# 3. provider JWKS (ops#308 — nwc/nwd serve no discovery document).
 if [ -n "$PROVIDER_BASE" ]; then
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${PROVIDER_BASE%/}/.well-known/openid-configuration" 2>/dev/null || echo 000)"
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${PROVIDER_BASE%/}${JWKS_PATH}" 2>/dev/null || echo 000)"
     if [ "$code" = "200" ]; then
-        print_status "OK" "provider discovery → 200"
+        print_status "OK" "provider jwks → 200"
     else
-        print_status "FAIL" "provider discovery → $code (expected 200)"; fails=$((fails+1))
+        print_status "FAIL" "provider jwks → $code (expected 200)"; fails=$((fails+1))
     fi
+elif [ "$TIER" = "live" ]; then
+    print_status "FAIL" "provider jwks → could not resolve a provider base (contract/site config) — CANNOT VERIFY"
+    fails=$((fails+1))
 else
-    print_status "WARN" "provider discovery → no provider base — skipped"
+    print_status "WARN" "provider jwks → no provider base — skipped"
 fi
 
 echo ""

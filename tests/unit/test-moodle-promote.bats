@@ -461,7 +461,9 @@ EOF
   run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=dev --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"Dry run"* ]]
-  [[ "$output" == *"openid-configuration"* ]]
+  # ops#308: the provider probe is the JWKS endpoint now — the discovery URL
+  # could never go green against nwc/nwd (no discovery document served).
+  [[ "$output" == *"jwks"* ]]
 }
 
 @test "pl moodle-smoke refuses --run against prod without --force-prod" {
@@ -470,4 +472,82 @@ EOF
   cp "${CONTRACT}" "${NWP_PAIR_CONTRACT_DIR}/moodsite.pair-contract.yml"
   run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=prod --run
   [ "$status" -ne 0 ]
+}
+
+# ── smoke base/probe resolution (ops#308) ─────────────────────────────────────
+#
+# WHY: every live ssd deploy ended "Moodle smoke: 1 check(s) failed" — the
+# tracked contract REDACTS the live issuer (live-domain rule) and the smoke
+# curled the literal "<example-prod-domain>" placeholder; and even with the
+# right host, probe [3] GETs /.well-known/openid-configuration, which nwd
+# answers 404 — the contract's own v2 note says the JWKS probe is the one that
+# can go green. Measured 2026-08-07: discovery=404, jwks=200, login=200.
+
+_smoke_live_fixture() {
+  export NWP_PAIR_CONTRACT_DIR="${TEST_TMP}/pairs"
+  mkdir -p "${NWP_PAIR_CONTRACT_DIR}"
+  cat > "${NWP_PAIR_CONTRACT_DIR}/moodsite.pair-contract.yml" <<'YAML'
+pair: moodsite-nwc
+contract_version: 1
+provider: prov
+consumer: moodsite
+endpoints:
+  live:
+    issuer: "https://prov.<example-prod-domain>"
+oidc:
+  jwks: "/.well-known/jwks.json"
+YAML
+  # The gitignored site configs carrying the REAL hosts:
+  mkdir -p "${PROJECT_ROOT}/sites/prov" "${PROJECT_ROOT}/sites/moodsite"
+  printf 'live:\n  domain: prov.real.test\n' > "${PROJECT_ROOT}/sites/prov/.nwp.yml"
+  cp "${CFG}" "${PROJECT_ROOT}/sites/moodsite/.nwp.yml"
+}
+
+@test "smoke resolves a REDACTED live issuer from the provider's site config (ops#308)" {
+  _smoke_live_fixture
+  run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=live --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"prov.real.test"* ]]
+  [[ "$output" != *"<example-prod-domain>"* ]]
+}
+
+@test "smoke defaults the consumer base from the consumer's site config on live (ops#308)" {
+  _smoke_live_fixture
+  run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=live --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"moodsite.example.org"* ]]
+}
+
+@test "smoke's provider probe is the contract's jwks path, never the discovery URL (ops#308)" {
+  _smoke_live_fixture
+  run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=live --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/.well-known/jwks.json"* ]]
+  [[ "$output" != *"openid-configuration"* ]]
+}
+
+@test "smoke still honours an explicit --provider-base over the contract (ops#308)" {
+  _smoke_live_fixture
+  run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=live --dry-run --provider-base=https://override.test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"override.test"* ]]
+}
+
+@test "smoke --run on LIVE FAILS closed when a base cannot be resolved — never skip-passes blind (ops#308)" {
+  export NWP_PAIR_CONTRACT_DIR="${TEST_TMP}/pairs"
+  mkdir -p "${NWP_PAIR_CONTRACT_DIR}"
+  cat > "${NWP_PAIR_CONTRACT_DIR}/moodsite.pair-contract.yml" <<'YAML'
+pair: moodsite-nwc
+contract_version: 1
+provider: prov
+consumer: moodsite
+endpoints:
+  live:
+    issuer: "https://prov.<example-prod-domain>"
+YAML
+  # NO site configs exist — resolution must come up empty, and empty on live is
+  # CANNOT-VERIFY, not a pass with three skips.
+  run bash "${BATS_TEST_DIRNAME}/../../scripts/commands/moodle-smoke.sh" moodsite --tier=live --run
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"resolve"* ]]
 }

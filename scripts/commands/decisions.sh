@@ -324,10 +324,11 @@ print(json.dumps({"description": i.get("description") or "",
             ${blockfile:+--block-file="$blockfile"}) \
         || { rm -f "$cfg"; print_error "planner refused — nothing was promoted."; return 1; }
 
-    local already needs_label has_new
+    local already needs_label has_new scaffolded
     already=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["already_promoted"])')
     needs_label=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["needs_label"])')
     has_new=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["new_description"] is not None)')
+    scaffolded=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("scaffolded") is True)')
 
     if [ "$already" = "True" ]; then
         rm -f "$cfg"
@@ -375,7 +376,8 @@ sys.exit(0 if "needs-decision" in (i.get("labels") or []) else 1)'; then
         return 1
     fi
     print_status "OK" "promoted nwp/ops#${iid}: label added$( [ "$has_new" = "True" ] && echo ", ## Decision block scaffolded" )."
-    [ "$has_new" = "True" ] && print_info "the block carries TODOs — fill them (or re-run with --block-file) before the operator reads it."
+    # Only the TODO scaffold needs filling — a --block-file block is already real.
+    [ "$scaffolded" = "True" ] && print_info "the block carries TODOs — fill them (or re-run with --block-file) before the operator reads it."
     return 0
 }
 

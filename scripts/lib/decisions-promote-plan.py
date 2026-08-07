@@ -3,7 +3,11 @@
 
 stdin:  JSON {"description": str, "labels": [str], "gate": str}
 stdout: JSON {"already_promoted": bool, "needs_label": bool,
-              "new_description": str|null}
+              "new_description": str|null, "scaffolded": bool}
+
+``scaffolded`` is true only when the TODO scaffold (not a --block-file block)
+produced ``new_description`` — the caller's "fill the TODOs" hint keys off it,
+so the hint never fires over a real block that carries no TODOs (ops#305).
 
 Rules, in the order they protect things:
   - An existing ``## Decision`` block is NEVER rewritten — the verb makes
@@ -82,6 +86,7 @@ def main() -> int:
         "already_promoted": labelled and blocked,
         "needs_label": not labelled,
         "new_description": new_description,
+        "scaffolded": new_description is not None and block is None,
     }))
     return 0
 

@@ -521,3 +521,44 @@ assert "old prose" in d
     [ "$status" -ne 0 ]
     [[ "$output" == *"## Decision"* ]]
 }
+
+# The "fill the TODOs" hint in cmd_promote must fire ONLY when the TODO
+# scaffold was actually used — a --block-file block carries no TODOs, so the
+# hint there is noise (ops#305 papercut). The shell keys the hint off the
+# planner's "scaffolded" flag; these tests pin that flag down. Honest scope:
+# they prove the PLANNER distinguishes scaffold from block-file — the
+# print_info wiring in decisions.sh is a network-shelled path bats does not
+# exercise.
+@test "promote plan: scaffolded flag is TRUE when the TODO scaffold was used" {
+    run _plan "The diagnosis prose." "decision::wanted"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert p["scaffolded"] is True, p
+'
+}
+
+@test "promote plan: scaffolded flag is FALSE when --block-file supplied the block" {
+    blockfile="$TMP/realblock.md"
+    printf '## Decision\n\n**Gate:** housekeeping\n\n**What:** A real question.\n' > "$blockfile"
+    run _plan "old prose" "decision::wanted" "shapes-design" "$blockfile"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert p["new_description"] is not None, "block-file still writes a description"
+assert p["scaffolded"] is False, p
+'
+}
+
+@test "promote plan: scaffolded flag is FALSE when the issue already had a block" {
+    run _plan $'## Decision\n\n**Gate:** phase1\n\n**What:** X.' "decision::wanted"
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c '
+import json,sys
+p = json.load(sys.stdin)
+assert p["new_description"] is None
+assert p["scaffolded"] is False, p
+'
+}

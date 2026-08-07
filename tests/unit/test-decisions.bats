@@ -297,3 +297,137 @@ print(r['possibly_stale'], 'ALREADY DONE' in r['stale_hint'], d['outside_queue']
     run bash -c "python3 '$RENDER' text 7 h '' '' 48 < '$TMP/j'"
     [[ "$output" != *"decision::wanted"* ]]
 }
+
+# ── RED / AMBER tiers (nwp/ops#279) ──────────────────────────────────────────
+#
+# Operator: "add to the review a red and amber. Red means decision needed, amber
+# decision wanted. Red is always first. The ambers should be in an appropriate
+# sequence."
+#
+# The amber tier was previously a COUNT in a footer. A number tells the operator
+# 55 exist and gives them no way to act; these pin that it is now a real,
+# ordered section — and, just as importantly, that an amber tier which could not
+# be READ never renders as an empty one.
+
+_amber() { # writes N amber issues with the given labels: _amber <file> <iid:labels> ...
+    local out="$1"; shift
+    python3 - "$out" "$@" <<'PY'
+import json,sys
+out = sys.argv[1]
+issues = []
+for spec in sys.argv[2:]:
+    iid, labels = spec.split(":", 1)
+    issues.append({
+        "iid": int(iid),
+        "title": f"Amber issue {iid}",
+        "web_url": f"https://h/nwp/ops/-/issues/{iid}",
+        "labels": [l for l in labels.split(",") if l],
+        "description": "No decision block here.",
+    })
+json.dump(issues, open(out, "w"))
+PY
+}
+
+@test "RED is labelled and comes before AMBER" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    _amber "$TMP/amber.json" "50:decision::wanted"
+    run bash -c "python3 '$RENDER' text '' h '' '' '' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"RED — DECISION NEEDED"* ]]
+    [[ "$output" == *"AMBER — DECISION WANTED"* ]]
+    # Red must physically precede amber in the output.
+    local redpos amberpos
+    redpos=$(printf '%s' "$output" | grep -n "RED — DECISION NEEDED" | head -1 | cut -d: -f1)
+    amberpos=$(printf '%s' "$output" | grep -n "AMBER — DECISION WANTED" | head -1 | cut -d: -f1)
+    [ "$redpos" -lt "$amberpos" ]
+}
+
+@test "AMBER sequence: declared gate, then go-live, security, high, medium, unranked" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    # Deliberately supplied in REVERSE of the expected order, so a renderer that
+    # merely preserved input order would fail this.
+    _amber "$TMP/amber.json" \
+        "60:decision::wanted" \
+        "59:decision::wanted,priority::medium" \
+        "58:decision::wanted,priority::high" \
+        "57:decision::wanted,security" \
+        "56:decision::wanted,go-live-prereq"
+    run bash -c "python3 '$RENDER' text '' h '' '' '' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    local g s h m u
+    g=$(printf '%s' "$output" | grep -n "GO-LIVE PREREQ" | head -1 | cut -d: -f1)
+    s=$(printf '%s' "$output" | grep -n "SECURITY" | head -1 | cut -d: -f1)
+    h=$(printf '%s' "$output" | grep -n "HIGH PRIORITY" | head -1 | cut -d: -f1)
+    m=$(printf '%s' "$output" | grep -n "MEDIUM PRIORITY" | head -1 | cut -d: -f1)
+    u=$(printf '%s' "$output" | grep -n "UNRANKED" | head -1 | cut -d: -f1)
+    [ "$g" -lt "$s" ]
+    [ "$s" -lt "$h" ]
+    [ "$h" -lt "$m" ]
+    [ "$m" -lt "$u" ]
+}
+
+@test "an amber that DECLARES its own Gate outranks every label-inferred one" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    # go-live-prereq would otherwise sort first; a declared block must beat it.
+    python3 - "$TMP/amber.json" <<'PY'
+import json,sys
+body = """## Decision
+
+**Gate:** housekeeping
+
+**What:** This one states its own question.
+"""
+json.dump([
+  {"iid": 70, "title": "Has a block", "web_url": "u", "labels": ["decision::wanted"], "description": body},
+  {"iid": 71, "title": "Go live", "web_url": "u", "labels": ["decision::wanted","go-live-prereq"], "description": ""},
+], open(sys.argv[1], "w"))
+PY
+    run bash -c "python3 '$RENDER' text '' h '' '' '' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    local d g
+    d=$(printf '%s' "$output" | grep -n "DECLARED GATE" | head -1 | cut -d: -f1)
+    g=$(printf '%s' "$output" | grep -n "GO-LIVE PREREQ" | head -1 | cut -d: -f1)
+    [ "$d" -lt "$g" ]
+}
+
+@test "FAIL-CLOSED: an unreadable amber tier says so and never renders as empty" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    printf 'this is not json' > "$TMP/amber.json"
+    run bash -c "python3 '$RENDER' text '' h '' '' '' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"COULD NOT BE READ"* ]]
+    [[ "$output" != *"AMBER — DECISION WANTED"* ]]
+    # The absence of amber must never read as "no amber backlog".
+    [[ "$output" == *"Do not read the"* ]]
+}
+
+@test "no amber file at all falls back to the count-only footer (prior behaviour)" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    run bash -c "python3 '$RENDER' text '' h '' '' '55' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"55 open issue(s) carry decision::wanted"* ]]
+}
+
+@test "the ordering signal's PROVENANCE is stated, not implied" {
+    # A sequence that looks authoritative but is inferred is worse than one that
+    # admits it — the operator has to know whether to trust it or re-check.
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    _amber "$TMP/amber.json" "60:decision::wanted,security"
+    run bash -c "python3 '$RENDER' text '' h '' '' '' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"partly inferred"* ]]
+}
+
+@test "--json carries the amber items and their readability flag" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    _amber "$TMP/amber.json" "60:decision::wanted,go-live-prereq"
+    cat > "$TMP/probe.py" <<'PY'
+import json, sys
+d = json.load(sys.stdin)
+o = d["outside_queue"]
+print(o["readable"], len(o["issues"]), o["issues"][0]["bucket"])
+PY
+    run bash -c "python3 '$RENDER' json '' h '' '' '' '$TMP/amber.json' < '$TMP/j' | python3 '$TMP/probe.py'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "True 1 go-live" ]]
+}

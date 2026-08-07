@@ -222,12 +222,47 @@ _dec_fetch_outside_count(){
     printf '%s\n' "$total"
 }
 
+# ── AMBER: the decision::wanted tier, fetched IN FULL (ops#279) ───────────────
+#
+# Counting them was the previous step (the footer stopped the queue lying by
+# omission). Rendering them is this one: the operator asked for RED = decision
+# NEEDED and AMBER = decision WANTED, red always first, ambers in a sequence.
+#
+# A count told the operator a number and left them no way to act on it; a list
+# they can read in order is the difference between "55 somewhere" and a queue.
+# Rendered COMPACTLY — one line each — because 55 full ## Decision blocks would
+# drown the red tier, which is the one thing that must stay readable.
+#
+# Writes the issue JSON to the path given in $1; empty output means "could not
+# read", which the renderer reports rather than showing an empty amber tier.
+_dec_fetch_outside(){
+    local out="$1" tok cfg host rc
+    tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    [ -n "$tok" ] || return 2
+    host="$(_dec_host)"
+    [ -n "$host" ] || return 3
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+    # -f so a 404 from a walled token is an ERROR, never an empty list parsed as
+    # "no ambers" — the unreadable-renders-as-clean failure this repo keeps
+    # re-learning (ops#281).
+    curl -sS -f -K "$cfg" --get \
+        --data-urlencode "labels=decision::wanted" \
+        --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
+        --data-urlencode "state=opened" \
+        --data-urlencode "per_page=100" \
+        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" > "$out" 2>/dev/null
+    rc=$?
+    rm -f "$cfg"
+    return $rc
+}
+
 # The parser + renderer live in python3, not yq: this reads prose out of markdown
 # bodies, which is string work, and python3 is already this repo's fallback for
 # JSON (lib/gitlab-mr.sh) and present wherever Drupal runs. ops#281 is the standing
 # reminder that reaching for yq on a host that lacks it fails SILENTLY.
 _dec_render(){
-    python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3" "${4:-}" "${5:-}" "${6:-}"
+    python3 "$PROJECT_ROOT/scripts/lib/decisions-render.py" "$1" "$2" "$3" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
 }
 
 cmd_decisions(){
@@ -266,17 +301,24 @@ cmd_decisions(){
     # queue. The outside count is best-effort: "" renders no footer number —
     # but the renderer still prints the label-split line, because the SPLIT is
     # a fact about the queue even when the count could not be read.
-    local manifest="" mrdir="" notesdir="" outside=""
+    local manifest="" mrdir="" notesdir="" outside="" amberdir="" amberfile=""
     if [ -z "$only" ]; then
         manifest=$(_dec_fetch_mrs)
         mrdir=$(dirname "$manifest")
         notesdir=$(_dec_fetch_notes "$json")
         outside=$(_dec_fetch_outside_count) || outside=""
+        # The AMBER tier itself (ops#279). Best-effort and INDEPENDENT of the
+        # count above: if the list fetch fails the renderer still prints the
+        # count-only footer, so a broken amber fetch degrades to the previous
+        # behaviour instead of silently showing an empty amber tier.
+        amberdir=$(mktemp -d); amberfile="$amberdir/amber.json"
+        _dec_fetch_outside "$amberfile" || amberfile=""
     fi
-    printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)" "$manifest" "$notesdir" "$outside"
+    printf '%s' "$json" | _dec_render "$mode" "$only" "$(_dec_host)" "$manifest" "$notesdir" "$outside" "$amberfile"
     local rc=$?
     [ -n "$mrdir" ] && impact_rm_scratch "$mrdir" >/dev/null
     [ -n "$notesdir" ] && impact_rm_scratch "$notesdir" >/dev/null
+    [ -n "$amberdir" ] && impact_rm_scratch "$amberdir" >/dev/null
     return $rc
 }
 

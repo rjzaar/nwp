@@ -4,6 +4,7 @@ mode, only_iid, host = sys.argv[1], sys.argv[2], sys.argv[3]
 mrs_manifest = sys.argv[4] if len(sys.argv) > 4 else ""
 notes_dir = sys.argv[5] if len(sys.argv) > 5 else ""
 outside_count = sys.argv[6] if len(sys.argv) > 6 else ""
+amber_file = sys.argv[7] if len(sys.argv) > 7 else ""
 try:
     issues = json.load(sys.stdin)
 except Exception:
@@ -168,14 +169,109 @@ if mrs_manifest:
         mrs["projects"].append(entry)
     mrs["open_total"] = sum(len(p["items"]) for p in mrs["projects"])
 
+
+# ── AMBER: the decision::wanted tier (nwp/ops#279) ───────────────────────────
+#
+# RED  = `needs-decision`   — a decision is NEEDED. Always rendered first.
+# AMBER = `decision::wanted` — a decision is WANTED: real, but nothing is
+#                              standing still waiting for it.
+#
+# Only 4 of the 55 ambers carry a `## Decision` block, so their sequence cannot
+# come from a declared Gate the way red's does. It is derived from labels that
+# already exist and already mean something, in this precedence:
+#
+#   1. a DECLARED gate (the 4 that have one) — always the strongest signal
+#   2. go-live-prereq  — Phase 2 cannot start until it is settled; that is what
+#                        the label means, so it is not an inference at all
+#   3. security        — a security question left open decays
+#   4. priority::high / ::medium — the operator's own triage
+#   5. everything else, by iid
+#
+# Each row records WHICH signal placed it (`why`), and the renderer says so.
+# A sequence that looks authoritative but was guessed is worse than one that
+# admits which half is inferred — the operator has to know whether to trust the
+# order or re-check it.
+AMBER_BUCKETS = [
+    ("declared",      "DECLARED GATE",     "these four state their own question"),
+    ("go-live",       "GO-LIVE PREREQ",    "Phase 2 cannot start until these are settled"),
+    ("security",      "SECURITY",          "an open security question decays"),
+    ("high",          "HIGH PRIORITY",     "your own triage said so"),
+    ("medium",        "MEDIUM PRIORITY",   "your own triage said so"),
+    ("unranked",      "UNRANKED",          "no gate, no priority — triage or close"),
+]
+AMBER_RANK = {k: n for n, (k, _, _) in enumerate(AMBER_BUCKETS)}
+
+def amber_bucket(labels: list, has_block: bool) -> tuple:
+    """Return (bucket_key, why) — the sequence signal and its provenance."""
+    if has_block:
+        return ("declared", "declares its own Gate")
+    if "go-live-prereq" in labels:
+        return ("go-live", "labelled go-live-prereq")
+    if "security" in labels:
+        return ("security", "labelled security")
+    if "priority::high" in labels:
+        return ("high", "labelled priority::high")
+    if "priority::medium" in labels:
+        return ("medium", "labelled priority::medium")
+    return ("unranked", "no ordering label — inferred position only")
+
+ambers = []
+# THREE distinct states, and collapsing any two of them lies to the operator:
+#   attempted + parsed    -> render the tier
+#   attempted + unparsed  -> "COULD NOT BE READ" (never an empty tier)
+#   not attempted         -> fall back to the count-only footer, as before
+# The first version conflated "no amber file" with "unreadable", so the plain
+# count-only path shouted CANNOT-READ at an operator whose fetch was simply not
+# requested. Two pre-existing tests caught it.
+amber_attempted = bool(amber_file)
+amber_readable = amber_attempted
+if amber_file:
+    try:
+        raw = json.load(open(amber_file))
+        if not isinstance(raw, list):
+            raise ValueError("not a list")
+        for i in raw:
+            body = i.get("description") or ""
+            b = block(body)
+            labels = i.get("labels", [])
+            key, why = amber_bucket(labels, b is not None)
+            ambers.append({
+                "iid": i["iid"],
+                "title": i["title"],
+                "url": i.get("web_url") or f"https://{host}/nwp/ops/-/issues/{i['iid']}",
+                "labels": labels,
+                "bucket": key,
+                "why": why,
+                "what": (b or {}).get("what", ""),
+            })
+        ambers.sort(key=lambda r: (AMBER_RANK[r["bucket"]], r["iid"]))
+    except Exception:
+        amber_readable = False
+        ambers = []
+
 if mode == "json":
     out = {"count": len(rows), "decisions": rows, "mrs": mrs,
            "outside_queue": {"label": "decision::wanted",
-                             "count": int(outside_count) if outside_count.isdigit() else None}}
+                             "count": int(outside_count) if outside_count.isdigit() else None,
+                             # THREE states, exposed as two flags so the Console
+                             # pane can tell "empty" from "not looked" from
+                             # "looked and failed" — the same distinction the
+                             # text renderer makes.
+                             "attempted": amber_attempted,
+                             "readable": amber_readable,
+                             # NOT "items": Jinja resolves `.items` to dict.items
+                             # (the METHOD), so a template reading
+                             # outside_queue.items got a bound builtin and blew
+                             # up on |length. Renaming is the fix that cannot be
+                             # forgotten by the next consumer.
+                             "issues": ambers}}
     print(json.dumps(out, indent=2))
     sys.exit(0)
 
 B, D, R = "\033[1m", "\033[2m", "\033[0m"
+# RED / AMBER are the operator's own vocabulary (ops#279) and match `pl rag`'s
+# fleet colours, so one glance means the same thing in both places.
+RED, AMB = "\033[31m", "\033[33m"
 
 # MRs render FIRST: in solo mode an open green MR is the single most actionable
 # item on the operator's plate — PICKUP docs kept putting "merge !N" at the top
@@ -201,21 +297,52 @@ if mrs["projects"]:
                 print(f"    {m['url']}\n")
 
 def footer():
-    """The label split, declared. `needs-decision` renders here; ~dozens of
-    decision-SHAPED issues carry only `decision::wanted` (2026-08-03 triage)
-    and deliberately do not — but a queue that hides their existence lies by
-    omission (audit 2026-08-06). Printed even when the count could not be
-    read, because the split is a fact about the queue either way."""
+    """The AMBER tier, rendered (ops#279).
+
+    Was a count in a footer; the operator asked for it as a real section —
+    RED = decision needed, AMBER = decision wanted, red always first. A number
+    told them 55 existed and gave them no way to act on it; a list in order is
+    the difference between a backlog and a queue.
+
+    Compact by design: one line each. 55 full ## Decision blocks would drown
+    the red tier, and the red tier is the one that must stay readable.
+
+    Fail-closed: if the list could not be fetched this says so and falls back
+    to the count. An unreadable amber tier must never render as an empty one."""
     if only_iid:
         return
-    D2, R2 = "\033[2m", "\033[0m"
-    if outside_count.isdigit() and int(outside_count) > 0:
-        print(f"{D2}Beyond this queue: {outside_count} open issue(s) carry decision::wanted but not")
+    if ambers:
+        print(f"{AMB}{B}\u25cf AMBER — DECISION WANTED{R}  {B}({len(ambers)}){R}")
+        print(f"{D}Real questions, but nothing is standing still waiting for them.{R}")
+        print(f"{D}Only {sum(1 for a in ambers if a['bucket'] == 'declared')} of these state their own question; the rest are ordered by{R}")
+        print(f"{D}labels that already exist — the order is partly inferred, so treat it as{R}")
+        print(f"{D}a reading sequence, not a ruling.{R}\n")
+        current_b = None
+        for a in ambers:
+            if a["bucket"] != current_b:
+                current_b = a["bucket"]
+                _, head, why = next(x for x in AMBER_BUCKETS if x[0] == current_b)
+                n = sum(1 for x in ambers if x["bucket"] == current_b)
+                print(f"  {AMB}── {head} ({n}) ──{R}  {D}{why}{R}")
+            print(f"    {B}#{a['iid']}{R}  {a['title']}")
+            if a["what"]:
+                print(f"      {D}{a['what'][:160]}{R}")
+            print(f"      {D}{a['url']}{R}")
+        print()
+        print(f"{D}Promote one to RED with:  pl issue label <iid> --add needs-decision{R}")
+        return
+    # No list this run — say which, and never imply the tier is empty.
+    if amber_attempted and not amber_readable:
+        print(f"{D}AMBER (decision::wanted) COULD NOT BE READ this run. That tier still{R}")
+        print(f"{D}exists — this queue is showing needs-decision only. Do not read the{R}")
+        print(f"{D}absence of an amber section as an empty backlog.{R}")
+    elif outside_count.isdigit() and int(outside_count) > 0:
+        print(f"{D}Beyond this queue: {outside_count} open issue(s) carry decision::wanted but not")
         print(f"needs-decision — decision-shaped backlog, not rendered here. Promote one with:")
-        print(f"  pl issue label <iid> --add needs-decision{R2}")
+        print(f"  pl issue label <iid> --add needs-decision{R}")
     elif not outside_count:
-        print(f"{D2}(The decision::wanted backlog count could not be read this run — that tier")
-        print(f"still exists; this queue renders needs-decision only.){R2}")
+        print(f"{D}(The decision::wanted backlog count could not be read this run — that tier")
+        print(f"still exists; this queue renders needs-decision only.){R}")
 
 if not rows:
     if mrs["open_total"]:
@@ -226,8 +353,9 @@ if not rows:
     sys.exit(0)
 
 incomplete = [r for r in rows if not r["complete"]]
-print(f"\n{B}{len(rows)} decision(s) waiting{R}")
-print(f"{D}Read in order — later ones may not make sense until earlier ones are answered.{R}\n")
+print(f"\n{RED}{B}\u25cf RED — DECISION NEEDED{R}  {B}({len(rows)}){R}")
+print(f"{D}Nothing moves until these are answered. Read in order — later ones may{R}")
+print(f"{D}not make sense until earlier ones are.{R}\n")
 
 current = None
 for r in rows:

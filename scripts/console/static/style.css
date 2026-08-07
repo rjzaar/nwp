@@ -230,3 +230,15 @@ details > summary { cursor: pointer; color: var(--muted); }
 }
 .warnfg { color: var(--warn); }
 .small { font-size: 12px; }
+
+/* Review pane RED/AMBER decision tiers (ops#279). Reuses the estate's existing
+   --red/--amber, which are the same values `pl rag` grades with, so one glance
+   means the same thing in the console as on the command line. */
+.rag-red   { color: var(--red); }
+.rag-amber { color: var(--amber); }
+.review-amber { margin-top: 1.25rem; }
+.review-amber h4.amber-bucket {
+  margin: .9rem 0 .3rem; font-size: .82rem; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--amber);
+}
+.rev-amber-row { margin: .15rem 0 .35rem; line-height: 1.35; }

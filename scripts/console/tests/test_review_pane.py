@@ -220,3 +220,80 @@ def test_outside_queue_backlog_is_declared(mod, monkeypatch):
     body = _client(mod).get("/panes/review").text
     assert "decision::wanted" in body
     assert "48" in body
+
+
+# ── RED / AMBER decision tiers (nwp/ops#279) ─────────────────────────────────
+#
+# Operator: "add to the review a red and amber. Red means decision needed, amber
+# decision wanted. Red is always first. The ambers should be in an appropriate
+# sequence."
+#
+# These render the TEMPLATE directly rather than the whole app, because the two
+# bugs worth catching here are both template-level:
+#   * `outside_queue.items` resolved to dict.items (the METHOD) and blew up on
+#     |length — which is why the JSON key is `issues`, not `items`;
+#   * the amber tier rendering as EMPTY when it was merely unreadable.
+
+def _render_review(**over):
+    from jinja2 import Environment, FileSystemLoader
+    import pathlib
+    tdir = pathlib.Path(__file__).resolve().parents[1] / "templates"
+    env = Environment(loader=FileSystemLoader(str(tdir)))
+    ctx = dict(q={"ok": True}, decisions=[], mrs={"projects": [], "open_total": 0},
+               gates={}, can_act=False, gitlab_ok=True,
+               write_project="nwp/ops", mr_note_projects=[], outside_queue={})
+    ctx.update(over)
+    return env.get_template("pane_review.html").render(**ctx)
+
+
+def _amber(**over):
+    oq = {"label": "decision::wanted", "count": 2, "attempted": True, "readable": True,
+          "issues": [
+              {"iid": 81, "title": "Erasure channel", "url": "u", "bucket": "go-live",
+               "why": "labelled go-live-prereq", "what": "", "labels": []},
+              {"iid": 97, "title": "Leakage gate", "url": "u", "bucket": "security",
+               "why": "labelled security", "what": "", "labels": []},
+          ]}
+    oq.update(over)
+    return oq
+
+
+def test_red_tier_is_labelled_and_precedes_amber():
+    h = _render_review(outside_queue=_amber())
+    assert "RED — decision needed" in h
+    assert "AMBER — decision wanted" in h
+    assert h.index("RED — decision needed") < h.index("AMBER — decision wanted")
+
+
+def test_amber_issues_render_in_bucket_order():
+    h = _render_review(outside_queue=_amber())
+    assert "#81" in h and "#97" in h
+    # go-live before security — the sequence the renderer assigned must survive.
+    assert h.index("Go Live") < h.index("Security")
+
+
+def test_amber_order_declares_that_it_is_partly_inferred():
+    # A sequence that looks authoritative but is guessed is worse than one that
+    # admits it: the operator must know whether to trust it or re-check.
+    assert "partly inferred" in _render_review(outside_queue=_amber())
+
+
+def test_unreadable_amber_never_renders_as_empty():
+    h = _render_review(outside_queue={"attempted": True, "readable": False,
+                                      "issues": [], "count": None})
+    assert "CANNOT-VERIFY" in h
+    assert "empty backlog" in h
+
+
+def test_not_attempted_falls_back_to_the_count_footer():
+    h = _render_review(outside_queue={"attempted": False, "readable": False,
+                                      "issues": [], "count": 55})
+    assert "Beyond this queue" in h and "55" in h
+    # Must NOT shout cannot-verify at an operator whose fetch was simply not run.
+    assert "empty backlog" not in h
+
+
+def test_amber_key_is_issues_not_items():
+    """`items` collides with dict.items in Jinja — the bug this rename fixed."""
+    h = _render_review(outside_queue=_amber())
+    assert "#81" in h        # would raise TypeError on |length if it regressed

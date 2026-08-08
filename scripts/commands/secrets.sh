@@ -345,8 +345,38 @@ write_value_to_location(){ # $1=location; value in env NWP_NEWVAL
     bad)      print_error   "  BAD      $loc  (unparseable — see: pl secrets migrate-registry)"; return 2 ;;
   esac
   if [ -n "$host" ]; then
-    print_info "  REMOTE   $loc  (on $host — propagate there, verify with: pl secrets verify-copy)"
-    return 1
+    if [ "$kind" != "file" ]; then
+      print_info "  REMOTE   $loc  (non-@file remote — propagate manually, verify with: pl secrets verify-copy)"
+      return 1
+    fi
+    # ops#317: a host= @file location IS writable, and pretending otherwise is
+    # how a shown-once token got consumed, never written, and stamped rotated.
+    # Value travels via STDIN only (never argv/history), lands root-owned 0600,
+    # and the write is trusted ONLY after a hash read-back matches. Anything
+    # less returns 2 = FAILED, which blocks the stamp upstream.
+    local sshdest="$host" sip qp lh rh
+    if command -v get_server_ip >/dev/null 2>&1; then
+      # A role naming a server in servers/<name>/.nwp-server.yml resolves
+      # through the estate registry (e.g. host=live:…); anything else is used
+      # as an ssh alias/destination verbatim.
+      sip=$(get_server_ip "$host" 2>/dev/null || true)
+      [ -n "$sip" ] && sshdest="gitlab@${sip}"
+    fi
+    qp=$(loc_remote_quoted "$path")
+    if ! printf '%s\n' "$NWP_NEWVAL" | ssh -o BatchMode=yes -o ConnectTimeout=10 "$sshdest" \
+        "sudo -n install -D -m 600 -o root -g root /dev/stdin $qp" 2>/dev/null; then
+      print_error "  FAILED   $loc  (remote write via $sshdest — needs ssh reach + sudo -n install)"
+      return 2
+    fi
+    lh=$(printf '%s' "$NWP_NEWVAL" | sha256sum | cut -c1-16)
+    rh=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$sshdest" \
+        "sudo -n head -1 $qp | tr -d '\n' | sha256sum | cut -c1-16" 2>/dev/null)
+    if [ -n "$rh" ] && [ "$lh" = "$rh" ]; then
+      print_success "  WROTE    $loc  (remote, hash-verified)"
+      return 0
+    fi
+    print_error "  FAILED   $loc  (write reported ok but the hash read-back disagrees — NOT trusting it)"
+    return 2
   fi
 
   f=$(loc_abspath "$path")

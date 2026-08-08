@@ -25,6 +25,16 @@
 #                         in a code span or fenced block resolves to something
 #                         `pl` can actually dispatch (`pl commands` is the
 #                         oracle — one source of truth, not a second list).
+#   5. adr-hygiene      — (ops#319 / F3(2)+(5)) every docs/decisions/NNNN-*.md
+#                         carries EXACTLY ONE `**Status:**` line in the
+#                         template's shape, and no ADR number names two files.
+#                         Both shapes were live when this check was written:
+#                         two 0032-*.md files coexisted for three days, and
+#                         ADR-0034's status was a `- **Status:**` list item no
+#                         Status-grep in the estate could see — recorded in
+#                         ops#318 as "no Status line at all". A status the
+#                         tooling cannot parse is a status it silently stops
+#                         checking (the stored_in-grammar rule, applied here).
 #
 # WHY 4 EXISTS (fix-programme item 9, `docs-pl-first`). The header used to say
 # this gate "deliberately does NOT check `pl <verb>` mentions … those checks
@@ -46,6 +56,24 @@
 # Pre-existing rot is captured in `.doc-truth-baseline` (like `.gitleaksignore`),
 # so the gate fails only on NEW drift and is safe to wire into CI / `pl verify`.
 #
+# THE BASELINE IS CHECKED BOTH WAYS (ops#319 / F3(3)). A baseline row that no
+# longer reproduces is a fix nobody banked (delete the row — SHRINK-ONLY) or a
+# corpus that diverges between machines (fix the doc so both machines agree).
+# Both siblings — scripts/ci/lint-test-honesty.sh and lint-gate-redproof.sh —
+# have had STALE-BASELINE-ROW failures from day one; this file did not, and
+# grew exactly 14 dead rows of 392 before anyone counted (meta-2026-08-09
+# pass 3, probe P1). Dead rows are now reported BY NAME and fail the gate.
+#
+# --memory (ops#319 / F3(1)): the raw-remote-cli check pointed at the AI
+# auto-memory corpus (~/.claude/projects/<slug>/memory/*.md). That corpus is
+# INJECTED into sessions with the authority of ground truth, and on 2026-08-09
+# its MEMORY.md was found PRESCRIBING the exact scp/sudo-cp/raw-admin-cli
+# deploy idiom the pl-first standing order forbids — the injected corpus was
+# teaching the violation (meta-2026-08-09, catalogue item 8 / RC3). Memory may
+# DESCRIBE; only verbs may PRESCRIBE. Host-side only: where the corpus is
+# unreadable (every CI runner), this exits 2 CANNOT VERIFY — absence of the
+# corpus is not a clean corpus, and an unreadable store never grades green.
+#
 # Escape hatch for 3 and 4: put `<!-- doc-truth:retired -->` on the line. A doc
 # must be able to say "./backup.sh was removed, use pl backup" and name the dead
 # thing. The marker is per-LINE, invisible when rendered, and greps in one
@@ -53,10 +81,13 @@
 # instruction.
 #
 # Usage:
-#   pl doc-truth              scan + report NEW drift; exit 1 if any
+#   pl doc-truth              scan + report NEW drift and STALE baseline rows;
+#                             exit 1 if either exists
 #   pl doc-truth --all        report every drift item incl. baselined
 #   pl doc-truth --baseline   (re)write .doc-truth-baseline from current drift
 #   pl doc-truth --json       machine-readable summary to stdout
+#   pl doc-truth --memory[=DIR]  lint the AI auto-memory corpus (host-side);
+#                             exit 2 CANNOT VERIFY where the corpus is unreadable
 #   pl doc-truth -h|--help
 #
 set -euo pipefail
@@ -70,6 +101,12 @@ source "$REPO_ROOT/lib/ui.sh"
 
 BASELINE="$PROJECT_ROOT/.doc-truth-baseline"
 ADR_RESERVED=" 0023 "   # intentionally file-less (reserved slot)
+
+# The AI auto-memory corpus for THIS checkout: Claude Code keys the memory
+# directory on the project path with `/` → `-` (a checkout at /home/x/nwp
+# reads ~/.claude/projects/-home-x-nwp/memory). NWP_MEMORY_DIR overrides it
+# for fixtures and for pointing a worktree's run at the canonical corpus.
+MEMORY_DIR="${NWP_MEMORY_DIR:-$HOME/.claude/projects/$(printf '%s' "$PROJECT_ROOT" | tr '/' '-')/memory}"
 
 # Docs excluded from the gate: historical archives + teaching docs that contain
 # deliberately-illustrative example links (not real targets).
@@ -97,7 +134,7 @@ skip_prescription_checks(){
     return 1
 }
 
-usage(){ sed -n '3,61p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage(){ sed -n '3,92p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # EVERY markdown file the repo owns — not just docs/.
 #
@@ -222,9 +259,45 @@ dead_command_ref_hits(){
     } | sort -u
 }
 
+# 5. adr-hygiene (ops#319). Two shapes, one per emitted item:
+#
+#   adr-dup|docs/decisions|NNNN          — NNNN names MORE THAN ONE file.
+#       A reused number makes every `ADR-NNNN` reference in the tree ambiguous
+#       (which decision does the deploy gate implement?). Found live: 0024 was
+#       reused once (fixed by renumbering to 0026, 2026-07-02) and then 0032
+#       was reused again 2026-08-06 — the check that would have refused the
+#       second collision did not exist after the first one.
+#
+#   adr-status|docs/decisions/<file>|N-status-lines — the file does not carry
+#       EXACTLY ONE `**Status:**` line in the template's shape (template.md:3,
+#       column 0). Zero is a decision whose state nobody recorded; two is the
+#       correction-by-accretion pattern (a second status stacked on a stale
+#       first). The shape is strict ON PURPOSE: ADR-0034 carried its status as
+#       a `- **Status:** ` list item, which every Status-grep in the estate
+#       missed — ops#318 recorded it as "no Status line at all". A status the
+#       tooling cannot parse is a status nothing checks.
+adr_hygiene_hits(){
+    local d="$PROJECT_ROOT/docs/decisions" f b num n
+    [ -d "$d" ] || return 0
+    for num in $(
+        for f in "$d"/[0-9][0-9][0-9][0-9]-*.md; do
+            [ -e "$f" ] || continue
+            b="${f##*/}"; echo "${b%%-*}"
+        done | sort | uniq -d
+    ); do
+        echo "adr-dup|docs/decisions|$num"
+    done
+    for f in "$d"/[0-9][0-9][0-9][0-9]-*.md; do
+        [ -e "$f" ] || continue
+        n="$(grep -c '^\*\*Status:\*\*' "$f" 2>/dev/null || true)"
+        [ "${n:-0}" -eq 1 ] || echo "adr-status|docs/decisions/${f##*/}|${n:-0}-status-lines"
+    done
+}
+
 # Emit every drift item as "kind|relpath|ref", one per line.
 collect_drift(){
     local file reldir target adr num rel
+    adr_hygiene_hits
     while read -r file; do
         reldir="$(dirname "$file")"; rel="${file#$PROJECT_ROOT/}"
         while IFS= read -r target; do
@@ -281,6 +354,66 @@ raw_remote_cli_hits(){
              | grep -vE '^[0-9]+:[[:space:]]*(#|//)' || true)
 }
 
+# ── the memory corpus (ops#319 / F3(1)) ──────────────────────────────────────
+# The auto-memory files are injected into sessions as ground truth, so a
+# forbidden idiom written there is not a stale doc — it is an instruction the
+# AI will read with authority at the exact moment it acts. This applies the
+# SAME raw-remote-cli oracle as the doc corpus (one pattern, two consumers;
+# two implementations of "what is the forbidden idiom" would drift).
+#
+# Memory may DESCRIBE ("the deploy used to be done by hand, see ops#149");
+# only verbs may PRESCRIBE. A hit here is fixed by rewriting the note to name
+# the pl verb — exactly what happened to MEMORY.md's "Deployment Notes" on
+# 2026-08-09, after that section's scp/sudo-cp recipe sat in every session's
+# context alongside the standing order forbidding it.
+#
+# FAIL-CLOSED SPLIT, stated honestly: this corpus exists on the WORKSTATION
+# (and any ai-host with a local memory). A CI runner has no ~/.claude, so CI
+# cannot run this check — and must never report the corpus clean from a probe
+# that saw nothing. Unreadable/empty corpus = exit 2 CANNOT VERIFY, which is
+# UNCHECKED, not green. That is why this mode is NOT wired into a blocking CI
+# job (a permanently-red honest job trains people to merge past red — the
+# boundary:classify lesson, .gitlab-ci.yml ops#165); it belongs host-side,
+# where the corpus is real.
+run_memory_check(){
+    print_header "doc-truth --memory — the injected corpus may not PRESCRIBE forbidden idioms"
+    if [ ! -d "$MEMORY_DIR" ] || [ ! -r "$MEMORY_DIR" ]; then
+        echo "CANNOT VERIFY: memory corpus not readable at: $MEMORY_DIR" >&2
+        echo "  This check runs where the auto-memory lives (the workstation / ai-host)." >&2
+        echo "  A CI runner has no memory corpus; absence of the corpus is NOT a clean" >&2
+        echo "  corpus, so this is exit 2 (UNCHECKED) — never a silent green." >&2
+        echo "  Point it explicitly with --memory=DIR or NWP_MEMORY_DIR." >&2
+        exit 2
+    fi
+    local f rel n_files=0 hits="" h
+    while IFS= read -r -d '' f; do
+        n_files=$((n_files + 1))
+        rel="memory/${f##*/}"
+        h="$(raw_remote_cli_hits "$f" "$rel")"
+        [ -n "$h" ] && hits="${hits}${h}"$'\n'
+    done < <(find "$MEMORY_DIR" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null | sort -z)
+    if [ "$n_files" -eq 0 ]; then
+        echo "CANNOT VERIFY: zero markdown files under $MEMORY_DIR" >&2
+        echo "  Refusing to grade an empty corpus as clean." >&2
+        exit 2
+    fi
+    local n_hits
+    n_hits="$(printf '%s' "$hits" | grep -c '^raw-remote-cli' || true)"
+    if [ "${n_hits:-0}" -gt 0 ]; then
+        local kind fr ref
+        while IFS='|' read -r kind fr ref; do
+            [ -n "$kind" ] || continue
+            print_error "[memory-prescribes] $fr → $ref  (a memory note PRESCRIBES a raw remote CLI idiom)"
+        done < <(printf '%s' "$hits")
+        print_warning "$n_hits prescription(s) in the auto-memory corpus ($MEMORY_DIR)."
+        print_warning "Memory may describe; only verbs prescribe. Rewrite the note to name the pl verb:"
+        print_warning "  pl drush <site> --tier=live --execute -- <cmd>   |   pl moodle cli <site> --tier=live --execute -- <script>"
+        exit 1
+    fi
+    print_success "memory corpus clean: $n_files file(s) under $MEMORY_DIR, no prescribed raw-remote idiom"
+    exit 0
+}
+
 main(){
     local mode=report
     case "${1:-}" in
@@ -288,6 +421,8 @@ main(){
         --baseline) mode=baseline ;;
         --all)      mode=all ;;
         --json)     mode=json ;;
+        --memory)   run_memory_check ;;
+        --memory=*) MEMORY_DIR="${1#*=}"; run_memory_check ;;
         "")         ;;
         *) print_error "unknown arg: $1"; usage; exit 2 ;;
     esac
@@ -302,16 +437,22 @@ main(){
     fi
 
     local baseline_items=""; [ -f "$BASELINE" ] && baseline_items="$(grep -v '^#' "$BASELINE" 2>/dev/null || true)"
-    local new_drift known_drift
+    local new_drift stale_rows
     new_drift="$(comm -23 <(printf '%s\n' "$all_drift" | grep -v '^$' | sort) <(printf '%s\n' "$baseline_items" | grep -v '^$' | sort) 2>/dev/null || true)"
-    local n_all n_new n_known
+    # The other direction (ops#319 / F3(3)): rows the baseline still carries
+    # that the scan no longer produces. Same multiset comm as new_drift, so a
+    # deliberately-duplicated finding (one doc naming a target twice) is
+    # matched copy-for-copy, not deduplicated into a phantom stale row.
+    stale_rows="$(comm -13 <(printf '%s\n' "$all_drift" | grep -v '^$' | sort) <(printf '%s\n' "$baseline_items" | grep -v '^$' | sort) 2>/dev/null || true)"
+    local n_all n_new n_known n_stale
     n_all="$(printf '%s\n' "$all_drift" | grep -c '^[a-z]' || true)"
     n_new="$(printf '%s\n' "$new_drift" | grep -c '^[a-z]' || true)"
+    n_stale="$(printf '%s\n' "$stale_rows" | grep -c '^[a-z]' || true)"
     n_known=$((n_all - n_new))
 
     if [ "$mode" = json ]; then
-        printf '{"total":%d,"new":%d,"baselined":%d}\n' "$n_all" "$n_new" "$n_known"
-        [ "$n_new" -eq 0 ]; return
+        printf '{"total":%d,"new":%d,"baselined":%d,"stale":%d}\n' "$n_all" "$n_new" "$n_known" "$n_stale"
+        [ "$n_new" -eq 0 ] && [ "$n_stale" -eq 0 ]; return
     fi
 
     print_header "doc-truth gate (P62) — structural doc claims vs the tree"
@@ -325,11 +466,22 @@ main(){
         done < <(printf '%s\n' "$show")
     fi
 
-    if [ "$n_new" -eq 0 ]; then
-        print_success "no new drift ($n_known known/baselined item(s) ignored — see .doc-truth-baseline)"
+    if [ "$n_stale" -gt 0 ]; then
+        local srow
+        while IFS= read -r srow; do
+            [ -n "$srow" ] || continue
+            print_error "STALE BASELINE ROW (no longer reproduces — delete it): $srow"
+        done < <(printf '%s\n' "$stale_rows")
+        print_warning "$n_stale baseline row(s) describe drift the tree no longer has."
+        print_warning "The baseline is SHRINK-ONLY: deleting a dead row is a fix — edit .doc-truth-baseline"
+        print_warning "in this MR (or regenerate deliberately: pl doc-truth --baseline)."
+    fi
+
+    if [ "$n_new" -eq 0 ] && [ "$n_stale" -eq 0 ]; then
+        print_success "no new drift, no stale baseline rows ($n_known known/baselined item(s) ignored — see .doc-truth-baseline)"
         return 0
     fi
-    print_warning "$n_new NEW drift item(s) above ($n_known baselined). Fix them, or run 'pl doc-truth --baseline' to accept."
+    [ "$n_new" -gt 0 ] && print_warning "$n_new NEW drift item(s) above ($n_known baselined). Fix them, or run 'pl doc-truth --baseline' to accept."
     return 1
 }
 

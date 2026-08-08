@@ -162,7 +162,7 @@ PY
 }
 
 # ── open MRs in the same queue (ops#295) ──────────────────────────────────────
-# Under solo review mode (ADR-0032) the merge click IS the approval, so an open
+# Under solo review mode (ADR-0037) the merge click IS the approval, so an open
 # MR is an operator action exactly like a needs-decision issue. The renderer
 # takes a manifest of per-project MR fetches; a project whose fetch failed is
 # CANNOT-READ, never an empty (= clean-looking) list.

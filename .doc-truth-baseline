@@ -38,10 +38,8 @@
 #
 # NOTE: `pl doc-truth --baseline` REGENERATES this file and will drop this
 # header. Re-add it after regenerating.
-dead-command-ref|CHANGELOG.md|pl ai-host
 dead-command-ref|CONTRIBUTING.md|./tests/run-tests.sh
 dead-command-ref|docs/COMMAND_INVENTORY.md|./bootstrap-coder.sh
-dead-command-ref|docs/COMMAND_INVENTORY.md|pl ai-host
 dead-command-ref|docs/COMMAND_INVENTORY.md|./report.sh
 dead-command-ref|docs/decisions/0007-verification-schema-v2-design.md|./migrate-verification-v2.sh
 dead-command-ref|docs/decisions/0008-recipe-system-architecture.md|./../lib/install-common.sh
@@ -162,7 +160,6 @@ dead-command-ref|docs/proposals/F17-project-separation.md|pl update
 dead-command-ref|docs/proposals/F18-unified-backup-strategy.md|pl auth
 dead-command-ref|docs/proposals/F18-unified-backup-strategy.md|pl rebuild
 dead-command-ref|docs/proposals/F19-baseline-reset-cleanup.md|./linode/gitlab/gitlab_setup.sh
-dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl ai-host
 dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl deploy
 dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl llm
 dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl sanitizer
@@ -248,7 +245,6 @@ dead-command-ref|docs/reports/version-changes.md|./setup.sh
 dead-command-ref|docs/reports/version-changes.md|./status.sh
 dead-command-ref|docs/reports/version-changes.md|./vortex/scripts/generate-ddev.sh
 dead-command-ref|docs/reports/version-changes.md|./vortex/scripts/generate-env.sh
-dead-command-ref|docs/security/data-security-best-practices.md|./backup.sh
 dead-command-ref|docs/security/data-security-best-practices.md|./linode/gitlab/gitlab_harden.sh
 dead-command-ref|docs/security/data-security-best-practices.md|./migrate-secrets.sh
 dead-command-ref|docs/security/data-security-best-practices.md|./prod2stg.sh
@@ -291,9 +287,6 @@ dead-command-ref|docs/testing/verification-guide.md|./scriptname.sh
 dead-command-ref|docs/testing/verification-guide.md|./verify.sh
 dead-command-ref|docs/testing/verify-enhancements.md|./scripts/commands/migrate-verification-v2.sh
 dead-command-ref|KNOWN_ISSUES.md|pl test-nwp
-dead-command-ref|README.md|./servers/nwpcode/linode/gitlab/gitlab_create_server.sh
-dead-command-ref|README.md|./servers/nwpcode/linode/gitlab/gitlab_setup.sh
-dead-command-ref|README.md|./servers/nwpcode/linode/gitlab/gitlab_upload_stackscript.sh
 dead-command-ref|README.md|./setup_gitlab_site.sh
 dead-command-ref|scripts/f26/moodle/INSTALL.md|./provision-nwc-issuer.sh
 dead-command-ref|scripts/f26/moodle/INSTALL.md|./verify-nwc-issuer.sh
@@ -325,7 +318,6 @@ dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../reference/
 dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../reference/threat-model.md
 dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../tiers/tier-4-add-verifier.md
 dead-link|docs/proposals/F35-pl-site-rename.md|F23-project-separation-v2.md
-dead-link|docs/proposals/P71-guild-ownership-editorial-scoring-audience-fit.md|../../sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/0002-three-guilds-plus-stewards.md
 dead-link|docs/reference/commands/bootstrap-coder.md|../../decisions/cli-registration.md
 dead-link|docs/reference/commands/doctor.md|../../guides/troubleshooting.md
 dead-link|docs/reference/commands/email.md|../../deployment/postfix-setup.md
@@ -409,12 +401,6 @@ raw-remote-cli|docs/deployment/disaster-recovery.md|L527
 raw-remote-cli|docs/deployment/disaster-recovery.md|L530
 raw-remote-cli|docs/deployment/disaster-recovery.md|L533
 raw-remote-cli|docs/guides/ops74-half-b-runbook.md|L110
-raw-remote-cli|docs/guides/ops82-key-rotation.md|L134
-raw-remote-cli|docs/guides/ops82-key-rotation.md|L51
-raw-remote-cli|docs/guides/ops82-key-rotation.md|L75
-raw-remote-cli|docs/guides/ops82-key-rotation.md|L76
-raw-remote-cli|docs/guides/ops82-key-rotation.md|L77
-raw-remote-cli|docs/guides/ops82-key-rotation.md|L78
 raw-remote-cli|docs/guides/production-site-integration.md|L1176
 raw-remote-cli|docs/guides/production-site-integration.md|L1182
 raw-remote-cli|docs/guides/production-site-integration.md|L391

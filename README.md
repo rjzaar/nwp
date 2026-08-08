@@ -1154,15 +1154,19 @@ This will:
 
 For more control over the installation:
 
+These scripts live in the `servers/nwpcode` server repository (each server is
+its own local git repo — it is not shipped inside nwp/nwp, so a fresh clone of
+this repo does not contain them):
+
 ```bash
 # 1. Set up local environment
-./servers/nwpcode/linode/gitlab/gitlab_setup.sh
+servers/nwpcode/linode/gitlab/gitlab_setup.sh
 
 # 2. Upload StackScript to Linode
-./servers/nwpcode/linode/gitlab/gitlab_upload_stackscript.sh
+servers/nwpcode/linode/gitlab/gitlab_upload_stackscript.sh
 
 # 3. Create GitLab server
-./servers/nwpcode/linode/gitlab/gitlab_create_server.sh --domain git.example.com --email admin@example.com
+servers/nwpcode/linode/gitlab/gitlab_create_server.sh --domain git.example.com --email admin@example.com
 ```
 
 ### Accessing GitLab

@@ -344,7 +344,9 @@ Steps 2–5 are independent of the P70 render-contract work and can proceed in p
 - **[ADR-0027](../decisions/0027-unified-course-content-architecture.md)** — parent. §5
   ceremony-scales-with-trust is the frame; §9 birthing ladder is §7 here; the "atom-type→guild
   ownership + guild-scoped scoring model" deferred at 0027 line 311 **is** this proposal.
-- **[ADR-0002 three-guilds-plus-stewards](../../sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/0002-three-guilds-plus-stewards.md)**
+- **ADR-0002 three-guilds-plus-stewards** — in the nwc site-profile repo at
+  `sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/0002-three-guilds-plus-stewards.md`
+  (the `sites/` tree is gitignored here, so this is a path, not a link)
   — the IG→guild promotion triple-test and the Media-from-Video-IG precedent (§4, §7).
 - **[P68 legal-doc workflow](P68-legal-doc-authoring-guild-workflow.md)** — the built precedent P71
   copies: graded guild gate (`LegalGate`), pool-aware anti-self-review, guild-membership-satisfies-pool

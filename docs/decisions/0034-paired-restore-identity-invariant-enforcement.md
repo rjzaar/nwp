@@ -1,6 +1,10 @@
 # ADR-0034: Paired-restore identity invariant — enforcement
 
-- **Status:** Proposed (ops#83)
+**Status:** Proposed (ops#83)
+<!-- Status normalised to the template's column-0 shape (ops#319): as a
+     `- **Status:**` list item it was invisible to every Status-grep in the
+     estate, and ops#318 recorded this ADR as having "no Status line at all". -->
+
 - **Date:** 2026-07-28
 - **Supersedes:** nothing. **Amends:** [ADR-0031](0031-paired-site-versioning-and-promotion.md) **D9**.
 - **Related:** [ADR-0029](0029-nwc-authorization-model.md), `pairs/ssc.pair-contract.yml`,

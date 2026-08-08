@@ -249,3 +249,150 @@ Read [the playbook](docs/zz-no-such-target.md) first.'
                  | grep -- '--tier=prod' || true"
     [ -z "$output" ] || { echo "printed instruction uses an unsupported tier:"; echo "$output"; return 1; }
 }
+
+# ─── 5. ops#319 — stale baseline rows, ADR hygiene, the memory corpus ─────────
+#
+# Each check below was OBSERVED MISSING against the pre-fix tree (2026-08-09),
+# red-then-green:
+#
+#   * STALE ROWS — a fixture whose baseline carried a row reproducing NOWHERE
+#     ran GREEN: "SUCCESS: no new drift (0 known/baselined item(s) ignored)",
+#     rc=0 — while the count itself said "0 baselined" over a 1-row baseline.
+#     The real .doc-truth-baseline had grown exactly 14 such dead rows of 392
+#     (meta-2026-08-09 pass 3, probe P1: 392 non-comment rows, 378 reproduce).
+#     Both sibling lints already fail on stale rows; this file did not.
+#
+#   * ADR HYGIENE — a fixture docs/decisions with TWO 0001-*.md files and a
+#     Status-less ADR ran GREEN, rc=0 — while the real tree had two 0032-*.md
+#     files coexisting since 2026-08-06 (0032-non-prod-data-refresh vs
+#     0032-review-mode-follows-approvers, renumbered to 0037 in this MR) and
+#     ADR-0034 carried its status as a `- **Status:**` list item that ops#318
+#     recorded as "no Status line at all".
+#
+#   * MEMORY — `--memory` did not exist while the injected auto-memory's
+#     MEMORY.md:31-33 PRESCRIBED the raw scp/sudo-cp/admin-cli deploy idiom
+#     (the recorded pl-first violation vector, meta-2026-08-09 item 8/RC3).
+
+# A minimal NON-GIT tree: scan_files falls back to `find`, and the engine
+# honours a pre-set PROJECT_ROOT, so every case here runs against a fixture
+# instead of the live repo.
+_fixture_tree() {
+    FIX="${BATS_TEST_TMPDIR}/fixture"
+    mkdir -p "${FIX}/docs"
+    printf '# clean doc\n' > "${FIX}/docs/clean.md"
+}
+
+@test "doc-truth: a baseline row that no longer reproduces FAILS, naming the row" {
+    _fixture_tree
+    printf 'dead-command-ref|docs/gone.md|./zz-no-such.sh\n' > "${FIX}/.doc-truth-baseline"
+    run env PROJECT_ROOT="$FIX" "$DT"
+    [ "$status" -eq 1 ]
+    echo "$output" | grep -q 'STALE BASELINE ROW'
+    echo "$output" | grep -q 'zz-no-such.sh'
+}
+
+@test "doc-truth: --json carries the stale count and fails on it" {
+    _fixture_tree
+    printf 'dead-command-ref|docs/gone.md|./zz-no-such.sh\n' > "${FIX}/.doc-truth-baseline"
+    run env PROJECT_ROOT="$FIX" "$DT" --json
+    [ "$status" -eq 1 ]
+    echo "$output" | grep -q '"stale":1'
+}
+
+@test "doc-truth: a baseline that exactly matches live drift stays green (control)" {
+    _fixture_tree
+    printf '# probe\n\n```bash\n./zz-no-such.sh\n```\n' > "${FIX}/docs/teaches-dead.md"
+    printf 'dead-command-ref|docs/teaches-dead.md|./zz-no-such.sh\n' > "${FIX}/.doc-truth-baseline"
+    run env PROJECT_ROOT="$FIX" "$DT"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -q 'no stale baseline rows'
+}
+
+@test "doc-truth: a duplicated ADR number is drift (adr-dup)" {
+    _fixture_tree
+    mkdir -p "${FIX}/docs/decisions"
+    printf '# ADR-0001: a\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-first.md"
+    printf '# ADR-0001: b\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-second.md"
+    run env PROJECT_ROOT="$FIX" "$DT"
+    [ "$status" -eq 1 ]
+    echo "$output" | grep 'adr-dup' | grep -q '0001'
+}
+
+@test "doc-truth: an ADR without a template-shape Status line is drift (adr-status)" {
+    # The 0034 shape: a `- **Status:**` list item is NOT the template's
+    # column-0 `**Status:**` and counts as zero — that variant was invisible
+    # to every Status-grep in the estate (ops#318: "no Status line at all").
+    _fixture_tree
+    mkdir -p "${FIX}/docs/decisions"
+    printf '# ADR-0002: x\n\n- **Status:** Proposed (list-item shape)\n' > "${FIX}/docs/decisions/0002-liststatus.md"
+    run env PROJECT_ROOT="$FIX" "$DT"
+    [ "$status" -eq 1 ]
+    echo "$output" | grep 'adr-status' | grep -q '0002-liststatus.md'
+    echo "$output" | grep -q '0-status-lines'
+}
+
+@test "doc-truth: two Status lines are as wrong as none (correction-by-accretion)" {
+    _fixture_tree
+    mkdir -p "${FIX}/docs/decisions"
+    printf '# ADR-0003: y\n\n**Status:** Proposed\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0003-double.md"
+    run env PROJECT_ROOT="$FIX" "$DT"
+    [ "$status" -eq 1 ]
+    echo "$output" | grep 'adr-status' | grep -q '2-status-lines'
+}
+
+@test "doc-truth: well-formed ADRs are not drift (over-fire guard)" {
+    _fixture_tree
+    mkdir -p "${FIX}/docs/decisions"
+    printf '# ADR-0001: a\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-only.md"
+    printf '# ADR-0002: b\n\n**Status:** Superseded by ADR-0001\n' > "${FIX}/docs/decisions/0002-only.md"
+    run env PROJECT_ROOT="$FIX" "$DT"
+    [ "$status" -eq 0 ]
+}
+
+@test "the real docs/decisions holds the adr-hygiene invariant (no dup numbers, one Status each)" {
+    # Deterministic on any checkout: this is the invariant the born-red run
+    # forced — 0032-review-mode → 0037, and 0034's status normalised.
+    run bash -c "cd '${PROJECT_ROOT}/docs/decisions' && ls [0-9][0-9][0-9][0-9]-*.md | cut -c1-4 | sort | uniq -d"
+    [ -z "$output" ]
+    local f n
+    for f in "${PROJECT_ROOT}"/docs/decisions/[0-9][0-9][0-9][0-9]-*.md; do
+        n="$(grep -c '^\*\*Status:\*\*' "$f" || true)"
+        [ "$n" -eq 1 ] || { echo "not exactly one Status line: $f ($n)"; return 1; }
+    done
+}
+
+@test "doc-truth --memory: a memory note PRESCRIBING the raw idiom is RED (the MEMORY.md:31 incident)" {
+    local M="${BATS_TEST_TMPDIR}/memory-bad"
+    mkdir -p "$M"
+    printf '# mem\n\n- Deploy: `sudo -u www-data php admin/cli/purge_caches.php`\n' > "${M}/note.md"
+    run env NWP_MEMORY_DIR="$M" "$DT" --memory
+    [ "$status" -eq 1 ]
+    echo "$output" | grep -q 'memory-prescribes'
+    echo "$output" | grep -q 'note.md'
+}
+
+@test "doc-truth --memory: a note that names the pl verb is clean (describe, don't prescribe)" {
+    local M="${BATS_TEST_TMPDIR}/memory-good"
+    mkdir -p "$M"
+    printf '# mem\n\n- Moodle CLI: `pl moodle cli ss --tier=live --execute -- admin/cli/purge_caches.php`\n' > "${M}/note.md"
+    run env NWP_MEMORY_DIR="$M" "$DT" --memory
+    [ "$status" -eq 0 ]
+}
+
+@test "doc-truth --memory: an unreadable corpus is exit 2 CANNOT VERIFY, never green" {
+    # The CI-runner case. A runner has no ~/.claude; grading that as 'clean'
+    # would be the swallowed-verdict shape. This is also WHY the mode is not
+    # wired into a blocking CI job: a job that is honestly, permanently exit-2
+    # trains people to merge past red (the boundary:classify lesson, ops#165).
+    run env NWP_MEMORY_DIR="${BATS_TEST_TMPDIR}/zz-absent" "$DT" --memory
+    [ "$status" -eq 2 ]
+    echo "$output" | grep -q 'CANNOT VERIFY'
+}
+
+@test "doc-truth --memory: an EMPTY corpus is exit 2, not a pass" {
+    local M="${BATS_TEST_TMPDIR}/memory-empty"
+    mkdir -p "$M"
+    run env NWP_MEMORY_DIR="$M" "$DT" --memory
+    [ "$status" -eq 2 ]
+    echo "$output" | grep -q 'CANNOT VERIFY'
+}

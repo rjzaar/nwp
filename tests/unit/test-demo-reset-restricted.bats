@@ -114,9 +114,17 @@ _rehome() {
         -e "s#^STATE_DIR=\"/var/lib/nwp-demo/#STATE_DIR=\"${BOX}/var/lib/nwp-demo/#" \
         -e "s#^LOCK_FILE=\"/var/lock/#LOCK_FILE=\"${BOX}/var/lock/#" \
         -e "s#^LOG_FILE=\"/var/log/nwp-demo/#LOG_FILE=\"${BOX}/var/log/nwp-demo/#" \
+        -e "s#^TOKEN_FILE=\"/etc/nwp-demo/#TOKEN_FILE=\"${BOX}/etc/nwp-demo/#" \
         -e "s#^PATH=/usr/local/sbin:#PATH=${BOX}/stubs:/usr/local/sbin:#" \
         "$SCRIPT" > "$REHOMED"
     chmod +x "$REHOMED"
+}
+
+# Stage the walled api token the ops#315 action words read. Root-owned 0600 on
+# the real box; here just a file at the rehomed TOKEN_FILE path.
+_stage_token() {
+    mkdir -p "${BOX}/etc/nwp-demo"
+    printf '%s\n' "glpat-sekret-test-value" > "${BOX}/etc/nwp-demo/feedback.token"
 }
 
 # Inject a failing render_fate_manifest immediately before the call site — the
@@ -166,12 +174,12 @@ _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upl
     done
 }
 
-@test "control: rehoming is narrow — only the 5 path/PATH lines differ from the shipped script" {
+@test "control: rehoming is narrow — only the 6 path/PATH lines differ from the shipped script" {
     _build_box
     _rehome
     local changed
     changed="$(diff "$SCRIPT" "$REHOMED" | grep -c '^< ' || true)"
-    [ "$changed" -eq 5 ]
+    [ "$changed" -eq 6 ]
     # and the guard logic itself is untouched
     for marker in '\[G1\]' '\[G2\]' '\[G3\]' '\[G4\]' '\[G5\]' '\[G6\]' 'golden_verify' 'require_demo_mode' 'idle_ok'; do
         grep -q "$marker" "$REHOMED"
@@ -333,4 +341,181 @@ DRUSH
     [ "$status" -eq 1 ]
     [[ "$output" == *"could not read the site's update state"* ]]
     grep -q 'reset-pending-updates|state=unreadable' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+}
+
+# ---------------------------------------------------------------------------
+# ops#315 — the box completes its own nightly: feedback-sync + harvest-post
+#
+# Two new action words on the same fixed allowlist. Both read the ONE walled
+# api token from the root-owned TOKEN_FILE; a missing token is exit 2
+# CANNOT VERIFY (a leg that could not run and says so), never a silent skip.
+# feedback-sync preserves the ops#140 minimisation interlock FAIL-CLOSED on
+# this side of the wire: nothing leaves the box unless the deployed module
+# provably carries buildIssueDescription.
+# ---------------------------------------------------------------------------
+
+# Replace the sandbox drush with one that answers the feedback probes as told.
+#   NWD_TEST_FEEDBACK_PROBE   what --dry-run prints (default: pending)
+#   NWD_TEST_MINIMISED        php:eval answer (default: MINIMISED-OK)
+_drush_feedback_answer() {
+    cat > "${BOX}/var/www/nwd/vendor/bin/drush" <<'DRUSH'
+#!/bin/bash
+printf 'drush %s\n' "$*" >> "$NWD_TEST_TRACE"
+case "$1" in
+    cget)    echo true ;;
+    sqlq)    case "$2" in
+                 *sessions*) echo "${NWD_TEST_NEWEST_SESSION:-0}" ;;
+                 *)          echo 12345678 ;;
+             esac ;;
+    sql:cli) cat >/dev/null ;;
+    php:eval) echo "${NWD_TEST_MINIMISED:-MINIMISED-OK}" ;;
+    nwc-feedback:sync-to-gitlab)
+        case "$*" in
+            *--dry-run*) echo "${NWD_TEST_FEEDBACK_PROBE:-[DRY] feedback #12 (bug): would sync}" ;;
+            *)           echo "[OK] feedback #12 -> nwp/nwc#41" ;;
+        esac ;;
+esac
+exit 0
+DRUSH
+    chmod +x "${BOX}/var/www/nwd/vendor/bin/drush"
+}
+
+@test "ops#315 control: the refusal message names the new action words" {
+    _build_box
+    _rehome
+    _run_action 'rm -rf /'
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"feedback-sync"* ]]
+    [[ "$output" == *"harvest-post"* ]]
+}
+
+@test "ops#315 feedback-sync with NO token is exit 2 CANNOT VERIFY, logged — never a silent skip" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _run_action feedback-sync
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CANNOT VERIFY"* ]]
+    grep -q 'feedback-sync-no-token' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    # and nothing was pushed (the push carries --token=)
+    run grep -- '--token=' "$TRACE"
+    [ "$status" -ne 0 ]
+    ! _wiped
+}
+
+@test "ops#315 feedback-sync with nothing pending exits 0 and never reads the token" {
+    # The probe runs BEFORE the token read (same order as lib/demo.sh), so a
+    # quiet night on an unprovisioned box is a clean no-op, not CANNOT VERIFY.
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    NWD_TEST_FEEDBACK_PROBE="No feedback items pending GitLab sync" \
+    SSH_ORIGINAL_COMMAND=feedback-sync SSH_CLIENT="10.0.0.1 1 22" \
+        NWD_TEST_TRACE="$TRACE" run bash "$REHOMED"
+    [ "$status" -eq 0 ]
+    grep -q 'feedback-sync-empty' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    ! _wiped
+}
+
+@test "ops#315 feedback-sync REFUSES fail-closed when the ops#140 minimisation is unverified" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    NWD_TEST_MINIMISED="MINIMISATION-MISSING" \
+    SSH_ORIGINAL_COMMAND=feedback-sync SSH_CLIENT="10.0.0.1 1 22" \
+        NWD_TEST_TRACE="$TRACE" run bash "$REHOMED"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"ops#140"* ]]
+    grep -q 'feedback-sync-refused|reason=minimisation-unverified' \
+        "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    # fail-closed means NOTHING left: the real push (with --token=) never ran
+    run grep -- '--token=' "$TRACE"
+    [ "$status" -ne 0 ]
+}
+
+@test "ops#315 feedback-sync pushes through the module's own command and never prints the token" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    _run_action feedback-sync
+    [ "$status" -eq 0 ]
+    # pushed via the module's own drush command, with the box-file token
+    grep -q 'nwc-feedback:sync-to-gitlab --limit=100 --token=glpat-sekret-test-value' "$TRACE"
+    # the value reaches drush's argv only — never stdout, never the log
+    [[ "$output" != *"glpat-sekret-test-value"* ]]
+    run grep 'glpat-sekret-test-value' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    [ "$status" -ne 0 ]
+    grep -q 'feedback-sync-ok|synced=1' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    ! _wiped
+}
+
+# Drop a spooled pre-wipe digest and make curl answer the issues API as told.
+#   $1 = the JSON curl prints for a POST (default: an iid)
+_spool_digest_and_curl() {
+    local json="${1:-}"
+    [[ -n "$json" ]] || json='{"iid": 77}'
+    mkdir -p "${BOX}/var/lib/nwp-demo/nwd/harvest"
+    printf 'watchdog digest body\n' \
+        > "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt"
+    cat > "${BOX}/stubs/curl" <<CURL
+#!/bin/bash
+printf 'curl %s\n' "\$*" >> "\$NWD_TEST_TRACE"
+case "\$*" in
+    *issues*) printf '%s' '${json}' ;;
+    *)        printf '200' ;;
+esac
+CURL
+    chmod +x "${BOX}/stubs/curl"
+}
+
+@test "ops#315 harvest-post with NO token is exit 2 CANNOT VERIFY and the digests are KEPT" {
+    _build_box
+    _rehome
+    _spool_digest_and_curl
+    _run_action harvest-post
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CANNOT VERIFY"* ]]
+    grep -q 'harvest-post-no-token' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    [ -f "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt" ]
+}
+
+@test "ops#315 harvest-post posts each digest to nwp/ops and moves it to posted/" {
+    _build_box
+    _rehome
+    _spool_digest_and_curl
+    _stage_token
+    _run_action harvest-post
+    [ "$status" -eq 0 ]
+    # names what it posted, machine-readably, so the verb can mark its copy
+    [[ "$output" == *"NWP-HARVEST-POSTED harvest-20260807-120000.txt iid=77"* ]]
+    [ ! -f "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt" ]
+    [ -f "${BOX}/var/lib/nwp-demo/nwd/harvest/posted/harvest-20260807-120000.txt" ]
+    grep -q 'harvest-posted|file=harvest-20260807-120000.txt issue=#77' \
+        "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    # the token travels in a 0600 curl config, NEVER in curl's argv
+    run grep 'curl .*glpat-sekret-test-value' "$TRACE"
+    [ "$status" -ne 0 ]
+    grep -q 'curl .*issues' "$TRACE"
+}
+
+@test "ops#315 harvest-post: a failed post leaves the digest in the spool for retry, exit 1" {
+    _build_box
+    _rehome
+    _spool_digest_and_curl '{"message":"401 Unauthorized"}'
+    _stage_token
+    _run_action harvest-post
+    [ "$status" -eq 1 ]
+    [ -f "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt" ]
+    grep -q 'harvest-post-failed' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+}
+
+@test "ops#315 harvest-post with an empty spool is a clean no-op (token present)" {
+    _build_box
+    _rehome
+    _stage_token
+    _run_action harvest-post
+    [ "$status" -eq 0 ]
+    ! _wiped
 }

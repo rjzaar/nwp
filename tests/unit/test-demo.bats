@@ -2665,6 +2665,38 @@ STUB
   rm -f "$SSH_ARGV"
 }
 
+# ops#315: a box stub that answers PER ACTION WORD, so one run can hold a
+# wrapper that resets fine while refusing (or failing) the newer words —
+# exactly what an un-redeployed box looks like. It also appends each action
+# word to $SSH_WORDS in invocation order, which is what the ordering test
+# reads.
+#   SSH_RC_FEEDBACK / SSH_OUT_FEEDBACK       exit + stdout for feedback-sync
+#   SSH_RC_HARVESTPOST / SSH_OUT_HARVESTPOST exit + stdout for harvest-post
+#   SSH_RC                                   everything else (the reset itself)
+_stub_ssh_box() {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/ssh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$@" >> "$SSH_ARGV"
+word="${@: -1}"
+printf '%s\n' "$word" >> "$SSH_WORDS"
+case "$word" in
+  feedback-sync)
+    [[ -n "${SSH_OUT_FEEDBACK:-}" ]] && printf '%s\n' "$SSH_OUT_FEEDBACK"
+    exit "${SSH_RC_FEEDBACK:-0}" ;;
+  harvest-post)
+    [[ -n "${SSH_OUT_HARVESTPOST:-}" ]] && printf '%s\n' "$SSH_OUT_HARVESTPOST"
+    exit "${SSH_RC_HARVESTPOST:-0}" ;;
+  harvest)
+    echo "NWP-HARVEST-EMPTY"; exit 0 ;;
+  *) exit "${SSH_RC:-0}" ;;
+esac
+STUB
+  chmod +x "${TEST_TMP}/bin/ssh"
+  export SSH_ARGV="${TEST_TMP}/ssh.argv" SSH_WORDS="${TEST_TMP}/ssh.words"
+  rm -f "$SSH_ARGV" "$SSH_WORDS"
+}
+
 @test "ops#156 schedule --via-key installs the pl-mediated nightly, not a bare ssh line" {
   _stub_crontab
   : > "$STUB_CRON"
@@ -2772,11 +2804,13 @@ STUB
   printf '%s\n' "$output" | grep -q 'return \$?'
 }
 
-@test "ops#161 with no live config on the scheduler the lost feedback is LOGGED, not inferred" {
-  # The met case verbatim: the restricted key runs fixed action words, so there
-  # is no drush transport here. Silent loss became logged loss.
-  _stub_ssh
+@test "ops#161 with no live config AND no box word the lost feedback is LOGGED, not inferred" {
+  # The met case before the box wrapper learns feedback-sync (ops#315): the
+  # box REFUSES the word, there is no drush transport here, and silent loss
+  # must still be logged loss.
+  _stub_ssh_box
   rm -rf "${PROJECT_ROOT}/sites/demo1"
+  SSH_RC_FEEDBACK=2 SSH_OUT_FEEDBACK="REFUSED: this key may only run the nwd demo reset." \
   PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
       --tier=live --via-key --host gitlab@198.51.100.7
   [ "$status" -eq 0 ]
@@ -2829,6 +2863,94 @@ STUB
   printf 'gitlab:\n  ops_note_token: glpat-XXXXXXXXXXXX\n' > "${TEST_TMP}/s.yml"
   SECRETS_FILE="${TEST_TMP}/s.yml" run demo_ops_token_present
   [ "$status" -eq 0 ]
+}
+
+################################################################################
+# ops#315 — the box completes its own nightly.
+#
+# The wrapper grows two action words (feedback-sync, harvest-post) and the ONE
+# walled token to drive them, so the verb's job becomes ordering: feedback-sync
+# BEFORE the wipe, harvest-post AFTER the drain — and honesty when the box is
+# still running a wrapper that has never heard of either word. A scheduler leg
+# that can turn a good reset into a reported failure is a leg that will
+# eventually stop the nightly, so every one of these degrades open.
+################################################################################
+
+@test "ops#315 the box syncs feedback BEFORE the wipe and posts its harvest AFTER the drain" {
+  _stub_ssh_box
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  # the three action words, in exactly this order
+  local fb reset hp
+  fb=$(grep -nx 'feedback-sync' "$SSH_WORDS" | head -1 | cut -d: -f1)
+  reset=$(grep -nx 'nightly' "$SSH_WORDS" | head -1 | cut -d: -f1)
+  hp=$(grep -nx 'harvest-post' "$SSH_WORDS" | head -1 | cut -d: -f1)
+  [ -n "$fb" ] && [ -n "$reset" ] && [ -n "$hp" ]
+  [ "$fb" -lt "$reset" ]
+  [ "$reset" -lt "$hp" ]
+  grep -q 'feedback-sync-box-ok' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+}
+
+@test "ops#315 an old wrapper that REFUSES the new words degrades honestly — the reset never fails" {
+  _stub_ssh_box
+  SSH_RC_FEEDBACK=2 SSH_OUT_FEEDBACK="REFUSED: this key may only run the nwd demo reset." \
+  SSH_RC_HARVESTPOST=2 SSH_OUT_HARVESTPOST="REFUSED: this key may only run the nwd demo reset." \
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  # the gap is NAMED, with the redeploy that closes it
+  [[ "$output" == *"install-box.sh"* ]]
+  grep -q 'feedback-sync-box-unsupported' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+  grep -q 'harvest-post-box-unsupported' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+  # and the reset itself still ran
+  grep -qx 'nightly' "$SSH_WORDS"
+}
+
+@test "ops#315 a box with NO token reports the provisioning gap, not a failure" {
+  _stub_ssh_box
+  SSH_RC_FEEDBACK=2 SSH_OUT_FEEDBACK="CANNOT VERIFY  no token at /etc/nwp-demo/feedback.token" \
+  SSH_RC_HARVESTPOST=2 SSH_OUT_HARVESTPOST="CANNOT VERIFY  no token at /etc/nwp-demo/feedback.token" \
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feedback.token"* ]]
+  grep -q 'feedback-sync-box-no-token' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+  grep -q 'harvest-post-box-no-token' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+  grep -qx 'nightly' "$SSH_WORDS"
+}
+
+@test "ops#315 box-posted digests are marked posted in the LOCAL spool too (no double post)" {
+  _stub_ssh_box
+  local hdir="${PROJECT_ROOT}/sites/demo1/demo-harvest"
+  mkdir -p "$hdir"
+  printf 'digest body\n' > "${hdir}/harvest-20260807-120000.md"
+  SSH_OUT_HARVESTPOST="NWP-HARVEST-POSTED harvest-20260807-120000.txt iid=91" \
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 0 ]
+  # the box posted it, so this host must never post its copy again
+  [ -f "${hdir}/posted/harvest-20260807-120000.md" ]
+  [ ! -f "${hdir}/harvest-20260807-120000.md" ]
+  grep -q 'harvest-post-box-ok' "${PROJECT_ROOT}/sites/demo1/demo-reset.log"
+}
+
+@test "ops#315 a FAILED reset still means no harvest-post (nothing new to post, box untouched)" {
+  _stub_ssh_box
+  SSH_RC=1 PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7
+  [ "$status" -eq 1 ]
+  run grep -qx 'harvest-post' "$SSH_WORDS"
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#315 --dry-run touches neither new leg (a rehearsal pushes and posts nothing)" {
+  _stub_ssh_box
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" nightly demo1 \
+      --tier=live --via-key --host gitlab@198.51.100.7 --dry-run
+  [ "$status" -eq 0 ]
+  run grep -Ex 'feedback-sync|harvest-post' "$SSH_WORDS"
+  [ "$status" -ne 0 ]
 }
 
 @test "ops#156 schedule --remove clears the pl-mediated block too" {

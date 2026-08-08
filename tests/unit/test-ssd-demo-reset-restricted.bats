@@ -168,9 +168,16 @@ _rehome() {
         -e "s#^LOCK_FILE=\"/var/lock/#LOCK_FILE=\"${BOX}/var/lock/#" \
         -e "s#^PAIR_LOCK_FILE=\"/var/lock/#PAIR_LOCK_FILE=\"${BOX}/var/lock/#" \
         -e "s#^LOG_FILE=\"/var/log/nwp-demo/#LOG_FILE=\"${BOX}/var/log/nwp-demo/#" \
+        -e "s#^TOKEN_FILE=\"/etc/nwp-demo/#TOKEN_FILE=\"${BOX}/etc/nwp-demo/#" \
         -e "s#^PATH=/usr/local/sbin:#PATH=${BOX}/stubs:/usr/local/sbin:#" \
         "$SCRIPT" > "$REHOMED"
     chmod +x "$REHOMED"
+}
+
+# Stage the walled api token the ops#315 harvest-post word reads.
+_stage_token() {
+    mkdir -p "${BOX}/etc/nwp-demo"
+    printf '%s\n' "glpat-sekret-test-value" > "${BOX}/etc/nwp-demo/feedback.token"
 }
 
 # Point config.php at a DIFFERENT dataroot — the case [G2b] exists for.
@@ -222,12 +229,12 @@ _golden_here()  { [[ -f "${BOX}/var/www/ssd_moodledata/filedir/golden-marker.txt
     done
 }
 
-@test "control: rehoming is narrow — only the 8 path/PATH lines differ from the shipped script" {
+@test "control: rehoming is narrow — only the 9 path/PATH lines differ from the shipped script" {
     _build_box
     _rehome
     local changed
     changed="$(diff "$SCRIPT" "$REHOMED" | grep -c '^< ' || true)"
-    [ "$changed" -eq 8 ]
+    [ "$changed" -eq 9 ]
     # and the guard logic itself is untouched
     for marker in '\[G1\]' '\[G2\]' '\[G3\]' '\[G4\]' '\[G5\]' '\[G6\]' '\[G9\]' \
                   'golden_verify' 'require_demo_mode' 'idle_ok' 'dataroot_is_safe'; do
@@ -294,6 +301,66 @@ _golden_here()  { [[ -f "${BOX}/var/www/ssd_moodledata/filedir/golden-marker.txt
     ! _canary_gone
     _run_action harvest
     [ "$status" -eq 0 ]
+    ! _dropped
+    ! _canary_gone
+}
+
+# ---------------------------------------------------------------------------
+# ops#315 — harvest-post on the Moodle half (and NO feedback-sync, by design)
+# ---------------------------------------------------------------------------
+
+@test "ops#315 ssd REFUSES feedback-sync — the Moodle half has no pending set, by design" {
+    # local_feedback forwards each report at submit time; a feedback-sync word
+    # here would be a capability with nothing behind it. It stays off the
+    # allowlist ON PURPOSE, so this must be the [G1] refusal, not a no-op.
+    _build_box
+    _rehome
+    _run_action feedback-sync
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"REFUSED"* ]]
+    ! _dropped
+    ! _canary_gone
+}
+
+@test "ops#315 ssd harvest-post with NO token is exit 2 CANNOT VERIFY and the digests are KEPT" {
+    _build_box
+    _rehome
+    mkdir -p "${BOX}/var/lib/nwp-demo/ssd/harvest"
+    printf 'task_log digest\n' \
+        > "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt"
+    _run_action harvest-post
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CANNOT VERIFY"* ]]
+    grep -q 'harvest-post-no-token' "${BOX}/var/log/nwp-demo/ssd-demo-reset.log"
+    [ -f "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt" ]
+    ! _dropped
+}
+
+@test "ops#315 ssd harvest-post posts to nwp/ops, moves the digest to posted/, token never in argv" {
+    _build_box
+    _rehome
+    _stage_token
+    mkdir -p "${BOX}/var/lib/nwp-demo/ssd/harvest"
+    printf 'task_log digest\n' \
+        > "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt"
+    cat > "${BOX}/stubs/curl" <<'CURL'
+#!/bin/bash
+printf 'curl %s\n' "$*" >> "$SSD_TEST_TRACE"
+case "$*" in
+    *issues*) printf '%s' '{"iid": 78}' ;;
+    *)        printf '%s' "${SSD_TEST_HTTP:-200}" ;;
+esac
+CURL
+    chmod +x "${BOX}/stubs/curl"
+    _run_action harvest-post
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"NWP-HARVEST-POSTED harvest-20260807-120000.txt iid=78"* ]]
+    [ -f "${BOX}/var/lib/nwp-demo/ssd/harvest/posted/harvest-20260807-120000.txt" ]
+    [ ! -f "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt" ]
+    grep -q 'harvest-posted|file=harvest-20260807-120000.txt issue=#78' \
+        "${BOX}/var/log/nwp-demo/ssd-demo-reset.log"
+    run grep 'curl .*glpat-sekret-test-value' "$TRACE"
+    [ "$status" -ne 0 ]
     ! _dropped
     ! _canary_gone
 }

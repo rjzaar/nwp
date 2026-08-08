@@ -26,6 +26,16 @@
 # pre-existing entries (met-stick-backup-pull, nwp-dr-pull@met, and the OTHER
 # half's demo key) must survive byte-identical or the script restores the backup
 # and aborts.
+#
+# TOKEN (ops#315) — WHAT THIS SCRIPT DELIBERATELY DOES NOT DO. The wrapper's
+# feedback-sync / harvest-post action words read ONE walled api token from
+# /etc/nwp-demo/feedback.token (root:root 0600) on the box. This script only
+# REPORTS whether that file is present: minting the token and staging its
+# value is an OPERATOR / `pl secrets` step (registry entry
+# demo_box_feedback_token — `pl secrets steps demo_box_feedback_token`),
+# because an installer that writes secrets is an installer whose transcript
+# holds secrets. Until the file exists those two words answer exit 2
+# CANNOT VERIFY, and the nightly reports the gap without failing the reset.
 ################################################################################
 set -euo pipefail
 
@@ -130,6 +140,20 @@ box "sudo touch '${STATE_DIR}/last-reset' && sudo chown ${BOX_USER}:${BOX_USER} 
 # logrotate: the box is small, keep the reset log bounded.
 box "printf '%s\n' '/var/log/nwp-demo/*.log {' '    weekly' '    rotate 8' '    compress' '    missingok' '    notifempty' '    copytruncate' '}' | sudo tee /etc/logrotate.d/nwp-demo >/dev/null && sudo chmod 0644 /etc/logrotate.d/nwp-demo"
 
+# ops#315 — REPORT (never provision) the walled-token state. Read-only on
+# purpose: see the TOKEN paragraph in the header. `stat` over sudo so the
+# 0600 root file is visible without reading a byte of its value.
+TOKEN_FILE_BOX="/etc/nwp-demo/feedback.token"
+if box "sudo test -s '${TOKEN_FILE_BOX}'"; then
+    tok_mode="$(box "sudo stat -c '%a %U:%G' '${TOKEN_FILE_BOX}'" 2>/dev/null || echo '?')"
+    echo "   token: ${TOKEN_FILE_BOX} PRESENT (${tok_mode}; want 600 root:root)"
+    [[ "$tok_mode" == "600 root:root" ]] \
+        || echo "   WARN  token file is not 600 root:root — fix on the box: sudo chown root:root '${TOKEN_FILE_BOX}' && sudo chmod 600 '${TOKEN_FILE_BOX}'"
+else
+    echo "   token: ${TOKEN_FILE_BOX} ABSENT — feedback-sync/harvest-post will answer CANNOT VERIFY (exit 2)."
+    echo "          Provision it (OPERATOR step, not this script): pl secrets steps demo_box_feedback_token"
+fi
+
 ################################################################################
 if [[ "$stage_golden" == "true" ]]; then
     say "3/5  Staging golden image → ${STATE_DIR}/golden"
@@ -197,6 +221,7 @@ say "Done. Verify with:"
 echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} status"
 echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} dry-run"
 echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} 'id'    # must be REFUSED"
+echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} harvest-post   # exit 2 CANNOT VERIFY until the token is staged"
 echo ""
 echo "Then schedule it on met:"
 echo "  pl demo schedule ${DEMO_SITE} --tier=live --via-key"

@@ -136,15 +136,19 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   key, same action word, same box-resident
                                   golden as the bare ssh line it replaces, and
                                   still no admin key and no root on the box.
-                                  What it adds is what only a checkout can do:
-                                  the ops#161 pre-wipe tester-feedback sync
-                                  (attempted where a drush transport exists;
-                                  LOGGED as feedback-sync-no-transport where it
-                                  does not), and afterwards the read-only drain
-                                  of the box's pre-wipe error digests, posted to
-                                  nwp/ops if this host has a token and kept in
-                                  the spool if it does not. Both fail-OPEN:
-                                  neither can change the reset's exit code.
+                                  What it adds is the OTHER two legs (ops#315):
+                                  BEFORE the wipe it asks the box's own
+                                  feedback-sync action word to push pending
+                                  tester feedback (falling back to a local
+                                  drush transport where the box wrapper is
+                                  older or its token is not yet staged, and
+                                  LOGGING the gap when neither exists); after
+                                  the reset it drains the box's pre-wipe error
+                                  digests (read-only, evidence copy kept here)
+                                  and asks the box's harvest-post word to file
+                                  them as nwp/ops issues, box-side dedup via
+                                  posted/. Every leg fail-OPEN: none can
+                                  change the reset's exit code.
                                   --dry-run sends the box's 'dry-run' word and
                                   syncs nothing. Never enters cmd_reset, so the
                                   paired-half refusal does not apply — the pair
@@ -2973,7 +2977,7 @@ demo_nightly_via_key() {
     print_info "Transport: restricted forced command — no admin key, no shell, no root on the box."
 
     # --- PRE: tester feedback, before the box destroys the database ----------
-    demo_nightly_feedback_preflight "$site" "$dry_run"
+    demo_nightly_feedback_preflight "$site" "$dry_run" "${sshargs[@]}"
 
     # --- The reset itself, on the box ----------------------------------------
     local rc=0
@@ -2996,15 +3000,64 @@ demo_nightly_via_key() {
 
     # --- POST: drain the box's pre-wipe error digests ------------------------
     if [[ "$rc" -eq 0 && "$dry_run" != "true" ]]; then
-        demo_nightly_harvest_drain "$site" "$host_override"
+        demo_nightly_harvest_drain "$site" "$host_override" "${sshargs[@]}"
     fi
     return "$rc"
 }
 
+# demo_nightly_box_leg <site> <leg> <ssh…> — run one ops#315 action word on the
+# box over the restricted key and CLASSIFY the answer, because "it did not run"
+# has three different truths with three different remedies:
+#
+#   ok           the box did the leg itself — the permanent Option-A path.
+#   no-token     new wrapper, no /etc/nwp-demo/feedback.token yet. The box
+#                said CANNOT VERIFY (exit 2); the remedy is the OPERATOR
+#                provisioning step (registry entry demo_box_feedback_token).
+#   unsupported  the wrapper predates the word ([G1] refusal, exit 2). The
+#                remedy is redeploying it: bash servers/live/demo/install-box.sh
+#   failed       the wrapper knows the word and could not complete it.
+#
+# Fail-OPEN by construction: this function reports and logs, the CALLER decides
+# what a non-ok means — and for the nightly it never means failing the reset.
+# Results land in GLOBALS (not stdout — a $() capture would strand them in a
+# subshell): DEMO_BOX_LEG_VERDICT, and the box's own output in
+# DEMO_BOX_LEG_OUT for callers that need it (harvest-post's POSTED lines).
+DEMO_BOX_LEG_VERDICT=""
+DEMO_BOX_LEG_OUT=""
+demo_nightly_box_leg() {
+    local site="$1" leg="$2"; shift 2
+    local out rc=0
+    set +e
+    out="$("$@" -n "$leg" 2>&1)"
+    rc=$?
+    set -e
+    DEMO_BOX_LEG_OUT="$out"
+    if [[ "$rc" -eq 0 ]]; then
+        demo_log "$site" "${leg}-box-ok" "tier=live"
+        DEMO_BOX_LEG_VERDICT="ok"
+    elif [[ "$rc" -eq 2 && "$out" == *"CANNOT VERIFY"* ]]; then
+        demo_log "$site" "${leg}-box-no-token" "tier=live"
+        DEMO_BOX_LEG_VERDICT="no-token"
+    elif [[ "$rc" -eq 2 ]]; then
+        demo_log "$site" "${leg}-box-unsupported" "tier=live rc=2"
+        DEMO_BOX_LEG_VERDICT="unsupported"
+    else
+        demo_log "$site" "${leg}-box-failed" "tier=live rc=${rc}"
+        DEMO_BOX_LEG_VERDICT="failed"
+    fi
+    return 0
+}
+
 # Attempt the ops#161 pre-wipe sync, and be honest when it cannot be attempted.
 # Fail-OPEN in every branch: this function always returns 0.
+#
+# ops#315: the FIRST attempt is now the box's own `feedback-sync` action word —
+# the pending set, the ops#140 minimisation gate and (once provisioned) the
+# walled token all live on the box, so the scheduler needs no site config and
+# no secret. The local-transport path below survives as the fallback for a box
+# whose wrapper predates the word or whose token is not yet staged.
 demo_nightly_feedback_preflight() {
-    local site="$1" dry_run="${2:-false}"
+    local site="$1" dry_run="${2:-false}"; shift 2
     if [[ "$dry_run" == "true" ]]; then
         print_info "[dry-run] pre-wipe feedback sync not attempted (a rehearsal must not push tester reports)."
         return 0
@@ -3013,12 +3066,33 @@ demo_nightly_feedback_preflight() {
     if [[ "$(demo_kind_of "$site")" != "drupal" ]]; then
         return 0
     fi
-    # A real drush transport means live site config on THIS host. Without it
-    # there is nothing to run the module's own sync command through, and the
-    # restricted key cannot provide one by design ([G1]: fixed action words).
+
+    # --- 1st choice: the box syncs its own feedback (ops#315) ----------------
+    if (( $# > 0 )); then
+        print_info "Asking the box to sync pending tester feedback before the wipe…"
+        demo_nightly_box_leg "$site" feedback-sync "$@"
+        case "$DEMO_BOX_LEG_VERDICT" in
+            ok)
+                [[ -n "$DEMO_BOX_LEG_OUT" ]] && printf '%s\n' "$DEMO_BOX_LEG_OUT"
+                print_status "OK" "Box-side feedback-sync completed."
+                return 0 ;;
+            no-token)
+                print_status "WARN" "The box CANNOT VERIFY its feedback-sync leg — no token at /etc/nwp-demo/feedback.token yet."
+                print_hint "Operator step: mint + stage the walled token (registry entry demo_box_feedback_token, pl secrets steps demo_box_feedback_token)." ;;
+            unsupported)
+                print_status "WARN" "The box wrapper predates the feedback-sync action word — redeploy it: bash servers/live/demo/install-box.sh ${site}" ;;
+            failed)
+                print_status "WARN" "Box-side feedback-sync FAILED — see the box wrapper log (${site}-demo-reset.log on the box)." ;;
+        esac
+    fi
+
+    # --- fallback: a real drush transport on THIS host -----------------------
+    # Without live site config here there is nothing to run the module's own
+    # sync command through, and the restricted key cannot provide one by
+    # design ([G1]: fixed action words).
     if ! demo_live_ctx "$site" >/dev/null 2>&1; then
         demo_log "$site" feedback-sync-no-transport "tier=live reason=no-live-config-on-scheduler"
-        print_status "WARN" "Pending tester feedback CANNOT be synced from this host — the restricted key runs fixed action words only, and there is no live site config here."
+        print_status "WARN" "Pending tester feedback CANNOT be synced from this host either — no live site config here."
         print_hint "From a host with admin access + a token: pl demo feedback-sync ${site} --tier=live"
         return 0
     fi
@@ -3028,11 +3102,50 @@ demo_nightly_feedback_preflight() {
 }
 
 # Drain + post the box's pre-wipe digests. Fail-OPEN: always returns 0.
+#
+# ops#315 ORDER: drain FIRST (this host keeps its own evidence copy of every
+# digest no matter what happens next), THEN ask the box to post its spool with
+# its own `harvest-post` word. When the box confirms a post, the local copy is
+# moved to posted/ so no host ever files the same digest twice. Only when the
+# box cannot post (old wrapper, no token) does the local-token path still try.
 demo_nightly_harvest_drain() {
-    local site="$1" host_override="${2:-}"
+    local site="$1" host_override="${2:-}"; shift 2
     set +e
     cmd_harvest_pull "$site" live false "$host_override"
     set -e
+
+    # --- 1st choice: the box posts its own spool (ops#315) -------------------
+    if (( $# > 0 )); then
+        demo_nightly_box_leg "$site" harvest-post "$@"
+        case "$DEMO_BOX_LEG_VERDICT" in
+            ok)
+                # Mark every box-posted digest in OUR spool too. The box names
+                # them: NWP-HARVEST-POSTED <basename>.txt iid=<iid>
+                local hdir base line n=0
+                hdir="$(demo_harvest_dir "$site")"
+                mkdir -p "$hdir/posted" 2>/dev/null || true
+                while IFS= read -r line; do
+                    base="${line#NWP-HARVEST-POSTED }"; base="${base%% *}"; base="${base%.txt}"
+                    [[ -n "$base" ]] || continue
+                    if [[ -f "$hdir/${base}.md" ]]; then
+                        mv "$hdir/${base}.md" "$hdir/posted/${base}.md"
+                        n=$(( n + 1 ))
+                    fi
+                done < <(printf '%s\n' "$DEMO_BOX_LEG_OUT" | grep '^NWP-HARVEST-POSTED ' || true)
+                [[ -n "$DEMO_BOX_LEG_OUT" ]] && printf '%s\n' "$DEMO_BOX_LEG_OUT"
+                print_status "OK" "Box posted its own harvest spool (local copies marked posted: ${n})."
+                return 0 ;;
+            no-token)
+                print_status "WARN" "The box CANNOT VERIFY its harvest-post leg — no token at /etc/nwp-demo/feedback.token yet."
+                print_hint "Operator step: mint + stage the walled token (registry entry demo_box_feedback_token)." ;;
+            unsupported)
+                print_status "WARN" "The box wrapper predates the harvest-post action word — redeploy it: bash servers/live/demo/install-box.sh ${site}" ;;
+            failed)
+                print_status "WARN" "Box-side harvest-post FAILED — digests stay spooled on the box for retry." ;;
+        esac
+    fi
+
+    # --- fallback: post the pulled copies with a token on THIS host ----------
     # cmd_harvest_post sources lib/gitlab-issues.sh, whose _token EXITS the
     # process when there is none. Checking first is the difference between "no
     # token, digests kept for later" and a nightly that dies after the reset.

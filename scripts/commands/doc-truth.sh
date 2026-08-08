@@ -67,6 +67,10 @@ REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # the gate is testable on a fixture tree instead of only on the live repo.
 PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 source "$REPO_ROOT/lib/ui.sh"
+# One source of truth for the raw-remote idiom class (ops#319 F4): this lint
+# and the act-time PreToolUse hook (scripts/hooks/pretooluse-raw-remote.sh)
+# read the SAME patterns. Do not fork them back inline.
+source "$REPO_ROOT/lib/raw-remote-patterns.sh"
 
 BASELINE="$PROJECT_ROOT/.doc-truth-baseline"
 ADR_RESERVED=" 0023 "   # intentionally file-less (reserved slot)
@@ -277,7 +281,7 @@ raw_remote_cli_hits(){
             *"pl drush"*|*"pl moodle cli"*|*"raw-remote-cli"*) continue ;;
         esac
         echo "raw-remote-cli|$rel|L$lineno"
-    done < <(grep -nE 'ssh[^|]*(drush|admin/cli/)|sudo[[:space:]]+-u[[:space:]]+www-data[^|]*(drush|admin/cli/)' "$file" 2>/dev/null \
+    done < <(grep -nE "$RAW_REMOTE_CLI_REGEX" "$file" 2>/dev/null \
              | grep -vE '^[0-9]+:[[:space:]]*(#|//)' || true)
 }
 

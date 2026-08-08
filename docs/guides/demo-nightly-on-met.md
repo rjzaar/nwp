@@ -263,6 +263,10 @@ ssh nwd-demo-reset status                # box-side log, from either machine
        no new secret — but gives up the "scheduler needs no repo checkout"
        property this whole design was built for.
    (b) is the pl-first answer; neither has been done.
+   **Update (ops#315, ruling pending):** the wrappers now carry `feedback-sync`
+   and `harvest-post` action words that implement (a) — see §14. Until the
+   operator approves the ruling and stages the token, they answer exit 2
+   CANNOT VERIFY and everything in item 7 still describes the running state.
 
 ---
 
@@ -653,3 +657,45 @@ Two things follow, and both matter:
   flip the crontab. Minting the deploy key needs Maintainer/admin — `pl secrets
   capabilities` shows `deploy-keys: no` for every token available to automation,
   including `gitlab_operator_pat`. It is an operator action.
+
+---
+
+## 14. ops#315 — the box completes its own nightly (Option A, ruling pending)
+
+The ops#315 investigation corrected two premises §9.7 and §13.3 were reasoned
+from: **feedback-sync is nwd-only by design** (Moodle's `local_feedback`
+forwards each report at submit time — ssd has no pending set), and **the live
+box already holds GitLab-posting tokens** (`local_feedback`'s `gitlab_token`
+in Moodle config posts issues from this box at submit time today). A walled
+token on the box is therefore the estate's established pattern, not the
+widening §13 declined.
+
+What the wrappers now carry (this MR):
+
+| word | wrapper | does | without a token |
+|------|---------|------|-----------------|
+| `feedback-sync` | nwd only | the same minimised drush push `pl demo feedback-sync` drives remotely — probe → **ops#140 interlock (fail-closed)** → token → push | exit 2 CANNOT VERIFY |
+| `harvest-post` | both | posts the box's own spool to nwp/ops, moves confirmed digests to `posted/`, names them on stdout (`NWP-HARVEST-POSTED …`) | exit 2 CANNOT VERIFY |
+
+`pl demo nightly --via-key` asks the box first (feedback-sync **before** the
+reset, harvest-post **after** the read-only drain), classifies the answer
+(`ok` / `no-token` / `unsupported` / `failed`), and degrades to the §13
+behaviour — every leg fail-open, none can change the reset's exit code.
+
+**Nothing is armed by the merge alone.** The remaining steps are the
+operator's, in order:
+
+1. **Rule on ops#315** (the MR merge is the design approval; the token is the
+   arming step).
+2. **Mint the walled token** — Guest + `api`, member of ONLY the feedback and
+   ops projects: `pl secrets steps demo_box_feedback_token` (registry entry
+   is already in place, `status: not-provisioned`, negative repo-read probe
+   declared).
+3. **Stage it on the box** (root:root 0600 — install-box.sh only REPORTS it):
+   `printf '%s' '<value>' | ssh -i ~/.ssh/gitlab_linode gitlab@<box> "sudo install -m 600 -o root -g root /dev/stdin /etc/nwp-demo/feedback.token"`
+4. **Redeploy both wrappers:**
+   `bash servers/live/demo/install-box.sh nwd && bash servers/live/demo/install-box.sh ssd --no-key`
+   (the key edit is idempotent either way; `--no-key` just skips it).
+5. **Prove it:** `ssh -i ~/.ssh/nwd_demo_reset gitlab@<box> harvest-post`
+   (posts or says `posted=0`), and the next `pl demo nightly … --via-key` run
+   logs `feedback-sync-box-ok` / `harvest-post-box-ok` instead of the WARNs.

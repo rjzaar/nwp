@@ -83,8 +83,29 @@
 #     sees seven identical failures rather than one. It is NOT self-healing —
 #     `status` (which never aborts) is the way to look.
 #
+# THE TWO NON-RESET LEGS (ops#315 — the box completes its own nightly)
+#   feedback-sync   push pending tester Feedback entities to GitLab through the
+#                   module's OWN drush command, before the reset destroys them.
+#                   The ops#140 minimisation interlock is preserved FAIL-CLOSED
+#                   on this side of the wire: unless the deployed nwc_feedback
+#                   provably carries buildIssueDescription, nothing leaves.
+#   harvest-post    post the spooled pre-wipe error digests to nwp/ops issues,
+#                   from the box's own spool, then move them to posted/ so the
+#                   `harvest` drain and this word never double-report.
+#   Both authenticate with ONE walled api token read from TOKEN_FILE — a
+#   root-owned 0600 file this wrapper NEVER creates, prints or logs
+#   (provisioning is an operator step; see the registry entry
+#   demo_box_feedback_token and install-box.sh's report). A missing token is
+#   exit 2 CANNOT VERIFY — a leg that could not run and says so — never a
+#   silent skip. This is the pattern the box already lives: local_feedback's
+#   own gitlab_token posts issues at submit time today, so a walled
+#   issue-write token on this host is established practice, not a widening.
+#   The KEY still gains nothing but named words: [G1] is unchanged, and the
+#   scheduler that holds the key remains a dumb clock.
+#
 # Exit codes: 0 ok/no-op · 1 failure (incl. [G9] no-manifest abort) ·
-#             2 refused (bad action word) · 3 active
+#             2 refused (bad action word) or CANNOT VERIFY (feedback-sync/
+#               harvest-post with no readable token) · 3 active
 ################################################################################
 
 set -uo pipefail
@@ -108,6 +129,22 @@ STAMP_FILE="${STATE_DIR}/last-reset"
 HARVEST_DIR="${STATE_DIR}/harvest"
 LOCK_FILE="/var/lock/nwd-demo-reset.lock"
 LOG_FILE="/var/log/nwp-demo/nwd-demo-reset.log"
+
+# ---- ops#315: the box's own GitLab legs ------------------------------------
+# TOKEN_FILE holds the ONE walled api token (issue-write to the feedback + ops
+# projects only — see private/secrets-registry.yml: demo_box_feedback_token).
+# Root-owned 0600, written by the OPERATOR via pl secrets, never by this file
+# and never by install-box.sh.
+TOKEN_FILE="/etc/nwp-demo/feedback.token"
+GITLAB_API="https://git.nwpcode.org/api/v4"
+OPS_PROJECT_ID=21                     # nwp/ops — where harvest digests are filed
+HARVEST_LABELS="demo-tester,auto-harvest"   # matches scripts/commands/demo.sh
+# The module's own sync command + sentinels, byte-identical to lib/demo.sh
+# (DEMO_FEEDBACK_*): one renderer, one probe, two hosts.
+FEEDBACK_SYNC_CMD="nwc-feedback:sync-to-gitlab"
+FEEDBACK_LIMIT=100
+FEEDBACK_NONE_MARKER="No feedback items pending GitLab sync"
+FEEDBACK_MIN_PROBE='echo method_exists(\Drupal::service("nwc_feedback.gitlab_sync"), "buildIssueDescription") ? "MINIMISED-OK" : "MINIMISATION-MISSING";'
 
 DRUSH_SUDO=(sudo -u www-data)
 DRUSH_BIN="./vendor/bin/drush"
@@ -165,12 +202,14 @@ resolve_action() {
     # Only these exact strings are honoured. Note the case arms are literals —
     # $RAW_CMD is compared, never expanded into a command position.
     case "$RAW_CMD" in
-        ""|nightly) echo "nightly" ;;
-        reset)      echo "reset" ;;
-        dry-run)    echo "dry-run" ;;
-        status)     echo "status" ;;
-        harvest)    echo "harvest" ;;
-        *)          echo "REFUSED" ;;
+        ""|nightly)    echo "nightly" ;;
+        reset)         echo "reset" ;;
+        dry-run)       echo "dry-run" ;;
+        status)        echo "status" ;;
+        harvest)       echo "harvest" ;;
+        feedback-sync) echo "feedback-sync" ;;
+        harvest-post)  echo "harvest-post" ;;
+        *)             echo "REFUSED" ;;
     esac
 }
 
@@ -181,7 +220,7 @@ if [[ "$ACTION" == "REFUSED" ]]; then
     cat >&2 <<EOF
 REFUSED: this key may only run the nwd demo reset.
 The command you sent was logged and NOT executed.
-Allowed action words: (empty)|nightly | reset | dry-run | status | harvest
+Allowed action words: (empty)|nightly | reset | dry-run | status | harvest | feedback-sync | harvest-post
 EOF
     exit 2
 fi
@@ -239,6 +278,163 @@ if [[ "$ACTION" == "harvest" ]]; then
     done
     [[ "$n" -eq 0 ]] && echo "NWP-HARVEST-EMPTY"
     log "harvest-drained" "files=${n} client=${CLIENT%% *}"
+    exit 0
+fi
+
+################################################################################
+# ops#315 shared helper: the walled api token, or empty. Never printed, never
+# logged, never in any argv this wrapper builds for curl.
+################################################################################
+
+box_token() {
+    "${ROOT_SUDO[@]}" cat "$TOKEN_FILE" 2>/dev/null | tr -d '[:space:]'
+}
+
+################################################################################
+# feedback-sync — push pending tester Feedback to GitLab BEFORE the wipe
+# (ops#315; the box-side twin of lib/demo.sh:demo_feedback_sync, same four
+# stages in the same order so the two implementations cannot disagree about
+# what may leave: probe → ops#140 interlock → token → push).
+#
+# nwd-ONLY BY DESIGN: Moodle's local_feedback forwards each report at submit
+# time, so the ssd wrapper deliberately does not know this word.
+#
+# Deliberately LOCKLESS, like `harvest`: the verb sequences it before the
+# reset, and a stray overlap costs at worst a failed drush call (exit 1,
+# retryable) — never a wrong push and never a blocked reset.
+################################################################################
+
+if [[ "$ACTION" == "feedback-sync" ]]; then
+    # 1. Is anything pending? --dry-run needs NO token and makes no network
+    #    call, so a quiet night on an unprovisioned box is a clean no-op.
+    FB_OUT="$( cd "$SITE_ROOT" \
+               && "${DRUSH_SUDO[@]}" "$DRUSH_BIN" "$FEEDBACK_SYNC_CMD" \
+                    --dry-run --limit=1 2>/dev/null )" || {
+        log "feedback-sync-failed" "stage=probe"
+        echo "FAIL  could not probe the pending feedback set." >&2
+        exit 1
+    }
+    if [[ "$FB_OUT" == *"$FEEDBACK_NONE_MARKER"* ]]; then
+        log "feedback-sync-empty" "nothing pending"
+        echo "OK  no tester feedback pending — nothing to sync."
+        exit 0
+    fi
+
+    # 2. ops#140 INTERLOCK — minimised, or nothing leaves this box. The gate
+    #    checks the DEPLOYED module code, which lives here anyway; an
+    #    unreadable answer is a refusal, not a pass.
+    FB_MIN="$( cd "$SITE_ROOT" \
+               && "${DRUSH_SUDO[@]}" "$DRUSH_BIN" php:eval "$FEEDBACK_MIN_PROBE" 2>/dev/null )" || FB_MIN=""
+    if [[ "$FB_MIN" != *MINIMISED-OK* ]]; then
+        log "feedback-sync-refused" "reason=minimisation-unverified"
+        echo "REFUSED  the deployed nwc_feedback does not provably carry the ops#140 minimisation — nothing was sent." >&2
+        echo "         Deploy nwc main (MR nwp/nwc!50 or later), then re-run." >&2
+        exit 1
+    fi
+
+    # 3. Token — read only once there is something minimised to send. Missing
+    #    is CANNOT VERIFY: feedback IS pending and this leg could not run.
+    FB_TOKEN="$(box_token)"
+    if [[ -z "$FB_TOKEN" ]]; then
+        log "feedback-sync-no-token" "file=${TOKEN_FILE}"
+        cat >&2 <<EOF
+CANNOT VERIFY  no api token at ${TOKEN_FILE} — tester feedback IS pending and was NOT pushed.
+Provisioning is an OPERATOR step (registry entry demo_box_feedback_token); this wrapper never mints or holds one.
+EOF
+        exit 2
+    fi
+
+    # 4. Push through the module's own command. Same stated exposure as
+    #    lib/demo.sh: --token= is argv-visible to ps for the life of the call;
+    #    the identity is a walled issue-write bot, it is never printed or
+    #    logged here, and anything drush echoes back is redacted below.
+    FB_RC=0
+    FB_OUT="$( cd "$SITE_ROOT" \
+               && "${DRUSH_SUDO[@]}" "$DRUSH_BIN" "$FEEDBACK_SYNC_CMD" \
+                    --limit=${FEEDBACK_LIMIT} "--token=${FB_TOKEN}" 2>&1 )" || FB_RC=$?
+    FB_OUT="${FB_OUT//"$FB_TOKEN"/<redacted>}"
+    FB_TOKEN=""
+    if (( FB_RC != 0 )); then
+        log "feedback-sync-failed" "stage=push rc=${FB_RC}"
+        printf '%s\n' "$FB_OUT"
+        exit 1
+    fi
+    FB_N="$(printf '%s\n' "$FB_OUT" | grep -c '\[OK\] feedback #')" || FB_N=0
+    log "feedback-sync-ok" "synced=${FB_N}"
+    printf '%s\n' "$FB_OUT"
+    echo "OK  feedback-sync complete (synced=${FB_N})."
+    exit 0
+fi
+
+################################################################################
+# harvest-post — post the spooled pre-wipe digests to nwp/ops (ops#315)
+#
+# The write-side complement of the read-only `harvest` drain: GitLab confirms
+# an iid, THEN the digest moves to posted/ — a failed post keeps the file in
+# the spool for the next attempt, so a crashed pipe loses nothing (the same
+# retry-safe contract as `pl demo harvest-post`). Each posted file is named on
+# stdout machine-readably (NWP-HARVEST-POSTED <basename> iid=<iid>) so the
+# calling verb can mark its own pulled copy and never double-post.
+################################################################################
+
+if [[ "$ACTION" == "harvest-post" ]]; then
+    HP_TOKEN="$(box_token)"
+    if [[ -z "$HP_TOKEN" ]]; then
+        log "harvest-post-no-token" "file=${TOKEN_FILE}"
+        cat >&2 <<EOF
+CANNOT VERIFY  no api token at ${TOKEN_FILE} — spooled digests were NOT posted and are KEPT in ${HARVEST_DIR}.
+Provisioning is an OPERATOR step (registry entry demo_box_feedback_token); this wrapper never mints or holds one.
+EOF
+        exit 2
+    fi
+    if [[ ! -d "$HARVEST_DIR" ]]; then
+        HP_TOKEN=""
+        log "harvest-post-done" "posted=0 failed=0 (no spool)"
+        echo "OK  no harvest spool — nothing to post."
+        exit 0
+    fi
+    mkdir -p "${HARVEST_DIR}/posted" 2>/dev/null || true
+
+    # The token travels in a 0600 curl config, never in curl's argv (argv is
+    # world-readable via ps; the config file is not).
+    HP_CFG="$(umask 077 && mktemp)" || { HP_TOKEN=""; die "harvest-post-failed" "cannot create curl config"; }
+    trap 'rm -f "$HP_CFG"' EXIT
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$HP_TOKEN" > "$HP_CFG"
+    HP_TOKEN=""
+
+    HP_POSTED=0; HP_FAILED=0
+    for HP_F in $(ls -1 "${HARVEST_DIR}"/harvest-*.txt 2>/dev/null | sort); do
+        [[ -s "$HP_F" ]] || continue
+        HP_BASE="$(basename "$HP_F")"
+        HP_WHEN="${HP_BASE#harvest-}"; HP_WHEN="${HP_WHEN%.txt}"
+        HP_TITLE="Demo harvest — ${SITE}: errors before the ${HP_WHEN} reset"
+        HP_BODY="$(printf 'harvested_utc: %s\n\nPre-wipe error digest posted from the %s live box.\n\n```\n%s\n```\n' \
+                        "$HP_WHEN" "$SITE" "$(cat "$HP_F")")"
+        HP_PAYLOAD="$(jq -nc --arg t "$HP_TITLE" --arg d "$HP_BODY" --arg l "$HARVEST_LABELS" \
+                        '{title:$t, description:$d, labels:$l}')" || {
+            log "harvest-post-failed" "file=${HP_BASE} reason=payload"
+            HP_FAILED=$(( HP_FAILED + 1 )); continue; }
+        HP_RESP="$(curl -sS -K "$HP_CFG" --max-time 30 -H 'Content-Type: application/json' \
+                        -d "$HP_PAYLOAD" "${GITLAB_API}/projects/${OPS_PROJECT_ID}/issues" 2>/dev/null)" || HP_RESP=""
+        HP_IID="$(printf '%s' "$HP_RESP" | jq -r '.iid // empty' 2>/dev/null)"
+        if [[ -n "$HP_IID" ]]; then
+            mv "$HP_F" "${HARVEST_DIR}/posted/${HP_BASE}"
+            log "harvest-posted" "file=${HP_BASE} issue=#${HP_IID}"
+            echo "NWP-HARVEST-POSTED ${HP_BASE} iid=${HP_IID}"
+            HP_POSTED=$(( HP_POSTED + 1 ))
+        else
+            log "harvest-post-failed" "file=${HP_BASE}"
+            echo "FAIL  ${HP_BASE} — not posted (kept in the spool for retry)" >&2
+            HP_FAILED=$(( HP_FAILED + 1 ))
+        fi
+    done
+    rm -f "$HP_CFG"; trap - EXIT
+    # posted/ is bounded like the spool itself (the box is small); the drain's
+    # consumer keeps its own copies, so pruning here destroys no last record.
+    ls -1t "${HARVEST_DIR}/posted"/harvest-*.txt 2>/dev/null | tail -n +61 | xargs -r rm -f
+    log "harvest-post-done" "posted=${HP_POSTED} failed=${HP_FAILED}"
+    echo "OK  harvest-post: posted=${HP_POSTED} failed=${HP_FAILED}"
+    [[ "$HP_FAILED" -eq 0 ]] || exit 1
     exit 0
 fi
 
@@ -462,24 +658,24 @@ harvest() {
 }
 harvest || true
 
-# Pre-wipe TESTER-FEEDBACK notice (fail-OPEN — nwp/ops#161).
+# Pre-wipe TESTER-FEEDBACK notice (fail-OPEN — nwp/ops#161, closable ops#315).
 #
 # The harvest above keeps the errors nobody reported. The reports testers DID
-# file are Feedback entities in the database the next block replaces, and this
-# wrapper CANNOT push them: it holds no GitLab token, and it must not — the
-# restricted forced command exists precisely so that a key on the scheduler
-# cannot do anything but reset. `pl demo reset` (and `pl demo nightly`) run the
-# real pre-wipe sync from a host that does hold the token.
+# file are Feedback entities in the database the next block replaces. The
+# `feedback-sync` action word above is the leg that pushes them — `pl demo
+# nightly --via-key` invokes it BEFORE the reset — but this reset path does
+# not assume that happened: a raw-ssh cron, a hand-run `reset`, or a
+# feedback-sync that could not run (no token yet: exit 2 CANNOT VERIFY) all
+# arrive here with the pending set intact.
 #
-# So the one honest thing this path can do is refuse to destroy them SILENTLY.
-# It counts what is about to go, logs it, and names the verb that recovers it.
-# The count is a read-only --dry-run of the module's own sync command: no token,
-# no network call, and any failure is swallowed.
+# So the one honest thing this path does is refuse to destroy them SILENTLY.
+# It counts what is about to go, logs it, and names the words that recover it.
+# The count is a read-only --dry-run of the module's own sync command: no
+# token, no network call, and any failure is swallowed.
 #
-# THIS IS A KNOWN GAP, NOT A DESIGN: closing it needs either a staged 0600
-# token on this box (an operator secret-placement decision, and a
-# private/secrets-registry.yml entry) or the scheduler's cron routed through
-# `pl demo nightly` instead of this key. See nwp/ops#161.
+# (Until ops#315 this was a KNOWN GAP — the wrapper held no token at all. The
+# gap now closes the moment the operator stages TOKEN_FILE; this notice stays
+# because a fail-open pre-leg can always have failed.)
 feedback_pending() {
     local out
     out="$( cd "$SITE_ROOT" \
@@ -493,10 +689,11 @@ feedback_pending() {
     esac
     local n
     n="$(printf '%s\n' "$out" | grep -c '\[DRY\] feedback #' 2>/dev/null)" || n="?"
-    log "feedback-pending-unsynced" "count=${n} (DESTROYED by this reset — this wrapper holds no token)"
+    log "feedback-pending-unsynced" "count=${n} (DESTROYED by this reset — the feedback-sync leg did not run)"
     echo "WARN  ${n} tester feedback report(s) are pending GitLab sync and this reset DESTROYS them."
-    echo "WARN  This restricted wrapper cannot push them (no token, by design). Recover before the next reset with:"
-    echo "WARN      pl demo feedback-sync ${SITE} --tier=live"
+    echo "WARN  The pre-wipe leg did not run (or could not). Recover before the next reset with either:"
+    echo "WARN      ssh -i ~/.ssh/${SITE}_demo_reset gitlab@<box> feedback-sync   (the box's own word)"
+    echo "WARN      pl demo feedback-sync ${SITE} --tier=live                     (from an admin host)"
     return 0
 }
 feedback_pending || true

@@ -108,8 +108,22 @@
 #     which nwd is back at its golden and ssd is not is a couple of minutes on
 #     an idle site — but it is not zero, and this file does not claim it is.
 #
+# THE NON-RESET LEG (ops#315 — the box completes its own nightly)
+#   harvest-post    post the spooled pre-wipe error digests to nwp/ops issues,
+#                   from this box's own spool, then move them to posted/ so the
+#                   `harvest` drain and this word never double-report. It
+#                   authenticates with the ONE walled api token read from
+#                   TOKEN_FILE (root-owned 0600, provisioned by the OPERATOR —
+#                   registry entry demo_box_feedback_token; this wrapper never
+#                   creates, prints or logs it). Missing token = exit 2
+#                   CANNOT VERIFY, never a silent skip.
+#   There is deliberately NO feedback-sync word here: Moodle's local_feedback
+#   forwards each report at submit time, so this half has no pending set —
+#   a word with nothing behind it would be a capability lie. nwd-only.
+#
 # Exit codes: 0 ok/no-op · 1 failure (incl. [G9] no-manifest abort) ·
-#             2 refused (bad action word) · 3 active
+#             2 refused (bad action word) or CANNOT VERIFY (harvest-post with
+#               no readable token) · 3 active
 ################################################################################
 
 set -uo pipefail
@@ -138,6 +152,14 @@ HARVEST_DIR="${STATE_DIR}/harvest"
 LOCK_FILE="/var/lock/ssd-demo-reset.lock"
 PAIR_LOCK_FILE="/var/lock/nwd-demo-reset.lock"
 LOG_FILE="/var/log/nwp-demo/ssd-demo-reset.log"
+
+# ---- ops#315: the box's own GitLab leg -------------------------------------
+# Same token file as the nwd wrapper — ONE walled issue-write token for the
+# whole demo pair (see private/secrets-registry.yml: demo_box_feedback_token).
+TOKEN_FILE="/etc/nwp-demo/feedback.token"
+GITLAB_API="https://git.nwpcode.org/api/v4"
+OPS_PROJECT_ID=21                     # nwp/ops — where harvest digests are filed
+HARVEST_LABELS="demo-tester,auto-harvest"   # matches scripts/commands/demo.sh
 
 # Moodle's CLI must run on 8.3 with a raised max_input_vars — the box's default
 # `php` is 8.4 and several admin CLI scripts exceed the stock input-var cap.
@@ -199,12 +221,13 @@ resolve_action() {
     # Only these exact strings are honoured. The case arms are literals —
     # $RAW_CMD is compared, never expanded into a command position.
     case "$RAW_CMD" in
-        ""|nightly) echo "nightly" ;;
-        reset)      echo "reset" ;;
-        dry-run)    echo "dry-run" ;;
-        status)     echo "status" ;;
-        harvest)    echo "harvest" ;;
-        *)          echo "REFUSED" ;;
+        ""|nightly)   echo "nightly" ;;
+        reset)        echo "reset" ;;
+        dry-run)      echo "dry-run" ;;
+        status)       echo "status" ;;
+        harvest)      echo "harvest" ;;
+        harvest-post) echo "harvest-post" ;;
+        *)            echo "REFUSED" ;;
     esac
 }
 
@@ -215,7 +238,8 @@ if [[ "$ACTION" == "REFUSED" ]]; then
     cat >&2 <<EOF
 REFUSED: this key may only run the ssd demo reset.
 The command you sent was logged and NOT executed.
-Allowed action words: (empty)|nightly | reset | dry-run | status | harvest
+Allowed action words: (empty)|nightly | reset | dry-run | status | harvest | harvest-post
+(feedback-sync is nwd-only: Moodle forwards feedback at submit time, so there is no pending set here.)
 EOF
     exit 2
 fi
@@ -293,6 +317,75 @@ if [[ "$ACTION" == "harvest" ]]; then
     done
     [[ "$n" -eq 0 ]] && echo "NWP-HARVEST-EMPTY"
     log "harvest-drained" "files=${n} client=${CLIENT%% *}"
+    exit 0
+fi
+
+################################################################################
+# harvest-post — post the spooled pre-wipe digests to nwp/ops (ops#315)
+#
+# Byte-for-byte the same contract as the nwd wrapper's harvest-post (read that
+# file's section for the full rationale): GitLab confirms an iid, THEN the
+# digest moves to posted/; a failed post keeps the file for retry; each posted
+# file is named on stdout as `NWP-HARVEST-POSTED <basename> iid=<iid>` so the
+# calling verb can mark its own pulled copy and never double-post. The token
+# travels in a 0600 curl config, never in curl's argv. Deliberately LOCKLESS,
+# like the drain: spool files are create-once and moved atomically.
+################################################################################
+
+if [[ "$ACTION" == "harvest-post" ]]; then
+    HP_TOKEN="$("${ROOT_SUDO[@]}" cat "$TOKEN_FILE" 2>/dev/null | tr -d '[:space:]')"
+    if [[ -z "$HP_TOKEN" ]]; then
+        log "harvest-post-no-token" "file=${TOKEN_FILE}"
+        cat >&2 <<EOF
+CANNOT VERIFY  no api token at ${TOKEN_FILE} — spooled digests were NOT posted and are KEPT in ${HARVEST_DIR}.
+Provisioning is an OPERATOR step (registry entry demo_box_feedback_token); this wrapper never mints or holds one.
+EOF
+        exit 2
+    fi
+    if [[ ! -d "$HARVEST_DIR" ]]; then
+        HP_TOKEN=""
+        log "harvest-post-done" "posted=0 failed=0 (no spool)"
+        echo "OK  no harvest spool — nothing to post."
+        exit 0
+    fi
+    mkdir -p "${HARVEST_DIR}/posted" 2>/dev/null || true
+
+    HP_CFG="$(umask 077 && mktemp)" || { HP_TOKEN=""; die "harvest-post-failed" "cannot create curl config"; }
+    trap 'rm -f "$HP_CFG"' EXIT
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$HP_TOKEN" > "$HP_CFG"
+    HP_TOKEN=""
+
+    HP_POSTED=0; HP_FAILED=0
+    for HP_F in $(ls -1 "${HARVEST_DIR}"/harvest-*.txt 2>/dev/null | sort); do
+        [[ -s "$HP_F" ]] || continue
+        HP_BASE="$(basename "$HP_F")"
+        HP_WHEN="${HP_BASE#harvest-}"; HP_WHEN="${HP_WHEN%.txt}"
+        HP_TITLE="Demo harvest — ${SITE}: errors before the ${HP_WHEN} reset"
+        HP_BODY="$(printf 'harvested_utc: %s\n\nPre-wipe error digest posted from the %s live box.\n\n```\n%s\n```\n' \
+                        "$HP_WHEN" "$SITE" "$(cat "$HP_F")")"
+        HP_PAYLOAD="$(jq -nc --arg t "$HP_TITLE" --arg d "$HP_BODY" --arg l "$HARVEST_LABELS" \
+                        '{title:$t, description:$d, labels:$l}')" || {
+            log "harvest-post-failed" "file=${HP_BASE} reason=payload"
+            HP_FAILED=$(( HP_FAILED + 1 )); continue; }
+        HP_RESP="$(curl -sS -K "$HP_CFG" --max-time 30 -H 'Content-Type: application/json' \
+                        -d "$HP_PAYLOAD" "${GITLAB_API}/projects/${OPS_PROJECT_ID}/issues" 2>/dev/null)" || HP_RESP=""
+        HP_IID="$(printf '%s' "$HP_RESP" | jq -r '.iid // empty' 2>/dev/null)"
+        if [[ -n "$HP_IID" ]]; then
+            mv "$HP_F" "${HARVEST_DIR}/posted/${HP_BASE}"
+            log "harvest-posted" "file=${HP_BASE} issue=#${HP_IID}"
+            echo "NWP-HARVEST-POSTED ${HP_BASE} iid=${HP_IID}"
+            HP_POSTED=$(( HP_POSTED + 1 ))
+        else
+            log "harvest-post-failed" "file=${HP_BASE}"
+            echo "FAIL  ${HP_BASE} — not posted (kept in the spool for retry)" >&2
+            HP_FAILED=$(( HP_FAILED + 1 ))
+        fi
+    done
+    rm -f "$HP_CFG"; trap - EXIT
+    ls -1t "${HARVEST_DIR}/posted"/harvest-*.txt 2>/dev/null | tail -n +61 | xargs -r rm -f
+    log "harvest-post-done" "posted=${HP_POSTED} failed=${HP_FAILED}"
+    echo "OK  harvest-post: posted=${HP_POSTED} failed=${HP_FAILED}"
+    [[ "$HP_FAILED" -eq 0 ]] || exit 1
     exit 0
 fi
 

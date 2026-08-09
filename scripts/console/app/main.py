@@ -1707,12 +1707,20 @@ def issue_close(request: Request, iid: int, sc: Scope = Depends(scoped("operator
 
 
 # -- Review pane writes (operator+, estate-level only) -----------------------
-# Everything here is a NOTE. Approval-of-a-decision is a note because the note
-# IS the instruction the next session acts on; approval-of-an-MR is not here at
-# all — that is the merge click on the MR page (ADR-0032). The [console-review]
-# tag is applied server-side so a session can find operator instructions with
-# one search, whatever the client sent.
+# Approval-of-a-decision is a NOTE (the note IS the instruction the next
+# session acts on) PLUS A DISCHARGE (ops#327): the decision labels come off in
+# the same action, because a note nothing consumes leaves the issue in the
+# queue and the operator re-approves it — #139 was approved four times.
+# Approval-of-an-MR is not here at all — that is the merge click on the MR
+# page (ADR-0032). The [console-review] tag is applied server-side so a
+# session can find operator instructions with one search, whatever the client
+# sent.
 REVIEW_TAG = "**[console-review]**"
+
+# The two labels that put an issue in the decision queue (`pl decisions` red
+# tier + amber tier). Removing both IS the discharge; GitLab takes them as one
+# comma-separated remove_labels value.
+DECISION_LABELS = "needs-decision,decision::wanted"
 
 
 def _require_estate(sc: Scope) -> None:
@@ -1726,12 +1734,41 @@ def review_decision_approve(request: Request, iid: int, sc: Scope = Depends(scop
     _require_estate(sc)
     body = (f"{REVIEW_TAG} APPROVED — proceed with the recommendation as written in the "
             f"`## Decision` block of this issue. (Recorded from the console Review pane "
-            f"by `{sc.user}`; this note is the instruction.)")
+            f"by `{sc.user}`; this note is the instruction, and the decision labels were "
+            f"removed by the same action.)")
     r = gitlab.post_note(config.OPS_PROJECT, _iid_ok(iid), body)
-    audit.append(sc.user, sc.global_role, "review.approve", {"iid": iid, "ok": r.get("ok")},
-                 r.get("ok", False), project=sc.project_id)
-    return _pane(request, "issue_action_result.html",
-                 {"iid": iid, "verb": "approve recommendation", "r": r}, sc, redactable=False)
+    # ops#327: the discharge. Only after the note recorded — no note, no
+    # discharge, because dropping the labels for an approval that was never
+    # written would erase the question without recording the answer.
+    discharged = False
+    discharge_error = ""
+    if r.get("ok"):
+        d = gitlab.remove_label(config.OPS_PROJECT, _iid_ok(iid), DECISION_LABELS)
+        if not d.get("ok"):
+            discharge_error = (f"the label removal failed ({d.get('error')}"
+                               f"{' — ' + d.get('detail') if d.get('detail') else ''})")
+        else:
+            # Render the TRACKER's state, not the PUT's claim: re-read the
+            # issue and believe what it says. An unreadable re-read is CANNOT
+            # VERIFY, which must never look discharged.
+            rr = gitlab.get_issue(config.OPS_PROJECT, _iid_ok(iid))
+            if not rr.get("ok"):
+                discharge_error = (f"the labels were removed but the verifying re-read "
+                                   f"failed ({rr.get('error')})")
+            else:
+                remaining = [l for l in ((rr.get("data") or {}).get("labels") or [])
+                             if l in DECISION_LABELS.split(",")]
+                if remaining:
+                    discharge_error = ("the tracker still shows " + ", ".join(remaining)
+                                       + " after the removal")
+                else:
+                    discharged = True
+    audit.append(sc.user, sc.global_role, "review.approve",
+                 {"iid": iid, "ok": r.get("ok"), "discharged": discharged},
+                 r.get("ok", False) and discharged, project=sc.project_id)
+    return _pane(request, "review_approve_result.html",
+                 {"iid": iid, "r": r, "discharged": discharged,
+                  "discharge_error": discharge_error}, sc, redactable=False)
 
 
 @app.post("/review/decision/{iid}/note", response_class=HTMLResponse)

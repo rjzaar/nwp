@@ -71,8 +71,19 @@ set -uo pipefail
 #                                appears (ops#305, ruling A). An existing block
 #                                is never rewritten; --block-file supplies a
 #                                real block instead of the TODO scaffold.
+#   pl decisions sweep-approved [--discharge] [--json]
+#                                the ops#327 backlog sweep: list issues that
+#                                carry an approving note ([console-review]
+#                                APPROVED, or an operator reply saying
+#                                Approved) yet STILL wear needs-decision /
+#                                decision::wanted — the state #74/#101/#139
+#                                sat in while the operator re-approved them.
+#                                Default REPORTS; --discharge removes the
+#                                labels and writes a ledger line per issue.
 #
 # Exit: 0 decisions listed (or none) · 1 could not read the tracker
+#       (sweep-approved: 2 = CANNOT-VERIFY, the tracker or an issue's notes
+#        could not be read — never rendered as a clean sweep)
 ################################################################################
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
@@ -415,15 +426,179 @@ sys.exit(0 if "needs-decision" in (i.get("labels") or []) else 1)'; then
     return 0
 }
 
+# ── sweep-approved (ops#327) ──────────────────────────────────────────────────
+#
+# The console's Approve button posted `[console-review] APPROVED` notes that
+# NOTHING consumed: the decision labels stayed on, the issue stayed in the
+# queue, and the operator re-approved — #139 four times. The Approve action
+# now discharges at the moment of approval (scripts/console/app/main.py); this
+# verb finds and clears the RESIDUE that accumulated before that fix, and is
+# the recovery path whenever a console discharge fails (403, network).
+#
+# Default is a REPORT (read-only). --discharge removes needs-decision +
+# decision::wanted from each listed issue, verifies the removal from the PUT
+# response, and appends one line per discharge to the ledger
+# private/decisions-discharge.log. The classifier is pure
+# (scripts/lib/decisions-sweep.py) and unit-tested; this shell stays thin.
+#
+# Fail-closed: no token, no host, a failed issue fetch, or ANY issue whose
+# notes could not be read => exit 2 CANNOT-VERIFY. An unreadable tracker must
+# never render as "no undischarged approvals".
+_sweep_fetch_notes_one(){ # iid out — ALL notes (100 cap), unlike _dec_fetch_note_one's latest-1
+    local iid="$1" out="$2" tok cfg host rc
+    tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    [ -n "$tok" ] || return 2
+    host="$(_dec_host)"
+    [ -n "$host" ] || return 3
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+    curl -sS -f -K "$cfg" --get \
+        --data-urlencode "sort=asc" \
+        --data-urlencode "order_by=created_at" \
+        --data-urlencode "per_page=100" \
+        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}/notes" > "$out" 2>/dev/null
+    rc=$?
+    rm -f "$cfg"
+    return $rc
+}
+
+cmd_sweep_approved(){
+    local discharge=false mode="text"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --discharge) discharge=true; shift ;;
+            --json)      mode="json"; shift ;;
+            *) print_error "unknown option: $1 (usage: pl decisions sweep-approved [--discharge] [--json])"; return 1 ;;
+        esac
+    done
+
+    local tok host cfg
+    tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
+    if [ -z "$tok" ]; then
+        print_error "CANNOT-VERIFY: no GitLab token, so the sweep could not look."
+        print_info  "This is not 'no undischarged approvals' — the tracker was not read."
+        return 2
+    fi
+    host="$(_dec_host)"
+    if [ -z "$host" ]; then
+        print_error "CANNOT-VERIFY: no gitlab.server.domain configured, so the sweep could not look."
+        return 2
+    fi
+    cfg=$(mktemp); chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
+
+    # The union of both decision labels, each paginated to a short page (same
+    # bound + rationale as _dec_fetch_outside). Any failed page fails the WHOLE
+    # sweep: a half-fetched list would sweep clean over the missing half.
+    local swdir label page n li=0
+    swdir=$(mktemp -d)
+    for label in "$DECISIONS_LABEL" "decision::wanted"; do
+        li=$((li+1)); page=1
+        while :; do
+            if ! curl -sS -f -K "$cfg" --get \
+                --data-urlencode "labels=${label}" \
+                --data-urlencode "state=opened" \
+                --data-urlencode "per_page=100" \
+                --data-urlencode "page=${page}" \
+                "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" \
+                > "$swdir/l${li}-p$(printf '%03d' "$page").json" 2>/dev/null; then
+                rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+                print_error "CANNOT-VERIFY: the '${label}' issue fetch failed — the sweep could not look."
+                return 2
+            fi
+            n=$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+print(len(d) if isinstance(d, list) else -1)' \
+                "$swdir/l${li}-p$(printf '%03d' "$page").json" 2>/dev/null) || n=-1
+            if [ "$n" -lt 0 ] 2>/dev/null; then
+                rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+                print_error "CANNOT-VERIFY: unparseable page from the tracker — the sweep could not look."
+                return 2
+            fi
+            [ "$n" -lt 100 ] && break
+            page=$((page+1))
+            [ "$page" -gt 20 ] && break
+        done
+    done
+    python3 -c 'import glob, json, sys
+merged, seen = [], set()
+for p in sorted(glob.glob(sys.argv[1] + "/l*-p*.json")):
+    for i in json.load(open(p)):
+        if i.get("iid") not in seen:
+            seen.add(i.get("iid")); merged.append(i)
+json.dump(merged, open(sys.argv[2], "w"))' "$swdir" "$swdir/issues.json" 2>/dev/null || {
+        rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+        print_error "CANNOT-VERIFY: could not merge the fetched pages."
+        return 2
+    }
+
+    # Full notes per candidate issue. A failed fetch leaves no file, which the
+    # classifier declares UNKNOWN and grades the whole run exit 2 — an issue
+    # whose conversation is unreadable might carry an approval.
+    local notesdir iid
+    notesdir="$swdir/notes"; mkdir -p "$notesdir"
+    for iid in $(python3 -c 'import json,sys
+for i in json.load(open(sys.argv[1])): print(i["iid"])' "$swdir/issues.json" 2>/dev/null); do
+        _sweep_fetch_notes_one "$iid" "$notesdir/$iid.json" || rm -f "$notesdir/$iid.json"
+    done
+
+    local sweep_rc
+    python3 "$PROJECT_ROOT/scripts/lib/decisions-sweep.py" "$mode" "$swdir/issues.json" "$notesdir"
+    sweep_rc=$?
+
+    if [ "$discharge" != true ]; then
+        rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+        return $sweep_rc
+    fi
+
+    # ── the discharge half ────────────────────────────────────────────────────
+    # One PUT per listed issue; the removal is believed only when the PUT's
+    # response no longer shows either label (same verify-from-response shape as
+    # cmd_promote). Every verified discharge gets a ledger line — an
+    # unledgered label drop is indistinguishable from drift.
+    local rows ledger now dfail=0
+    rows=$(python3 "$PROJECT_ROOT/scripts/lib/decisions-sweep.py" json "$swdir/issues.json" "$notesdir" \
+        | python3 -c 'import json,sys
+for r in json.load(sys.stdin)["rows"]:
+    print("%s\t%s\t%s\t%s" % (r["iid"], r["approved_times"], r["approved_when"], ",".join(r["decision_labels"])))')
+    ledger="$PROJECT_ROOT/private/decisions-discharge.log"
+    mkdir -p "$PROJECT_ROOT/private"
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local d_iid d_times d_when d_labels resp
+    while IFS=$'\t' read -r d_iid d_times d_when d_labels; do
+        [ -n "$d_iid" ] || continue
+        resp=$(curl -sS -f -K "$cfg" -X PUT \
+            -H "Content-Type: application/json" \
+            --data '{"remove_labels":"needs-decision,decision::wanted"}' \
+            "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${d_iid}" 2>/dev/null)
+        if [ $? -ne 0 ] || ! printf '%s' "$resp" | python3 -c '
+import json,sys
+i = json.load(sys.stdin)
+labels = i.get("labels") or []
+sys.exit(1 if ("needs-decision" in labels or "decision::wanted" in labels) else 0)'; then
+            print_error "discharge FAILED for nwp/ops#${d_iid} — labels left as they were; it stays in the queue."
+            dfail=$((dfail+1))
+            continue
+        fi
+        printf '%s iid=%s removed=%s approved_times=%s approved_when=%s by=sweep-approved ref=ops#327\n' \
+            "$now" "$d_iid" "$d_labels" "$d_times" "$d_when" >> "$ledger"
+        print_status "OK" "discharged nwp/ops#${d_iid}: removed ${d_labels} (approved ${d_times}x, last ${d_when})"
+    done <<< "$rows"
+    rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+    [ "$dfail" -gt 0 ] && return 1
+    return $sweep_rc
+}
+
 cmd_decisions(){
     local mode="text" only="" all=false
     if [ "${1:-}" = "promote" ]; then shift; cmd_promote "$@"; return $?; fi
+    if [ "${1:-}" = "sweep-approved" ]; then shift; cmd_sweep_approved "$@"; return $?; fi
     while [ $# -gt 0 ]; do
         case "$1" in
             --json) mode="json"; shift ;;
             --all)  all=true; shift ;;
             -h|--help)
-                sed -n '3,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+                sed -n '3,86p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
                 return 0 ;;
             [0-9]*) only="$1"; shift ;;
             *) print_error "unknown option: $1"; return 1 ;;

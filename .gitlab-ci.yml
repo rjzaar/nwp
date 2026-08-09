@@ -350,12 +350,21 @@ lint:doc-truth:
     - ./scripts/commands/doc-truth.sh --json || true   # machine summary to the log
     - ./scripts/commands/doc-truth.sh                  # human report; exit 1 on NEW drift
   rules:
+    # The baseline and the engine are the gate's own inputs (ops#319): since
+    # the stale-row check landed, editing .doc-truth-baseline (or doc-truth.sh
+    # itself) changes the verdict without touching any *.md — a baseline edit
+    # that deletes the wrong row must not merge on a pipeline that never ran
+    # the gate.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "**/*.md"
+        - ".doc-truth-baseline"
+        - "scripts/commands/doc-truth.sh"
     - if: $CI_COMMIT_BRANCH == "main"
       changes:
         - "**/*.md"
+        - ".doc-truth-baseline"
+        - "scripts/commands/doc-truth.sh"
   tags:
     - nwp
   allow_failure: false
@@ -1222,6 +1231,78 @@ e2e:production:
 # allow_failure is false ON PURPOSE. Its check 1 is a containment guard for the
 # public-release track, and it was proven to go red on demand for all three
 # checks before merge (see the MR description).
+################################################################################
+# Gate-honesty meta-checks (ops#319 / F6a — Tranche 0 of the knowledge-honesty
+# design, meta-2026-08-09)
+################################################################################
+#
+# WHY THESE TWO JOBS EXIST: `pl verify gates` and `pl verify honesty` — the
+# meta-checks that decide whether every OTHER check in this file is honest —
+# were wired to NO CI job and no cron (meta-2026-08-09 probes V11/P9: the only
+# scheduled honesty machinery was lint:doc-truth). A check that runs only when
+# a session remembers to run it is decorative. The design's F6 admission test:
+# every mechanism must chain to one of the two fixed points — the operator
+# reads `pl rag` daily, or CI runs on every MR. This is the CI chaining.
+#
+# Both jobs run on the `nwp`-tagged SHELL runner (met): no image:, no apt-get.
+# The only tool needed beyond coreutils is yq, bootstrapped with the same
+# pinned sha256-verified copy as every yq-needing sibling (ensure-yq.sh).
+#
+# EXIT 2 = CANNOT VERIFY FAILS THE JOB, VISIBLY AND ON PURPOSE. Both gate
+# scripts exit 2 when they cannot read their corpus (no yq, unreadable
+# .gitlab-ci.yml, empty corpus). GitLab fails a job on any non-zero exit, so a
+# blind run is a RED pipeline, never a green tick — an unreadable pipeline
+# definition graded "all gates fine" is the exact disease these tools were
+# built to catch (the 2026-08-01/02 six-blind-checks sweep). If this job is
+# red with "CANNOT VERIFY", fix the runner, not the gate.
+#
+# The `--list` line first is the machine-readable inventory for the job log
+# (list mode is exit-0 BY DESIGN — it is a report, not the verdict); the
+# verdict comes from the direct scripts/ci/ gate invocation on the next line,
+# which fails on a new unproven gate / new finding or a stale baseline row.
+# The direct invocation also keeps this job PROVEN-RED in its own inventory:
+# both gate scripts carry bats red-proofs (test-gate-redproof.bats,
+# test-test-honesty.bats), and job_impls attributes them via the scripts/ci/
+# path — a job that ran only the pl wrapper would classify NO-RED-PROOF.
+#
+# NOT wired here, deliberately: `pl doc-truth --memory` (MR A's third check).
+# The AI auto-memory corpus exists only on the workstation/ai-host; on a CI
+# runner that check is honestly, PERMANENTLY exit-2 — and a red that never
+# changes trains people to merge past red (the boundary:classify lesson,
+# ops#165, documented above). It runs host-side where the corpus is real.
+
+verify:gates:
+  stage: lint
+  before_script:
+    - ./scripts/ci/ensure-yq.sh
+    - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
+  script:
+    - 'echo "Which gates have EVER been proven to go RED? (a check never seen red is a hypothesis)"'
+    - ./scripts/commands/verify.sh gates --list
+    - ./scripts/ci/lint-gate-redproof.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+  allow_failure: false
+
+verify:honesty:
+  stage: lint
+  before_script:
+    - ./scripts/ci/ensure-yq.sh
+    - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
+  script:
+    - 'echo "Which checks assert less than they look? (H1 blind negation / H2 swallowed verdict / H3 skips / H4 host-blind)"'
+    - ./scripts/commands/verify.sh honesty --list
+    - ./scripts/ci/lint-test-honesty.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+  allow_failure: false
+
 lint:secrets:
   stage: lint
   before_script:

@@ -14,11 +14,18 @@ setup() {
   source "${REPO_ROOT}/lib/demo.sh"
   DEMO_CMD="${REPO_ROOT}/scripts/commands/demo.sh"
   PL="${REPO_ROOT}/pl"
+  # ops#328 D1: the registry has ONE declared writable home (the tracked file
+  # names mini). The fixture declares THIS host as home so every pre-existing
+  # write-verb test keeps exercising its own subject rather than the home
+  # guard; the D1 section below overrides this per-test to exercise the guard.
+  export NWP_DEMO_REGISTRY_HOME_FILE="${TEST_TMP}/registry-home.yml"
+  printf 'registry_home: %s\n' "$(hostname -s)" > "$NWP_DEMO_REGISTRY_HOME_FILE"
 }
 
 teardown() {
   rm -rf "${TEST_TMP}"
   unset PROJECT_ROOT
+  unset NWP_DEMO_REGISTRY_HOME_FILE
 }
 
 # --- dispatch -----------------------------------------------------------------
@@ -2199,9 +2206,10 @@ YML
   # It must be safe to run at any moment, including from a host that is about
   # to be told it may not write. So it is deliberately outside both guards.
   fn="$(sed -n '/^cmd_codes() {/,/^}/p' "$DEMO_CMD")"
-  # both guards list exactly the five WRITING verbs (purge joined in ops#328 —
-  # it rewrites the registry, whose writable home is per-tier)…
-  [ "$(printf '%s\n' "$fn" | grep -c 'issue|revoke|rotate|sync|purge)')" -eq 2 ]
+  # all THREE guards (explicit tier, registry home — ops#328 D1 — and
+  # delivery) list exactly the WRITING verbs (purge joined in ops#328,
+  # reconcile in ops#328 D1)…
+  [ "$(printf '%s\n' "$fn" | grep -c 'issue|revoke|rotate|sync|purge|reconcile)')" -eq 3 ]
   # …and drift appears only as its own case arm, never inside a guard list
   [ "$(printf '%s\n' "$fn" | grep -cE '^ *drift\)')" -eq 1 ]
   run bash "$DEMO_CMD" codes demo1 drift          # …and needs no --tier
@@ -3370,4 +3378,278 @@ YML
   echo "$output" | jq -e '.age_seconds >= 7000 and .age_seconds <= 7400'
   echo "$output" | jq -e '.warning | test("revert")'
   echo "$output" | jq -e '.reset_window | test("Melbourne")'
+}
+
+################################################################################
+# ops#328 D1 — the invite-code registry's home is DECLARED, and it is mini.
+#
+# Operator ruling 2026-08-09. The ops#173 delivery probe turned out to admit
+# TWO writable homes: both the workstation and mini can reach the box, so both
+# passed demo_require_delivery, and by 2026-08-09 their registries had diverged
+# to 63 rows/26 active (workstation) vs 72 rows/35 active (mini) while the live
+# site enforced 31. Delivery capability is NECESSARY for a write but no longer
+# SUFFICIENT: the home is now a declared fact (registry_home: in the tracked
+# servers/live/demo/registry-home.yml), and every registry-writing verb refuses
+# on any other host. Reads work anywhere. Fail-closed: an UNDECLARED home
+# refuses writes with exit 2 CANNOT VERIFY — the permissive direction is how
+# two homes happened.
+################################################################################
+
+# The fixture used by the guard tests: a declared home that is NOT this host.
+d1_declare_other_home() {
+  printf 'registry_home: some-other-host\n' > "$NWP_DEMO_REGISTRY_HOME_FILE"
+}
+
+@test "ops#328 D1: the tracked declaration exists and names mini (operator ruling 2026-08-09)" {
+  # Changing the registry home is an OPERATOR ruling, not a refactor. This test
+  # is the reminder: if you are editing servers/live/demo/registry-home.yml,
+  # you need a ruling like the 2026-08-09 one that created it.
+  f="${REPO_ROOT}/servers/live/demo/registry-home.yml"
+  [ -f "$f" ]
+  run env NWP_DEMO_REGISTRY_HOME_FILE="$f" bash -c "source '${REPO_ROOT}/lib/demo.sh'; demo_registry_home"
+  [ "$status" -eq 0 ]
+  [ "$output" = "mini" ]
+}
+
+@test "ops#328 D1: a write verb REFUSES on a non-home host, naming the home and the override" {
+  d1_declare_other_home
+  run bash "$DEMO_CMD" codes demo1 issue tester-member --tier=dev
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"some-other-host"* ]]
+  [[ "$output" == *"NWP_DEMO_REGISTRY_HOME_OVERRIDE"* ]]
+  # Refusal happens BEFORE anything is minted or written.
+  [ ! -e "$(demo_codes_file demo1)" ]
+}
+
+@test "ops#328 D1: every registry-writing action is home-guarded (issue|revoke|rotate|sync|purge|reconcile|invite)" {
+  d1_declare_other_home
+  for action in issue revoke rotate sync purge reconcile; do
+    run bash "$DEMO_CMD" codes demo1 "$action" x --tier=dev
+    [ "$status" -eq 1 ] || { echo "codes $action -> $status (want 1)"; echo "$output"; false; }
+    [[ "$output" == *"some-other-host"* ]]
+  done
+  run bash "$DEMO_CMD" invite demo1 --tier=dev
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"some-other-host"* ]]
+  [ ! -e "$(demo_codes_file demo1)" ]
+}
+
+@test "ops#328 D1: reads work anywhere — list and drift are NOT home-guarded" {
+  demo_codes_init "$(demo_codes_file demo1)"
+  demo_code_add "$(demo_codes_file demo1)" c1 tester-member \
+    "$(printf 'x%.0s' {1..64} | tr x a)" "$(( $(date +%s) + 86400 ))"
+  d1_declare_other_home
+  run bash "$DEMO_CMD" codes demo1 list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ok == true'
+  run bash "$DEMO_CMD" codes demo1 drift --tier=dev
+  [ "$status" -eq 0 ]
+}
+
+@test "ops#328 D1 fail-closed: NO declared home refuses writes with exit 2 CANNOT VERIFY, reads still fine" {
+  export NWP_DEMO_REGISTRY_HOME_FILE="${TEST_TMP}/absent-registry-home.yml"
+  run bash "$DEMO_CMD" codes demo1 issue tester-member --tier=dev
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [ ! -e "$(demo_codes_file demo1)" ]
+  run bash "$DEMO_CMD" codes demo1 list
+  [ "$status" -eq 0 ]
+}
+
+@test "ops#328 D1: garbage in the declaration reads as UNDECLARED (fail-closed), not as a host" {
+  printf 'registry_home: "two words"\n' > "$NWP_DEMO_REGISTRY_HOME_FILE"
+  run bash "$DEMO_CMD" codes demo1 issue tester-member --tier=dev
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+}
+
+@test "ops#328 D1: the override proceeds and is LEDGERED to the demo log" {
+  d1_declare_other_home
+  demo_enable_delivery
+  NWP_DEMO_REGISTRY_HOME_OVERRIDE="d1 bats override test" \
+    run bash "$DEMO_CMD" codes demo1 issue tester-member --tier=dev
+  [ "$status" -eq 0 ]
+  jq -e '.codes | length == 1' "$(demo_codes_file demo1)"
+  grep -q 'home-override' "$(demo_log_file demo1)"
+  grep -q 'd1 bats override test' "$(demo_log_file demo1)"
+}
+
+@test "ops#328 D1 NEGATIVE CONTROL: on the declared home, writes still work" {
+  # Without this, "refuse everything" satisfies every guard test above.
+  demo_enable_delivery
+  run bash "$DEMO_CMD" codes demo1 issue tester-member --tier=dev
+  [ "$status" -eq 0 ]
+  jq -e '.codes | length == 1' "$(demo_codes_file demo1)"
+}
+
+@test "ops#328 D1: on a NON-home host the drift verdict treats the local file as a replica (n/a), and names the home" {
+  # A renamed/stale replica must not grade the fleet AMBER for a divergence
+  # that cannot happen — the write guard refuses here, so the authoritative
+  # registry count lives on the home.
+  demo_codes_init "$(demo_codes_file demo1)"
+  demo_code_add "$(demo_codes_file demo1)" c1 tester-member \
+    "$(printf 'x%.0s' {1..64} | tr x a)" "$(( $(date +%s) + 86400 ))"
+  d1_declare_other_home
+  run bash "$DEMO_CMD" codes demo1 drift --tier=dev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"n/a"* ]]
+  [[ "$output" == *"some-other-host"* ]]
+}
+
+################################################################################
+# ops#328 D1 — reconcile: merge diverged copies into the home registry.
+################################################################################
+
+# Two fixture registries with one shared hash (revoked on one side only), one
+# hash unique to each side, and colliding ids (both minted c1/c2 independently).
+d1_write_fixture_registries() {
+  local now; now="$(date +%s)"
+  HASH_A="$(printf 'a%.0s' {1..64})"   # in both; revoked in the SOURCE only
+  HASH_B="$(printf 'b%.0s' {1..64})"   # home only, live
+  HASH_C="$(printf 'c%.0s' {1..64})"   # source only, live
+  cat > "$(demo_codes_file demo1)" <<JSON
+{"version":1,"codes":[
+ {"id":"c1","bundle":"tester-member","hash":"${HASH_A}","expires":$((now+86400)),"created":$((now-1000)),"revoked":false},
+ {"id":"c2","bundle":"tester-guild-leader","hash":"${HASH_B}","expires":$((now+86400)),"created":$((now-900)),"revoked":false}
+]}
+JSON
+  cat > "${TEST_TMP}/other-copy.json" <<JSON
+{"version":1,"codes":[
+ {"id":"c1","bundle":"tester-member","hash":"${HASH_A}","expires":$((now+86400)),"created":$((now-1000)),"revoked":true},
+ {"id":"c2","bundle":"tester-content-manager","hash":"${HASH_C}","expires":$((now+43200)),"created":$((now-500)),"revoked":false}
+]}
+JSON
+}
+
+@test "ops#328 D1 merge: union by hash; revoked-anywhere wins; colliding ids reassigned; provenance recorded" {
+  d1_write_fixture_registries
+  run demo_codes_merge home "$(demo_codes_file demo1)" '{"codes":[]}' "src1=${TEST_TMP}/other-copy.json"
+  [ "$status" -eq 0 ]
+  doc="$output"
+  # Union: 3 distinct hashes.
+  echo "$doc" | jq -e '.merged.codes | length == 3'
+  # Revoked-anywhere → revoked (never resurrect): HASH_A is revoked.
+  echo "$doc" | jq -e --arg h "$HASH_A" '.merged.codes[] | select(.hash == $h) | .revoked == true'
+  # Home ids survive; the source's colliding c2 got a fresh id above every used id.
+  echo "$doc" | jq -e --arg h "$HASH_B" '.merged.codes[] | select(.hash == $h) | .id == "c2"'
+  echo "$doc" | jq -e --arg h "$HASH_C" '.merged.codes[] | select(.hash == $h) | .id == "c3"'
+  # Provenance names every contributing copy and its original id.
+  echo "$doc" | jq -e --arg h "$HASH_A" '.report.rows[] | select(.hash_prefix == $h[0:12]) | .provenance | sort == ["home:c1","src1:c1"]'
+  echo "$doc" | jq -e --arg h "$HASH_C" '.report.rows[] | select(.hash_prefix == $h[0:12]) | .provenance == ["src1:c2"]'
+}
+
+@test "ops#328 D1 merge: an un-revoked row adopts the live-enforced expiry" {
+  d1_write_fixture_registries
+  now="$(date +%s)"
+  live_payload="{\"version\":1,\"codes\":[{\"bundle\":\"tester-guild-leader\",\"hash\":\"${HASH_B}\",\"expires\":$((now+999000))}]}"
+  run demo_codes_merge home "$(demo_codes_file demo1)" "$live_payload" "src1=${TEST_TMP}/other-copy.json"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e --arg h "$HASH_B" --argjson e "$((now+999000))" \
+    '.merged.codes[] | select(.hash == $h) | .expires == $e'
+  # …but a REVOKED row never adopts anything: revoked-anywhere is terminal.
+  live_payload="{\"version\":1,\"codes\":[{\"bundle\":\"tester-member\",\"hash\":\"${HASH_A}\",\"expires\":$((now+999000))}]}"
+  run demo_codes_merge home "$(demo_codes_file demo1)" "$live_payload" "src1=${TEST_TMP}/other-copy.json"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e --arg h "$HASH_A" '.merged.codes[] | select(.hash == $h) | .revoked == true'
+}
+
+@test "ops#328 D1 merge: an unreadable source is CANNOT VERIFY (2), never a silent row-drop" {
+  d1_write_fixture_registries
+  printf 'not json' > "${TEST_TMP}/broken.json"
+  run demo_codes_merge home "$(demo_codes_file demo1)" '{"codes":[]}' "src1=${TEST_TMP}/broken.json"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  run demo_codes_merge home "$(demo_codes_file demo1)" '{"codes":[]}' "src1=${TEST_TMP}/does-not-exist.json"
+  [ "$status" -eq 2 ]
+}
+
+# A delivery stub whose state SURVIVES between calls, so reconcile's discharge
+# re-read sees what its own sync wrote (the plain demo_enable_delivery stub
+# always answers empty, which would fail every discharge by construction).
+d1_enable_stateful_delivery() {
+  mkdir -p "${PROJECT_ROOT}/sites/demo1/.ddev" "${TEST_TMP}/bin"
+  printf 'docroot: web\n' > "${PROJECT_ROOT}/sites/demo1/.ddev/config.yaml"
+  cat > "${TEST_TMP}/bin/ddev" <<STUB
+#!/bin/bash
+STATE_FILE="${TEST_TMP}/site-state.json"
+[ "\$1" = "drush" ] || exit 1
+shift
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    state:get) if [ -s "\$STATE_FILE" ]; then cat "\$STATE_FILE"; else echo '{"version":1,"codes":[]}'; fi; exit 0 ;;
+    state:set) for last in "\$@"; do :; done; printf '%s' "\$last" > "\$STATE_FILE"; exit 0 ;;
+  esac
+  shift
+done
+exit 1
+STUB
+  chmod +x "${TEST_TMP}/bin/ddev"
+  export PATH="${TEST_TMP}/bin:$PATH"
+}
+
+@test "ops#328 D1 reconcile: dry-run is the default — reports the merge, writes NOTHING" {
+  d1_write_fixture_registries
+  d1_enable_stateful_delivery
+  before="$(sha256sum "$(demo_codes_file demo1)")"
+  run bash "$DEMO_CMD" codes demo1 reconcile "--from=${TEST_TMP}/other-copy.json" --tier=dev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY RUN"* ]]
+  [[ "$output" == *"--apply"* ]]
+  [ "$before" = "$(sha256sum "$(demo_codes_file demo1)")" ]
+  [ ! -s "${TEST_TMP}/site-state.json" ]
+  # provenance is IN the report
+  [[ "$output" == *"src1:"* ]]
+}
+
+@test "ops#328 D1 reconcile --apply: backs up every input, writes the merged home registry, syncs, and DISCHARGES by re-read" {
+  d1_write_fixture_registries
+  d1_enable_stateful_delivery
+  run bash "$DEMO_CMD" codes demo1 reconcile "--from=${TEST_TMP}/other-copy.json" --tier=dev --apply
+  [ "$status" -eq 0 ]
+  # Backups alongside every input, timestamped, before the write.
+  ls "$(demo_codes_file demo1)".pre-reconcile-* >/dev/null
+  ls "${TEST_TMP}/other-copy.json".pre-reconcile-* >/dev/null
+  # Home registry now holds the union, revoked-anywhere applied.
+  jq -e '.codes | length == 3' "$(demo_codes_file demo1)"
+  jq -e --arg h "$HASH_A" '.codes[] | select(.hash == $h) | .revoked == true' "$(demo_codes_file demo1)"
+  # The site received the merged ACTIVE set (2 of 3: A is revoked).
+  jq -e '.codes | length == 2' "${TEST_TMP}/site-state.json"
+  # Discharge: the verb re-read the enforced set and said so.
+  [[ "$output" == *"DISCHARGED"* ]]
+  # Ledgered.
+  grep -q 'codes-reconciled' "$(demo_log_file demo1)"
+}
+
+@test "ops#328 D1 reconcile: refuses with CANNOT VERIFY when the enforced set is unreadable" {
+  d1_write_fixture_registries
+  # No delivery stub at all: the dev project cannot be asked.
+  run bash "$DEMO_CMD" codes demo1 reconcile "--from=${TEST_TMP}/other-copy.json" --tier=dev
+  [ "$status" -ne 0 ]
+}
+
+@test "ops#328 D1 merge: PRE-EXISTING duplicate ids inside one copy are uniquified, never carried through" {
+  # Found live during the D1 migration: the real nwd registries had 72 rows but
+  # only 48 distinct ids (c1–c24 each used TWICE with different hashes — the
+  # 2026-08-01 concatenation). demo_code_revoke selects by id, so a duplicated
+  # id makes one revoke kill TWO different codes. The merge must emit unique
+  # ids: first claimant keeps the home id, later claimants get fresh ones.
+  local now; now="$(date +%s)"
+  HASH_1="$(printf 'd%.0s' {1..64})"
+  HASH_2="$(printf 'e%.0s' {1..64})"
+  cat > "$(demo_codes_file demo1)" <<JSON
+{"version":1,"codes":[
+ {"id":"c9","bundle":"tester-member","hash":"${HASH_1}","expires":$((now+86400)),"created":$((now-1000)),"revoked":false},
+ {"id":"c9","bundle":"tester-guild-leader","hash":"${HASH_2}","expires":$((now+86400)),"created":$((now-900)),"revoked":false}
+]}
+JSON
+  run demo_codes_merge home "$(demo_codes_file demo1)" '{"codes":[]}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.merged.codes | length == 2'
+  echo "$output" | jq -e '[.merged.codes[].id] | unique | length == 2'
+  # Earliest-created claimant keeps c9; the other is re-idd ABOVE max (c10).
+  echo "$output" | jq -e --arg h "$HASH_1" '.merged.codes[] | select(.hash == $h) | .id == "c9"'
+  echo "$output" | jq -e --arg h "$HASH_2" '.merged.codes[] | select(.hash == $h) | .id == "c10"'
+  # Provenance still names the ORIGINAL id, so the audit trail survives the re-id.
+  echo "$output" | jq -e --arg h "$HASH_2" '.report.rows[] | select(.hash_prefix == $h[0:12]) | .provenance == ["home:c9"]'
 }

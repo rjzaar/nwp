@@ -192,6 +192,22 @@ ${BOLD}SUBCOMMANDS:${NC}
     codes <site> rotate           Revoke every live code, reissue one per
                                   bundle that had one (new plaintexts, once)
     codes <site> sync             Re-push the hashed registry into the site
+    codes <site> reconcile --from=<path>[,<path>…] [--apply]
+                                  Fold diverged registry copies into the ONE
+                                  home (ops#328 D1): union by hash, revoked-
+                                  anywhere wins, un-revoked rows adopt the
+                                  live-enforced expiry; per-row provenance in
+                                  the report. Dry-run by default. --apply
+                                  backs up every input, writes the merged
+                                  registry, syncs the site, re-stages the box
+                                  payload, then DISCHARGES by re-reading the
+                                  enforced set. Home-guarded like every write.
+
+    Registry writes (issue/revoke/rotate/sync/purge/reconcile/invite) run ONLY
+    on the registry's declared home — registry_home: in servers/live/demo/
+    registry-home.yml (the console/agent host — operator ruling 2026-08-09,
+    ops#328 D1). Reads work anywhere. One-off ledgered escape hatch:
+    NWP_DEMO_REGISTRY_HOME_OVERRIDE='<why>'.
     codes <site> drift [--tier=live]
                                   Compare the THREE numbers that must agree —
                                   registry-active, site-live, and the box's
@@ -1528,6 +1544,58 @@ demo_codes_delivery_probe() {
     return 0
 }
 
+################################################################################
+# IS THIS HOST THE REGISTRY'S HOME? (ops#328 D1, operator ruling 2026-08-09)
+#
+# ops#173 made delivery capability the write gate — and the day the console
+# host gained a delivery path there were TWO hosts that passed it, and their registries
+# quietly diverged again (63 rows/26 active vs 72/35 while live enforced 31).
+# So the home is now a DECLARED fact: `registry_home:` in the tracked
+# servers/live/demo/registry-home.yml. This guard runs BEFORE the
+# delivery probe on every registry-writing verb: identity first, transport
+# second. Reads (`list`, `drift`, `seal-status`, `status`) stay unguarded.
+#
+# Fail-closed: an undeclared or unparseable home refuses writes with exit 2
+# CANNOT VERIFY. The permissive reading ("no declaration, carry on") is
+# exactly how two writable homes happened.
+################################################################################
+
+# demo_require_registry_home <site> <label> → 0 ok to write here;
+# 1 REFUSED (not the home); 2 CANNOT VERIFY (no usable declaration).
+demo_require_registry_home() {
+    local site="$1" label="$2"
+    local state; state="$(demo_registry_home_state)"
+    local verdict="${state%%|*}" detail="${state#*|}"
+    case "$verdict" in
+        home) return 0 ;;
+        undeclared)
+            print_error "CANNOT VERIFY: no registry home is declared — refusing '${label}'."
+            print_info  "  looked for: registry_home: in ${detail}"
+            print_info  "A write with no declared home is how the registry came to have two"
+            print_info  "diverging copies (ops#328 D1). Declare the home (it is an OPERATOR"
+            print_info  "ruling) rather than writing blind."
+            return 2
+            ;;
+    esac
+    # not-home
+    if [[ -n "${NWP_DEMO_REGISTRY_HOME_OVERRIDE:-}" ]]; then
+        # Ledgered override — the estate pattern: never silent, never free.
+        demo_log "$site" home-override \
+            "label=${label} host=$(demo_registry_local_host) home=${detail} why=${NWP_DEMO_REGISTRY_HOME_OVERRIDE}"
+        print_warning "registry-home override in effect on $(demo_registry_local_host) (home is '${detail}') — LEDGERED to $(demo_log_file "$site")"
+        return 0
+    fi
+    print_error "REFUSED: '${label}' writes the invite-code registry, and its ONE home is '${detail}' (this host: '$(demo_registry_local_host)')."
+    print_info  "Operator ruling 2026-08-09 (ops#328 D1): the registry lives on '${detail}' so"
+    print_info  "everything works without any one laptop. A second writable copy is how the"
+    print_info  "live site came to enforce a set NO host's registry matched."
+    echo ""
+    print_hint  "Do it on '${detail}':  pl demo codes ${site} ${label#codes } …"
+    print_hint  "Fold a stray copy back into the home:  pl demo codes ${site} reconcile --from=<copy> --tier=<t>  (on '${detail}')"
+    print_hint  "One-off emergency write HERE (ledgered): NWP_DEMO_REGISTRY_HOME_OVERRIDE='<why>' pl demo codes ${site} …"
+    return 1
+}
+
 # demo_require_delivery <site> <tier> <label>
 # The refusal. It has to do more than say no: the operator standing in front of
 # it is the one who cannot see the problem, so it names the model, the cause,
@@ -1577,6 +1645,16 @@ DEMO_DRIFT_REGISTRY=""; DEMO_DRIFT_SITE=""; DEMO_DRIFT_STAGED=""
 demo_codes_drift_probe() {
     local site="$1" tier="$2" raw=""
     DEMO_DRIFT_REGISTRY="$(demo_codes_active_count "$(demo_codes_file "$site")")"
+    # ops#328 D1: on a NON-home host the local file is a replica or a dated
+    # backup, not one of the numbers that must agree — the authoritative
+    # registry count lives on the declared home, and the write guard means it
+    # CANNOT diverge here. Recording it as a number would grade the fleet
+    # AMBER forever on every non-home host after the migration renamed its
+    # copy. "-" (not applicable) is the honest reading; an UNDECLARED home
+    # keeps the pre-D1 behaviour (measure it — that is the old model).
+    if [[ "$(demo_registry_home_state)" == not-home\|* ]]; then
+        DEMO_DRIFT_REGISTRY="-"
+    fi
     DEMO_DRIFT_SITE=""
     DEMO_DRIFT_STAGED="-"
 
@@ -3548,9 +3626,18 @@ cmd_codes() {
     # has ONE writable home per tier (ops#173) — so it carries the same two
     # guards as every other registry write.
     case "$action" in
-        issue|revoke|rotate|sync|purge)
+        issue|revoke|rotate|sync|purge|reconcile)
             demo_require_explicit_tier "codes ${action}" \
                 "pl demo codes ${site} ${action} --tier=live" || return 1
+            ;;
+    esac
+
+    # …then whether this host IS the registry's declared home (ops#328 D1) —
+    # identity before transport, and before anything is minted…
+    local _rc=0
+    case "$action" in
+        issue|revoke|rotate|sync|purge|reconcile)
+            demo_require_registry_home "$site" "codes ${action}" || { _rc=$?; return $_rc; }
             ;;
     esac
 
@@ -3560,7 +3647,7 @@ cmd_codes() {
     # probe so the refusal explains the registry-home model instead of leaving
     # the operator with a bare "Cannot reach live host".
     case "$action" in
-        issue|revoke|rotate|sync|purge)
+        issue|revoke|rotate|sync|purge|reconcile)
             demo_require_delivery "$site" "$tier" "codes ${action}" || return 1
             ;;
     esac
@@ -3670,14 +3757,206 @@ cmd_codes() {
         sync)
             demo_sync_codes_to_site "$site" "$tier"
             ;;
+        reconcile)
+            cmd_codes_reconcile "$site" "$tier" "$@"
+            ;;
         drift)
             cmd_codes_drift "$site" "$tier"
             ;;
         *)
-            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift|purge)"
+            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift|purge|reconcile)"
             return 1
             ;;
     esac
+}
+
+################################################################################
+# reconcile — fold diverged registry copies back into the ONE home (ops#328 D1)
+#
+# `pl demo codes <site> reconcile --from=<path>[,<path>…] [--apply] --tier=<t>`
+#
+# Runs ON THE HOME (the home guard in cmd_codes enforces it). Sources are
+# LOCAL paths — fetch another host's copy first (scp to a scratch path); the
+# verb then owns everything after the fetch: merge (union by hash,
+# revoked-anywhere wins, live-enforced expiry adopted — demo_codes_merge),
+# per-row provenance report, timestamped backups of EVERY input beside its
+# source, atomic write of the merged home registry, the existing delivery
+# sync, a re-stage of the box payload (live tier — without it tonight's reset
+# restores the OLD set over the merge), and a DISCHARGE: re-read the enforced
+# set and diff it against what was just written (ops#327 lesson — no
+# note-and-hope). Dry-run by default, impact-manifest style.
+################################################################################
+
+# Push the home registry's active payload to the box's staged file — the copy
+# the nightly reset treats as authoritative. Same payload renderer as the sync
+# (demo_codes_payload); transport is the site's own ssh route.
+demo_stage_codes_payload() {
+    local site="$1" payload target n
+    payload="$(demo_codes_payload "$(demo_codes_file "$site")")" || return 1
+    target="$(demo_box_codes_payload "$site")"
+    demo_live_ctx "$site" || return 1
+    printf '%s' "$payload" | demo_rssh "$site" \
+        "t=\$(mktemp) && cat > \"\$t\" && ${DEMO_LIVE_SUDO} install -o root -g root -m 0644 \"\$t\" '${target}' && rm -f \"\$t\"" \
+        || return 1
+    n="$(demo_payload_count "$payload")"
+    demo_log "$site" codes-staged "count=${n:-?} target=${target}"
+    return 0
+}
+
+cmd_codes_reconcile() {
+    local site="$1" tier="$2"; shift 2
+    local apply="false" a
+    local -a srcs=()
+    for a in "$@"; do
+        case "$a" in
+            --apply)  apply="true" ;;
+            --from=*) local -a _f=()
+                      IFS=',' read -r -a _f <<< "${a#--from=}"
+                      srcs+=("${_f[@]}") ;;
+            *) print_error "Unknown reconcile option '$a'"
+               print_hint  "Usage: pl demo codes ${site} reconcile --from=<path>[,<path>…] [--apply] --tier=<t>"
+               return 1 ;;
+        esac
+    done
+    [[ ${#srcs[@]} -gt 0 ]] || {
+        print_error "reconcile needs at least one --from=<path> — another host's copy of the registry, fetched to a local path."
+        return 1
+    }
+
+    local cfile proj=""
+    cfile="$(demo_codes_file "$site")"
+
+    print_header "Invite-code reconcile: ${site} (${tier})$( [[ "$apply" == "true" ]] || echo ' — DRY RUN' )"
+
+    # The live-enforced set: both a merge INPUT (un-revoked rows adopt its
+    # expiry) and the discharge baseline. Unreadable → CANNOT VERIFY, because
+    # "state from the live-enforced set" cannot be taken from a guess.
+    local enforced=""
+    if demo_is_live "$tier"; then
+        enforced="$(demo_rdrush "$site" state:get nwc_demo_access.codes --format=string 2>/dev/null)" || enforced=""
+    else
+        if proj="$(demo_project_dir "$site" "$tier" 2>/dev/null)"; then
+            enforced="$(demo_drush "$proj" state:get nwc_demo_access.codes --format=string 2>/dev/null)" || enforced=""
+        fi
+    fi
+    if ! printf '%s' "$enforced" | jq -e '.codes | type == "array"' >/dev/null 2>&1; then
+        print_error "CANNOT VERIFY: could not read the ${tier} enforced code set (state nwc_demo_access.codes)."
+        print_info  "The merge takes each un-revoked row's state from the live-enforced set — refusing to substitute a guess."
+        return 2
+    fi
+
+    # Labels: home + src1..srcN (legend below maps them back to paths).
+    local -a pairs=()
+    local i=1 s
+    for s in "${srcs[@]}"; do pairs+=("src${i}=${s}"); i=$(( i + 1 )); done
+
+    local doc rc=0
+    doc="$(demo_codes_merge home "$cfile" "$enforced" "${pairs[@]}")" || rc=$?
+    (( rc == 0 )) || return $rc
+
+    # ---- report ----
+    echo ""
+    print_info "Inputs (every row from every copy is accounted for):"
+    _rec_counts() {  # label path
+        local c; c="$(jq -r --argjson now "$(date +%s)" \
+            '[(.codes // [])[]] | "\(length) rows, \([.[]|select(.revoked==false and .expires > $now)]|length) active"' \
+            "$2" 2>/dev/null || echo "unreadable")"
+        printf '    %-6s %-52s %s\n' "$1" "$2" "$c"
+    }
+    _rec_counts "home" "$cfile"
+    i=1
+    for s in "${srcs[@]}"; do _rec_counts "src${i}" "$s"; i=$(( i + 1 )); done
+    echo ""
+
+    local total live_n rev_n exp_n
+    total="$(jq -r '.report.counts.total'   <<< "$doc")"
+    live_n="$(jq -r '.report.counts.live'   <<< "$doc")"
+    rev_n="$(jq -r '.report.counts.revoked' <<< "$doc")"
+    exp_n="$(jq -r '.report.counts.expired' <<< "$doc")"
+    local added revprop
+    added="$(jq -r '[.report.rows[] | select([.provenance[] | startswith("home:")] | any | not)] | length' <<< "$doc")"
+    revprop="$(jq --slurpfile h <(jq -c '{codes:(.codes // [])}' "$cfile" 2>/dev/null || echo '{"codes":[]}') -r '
+        [($h[0].codes // [])[] | select(.revoked == false) | .hash] as $homelive
+        | [.merged.codes[] | select(.revoked and (.hash as $x | $homelive | index($x) != null))] | length' <<< "$doc")"
+
+    print_info "Merged result: ${total} rows — ${live_n} live / ${rev_n} revoked / ${exp_n} expired  (${total} rows, showing ${total})"
+    print_info "  new to the home registry: ${added}   revocations propagated INTO home rows: ${revprop}"
+    echo ""
+    printf '    %-5s %-28s %-8s %-12s %s\n' "id" "bundle" "state" "expires" "provenance"
+    jq -r '.report.rows[] | [.id, .bundle, .state, (.expires | todate | .[0:10]), (.provenance | join(","))] | @tsv' <<< "$doc" \
+        | while IFS=$'\t' read -r rid rb rs re rp; do
+            printf '    %-5s %-28s %-8s %-12s %s\n' "$rid" "$rb" "$rs" "$re" "$rp"
+        done
+    echo ""
+
+    # Enforced-set delta the apply will cause.
+    local now_enforced merged_active to_add to_drop
+    now_enforced="$(printf '%s' "$enforced" | jq -r '[.codes[].hash] | sort | .[]' 2>/dev/null)"
+    merged_active="$(jq -r --argjson now "$(date +%s)" \
+        '[.merged.codes[] | select(.revoked == false and .expires > $now) | .hash] | sort | .[]' <<< "$doc")"
+    to_add="$(comm -13 <(printf '%s\n' "$now_enforced") <(printf '%s\n' "$merged_active") | grep -c . || true)"
+    to_drop="$(comm -23 <(printf '%s\n' "$now_enforced") <(printf '%s\n' "$merged_active") | grep -c . || true)"
+    print_info "Enforced set (${tier}) after apply: +${to_add} code(s), -${to_drop} code(s) vs what the site checks today."
+
+    if [[ "$apply" != "true" ]]; then
+        echo ""
+        print_status "WARN" "DRY RUN — nothing was written, synced or staged."
+        print_hint "Apply: pl demo codes ${site} reconcile $(printf -- '--from=%s ' "${srcs[@]}")--tier=${tier} --apply"
+        return 0
+    fi
+
+    # ---- apply ----
+    # Backups FIRST, every input, timestamped, beside its source (0600).
+    local ts b
+    ts="$(date -u '+%Y%m%dT%H%M%SZ')"
+    for b in "$cfile" "${srcs[@]}"; do
+        [[ -f "$b" ]] || continue
+        ( umask 077; cp -p "$b" "${b}.pre-reconcile-${ts}" ) || {
+            print_error "Could not back up ${b} — refusing to continue (nothing written)."
+            return 1
+        }
+    done
+    print_status "OK" "Backed up every input copy (*.pre-reconcile-${ts})"
+
+    local tmp="${cfile}.tmp.$$"
+    ( umask 077; jq '.merged' <<< "$doc" > "$tmp" ) && mv "$tmp" "$cfile" || { rm -f "$tmp"; return 1; }
+    demo_log "$site" codes-reconciled \
+        "tier=${tier} sources=${#srcs[@]} rows=${total} added=${added} revoked_propagated=${revprop} host=$(demo_registry_local_host)"
+    print_status "OK" "Merged registry written: ${cfile} (${total} rows)"
+
+    demo_sync_codes_to_site "$site" "$tier" || {
+        print_error "Merged registry written but NOT synced to ${site} (${tier}) — the site still enforces the OLD set."
+        return 1
+    }
+    if demo_is_live "$tier"; then
+        demo_stage_codes_payload "$site" || {
+            print_error "Synced, but the BOX payload was NOT re-staged — tonight's reset would restore the OLD set over this merge."
+            print_hint  "Re-stage: bash servers/live/demo/install-box.sh ${site} --stage-codes --no-key"
+            return 1
+        }
+        print_status "OK" "Box payload re-staged ($(demo_box_codes_payload "$site"))"
+    fi
+
+    # ---- discharge (ops#327): re-read the enforced set, diff against what we
+    # just wrote. Execute → re-read → render the re-read state.
+    local after=""
+    if demo_is_live "$tier"; then
+        after="$(demo_rdrush "$site" state:get nwc_demo_access.codes --format=string 2>/dev/null)" || after=""
+    else
+        after="$(demo_drush "$proj" state:get nwc_demo_access.codes --format=string 2>/dev/null)" || after=""
+    fi
+    local after_hashes
+    after_hashes="$(printf '%s' "$after" | jq -r '[.codes[].hash] | sort | .[]' 2>/dev/null)"
+    if [[ "$after_hashes" == "$merged_active" ]]; then
+        print_status "OK" "DISCHARGED: re-read the ${tier} enforced set — it now matches the merged registry ($(printf '%s\n' "$merged_active" | grep -c . || true) active code(s))."
+    else
+        print_status "FAIL" "DISCHARGE FAILED: the re-read enforced set does NOT match the merged registry."
+        print_info "enforced now: $(printf '%s' "$after" | jq -r '.codes | length' 2>/dev/null || echo '?') code(s); merged active: $(printf '%s\n' "$merged_active" | grep -c . || true)"
+        return 1
+    fi
+    # Refresh the recorded three-number drift verdict while everything is warm.
+    demo_drift_record_save "$site" "$tier"
+    return 0
 }
 
 # `pl demo codes <site> drift [--tier=live]` — read the three numbers off the
@@ -3692,7 +3971,13 @@ cmd_codes_drift() {
     local reg="$DEMO_DRIFT_REGISTRY" live="$DEMO_DRIFT_SITE" staged="$DEMO_DRIFT_STAGED"
     _fmt() { case "${1:-}" in -) echo "n/a" ;; ''|*[!0-9]*) echo "?" ;; *) echo "$1" ;; esac; }
     echo ""
-    printf '    %-18s %-6s %s\n' "registry-active" "$(_fmt "$reg")"    "$(demo_codes_file "$site")"
+    local _hs; _hs="$(demo_registry_home_state)"
+    if [[ "$_hs" == not-home\|* ]]; then
+        printf '    %-18s %-6s %s\n' "registry-active" "n/a" \
+            "this host is not the registry home — the writable registry lives on '${_hs#*|}' (ops#328 D1)"
+    else
+        printf '    %-18s %-6s %s\n' "registry-active" "$(_fmt "$reg")"    "$(demo_codes_file "$site")"
+    fi
     printf '    %-18s %-6s %s\n' "site-live"       "$(_fmt "$live")"   "state nwc_demo_access.codes — what a code is checked against TODAY"
     printf '    %-18s %-6s %s\n' "staged-payload"  "$(_fmt "$staged")" "$(demo_box_codes_payload "$site") — what the 01:00 reset restores TOMORROW"
     echo ""
@@ -3767,7 +4052,11 @@ cmd_invite() {
     # site that will reject every one of its recipients.
     demo_require_explicit_tier invite "pl demo invite ${site} --tier=live" || return 1
     demo_require_jq || return 1
-    # SECOND, still before the option parse: naming the right tier is not the
+    # SECOND: invite MINTS codes, so it is a registry write — it must be on
+    # the registry's declared home (ops#328 D1). Identity before transport.
+    local _rc=0
+    demo_require_registry_home "$site" invite || { _rc=$?; return $_rc; }
+    # THIRD, still before the option parse: naming the right tier is not the
     # same as being able to REACH it. The console host named --tier=live
     # correctly every time and still could not deliver a single code (ops#173).
     demo_require_delivery "$site" "$tier" invite || return 1

@@ -1,0 +1,21 @@
+# The invite-code registry's ONE writable home — ops#328 D1.
+#
+# Operator ruling 2026-08-09: the registry's home is mini (100.64.0.2, the
+# always-on console/agent host) — "so everything works without this laptop".
+#
+# WHY A DECLARED FACT, NOT A PROBE. The ops#173 model ("the home is the host
+# that can deliver") stopped selecting a single host the day mini gained a
+# delivery path: both the workstation and mini passed demo_require_delivery,
+# both wrote their own sites/<site>/demo-codes.json, and by 2026-08-09 the two
+# had diverged to 63 rows/26 active vs 72 rows/35 active while live enforced
+# 31. Delivery capability is NECESSARY for a write, but only this declaration
+# is SUFFICIENT: every registry-writing verb compares `hostname -s` against
+# registry_home and refuses anywhere else (demo_require_registry_home in
+# scripts/commands/demo.sh). Reads work anywhere; an UNDECLARED or unparseable
+# home fails writes CLOSED (exit 2 CANNOT VERIFY).
+#
+# CHANGING THIS VALUE IS AN OPERATOR RULING, not a refactor — it moves where
+# invite codes may be minted. tests/unit/test-demo.bats pins the value so the
+# change is always deliberate. Escape hatch for a one-off write elsewhere:
+# NWP_DEMO_REGISTRY_HOME_OVERRIDE='<why>' — ledgered to sites/<site>/demo-reset.log.
+registry_home: mini

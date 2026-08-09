@@ -95,6 +95,17 @@ DEMO_RETRY_SECONDS=1800
 #     staged-payload — are recorded per host in private/demo-codes/<site>.json
 #     and graded AMBER by `pl todo`/`pl rag` when they disagree (fault 3: all
 #     three were readable the whole time; nothing was looking).
+#
+# ops#328 D1 (operator ruling 2026-08-09): "the host that can deliver" stopped
+# selecting ONE host the day the console host gained a delivery path — two passed the
+# probe, two registries accreted (63/26 vs 72/35 active while live enforced
+# 31). The home is now a DECLARED fact: `registry_home:` in the tracked
+# servers/live/demo/registry-home.yml (the always-on console/agent
+# host, "so everything works without this laptop"). Delivery capability stays
+# necessary; only the declaration is sufficient. Writes refuse elsewhere,
+# reads work anywhere, an undeclared home fails writes CLOSED (exit 2), and
+# `pl demo codes <site> reconcile` is the one sanctioned way to fold a
+# diverged copy back into the home.
 ################################################################################
 
 # The box's state dir, where install-box.sh --stage-codes puts the payload the
@@ -108,6 +119,58 @@ demo_box_codes_payload() { echo "$(demo_box_state_dir "$1")/codes-payload.json";
 # a record copied between hosts would be exactly the lie ops#173 is about.
 demo_drift_dir()  { echo "${PROJECT_ROOT:?PROJECT_ROOT not set}/private/demo-codes"; }
 demo_drift_file() { echo "$(demo_drift_dir)/${1:?site required}.json"; }
+
+################################################################################
+# Registry-home declaration (ops#328 D1) — pure readers; the refusal lives in
+# scripts/commands/demo.sh (demo_require_registry_home).
+################################################################################
+
+# The declaration travels WITH THE CODE (repo-relative, not PROJECT_ROOT):
+# policy and the guard that enforces it must come from the same checkout, and
+# a worktree or branch run must see the same home as main. NWP_* env override
+# exists so the guard is testable on any host (standing order: an absent-file
+# branch nobody can exercise is not a check).
+# Builtins only (no dirname): this library is sourced under env -i / empty-PATH
+# in tests, and a source-time external command would leak stderr into every
+# caller's captured output.
+_DEMO_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
+[[ -n "$_DEMO_LIB_DIR" ]] || _DEMO_LIB_DIR="$PWD"
+demo_registry_home_file() {
+    echo "${NWP_DEMO_REGISTRY_HOME_FILE:-${_DEMO_LIB_DIR%/lib}/servers/live/demo/registry-home.yml}"
+}
+
+# demo_registry_home → the declared home hostname, or "" when the declaration
+# is absent or unparseable. "" MUST be treated as undeclared (fail closed on
+# writes) — a garbage value that reads as some host is how a typo'd file
+# would silently re-open the second-writer hole.
+demo_registry_home() {
+    local f v
+    f="$(demo_registry_home_file)"
+    [[ -f "$f" ]] || { echo ""; return 0; }
+    # Strip surrounding quotes and trailing space only — an internal space must
+    # SURVIVE to fail validation ("two words" is garbage, not host "twowords").
+    v="$(sed -n 's/^registry_home:[[:space:]]*//p' "$f" 2>/dev/null | head -1 \
+         | sed "s/[\"']//g; s/[[:space:]]*$//")"
+    [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] || v=""
+    echo "$v"
+}
+
+demo_registry_local_host() { hostname -s 2>/dev/null || hostname 2>/dev/null || echo ""; }
+
+# demo_registry_home_state → "home|<home>" | "not-home|<home>" | "undeclared|<file>"
+# An unreadable LOCAL hostname is "not-home": a host that cannot prove its
+# identity is not the home, whatever the declaration says.
+demo_registry_home_state() {
+    local home host
+    home="$(demo_registry_home)"
+    [[ -n "$home" ]] || { echo "undeclared|$(demo_registry_home_file)"; return 0; }
+    host="$(demo_registry_local_host)"
+    if [[ -n "$host" && "$host" == "$home" ]]; then
+        echo "home|$home"
+    else
+        echo "not-home|$home"
+    fi
+}
 
 ################################################################################
 # yq resolution (nwp/ops#173 item 4)
@@ -426,6 +489,117 @@ demo_codes_purge() {
     jq -c --argjson ids "$ids_json" \
        '.codes = [.codes[] | select(.id as $i | ($ids | index($i)) == null)]' \
        "$file" > "$tmp" && mv "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+}
+
+# demo_codes_merge <home_label> <home_file> <live_payload_json> <label=path>...
+# (ops#328 D1) — pure merge of N diverged registry copies into one document:
+#
+#   {version:1,
+#    merged: {version:1, codes:[…registry-schema rows…]},
+#    report: {rows:[{id,bundle,state,expires,created,revoked,hash_prefix,
+#                    provenance:["<label>:<original-id>",…]}],
+#             counts:{live,revoked,expired,total}}}
+#
+# Merge rules (the order is the point):
+#   * UNION BY HASH — the hash is a code's identity; ids are per-host serials
+#     and collide between copies.
+#   * REVOKED-ANYWHERE → REVOKED. A revocation is a decision; a merge must
+#     never resurrect a code because some stale copy predates the decision.
+#   * Otherwise an un-revoked row adopts the LIVE-ENFORCED expiry when the
+#     live set carries its hash — what the site actually checks against wins
+#     over any copy's recollection. Rows the live set does not know keep
+#     their own recorded created+ttl expiry.
+#   * Home ids survive; rows new to the home get fresh ids ABOVE every id any
+#     input ever used (an id is never reused, across all copies).
+#
+# Fail-closed: an absent or unparseable input is exit 2 CANNOT VERIFY — a
+# merge that silently dropped one copy's rows would BE the divergence, again.
+demo_codes_merge() {
+    local home_label="$1" home_file="$2" live_payload="$3"; shift 3
+    demo_require_jq || return 1
+    local now; now="$(date +%s)"
+    [[ -n "${live_payload//[[:space:]]/}" ]] || live_payload='{"version":1,"codes":[]}'
+    if ! printf '%s' "$live_payload" | jq -e '.codes | type == "array"' >/dev/null 2>&1; then
+        echo "ERROR: live-enforced payload is unreadable — CANNOT VERIFY, refusing to merge" >&2
+        return 2
+    fi
+    local combined; combined="$(mktemp)" || return 1
+    if [[ -f "$home_file" ]]; then
+        if ! jq -c --arg src "$home_label" '{src:$src, codes:(.codes // [])}' "$home_file" >> "$combined" 2>/dev/null; then
+            echo "ERROR: home registry ${home_file} is unreadable — CANNOT VERIFY, refusing to merge" >&2
+            rm -f "$combined"; return 2
+        fi
+    else
+        jq -cn --arg src "$home_label" '{src:$src, codes:[]}' >> "$combined"
+    fi
+    local pair label path
+    for pair in "$@"; do
+        label="${pair%%=*}"; path="${pair#*=}"
+        if [[ ! -f "$path" ]]; then
+            echo "ERROR: source '${path}' does not exist — CANNOT VERIFY, refusing to merge" >&2
+            rm -f "$combined"; return 2
+        fi
+        if ! jq -c --arg src "$label" '{src:$src, codes:(.codes // [])}' "$path" >> "$combined" 2>/dev/null; then
+            echo "ERROR: source ${path} is unreadable — CANNOT VERIFY, a merge would silently drop its rows" >&2
+            rm -f "$combined"; return 2
+        fi
+    done
+    local out rc=0
+    out="$(jq -cs --arg home "$home_label" --argjson now "$now" --argjson live "$live_payload" '
+        . as $in
+        | ($live.codes // [] | map({key:.hash, value:.expires}) | from_entries) as $liveexp
+        | ([$in[].codes[].id | ltrimstr("c") | tonumber? // 0] | max // 0) as $maxall
+        | [ $in[] | .src as $s | .codes[] | . + {src:$s} ]
+        | group_by(.hash)
+        | map( sort_by(.created // 0) as $g
+             | $g[0] as $first
+             | ($g | map(.revoked) | any) as $rv
+             | {bundle: $first.bundle,
+                hash: $first.hash,
+                created: ($g | map(.created // 0) | min),
+                expires: (if ($rv | not) and ($liveexp[$first.hash] != null)
+                          then $liveexp[$first.hash] else $first.expires end),
+                revoked: $rv,
+                home_id: (($g | map(select(.src == $home) | .id)) | .[0] // null),
+                provenance: ($g | map("\(.src):\(.id)"))} )
+        | sort_by(.created)
+        # First claimant (earliest created) keeps its home id; later claimants
+        # of the SAME id get fresh ones. The real registries carried c1–c24
+        # each twice (the 2026-08-01 concatenation), and demo_code_revoke
+        # selects by id — a duplicated id makes one revoke kill two codes.
+        | reduce .[] as $r ({next: ($maxall + 1), used: {}, rows: []};
+            if ($r.home_id != null) and ((.used[$r.home_id] // false) | not)
+            then {next: .next,
+                  used: (.used + {($r.home_id): true}),
+                  rows: (.rows + [$r + {id: $r.home_id}])}
+            else {next: (.next + 1),
+                  used: (.used + {("c" + (.next | tostring)): true}),
+                  rows: (.rows + [$r + {id: ("c" + (.next | tostring))}])}
+            end)
+        | .rows
+        | sort_by(.id | ltrimstr("c") | tonumber? // 0)
+        | {version: 1,
+           merged: {version: 1,
+                    codes: map({id, bundle, hash, expires, created, revoked})},
+           report: {
+             rows: map({id, bundle,
+                        state: (if .revoked then "revoked"
+                                elif .expires <= $now then "expired"
+                                else "live" end),
+                        expires, created, revoked,
+                        hash_prefix: (.hash[0:12]),
+                        provenance}),
+             counts: {
+               live:    ([.[] | select((.revoked | not) and .expires >  $now)] | length),
+               revoked: ([.[] | select(.revoked)] | length),
+               expired: ([.[] | select((.revoked | not) and .expires <= $now)] | length),
+               total:   length}}}' "$combined" 2>&1)" || rc=$?
+    rm -f "$combined"
+    if (( rc != 0 )); then
+        echo "ERROR: merge failed — CANNOT VERIFY: ${out}" >&2
+        return 2
+    fi
+    printf '%s\n' "$out"
 }
 
 ################################################################################

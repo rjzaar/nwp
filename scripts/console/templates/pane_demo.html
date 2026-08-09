@@ -2,6 +2,23 @@
 {% for d in demo_sites %}
 <div class="demosite">
   <h3>{{ d.site }}</h3>
+
+  {# --- seal banner (ops#269/#328): the golden interaction, first-class ---- #}
+  {% if d.seal.ok %}
+  <div class="sealband">
+    <strong>Golden sealed {{ d.seal.age_human }} ago</strong>
+    <span class="muted">({{ d.seal.sealed_at }} · {{ d.seal.source }}{% if d.seal.last_reset %} · last reset {{ d.seal.last_reset }}{% endif %})</span><br>
+    <span class="warnnote">Changes made on live now — revoke, purge, guild edits — <strong>revert</strong> at the
+    next nightly reset ({{ d.seal.reset_window }}) unless a new golden is sealed:
+    <code>pl demo golden {{ d.site }} --tier=live --with-pair</code> (~4–6 min paired, run on the workstation).</span>
+  </div>
+  {% else %}
+  <div class="sealband err">
+    CANNOT VERIFY the staged golden for {{ d.site }}: {{ d.seal.reason }}.
+    This is NOT "no golden" — tonight's reset may restore a state this console cannot see.
+  </div>
+  {% endif %}
+
   {% if d.status.ok %}
   <ul class="plain">
     {% for h in d.status.highlights %}<li>{{ h }}</li>{% endfor %}
@@ -11,13 +28,11 @@
   <p class="err">no demo status on this host (rc={{ d.rc }})</p>
   {% endif %}
 
-  <h4>Invite codes <span class="muted">(hashes only)</span></h4>
-  {% if d.codes.rows %}
-  <pre class="codes">{% for r in d.codes.rows %}{{ r }}
-{% endfor %}</pre>
-  {% else %}
-  <p class="muted">no code registry visible here</p>
-  {% endif %}
+  <h4>Invite codes</h4>
+  {% with site = d.site, codes_json = d.codes_json, rows = d.rows, filter = d.filter %}
+    {% include "_demo_codes.html" %}
+  {% endwith %}
+  <div id="demo-codes-{{ d.site }}"></div>
 
   {% if can_act %}
   <div class="actions">
@@ -29,8 +44,8 @@
     <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
       <input type="hidden" name="action" value="demo_reset">
       <input type="hidden" name="site" value="{{ d.site }}">
-      <button class="warn" hx-confirm="Reset {{ d.site }} to golden (skips if a tester was active in the last 30m)?">
-        Reset (if idle)</button>
+      <button class="warn" hx-confirm="Reset {{ d.site }} to golden (skips if a tester was active in the last 30m)? This also restores the STANDARD tester set (drush nwc:seed-demo).">
+        Reset to golden (if idle)</button>
     </form>
     <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
       <input type="hidden" name="action" value="demo_code_issue">
@@ -39,12 +54,6 @@
         {% for b in bundles %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
       </select>
       <button class="primary">Issue code</button>
-    </form>
-    <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
-      <input type="hidden" name="action" value="demo_code_revoke">
-      <input type="hidden" name="site" value="{{ d.site }}">
-      <input name="code_id" placeholder="code id" required pattern="[A-Za-z0-9_-]{1,40}">
-      <button class="warn">Revoke</button>
     </form>
   </div>
   <div id="demo-result-{{ d.site }}"></div>

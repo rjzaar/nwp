@@ -254,6 +254,90 @@ def extract_invite_email(stdout: str) -> str:
     return (text[start:end] if end != -1 else text[start:]).rstrip()
 
 
+def fmt_age(secs) -> str:
+    """Seconds → '2h 01m' / '3d 4h' / 'unknown time'. Never raises; anything
+    non-sensical reads as unknown rather than as a small number."""
+    if not isinstance(secs, int) or isinstance(secs, bool) or secs < 0:
+        return "unknown time"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    if secs < 86400:
+        return f"{secs // 3600}h {(secs % 3600) // 60:02d}m"
+    return f"{secs // 86400}d {(secs % 86400) // 3600}h"
+
+
+DEMO_CODE_STATES = ("live", "revoked", "expired")
+
+
+def parse_demo_codes_json(stdout: str) -> dict:
+    """`pl demo codes <site> list --json` (ops#328) — a real contract.
+
+    ok:false — including the verb's own exit-2 unreadable-registry document —
+    surfaces as CANNOT VERIFY with a reason; it must never collapse into an
+    empty-but-healthy list (ops#281 / !394)."""
+    raw = strip_ansi(stdout or "")[-4000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "reason": "no JSON found in pl demo codes list --json output "
+                "(is the deployed pl older than ops#328?)", "raw": raw,
+                "codes": [], "counts": {}}
+    if not data.get("ok"):
+        return {"ok": False,
+                "reason": str(data.get("reason", "registry unreadable"))[:300],
+                "raw": raw, "codes": [], "counts": {}}
+    codes = []
+    for r in data.get("codes", []) or []:
+        if not isinstance(r, dict):
+            continue
+        state = str(r.get("state", ""))[:12]
+        codes.append({
+            "id": str(r.get("id", ""))[:40],
+            "bundle": str(r.get("bundle", ""))[:40],
+            "state": state if state in DEMO_CODE_STATES else "?",
+            "expires_iso": str(r.get("expires_iso", ""))[:25],
+            "created_iso": str(r.get("created_iso", ""))[:25],
+            "hash_prefix": str(r.get("hash_prefix", ""))[:16],
+        })
+    raw_counts = data.get("counts", {})
+    if not isinstance(raw_counts, dict):
+        raw_counts = {}
+    counts = {}
+    for k in ("live", "revoked", "expired", "total"):
+        try:
+            counts[k] = int(raw_counts.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            counts[k] = 0
+    return {"ok": True, "registry": str(data.get("registry", "present"))[:16],
+            "codes": codes, "counts": counts, "raw": raw}
+
+
+def parse_seal_status(stdout: str) -> dict:
+    """`pl demo seal-status <site> --json` (ops#328): what tonight's reset
+    restores. ok:false keeps its reason — 'I could not read the staged golden'
+    and 'no golden' lead to different actions and never render alike."""
+    raw = strip_ansi(stdout or "")[-2000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "reason": "no JSON found in pl demo seal-status output "
+                "(is the deployed pl older than ops#328?)", "raw": raw}
+    if not data.get("ok"):
+        return {"ok": False, "reason": str(data.get("reason", "CANNOT VERIFY"))[:300],
+                "raw": raw}
+    age = data.get("age_seconds")
+    try:
+        age = int(age)
+    except (TypeError, ValueError):
+        age = None
+    return {"ok": True,
+            "sealed_at": str(data.get("sealed_at", ""))[:25],
+            "age_seconds": age,
+            "age_human": fmt_age(age),
+            "last_reset": str(data.get("last_reset") or "")[:40],
+            "source": str(data.get("source", ""))[:120],
+            "reset_window": str(data.get("reset_window", ""))[:80],
+            "raw": raw}
+
+
 def parse_demo_codes(stdout: str) -> dict:
     """`pl demo codes <site> list` — hashes only. Keep rows that look tabular."""
     text = strip_ansi(stdout or "")

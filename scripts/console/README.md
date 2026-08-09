@@ -461,9 +461,17 @@ The switch is honoured only by that test module; it does not exist in the app.
 - Audit entries written before projects existed carry no `project` field and
   are therefore **owner-only**. A backfill would have to guess.
 
-- `pl demo status` / `codes list` output is parsed heuristically (human tables);
-  the panes always keep the raw text in a collapsible block. `pl rag --json` and
+- `pl demo status` output is parsed heuristically (a human table); the pane
+  keeps the raw text in a collapsible block. `pl demo codes list --json`,
+  `pl demo seal-status --json` (both ops#328), `pl rag --json` and
   `pl todo check --json` are real contracts.
+- The Demo tab's bulk revoke/purge DISCHARGES (ops#327): the response renders
+  the registry re-read after the verb ran, cache bypassed — on refusals too.
+  The seal banner states the golden-capture age and that live changes revert
+  at the nightly reset unless a new golden is sealed; sealing itself
+  (`pl demo golden <site> --tier=live --with-pair`, ~4–6 min) stays a
+  workstation verb in tranche 1 — it is longer than the console's synchronous
+  action budget and is designed as an async job in ops#328 tranche 2.
 - The fleet view is only as current as the last `pl fleet publish`. It always
   says which host produced it and how old it is, and shouts once that is past
   `NWP_CONSOLE_FLEET_MAX_AGE` — but a dead publisher means stale numbers, so

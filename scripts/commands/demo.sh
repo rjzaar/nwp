@@ -167,10 +167,28 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   against live and runnable from CI.
     status <site>                 Golden capture info, recent resets/skips,
                                   invite-code summary.
-    codes <site> list             List codes (hashes only — never plaintext)
+    seal-status <site> [--tier=live] [--json]
+                                  What will tonight's reset restore? Reads the
+                                  BOX-STAGED golden's capture time (the number
+                                  that decides — ops#269), the box's last-reset
+                                  stamp and the reset window. Fail-closed:
+                                  unreachable box / unreadable manifest is exit
+                                  2 CANNOT VERIFY, never "no golden". Feeds the
+                                  console demo tab's seal banner (ops#328).
+    codes <site> list [--json]    List codes (hashes only — never plaintext).
+                                  --json: structured rows with computed state
+                                  (live|revoked|expired) + per-state counts;
+                                  an ABSENT registry is ok:true/empty, an
+                                  UNREADABLE one is exit 2 ok:false (ops#328).
     codes <site> issue <bundle> [--expires=14d]
                                   Issue a code; plaintext printed ONCE.
-    codes <site> revoke <id>      Revoke a code (kept in registry as audit row)
+    codes <site> revoke <id>...   Revoke code(s) (kept in registry as audit
+                                  rows). Several ids = one batch: any bad id
+                                  refuses the WHOLE batch before touching any.
+    codes <site> purge <id>...    Remove revoked/expired rows from the registry,
+                                  archiving them to demo-codes-purged.json.
+                                  REFUSES a live id (revoke first). Registry
+                                  write → same explicit-tier + delivery guards.
     codes <site> rotate           Revoke every live code, reissue one per
                                   bundle that had one (new plaintexts, once)
     codes <site> sync             Re-push the hashed registry into the site
@@ -3423,6 +3441,97 @@ cmd_status_box() {
 }
 
 ################################################################################
+# seal-status — what will tonight's reset restore? (ops#328)
+#
+# The golden-interaction truth the console demo tab must carry: ANY change made
+# on the live demo pair (a revoke, a purge side-effect, a guild edit) survives
+# only until the next nightly reset UNLESS a new golden is sealed. The number
+# that decides what comes back is the BOX-STAGED golden's capture time — not
+# the repo copy (ops#269: two live fixes were "captured" locally and the
+# nightly restored a two-day-old box image over both).
+#
+# Read-only. Fail-closed: an unreachable box or unreadable manifest is exit 2
+# CANNOT VERIFY — "I could not read the staged golden" and "no golden" lead to
+# different actions and must never render alike.
+################################################################################
+
+# demo_seal_emit_fail <site> <tier> <reason> — the ok:false document / line.
+demo_seal_emit_fail() {
+    local site="$1" tier="$2" reason="$3"
+    if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+        jq -cn --arg site "$site" --arg tier "$tier" --arg reason "$reason" \
+           '{ok:false, site:$site, tier:$tier, reason:$reason}'
+    else
+        print_status "WARN" "CANNOT VERIFY: $reason"
+    fi
+}
+
+cmd_seal_status() {
+    local site="$1" tier="${2:-dev}"
+    demo_require_jq || return 2
+    local src captured="" last_reset=""
+
+    if demo_is_live "$tier"; then
+        src="box:$(demo_box_state_dir "$site")/golden"
+        if ! demo_live_ctx "$site" >/dev/null 2>&1; then
+            demo_seal_emit_fail "$site" "$tier" \
+                "cannot reach ${site}'s live box over ssh — the staged golden is UNKNOWN (this is NOT 'no golden')"
+            return 2
+        fi
+        local mani=""
+        mani="$(demo_rssh "$site" "cat $(demo_box_state_dir "$site")/golden/golden.manifest.json 2>/dev/null" 2>/dev/null)" || mani=""
+        if [[ -z "$mani" ]]; then
+            demo_seal_emit_fail "$site" "$tier" \
+                "box reachable but no golden is staged at $(demo_box_state_dir "$site")/golden — the nightly reset has nothing of yours to restore (pl demo golden $site --tier=live)"
+            return 2
+        fi
+        captured="$(printf '%s' "$mani" | jq -r '.captured_utc // empty' 2>/dev/null)" || captured=""
+        if [[ -z "$captured" ]]; then
+            demo_seal_emit_fail "$site" "$tier" "staged golden manifest is unreadable — CANNOT VERIFY"
+            return 2
+        fi
+        last_reset="$(demo_rssh "$site" "cat $(demo_box_state_dir "$site")/last-reset 2>/dev/null" 2>/dev/null | tr -d '\r\n')" || last_reset=""
+    else
+        local gdir; gdir="$(demo_golden_dir "$site" "$tier")"
+        src="$gdir"
+        if [[ ! -f "$gdir/golden.manifest.json" ]]; then
+            demo_seal_emit_fail "$site" "$tier" \
+                "no golden captured at tier ${tier} (pl demo golden $site --tier=$tier)"
+            return 2
+        fi
+        captured="$(jq -r '.captured_utc // empty' "$gdir/golden.manifest.json" 2>/dev/null)" || captured=""
+        if [[ -z "$captured" ]]; then
+            demo_seal_emit_fail "$site" "$tier" "golden manifest is unreadable — CANNOT VERIFY"
+            return 2
+        fi
+    fi
+
+    local cap_epoch age_secs=""
+    cap_epoch="$(demo_epoch_of "$captured")"
+    [[ -n "$cap_epoch" ]] && age_secs=$(( $(date +%s) - cap_epoch ))
+
+    local window="01:00-03:30 Australia/Melbourne nightly (04:00 floor)"
+    local warning="changes made after sealed_at revert at the next reset unless a new golden is sealed (pl demo golden $site --tier=$tier --with-pair, ~4-6 min paired)"
+    if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+        jq -cn --arg site "$site" --arg tier "$tier" --arg captured "$captured" \
+               --arg last_reset "$last_reset" --arg src "$src" --arg age "$age_secs" \
+               --arg window "$window" --arg warning "$warning" \
+           '{ok:true, site:$site, tier:$tier, sealed_at:$captured,
+             age_seconds:(($age|tonumber?) // null),
+             last_reset:(if $last_reset == "" then null else $last_reset end),
+             source:$src, reset_window:$window, warning:$warning}'
+    else
+        print_header "Demo seal status: $site ($tier)"
+        echo "    sealed_at:  $captured$( [[ -n "$age_secs" ]] && echo " ($(demo_human_age "$cap_epoch"))" )"
+        echo "    source:     $src"
+        [[ -n "$last_reset" ]] && echo "    last reset: $last_reset"
+        echo "    window:     $window"
+        print_status "WARN" "$warning"
+    fi
+    return 0
+}
+
+################################################################################
 # codes
 ################################################################################
 
@@ -3434,27 +3543,36 @@ cmd_codes() {
     # `list` is read-only and keeps the default tier. Everything else either
     # mints a code or pushes the registry into a running site, and must say
     # WHICH site. (revoke is the sharpest of these: revoking against dev while
-    # the code is live in the site's state leaves it redeemable.)
+    # the code is live in the site's state leaves it redeemable.) `purge` never
+    # touches a running site, but it rewrites the registry, and the registry
+    # has ONE writable home per tier (ops#173) — so it carries the same two
+    # guards as every other registry write.
     case "$action" in
-        issue|revoke|rotate|sync)
+        issue|revoke|rotate|sync|purge)
             demo_require_explicit_tier "codes ${action}" \
                 "pl demo codes ${site} ${action} --tier=live" || return 1
             ;;
     esac
 
-    # …and then, on the same three write verbs, whether this host can reach the
+    # …and then, on the same write verbs, whether this host can reach the
     # tier it just named (ops#173). `sync` is exempt from the pre-check only in
     # the sense that it has no code to burn — it still goes through the same
     # probe so the refusal explains the registry-home model instead of leaving
     # the operator with a bare "Cannot reach live host".
     case "$action" in
-        issue|revoke|rotate|sync)
+        issue|revoke|rotate|sync|purge)
             demo_require_delivery "$site" "$tier" "codes ${action}" || return 1
             ;;
     esac
 
     case "$action" in
         list)
+            # --json (parsed by main into DEMO_JSON) is the console's contract:
+            # structured rows + counts, absent≠unreadable (ops#328).
+            if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+                demo_codes_list_json "$site" "$cfile"
+                return $?
+            fi
             cmd_status "$site" "$tier" | sed -n '/Invite codes:/,/Recent resets/p' | head -n -1
             print_info "Only sha256 hashes are stored — plaintext codes are shown once at issue time."
             ;;
@@ -3483,12 +3601,54 @@ cmd_codes() {
             demo_sync_codes_to_site "$site" "$tier" || true
             ;;
         revoke)
-            local id="${1:-}"
-            [[ -n "$id" ]] || { print_error "Usage: pl demo codes <site> revoke <id>"; return 1; }
-            demo_code_revoke "$cfile" "$id" || return 1
-            demo_log "$site" codes-revoked "id=$id"
-            print_status "OK" "Revoked $id"
+            # One or MANY ids (console bulk-select, ops#328). Validate the whole
+            # batch BEFORE revoking anything: a bulk verb that half-applies and
+            # then errors reports a state it did not leave. (Before this, a
+            # stray second argument was silently ignored and the first id was
+            # revoked anyway — proven red by the ops#328 bats test.)
+            local ids=("$@") id
+            [[ ${#ids[@]} -gt 0 && -n "${ids[0]:-}" ]] \
+                || { print_error "Usage: pl demo codes <site> revoke <id>..."; return 1; }
+            for id in "${ids[@]}"; do
+                jq -e --arg id "$id" '.codes[] | select(.id == $id)' "$cfile" >/dev/null 2>&1 \
+                    || { print_error "no code with id '$id' — NOTHING was revoked (whole batch refused)"; return 1; }
+            done
+            for id in "${ids[@]}"; do
+                demo_code_revoke "$cfile" "$id" || return 1
+                demo_log "$site" codes-revoked "id=$id"
+            done
+            print_status "OK" "Revoked ${#ids[@]} code(s): ${ids[*]}"
             demo_sync_codes_to_site "$site" "$tier" || true
+            ;;
+        purge)
+            # Remove revoked/expired rows from the registry, archiving them to
+            # sites/<site>/demo-codes-purged.json (ops#328). NEVER a live code:
+            # purge is housekeeping, revoke is the verb that kills a code.
+            local ids=("$@") id state now
+            [[ ${#ids[@]} -gt 0 && -n "${ids[0]:-}" ]] \
+                || { print_error "Usage: pl demo codes <site> purge <id>... --tier=<t>"; return 1; }
+            [[ -f "$cfile" ]] || { print_error "no code registry at $cfile"; return 1; }
+            now="$(date +%s)"
+            for id in "${ids[@]}"; do
+                state="$(jq -r --arg id "$id" --argjson now "$now" '
+                    [.codes[] | select(.id == $id)]
+                    | if length == 0 then "missing"
+                      else .[0] | (if .revoked then "revoked"
+                                   elif .expires <= $now then "expired"
+                                   else "live" end) end' "$cfile" 2>/dev/null)" || state=""
+                if [[ -z "$state" || "$state" == "missing" ]]; then
+                    print_error "no code with id '$id' — NOTHING was purged (whole batch refused)"
+                    return 1
+                fi
+                if [[ "$state" == "live" ]]; then
+                    print_error "REFUSED: '$id' is a LIVE code — purge only removes revoked/expired rows."
+                    print_hint "Revoke it first: pl demo codes $site revoke $id --tier=$tier"
+                    return 1
+                fi
+            done
+            demo_codes_purge "$cfile" "$(demo_purged_file "$site")" "${ids[@]}" || return 1
+            demo_log "$site" codes-purged "ids=${ids[*]} count=${#ids[@]}"
+            print_status "OK" "Purged ${#ids[@]} code(s) → $(demo_purged_file "$site") (archived, not destroyed)"
             ;;
         rotate)
             local bundles b now
@@ -3514,7 +3674,7 @@ cmd_codes() {
             cmd_codes_drift "$site" "$tier"
             ;;
         *)
-            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift)"
+            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift|purge)"
             return 1
             ;;
     esac
@@ -3582,6 +3742,11 @@ DEMO_INVITE_DEFAULT_BUNDLES=(tester-member tester-guild-leader tester-content-ma
 
 # Set by main() when the operator actually wrote --tier=… on the command line.
 DEMO_TIER_EXPLICIT="false"
+
+# Set by main() on --json. Read by the verbs that offer a machine-readable
+# contract (codes list, seal-status — ops#328). Parsed centrally so it can
+# never fall into the ops#225 stray-positional refusal.
+DEMO_JSON="false"
 
 # $1 label for the message   $2 a copy-pasteable corrected example
 demo_require_explicit_tier() {
@@ -4257,6 +4422,7 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --tier=*)   tier="${1#--tier=}"; shift ;;
+            --json)     DEMO_JSON="true"; shift ;;
             --allow-config-gaps) allow_gaps="true"; shift ;;
             # Capture WITHOUT staging to the box — for taking a point-in-time
             # copy you do not want the nightly to restore yet. The default is
@@ -4418,6 +4584,7 @@ main() {
                   fi ;;
         nightly)  cmd_nightly "$site" "$tier" "$use_pair" "$via_key" "$box_host" "$dry_run" "$print_transport" ;;
         status)   cmd_status "$site" "$tier" ;;
+        seal-status) cmd_seal_status "$site" "$tier" ;;
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;

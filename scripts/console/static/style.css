@@ -257,3 +257,18 @@ details > summary { cursor: pointer; color: var(--muted); }
 }
 .chip.amber-gate-chip { border-color: var(--line); color: var(--muted);
   text-transform: uppercase; letter-spacing: .03em; }
+
+/* ops#328: demo tab tester management — seal banner + code-state chips.
+   CVD rule as everywhere: the STATE WORD is the load-bearing channel, the
+   colour is the fast one. */
+.sealband { background: var(--card2); border: 1px solid var(--warn); border-radius: 8px;
+  padding: 8px 10px; margin: 6px 0 10px; line-height: 1.4; }
+.sealband.err { border-color: var(--err); color: var(--err); }
+.sealband .warnnote { color: var(--warn); }
+.codetable { border-collapse: collapse; margin: 4px 0; }
+.codetable td, .codetable th { padding: 4px 8px; border-top: 1px solid var(--line);
+  text-align: left; font-size: .92rem; }
+.chip.codechip-live    { border-color: var(--ok);    color: var(--ok); }
+.chip.codechip-revoked { border-color: var(--err);   color: var(--err); }
+.chip.codechip-expired { border-color: var(--muted); color: var(--muted); }
+.okline { color: var(--ok); }

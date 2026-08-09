@@ -1,0 +1,15 @@
+{# Bulk revoke/purge result (ops#328). The ops#327 rule, structural: what the
+   operator sees below the verdict line is the registry RE-READ after the
+   action — the state the action left, not a note about intent. Rendered on
+   refusals too: "nothing changed" is a result. #}
+{% if error %}
+<p class="err">✗ {{ error }}</p>
+{% else %}
+<p class="{% if res.rc == 0 %}okline{% else %}err{% endif %}">
+  {{ label }} — rc={{ res.rc }} ({{ res.secs }}s)</p>
+<details {% if res.rc != 0 %}open{% endif %}><summary>command output</summary>
+<pre>{{ res.out }}
+{{ res.err }}</pre></details>
+<h5>Registry as re-read after this action</h5>
+{% include "_demo_codes.html" %}
+{% endif %}

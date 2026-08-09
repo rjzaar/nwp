@@ -601,21 +601,38 @@ def _gather_security(sc: Scope, force: bool = False) -> tuple[dict, dict, dict]:
     return dict(sec, sites=sites, totals=advisories.totals(sites)), res, prov
 
 
+def _gather_demo_codes_json(site: str, force: bool = False) -> dict:
+    """The Demo pane's code registry read — `pl demo codes <site> list --json`
+    (ops#328), a real contract instead of the old heuristic table-grep. Also
+    the DISCHARGE read the bulk-action route re-runs with force=True."""
+    codes = run_pl_cached(config.NWP_ROOT, ["demo", "codes", site, "list", "--json"],
+                          ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+    return parsers.parse_demo_codes_json(codes["out"] + "\n" + codes["err"])
+
+
 def _gather_demo_raw(sites: list[str], force: bool = False) -> list[dict]:
     out = []
     for site in sites:
         st = run_pl_cached(config.NWP_ROOT, ["demo", "status", site],
                            ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
-        codes = run_pl_cached(config.NWP_ROOT, ["demo", "codes", site, "list"],
-                              ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+        codes_j = _gather_demo_codes_json(site, force=force)
+        # The golden interaction (ops#269/#328): what will tonight's reset
+        # restore? --tier=live is a fixed literal for the same reason it is in
+        # actions.py — config.DEMO_SITES names the PUBLIC demo sites.
+        seal_res = run_pl_cached(config.NWP_ROOT, ["demo", "seal-status", site, "--tier=live", "--json"],
+                                 ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+        seal = parsers.parse_seal_status(seal_res["out"] + "\n" + seal_res["err"])
         status = parsers.parse_demo_status(st["out"] if st["rc"] == 0 else st["out"] + "\n" + st["err"])
-        codes_p = parsers.parse_demo_codes(codes["out"])
         events = parsers.DEMO_EVENT_RE.findall(status.get("raw", "") or "")
         out.append(
             {
-                "site": site, "status": status, "codes": codes_p, "rc": st["rc"],
-                "live_codes": parsers.demo_live_code_count(codes_p),
-                "alert": parsers.demo_reset_alert(status),
+                "site": site, "status": status, "rc": st["rc"],
+                "codes_json": codes_j, "seal": seal,
+                "live_codes": codes_j.get("counts", {}).get("live", 0) if codes_j.get("ok") else 0,
+                # A pane that cannot read its own registry or seal must flag
+                # the tab, not sit quietly green.
+                "alert": parsers.demo_reset_alert(status)
+                         or not codes_j.get("ok") or not seal.get("ok"),
                 "last_event": events[-1] if events else "",
             }
         )
@@ -845,9 +862,27 @@ def pane_backups(request: Request, force: int = 0, sc: Scope = Depends(scoped("v
                  tab="backups", tab_count=parsers.fmt_n_tab(len(items), "stale") if items else "")
 
 
+DEMO_CODE_FILTERS = ("all", "live", "revoked", "expired")
+
+
+def _demo_filter_rows(sites: list[dict], state: str) -> str:
+    """Apply the state filter chip to every site's rows IN PLACE (adds `rows`
+    + `filter`). Unrecognised values fall back to 'all' rather than being
+    reflected into the page. Counts are never filtered — the chips always
+    show the whole registry (!394: a narrowed view must declare itself)."""
+    st = state if state in DEMO_CODE_FILTERS else "all"
+    for d in sites:
+        rows = d.get("codes_json", {}).get("codes", []) or []
+        d["rows"] = rows if st == "all" else [r for r in rows if r.get("state") == st]
+        d["filter"] = st
+    return st
+
+
 @app.get("/panes/demo", response_class=HTMLResponse)
-def pane_demo(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
+def pane_demo(request: Request, force: int = 0, state: str = "all",
+              sc: Scope = Depends(scoped("viewer"))):
     sites = _gather_demo(sc, force=bool(force))
+    _demo_filter_rows(sites, state)
     from .actions import BUNDLES
 
     count, alert = _demo_tab(sites)
@@ -1128,6 +1163,60 @@ def action_invite(
     res_view = dict(res, out=parsers.strip_ansi(res["out"])[-4000:], err=parsers.strip_ansi(res["err"])[-2000:])
     return _pane(request, "invite_result.html", {"email": email, "res": res_view, "error": None}, sc,
                  redactable=False)
+
+
+# -- bulk code ops (operator+): revoke / purge with DISCHARGE (ops#327/#328) --
+# The ops#327 lesson made structural: an action's result is the state it
+# LEAVES, re-read from the source — not a success note. This route executes
+# the allowlisted verb, then force-re-reads the registry and renders that.
+DEMO_BULK_OPS = {"revoke": "demo_code_revoke", "purge": "demo_code_purge"}
+
+
+@app.post("/actions/demo_codes", response_class=HTMLResponse)
+def action_demo_codes(
+    request: Request,
+    site: str = Form(""),
+    op: str = Form(""),
+    code_ids: list[str] = Form([]),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "code_ids": list(code_ids)}
+    name = DEMO_BULK_OPS.get(op)
+    if name is None:
+        audit.append(sc.user, sc.global_role, "action.demo_codes",
+                     {"params": params, "rejected": f"unknown bulk op {op!r}"}, False,
+                     project=sc.project_id)
+        return _pane(request, "demo_codes_result.html",
+                     {"label": "bulk code action", "site": site, "res": None,
+                      "error": f"unknown bulk op {op!r}", "codes_json": None,
+                      "rows": [], "filter": "all"}, sc, redactable=False)
+    try:
+        argv, spec = build_action(name, params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, f"action.{name}",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_codes_result.html",
+                     {"label": ACTIONS[name]["label"], "site": site, "res": None,
+                      "error": str(e), "codes_json": None, "rows": [], "filter": "all"},
+                     sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(
+        sc.user, sc.global_role, f"action.{name}",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    # DISCHARGE: re-read the registry the action just touched, cache bypassed.
+    # Rendered on success AND on refusal — "nothing changed" is a result the
+    # operator needs to see with their own eyes, not infer from an rc.
+    codes_j = _gather_demo_codes_json(argv[2], force=True)
+    res_view = dict(res, out=parsers.strip_ansi(res["out"])[-8000:],
+                    err=parsers.strip_ansi(res["err"])[-2000:])
+    return _pane(request, "demo_codes_result.html",
+                 {"label": spec["label"], "site": argv[2], "res": res_view, "error": None,
+                  "codes_json": codes_j, "rows": codes_j.get("codes", []) or [],
+                  "filter": "all"}, sc, redactable=False)
 
 
 # ---------------------------------------------------------------------------

@@ -2199,8 +2199,9 @@ YML
   # It must be safe to run at any moment, including from a host that is about
   # to be told it may not write. So it is deliberately outside both guards.
   fn="$(sed -n '/^cmd_codes() {/,/^}/p' "$DEMO_CMD")"
-  # both guards list exactly the four WRITING verbs…
-  [ "$(printf '%s\n' "$fn" | grep -c 'issue|revoke|rotate|sync)')" -eq 2 ]
+  # both guards list exactly the five WRITING verbs (purge joined in ops#328 —
+  # it rewrites the registry, whose writable home is per-tier)…
+  [ "$(printf '%s\n' "$fn" | grep -c 'issue|revoke|rotate|sync|purge)')" -eq 2 ]
   # …and drift appears only as its own case arm, never inside a guard list
   [ "$(printf '%s\n' "$fn" | grep -cE '^ *drift\)')" -eq 1 ]
   run bash "$DEMO_CMD" codes demo1 drift          # …and needs no --tier
@@ -3266,4 +3267,107 @@ YML
   [[ "$output" == *" feedback-status "* ]]
   grep -q '# sentinel' "$STUB_CRON"
   ! grep -q 'feedback-status' "$STUB_CRON"
+}
+
+# --- ops#328: console demo tab tranche 1 — codes list --json / bulk revoke ---
+# --- purge / seal-status ------------------------------------------------------
+#
+# Red-then-green: every test below was run against the pre-ops#328 tree and
+# observed RED (unknown action 'purge', --json silently refused as a stray
+# positional, seal-status unknown subcommand) before the implementation.
+
+@test "ops#328: codes list --json emits structured rows with computed states + counts" {
+  CFILE="$(demo_codes_file demo1)"
+  now=$(date +%s)
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code a)" "$(( now + 3600 ))"
+  demo_code_add "$CFILE" c2 tester-member "$(demo_hash_code b)" "$(( now - 10 ))"   # expired
+  demo_code_add "$CFILE" c3 tester-guild-leader "$(demo_hash_code c)" "$(( now + 3600 ))"
+  demo_code_revoke "$CFILE" c3
+  run bash "$DEMO_CMD" codes demo1 list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ok == true and .registry == "present"'
+  echo "$output" | jq -e '.counts == {"live":1, "revoked":1, "expired":1, "total":3}'
+  echo "$output" | jq -e '.codes[] | select(.id=="c2") | .state == "expired"'
+  echo "$output" | jq -e '.codes[] | select(.id=="c3") | .state == "revoked"'
+  echo "$output" | jq -e '.codes[] | select(.id=="c1") | .state == "live"'
+  # the full sha256 never ships to a consumer — prefix only
+  ! echo "$output" | grep -qE '[0-9a-f]{64}'
+}
+
+@test "ops#328: codes list --json — ABSENT registry is ok:true, UNREADABLE is exit 2 ok:false" {
+  run bash "$DEMO_CMD" codes demo1 list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ok == true and .registry == "absent" and (.codes|length)==0'
+  echo garbage > "$(demo_codes_file demo1)"
+  run bash "$DEMO_CMD" codes demo1 list --json
+  [ "$status" -eq 2 ]
+  echo "$output" | jq -e '.ok == false and .registry == "unreadable"'
+}
+
+@test "ops#328: revoke accepts several ids and refuses the WHOLE batch on one bad id" {
+  demo_enable_delivery
+  CFILE="$(demo_codes_file demo1)"
+  now=$(date +%s)
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code a)" "$(( now + 3600 ))"
+  demo_code_add "$CFILE" c2 tester-member "$(demo_hash_code b)" "$(( now + 3600 ))"
+  # one bad id anywhere -> NOTHING is revoked (a half-applied bulk verb lies
+  # about what it did)
+  run bash "$DEMO_CMD" codes demo1 revoke c1 nope --tier=dev
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nope"* ]]
+  jq -e '[.codes[]|select(.revoked)]|length == 0' "$CFILE"
+  run bash "$DEMO_CMD" codes demo1 revoke c1 c2 --tier=dev
+  [ "$status" -eq 0 ]
+  jq -e '[.codes[]|select(.revoked)]|length == 2' "$CFILE"
+}
+
+@test "ops#328: purge archives revoked/expired rows and REFUSES a live id" {
+  demo_enable_delivery
+  CFILE="$(demo_codes_file demo1)"
+  now=$(date +%s)
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code a)" "$(( now + 3600 ))"      # live
+  demo_code_add "$CFILE" c2 tester-member "$(demo_hash_code b)" "$(( now - 10 ))"        # expired
+  demo_code_add "$CFILE" c3 tester-member "$(demo_hash_code c)" "$(( now + 3600 ))"
+  demo_code_revoke "$CFILE" c3                                                            # revoked
+  run bash "$DEMO_CMD" codes demo1 purge c1 --tier=dev
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"LIVE"* ]]
+  jq -e '.codes|length == 3' "$CFILE"
+  run bash "$DEMO_CMD" codes demo1 purge c2 c3 --tier=dev
+  [ "$status" -eq 0 ]
+  jq -e '(.codes|length) == 1 and .codes[0].id == "c1"' "$CFILE"
+  ARCH="${PROJECT_ROOT}/sites/demo1/demo-codes-purged.json"
+  jq -e '.purged|length == 2' "$ARCH"
+  jq -e '[.purged[].id]|sort == ["c2","c3"]' "$ARCH"
+  jq -e 'all(.purged[]; .purged_at > 0)' "$ARCH"
+  grep -q "codes-purged" "$(demo_log_file demo1)"
+}
+
+@test "ops#328: purge requires an explicit tier like every other registry write" {
+  CFILE="$(demo_codes_file demo1)"
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code a)" "$(( $(date +%s) - 10 ))"
+  run bash "$DEMO_CMD" codes demo1 purge c1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must name the tier"* ]]
+  jq -e '.codes|length == 1' "$CFILE"    # untouched
+}
+
+@test "ops#328: seal-status with no golden is exit 2 CANNOT VERIFY, never a clean zero" {
+  run bash "$DEMO_CMD" seal-status demo1 --json
+  [ "$status" -eq 2 ]
+  echo "$output" | jq -e '.ok == false'
+  echo "$output" | jq -e '.reason | test("no golden")'
+}
+
+@test "ops#328: seal-status reads the golden manifest and stamps age + revert warning" {
+  gdir="$(demo_golden_dir demo1 dev)"; mkdir -p "$gdir"
+  captured="$(date -u -d '2 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
+  printf '{"type":"demo-golden","site":"demo1","captured_utc":"%s","db_file":"golden.db.sql.gz","db_sha256":"x","files_file":"golden.files.tar.gz","files_sha256":"y"}\n' \
+    "$captured" > "$gdir/golden.manifest.json"
+  run bash "$DEMO_CMD" seal-status demo1 --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ok == true and .site == "demo1"'
+  echo "$output" | jq -e '.age_seconds >= 7000 and .age_seconds <= 7400'
+  echo "$output" | jq -e '.warning | test("revert")'
+  echo "$output" | jq -e '.reset_window | test("Melbourne")'
 }

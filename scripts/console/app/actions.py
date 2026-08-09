@@ -68,6 +68,26 @@ def _valid_code_id(code_id: str) -> str:
     return code_id
 
 
+# Bulk-select ceiling (ops#328). The verb re-validates every id server-side;
+# this bound only keeps a runaway form from building an absurd argv.
+CODE_IDS_MAX = 50
+
+
+def _valid_code_ids(value) -> list[str]:
+    """One or many code ids — the console's bulk checkboxes. Accepts a list
+    (multi-value form field) or a single string. Every id passes the same
+    strict validator, and ONE bad id rejects the WHOLE batch — the verb
+    enforces the same rule, so a half-applied bulk action is unrepresentable
+    at both layers."""
+    if isinstance(value, str):
+        value = [value] if value else []
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ActionError("no code ids selected")
+    if len(value) > CODE_IDS_MAX:
+        raise ActionError(f"too many code ids in one batch (max {CODE_IDS_MAX})")
+    return [_valid_code_id(v) for v in value]
+
+
 def _valid_flag(value) -> bool:
     """Checkbox-style boolean: only exact known truthy strings count."""
     if value in ("", None, False, "0", "false", "off"):
@@ -133,11 +153,27 @@ ACTIONS: dict = {
         "min_role": "operator",
         "min_project_role": "operator",
         "scope": "site",
-        "label": "Revoke demo invite code",
-        "build": lambda p, ds: [
-            "demo", "codes", _valid_site(p.get("site", ""), ds), "revoke",
-            _valid_code_id(p.get("code_id", "")), "--tier=live",
-        ],
+        "label": "Revoke demo invite code(s)",
+        # One or many ids (ops#328 bulk select). `code_id` kept for the
+        # pre-bulk form shape; `code_ids` is the checkbox field.
+        "build": lambda p, ds: (
+            ["demo", "codes", _valid_site(p.get("site", ""), ds), "revoke"]
+            + _valid_code_ids(p.get("code_ids") or p.get("code_id") or "")
+            + ["--tier=live"]
+        ),
+    },
+    "demo_code_purge": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Purge revoked/expired invite code(s)",
+        # Housekeeping, not revocation: the verb refuses any LIVE id and
+        # archives the rows to demo-codes-purged.json rather than deleting.
+        "build": lambda p, ds: (
+            ["demo", "codes", _valid_site(p.get("site", ""), ds), "purge"]
+            + _valid_code_ids(p.get("code_ids") or p.get("code_id") or "")
+            + ["--tier=live"]
+        ),
     },
 }
 

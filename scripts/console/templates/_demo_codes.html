@@ -1,0 +1,56 @@
+{# Invite-code table for ONE demo site (ops#328).
+   Context: site, codes_json, rows, filter, can_act.
+   Contract with the reader:
+     * counts on the chips are ALWAYS the whole registry; the table row-count
+       line declares any narrowing ("showing N of M, filter: X" — !394);
+     * an unreadable registry renders CANNOT VERIFY, never an empty table
+       (ops#281);
+     * plaintext codes are unrepresentable here — the registry stores sha256
+       hashes; plaintext is shown exactly once at issue time. #}
+{% if codes_json and codes_json.ok %}
+{% set c = codes_json.counts %}
+<p class="chips">
+  {% for st, label in [("all", "All"), ("live", "Live"), ("revoked", "Revoked"), ("expired", "Expired")] %}
+  <a class="chip codechip-{{ st }} {% if filter == st %}chip-on{% endif %}"
+     hx-get="/panes/demo?state={{ st }}" hx-target="#pane-body"
+     role="button">{{ label }} ({{ c.total if st == "all" else c[st] }})</a>
+  {% endfor %}
+</p>
+{% if can_act %}
+<form hx-post="/actions/demo_codes" hx-target="#demo-codes-{{ site }}"
+      hx-indicator="#codes-spin-{{ site }}">
+  <input type="hidden" name="site" value="{{ site }}">
+{% endif %}
+  <table class="codetable">
+    <tr>{% if can_act %}<th></th>{% endif %}<th>id</th><th>bundle</th><th>state</th><th>expires</th><th>created</th><th>hash</th></tr>
+    {% for r in rows %}
+    <tr>
+      {% if can_act %}<td><input type="checkbox" name="code_ids" value="{{ r.id }}"></td>{% endif %}
+      <td>{{ r.id }}</td>
+      <td>{{ r.bundle }}</td>
+      <td><span class="chip codechip-{{ r.state }}">{{ r.state }}</span></td>
+      <td>{{ r.expires_iso }}</td>
+      <td>{{ r.created_iso }}</td>
+      <td class="muted">{{ r.hash_prefix }}…</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">no codes in this view</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted">showing {{ rows|length }} of {{ c.total }} code(s){% if filter != "all" %} (filter: {{ filter }}){% endif %}
+     · plaintext is shown ONCE at issue time — the registry stores sha256 hashes only</p>
+{% if can_act %}
+  <button name="op" value="revoke" class="warn"
+          hx-confirm="Revoke the selected codes on {{ site }}? The registry change is durable and the live site is updated immediately; one bad id refuses the whole batch.">
+    Revoke selected</button>
+  <button name="op" value="purge" class="warn"
+          hx-confirm="Purge the selected revoked/expired codes from {{ site }}'s registry? Rows are archived to demo-codes-purged.json; a LIVE id refuses the whole batch.">
+    Purge selected</button>
+  <span id="codes-spin-{{ site }}" class="htmx-indicator">…</span>
+</form>
+{% endif %}
+{% else %}
+<p class="err">CANNOT VERIFY invite codes for {{ site }}: {{ codes_json.reason if codes_json else "no registry data" }}</p>
+<p class="muted">an unreadable registry must never look like an empty one — nothing is listed rather than a clean-looking zero</p>
+{% if codes_json and codes_json.raw %}<details><summary>raw output</summary><pre>{{ codes_json.raw }}</pre></details>{% endif %}
+{% endif %}

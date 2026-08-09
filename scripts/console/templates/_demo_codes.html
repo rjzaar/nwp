@@ -22,7 +22,8 @@
   <input type="hidden" name="site" value="{{ site }}">
 {% endif %}
   <table class="codetable">
-    <tr>{% if can_act %}<th></th>{% endif %}<th>id</th><th>bundle</th><th>state</th><th>expires</th><th>created</th><th>hash</th></tr>
+    <tr>{% if can_act %}<th><input type="checkbox" id="demo-select-all" aria-label="Select all listed codes"
+        onclick="this.closest('table').querySelectorAll('input[name=code_ids]').forEach(c=>{c.checked=this.checked})"></th>{% endif %}<th>id</th><th>bundle</th><th>state</th><th>expires</th><th>created</th><th>hash</th></tr>
     {% for r in rows %}
     <tr>
       {% if can_act %}<td><input type="checkbox" name="code_ids" value="{{ r.id }}"></td>{% endif %}

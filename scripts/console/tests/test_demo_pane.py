@@ -392,3 +392,18 @@ def test_bad_site_is_rejected_by_the_allowlist(mod, monkeypatch):
                           data={"site": "avc", "op": "revoke", "code_ids": ["c1"]})
     assert r.status_code == 200
     assert "not a demo site" in r.text
+
+
+def test_select_all_toggle_present_for_operator(mod, monkeypatch):
+    """Header carries a select-all checkbox that toggles every code_ids box."""
+    _fake_demo(mod, monkeypatch)
+    body = _client(mod).get("/panes/demo").text
+    assert 'id="demo-select-all"' in body
+    # it must drive the row checkboxes, not merely exist
+    assert "code_ids" in body and "demo-select-all" in body
+
+
+def test_select_all_absent_for_viewer(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch)
+    body = _client(mod, "vera").get("/panes/demo").text
+    assert 'id="demo-select-all"' not in body

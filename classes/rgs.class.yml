@@ -33,7 +33,7 @@ class: member-standalone
 #      in pairs/, no paired_with: key, no OIDC consumer, no uid_lock.
 #   => member-standalone.
 classified_by: "operator@authoring"
-classified_at: "2026-07-28"
+classified_at: "2026-08-09"
 classified_ref: "nwp/ops#153"
 
 art9:
@@ -83,7 +83,7 @@ art9:
     # NOT re-run by the authoring session of this file — the date is the claim,
     # and max_age_days is what stops it from being trusted forever.
     attestation:
-      at: "2026-07-28"
+      at: "2026-08-09"
       by: "operator@authoring"
       ref: "nwp/ops#153"
       member_count: 1

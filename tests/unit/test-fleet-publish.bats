@@ -105,7 +105,7 @@ print('ok')"
   root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
   env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --no-security --out "$WORK/s.json"
   run python3 -c "
-import json;d=json.load(open('$WORK/s.json'));assert list(d['feeds'])==['rag'];print('ok')"
+import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['estate','rag'], list(d['feeds']);print('ok')"
   [ "$status" -eq 0 ]
 }
 
@@ -113,7 +113,7 @@ import json;d=json.load(open('$WORK/s.json'));assert list(d['feeds'])==['rag'];p
   root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
   env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --out "$WORK/s.json"
   run python3 -c "
-import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['rag','security'];print('ok')"
+import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['estate','rag','security'], list(d['feeds']);print('ok')"
   [ "$status" -eq 0 ]
 }
 
@@ -448,7 +448,7 @@ print('ok')"
   [[ "$output" == *"security     : not in this snapshot"* ]]
   run python3 -c "
 import json;d=json.load(open('$WORK/s.json'))
-assert sorted(d['feeds'])==['rag','todo'], list(d['feeds'])
+assert sorted(d['feeds'])==['estate','rag','todo'], list(d['feeds'])
 assert not [k for k in d['summary'] if k.startswith('security_')], d['summary']
 print('ok')"
   [ "$status" -eq 0 ]

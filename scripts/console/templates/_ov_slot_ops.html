@@ -1,0 +1,41 @@
+{#
+  Overview slot: OPERATOR QUEUE HEADLINE — decisions, open MRs, CI, RAG.
+  Counts only; the Review/CI/Fleet tabs hold the detail. An unreadable queue
+  is an explicit warning, never a zero.
+#}
+<h4>Operator queue
+  <button class="ghost ovrefresh" title="re-read this slot"
+          hx-get="/panes/visuals/slots/ops?force=1"
+          hx-target="#ov-ops" hx-swap="innerHTML">⟳</button>
+</h4>
+<ul class="ovrows">
+  <li><span class="ovname">decisions pending</span>
+      {% if q.scoped_out %}
+      <span class="ovv-muted">estate-level — not shown in a project scope</span>
+      {% elif not q.ok %}
+      <span class="ovv-warn">queue UNREADABLE — {{ q.error }}</span>
+      {% else %}
+      <span class="ovv-{{ 'warn' if decisions_n else 'ok' }}">{{ decisions_n }}</span>
+      {% endif %}</li>
+  <li><span class="ovname">open MRs</span>
+      {% if q.scoped_out %}
+      <span class="ovv-muted">estate-level</span>
+      {% elif not q.ok %}
+      <span class="ovv-warn">unknown (queue unreadable)</span>
+      {% else %}
+      <span class="ovv-{{ 'warn' if mr_total else 'ok' }}">{{ mr_total }}</span>
+      {% endif %}</li>
+  <li><span class="ovname">CI (open-MR head pipelines)</span>
+      {% if not ci_api_ok %}
+      <span class="ovv-muted">no GitLab token on this host — states unknown</span>
+      {% else %}
+      <span class="ovv-ok">{{ ci_running }} running</span>
+      {% endif %}</li>
+  <li><span class="ovname">fleet RAG</span>
+      {% if rag and rag.ok %}
+      <span class="ovv-ok">{{ rag_tab or 'no graded sites' }}</span>
+      {% if rag_prov.stale %}<span class="ovv-crit">STALE snapshot</span>{% endif %}
+      {% else %}
+      <span class="ovv-muted">no fleet state on this host — pl fleet publish</span>
+      {% endif %}</li>
+</ul>

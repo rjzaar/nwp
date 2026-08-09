@@ -206,9 +206,23 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   issues (labels ${DEMO_HARVEST_LABELS};
                                   least-privilege gitlab.ops_note_token).
                                   Retry-safe: only posted digests are moved to
-                                  demo-harvest/posted/.
+                                  demo-harvest/posted/. A digest whose basename
+                                  already sits under triaged-*/ is SKIPPED —
+                                  triage is terminal (ops#233).
+    harvest-triage <site> [--mark=<basename>]... [--mark-all] [--dry-run]
+                                  Reconcile the spool, posted/ and triaged-*/
+                                  (they were mutually blind — ops#189-193 were
+                                  five re-posts of already-mined digests). Lists
+                                  posted-but-untriaged digests WITH the nwp/ops
+                                  issue each became (from demo-reset.log),
+                                  detects double-posts (exit 1), and --mark /
+                                  --mark-all MOVES a digest to triaged-<today>/
+                                  and records the move. The human still does
+                                  the classifying — this verb is lifecycle
+                                  only. Fail-closed: an unreadable dir is exit
+                                  2 CANNOT VERIFY, never "empty".
     schedule <site> [--tier=live] [--remove] [--via-key] [--raw-ssh]
-             [--host <[user@]ip>] [--print-only]
+             [--host <[user@]ip>] [--print-only] [--feedback-status]
                                   Install/remove the nightly cron on THIS
                                   machine (intended host: met).
                                   --via-key schedules the RESTRICTED
@@ -228,6 +242,15 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   (the wrapper is idempotent), giving the same
                                   ${DEMO_FLOOR_TIME} floor without holding a
                                   3-hour ssh session open.
+                                  --feedback-status (ops#219 Phase A): install
+                                  the HOURLY return leg instead — the box's own
+                                  feedback-status action word runs the module's
+                                  nwc-feedback:sync-status with its walled
+                                  token, so /my/feedback stops saying "Sent to
+                                  the team" for ever. Its own marker block;
+                                  installed/removed independently of the
+                                  nightly. Provider (nwd) only; requires
+                                  --via-key.
                                   --host (or NWP_DEMO_BOX_HOST) names the box
                                   directly, so --via-key can run on a scheduler
                                   that has no sites/<site>/.nwp.yml — which is
@@ -315,6 +338,8 @@ ${BOLD}FILES:${NC}
     sites/<site>/demo-reset.log     every reset / skip / harvest, one line each
     sites/<site>/demo-harvest/      pre-wipe error digests awaiting posting
     sites/<site>/demo-harvest/posted/  digests confirmed posted to nwp/ops
+    sites/<site>/demo-harvest/triaged-*/  digests a human has mined — TERMINAL
+                                    (written by pl demo harvest-triage --mark)
 EOF
 }
 
@@ -3121,12 +3146,18 @@ demo_nightly_harvest_drain() {
             ok)
                 # Mark every box-posted digest in OUR spool too. The box names
                 # them: NWP-HARVEST-POSTED <basename>.txt iid=<iid>
-                local hdir base line n=0
+                local hdir base iid line n=0
                 hdir="$(demo_harvest_dir "$site")"
                 mkdir -p "$hdir/posted" 2>/dev/null || true
                 while IFS= read -r line; do
                     base="${line#NWP-HARVEST-POSTED }"; base="${base%% *}"; base="${base%.txt}"
                     [[ -n "$base" ]] || continue
+                    # Record the post + its iid LOCALLY (ops#233): without this
+                    # line the iid existed only in the box's stdout, and
+                    # `pl demo harvest-triage` could never name the issue a
+                    # posted digest became.
+                    iid="${line##*iid=}"; iid="${iid%%[^0-9]*}"
+                    demo_log "$site" harvest-posted "file=${base}.md issue=#${iid:-?} via=box"
                     if [[ -f "$hdir/${base}.md" ]]; then
                         mv "$hdir/${base}.md" "$hdir/posted/${base}.md"
                         n=$(( n + 1 ))
@@ -3772,14 +3803,41 @@ cmd_harvest_post() {
         print_info "Harvest spool is empty — nothing to post."
         return 0
     fi
-    print_info "${#spooled[@]} digest(s) queued."
+
+    # ops#233: TRIAGED is a terminal state, and the poster must honour it.
+    # posted/ and triaged-*/ used to be mutually blind — the 2026-08-01
+    # hand-triage was followed hours later by a harvest-post that re-filed the
+    # SAME already-mined digests as five fresh issues (ops#189–193). A digest
+    # whose basename sits under any triaged-*/ dir is skipped, never re-posted.
+    local -a postable=() skipped_triaged=()
+    local f b
+    for f in "${spooled[@]}"; do
+        b="$(basename "$f")"
+        if compgen -G "$hdir/triaged-*/$b" >/dev/null 2>&1; then
+            skipped_triaged+=("$b")
+        else
+            postable+=("$f")
+        fi
+    done
+    print_info "${#postable[@]} digest(s) queued (${#skipped_triaged[@]} already-triaged skipped)."
 
     if [[ "$dry_run" == "true" ]]; then
-        local f
-        for f in "${spooled[@]}"; do
+        for b in "${skipped_triaged[@]}"; do
+            echo "  would skip: ${b} (already under triaged-*/)"
+        done
+        for f in "${postable[@]}"; do
             echo "  would post: $(basename "$f") → nwp/ops issue (labels: ${DEMO_HARVEST_LABELS})"
         done
         print_status "OK" "[dry-run] nothing posted, spool untouched."
+        return 0
+    fi
+
+    for b in "${skipped_triaged[@]}"; do
+        print_status "WARN" "skip ${b} — already under triaged-*/ (re-posting would double-file it; see pl demo harvest-triage ${site})"
+        demo_log "$site" harvest-post-skip-triaged "file=${b}"
+    done
+    if (( ${#postable[@]} == 0 )); then
+        print_info "Nothing to post — every spooled digest is already triaged."
         return 0
     fi
 
@@ -3792,8 +3850,8 @@ cmd_harvest_post() {
     }
 
     mkdir -p "$hdir/posted"
-    local posted=0 failed=0 f
-    for f in "${spooled[@]}"; do
+    local posted=0 failed=0
+    for f in "${postable[@]}"; do
         local when title body payload resp iid
         when="$(awk -F': ' '/^harvested_utc:/ {print $2; exit}' "$f" 2>/dev/null)"
         [[ -n "$when" ]] || when="$(basename "$f" .md)"
@@ -3945,6 +4003,7 @@ demo_schedule_key_cmd() {
 cmd_schedule() {
     local site="$1" remove="$2" tier="${3:-dev}" via_key="${4:-false}"
     local host_override="${5:-}" print_only="${6:-false}" raw_ssh="${7:-false}"
+    local fb_status="${8:-false}"
     # `pl demo schedule --help` parsed the FLAG as a site name and cheerfully
     # installed a nightly cron for a site called "--help". A scheduler that
     # accepts a name no site could ever have is writing a job that can only
@@ -3962,7 +4021,31 @@ cmd_schedule() {
         print_hint "To see what --remove would drop: crontab -l | grep -A2 'NWP Demo Reset - ${site}'"
         return 2
     fi
+
+    # ops#219 Phase A — the HOURLY return leg. Its own marker, its own block:
+    # the nightly and the return leg are installed and removed independently.
+    if [[ "$fb_status" == "true" ]]; then
+        # The leg runs ON the box (that is where the walled token lives), so
+        # the only transport is the restricted key. Without --via-key there is
+        # nothing this flag could install that would actually run.
+        if [[ "$via_key" != "true" && "$remove" != "true" ]]; then
+            print_error "REFUSED: --feedback-status is a restricted-key line — the return leg runs ON the box, where the walled token lives. Pass --via-key."
+            print_hint "pl demo schedule ${site} --feedback-status --via-key [--host <[user@]ip>]"
+            return 2
+        fi
+        # The consumer half has no return leg: Moodle's local_feedback forwards
+        # at submit time, and /my/feedback is an nwc_feedback (Drupal) surface.
+        # The box wrapper refuses the word too; refusing here keeps a cron line
+        # that can only ever fail out of anyone's crontab.
+        if declare -F demo_pair_resolve >/dev/null 2>&1 && demo_pair_resolve "$site" 2>/dev/null \
+           && [[ "$site" == "${DEMO_PAIR_CONSUMER:-}" ]]; then
+            print_error "REFUSED: ${site} is the consumer half of ${DEMO_PAIR_LABEL:-its pair} — Moodle forwards feedback at submit time; there is no pending set and no return leg to schedule."
+            return 2
+        fi
+    fi
+
     local marker="# NWP Demo Reset - $site"
+    [[ "$fb_status" == "true" ]] && marker="# NWP Demo Feedback Status - $site"
     local current="" cleaned=""
     # --print-only does not touch a crontab AT ALL — not even to read one. That
     # is the point of it (nwp/ops#171): the block gets generated on whatever
@@ -3974,15 +4057,30 @@ cmd_schedule() {
         # Drop any existing entry (idempotent install / clean removal). The install
         # writes a 3-line block (marker, CRON_TZ, command) — remove the whole block
         # by marker, plus any stray command line as belt-and-braces (either flavour).
-        cleaned="$(printf '%s\n' "$current" \
-            | awk -v m="$marker" 'index($0, m) == 1 { skip = 3 } skip > 0 { skip--; next } { print }' \
-            | grep -v "pl demo nightly $site\b" \
-            | grep -v "${site}_demo_reset" || true)"
+        #
+        # BOTH belts are feedback-status-aware (ops#219): the return-leg line
+        # carries the same restricted key path as the nightly, so a blind
+        # `grep -v <site>_demo_reset` here would silently delete the hourly leg
+        # every time the reset block was (re)installed or removed.
+        if [[ "$fb_status" == "true" ]]; then
+            cleaned="$(printf '%s\n' "$current" \
+                | awk -v m="$marker" 'index($0, m) == 1 { skip = 3 } skip > 0 { skip--; next } { print }' \
+                | awk -v k="${site}_demo_reset" '!(index($0, k) && / feedback-status/)' || true)"
+        else
+            cleaned="$(printf '%s\n' "$current" \
+                | awk -v m="$marker" 'index($0, m) == 1 { skip = 3 } skip > 0 { skip--; next } { print }' \
+                | grep -v "pl demo nightly $site\b" \
+                | awk -v k="${site}_demo_reset" '!(index($0, k) && !/ feedback-status/)' || true)"
+        fi
     fi
 
     if [[ "$remove" == "true" ]]; then
         printf '%s\n' "$cleaned" | crontab -
-        print_status "OK" "Removed demo-reset cron for $site (if present)"
+        if [[ "$fb_status" == "true" ]]; then
+            print_status "OK" "Removed the hourly feedback-status cron for $site (if present)"
+        else
+            print_status "OK" "Removed demo-reset cron for $site (if present)"
+        fi
         return 0
     fi
 
@@ -4010,7 +4108,18 @@ cmd_schedule() {
         fi
     fi
 
-    if [[ "$via_key" == "true" && "$raw_ssh" == "true" ]]; then
+    if [[ "$fb_status" == "true" ]]; then
+        # ops#219 Phase A — the HOURLY return leg, as a raw restricted-key line:
+        # the box does the whole job (token, drush, redaction, logging), so the
+        # scheduler stays a dumb clock and needs no checkout for this line.
+        # Minute 7, deliberately off the nightly's 0/15/30/45 grid — the return
+        # leg is cheap and read-mostly, but the box is small.
+        local sshcmd
+        sshcmd="$(demo_schedule_key_cmd "$site" "$host_override")" || return 1
+        log="${PROJECT_ROOT}/logs/demo-feedback-status-${site}.log"
+        entry="CRON_TZ=${DEMO_TZ}
+7 * * * * ${sshcmd} feedback-status >> ${log} 2>&1"
+    elif [[ "$via_key" == "true" && "$raw_ssh" == "true" ]]; then
         # RAW flavour — the pre-ops#156 line, kept for a scheduler that has the
         # restricted key and NO checkout. It resets and nothing else: no
         # pre-wipe feedback sync, no harvest drain. Explicit, because a
@@ -4053,6 +4162,7 @@ ${minutes} 1-3 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=live --via-k
     # interim and someone has to know to delete it when met takes over.
     local marker_line="$marker"
     [[ "$via_key" == "true" ]] && marker_line="${marker} (restricted key; see docs/guides/demo-nightly-on-met.md)"
+    [[ "$fb_status" == "true" ]] && marker_line="${marker} (restricted key; hourly return leg — nwp/ops#219)"
 
     # BYTE-IDENTITY BY CONSTRUCTION. Both paths render the same two variables in
     # the same order, so what --print-only emits is exactly the block the
@@ -4066,7 +4176,7 @@ ${minutes} 1-3 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=live --via-k
         {
             print_info "--print-only: nothing was written to any crontab."
             print_hint "Install on the scheduler (met): crontab -l > /tmp/c; cat block >> /tmp/c; crontab /tmp/c"
-            if [[ "$via_key" == "true" && "$raw_ssh" == "true" ]]; then
+            if [[ "$fb_status" == "true" ]] || [[ "$via_key" == "true" && "$raw_ssh" == "true" ]]; then
                 # The repo-free flavour still names a log path, and it is this
                 # machine's. On met the checkout lives elsewhere and cron would
                 # silently write nowhere useful.
@@ -4081,6 +4191,13 @@ ${minutes} 1-3 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=live --via-k
     fi
 
     printf '%s\n%s\n%s\n' "$cleaned" "$marker_line" "$entry" | crontab -
+    if [[ "$fb_status" == "true" ]]; then
+        print_status "OK" "Installed the HOURLY feedback return leg for $site via the RESTRICTED key (minute 7, ${DEMO_TZ})"
+        print_info "The box runs the module's own nwc-feedback:sync-status with its walled token — reporters' /my/feedback advances within the hour."
+        print_info "Until /etc/nwp-demo/feedback.token is staged on the box, each run answers exit 2 CANNOT VERIFY (visible in ${log})."
+        print_hint "Verify: crontab -l | grep -A2 'NWP Demo Feedback Status'"
+        return 0
+    fi
     if [[ "$via_key" == "true" ]]; then
         print_status "OK" "Installed nightly demo reset for $site via the RESTRICTED key (01:00–03:30 ${DEMO_TZ}, minutes ${minutes}, ${DEMO_FLOOR_TIME} floor)${pair_note}"
         if [[ "$raw_ssh" == "true" ]]; then
@@ -4131,6 +4248,11 @@ main() {
     # would execute and runs nothing.
     local raw_ssh="false" print_transport="false"
     local with_pair="auto"
+    # ops#219: schedule's hourly return-leg flavour.
+    local fb_status="false"
+    # ops#233: harvest-triage's marking flags (globals — the verb reads them).
+    DEMO_TRIAGE_MARKS=()
+    DEMO_TRIAGE_ALL="false"
     local passthru=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -4151,6 +4273,13 @@ main() {
             --remove)   remove="true"; shift ;;
             --via-key)  via_key="true"; shift ;;
             --raw-ssh)  raw_ssh="true"; shift ;;
+            --feedback-status) fb_status="true"; shift ;;
+            # A bare trailing `--mark` would `shift 2` off the end — same trap
+            # as --host below, same refusal.
+            --mark)     [[ -n "${2:-}" ]] || { print_error "--mark requires a value: --mark <basename>"; return 2; }
+                        DEMO_TRIAGE_MARKS+=("$2"); shift 2 ;;
+            --mark=*)   DEMO_TRIAGE_MARKS+=("${1#--mark=}"); shift ;;
+            --mark-all) DEMO_TRIAGE_ALL="true"; shift ;;
             --print-transport) print_transport="true"; shift ;;
             # A bare trailing `--host` would `shift 2` off the end and, under
             # `set -e`, kill the script with no message at all. Say what is wrong.
@@ -4292,10 +4421,11 @@ main() {
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
-        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" "$raw_ssh" ;;
+        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" "$raw_ssh" "$fb_status" ;;
         feedback-sync) cmd_feedback_sync "$site" "$tier" "$dry_run" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
         harvest-pull) cmd_harvest_pull "$site" "$tier" "$dry_run" "$box_host" ;;
+        harvest-triage) cmd_harvest_triage "$site" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
 }
@@ -4370,7 +4500,11 @@ cmd_harvest_pull() {
             "NWP-HARVEST-END "*)
                 local base="${name%.txt}" target
                 target="$hdir/${base}.md"
-                if [[ -f "$target" || -f "$hdir/posted/${base}.md" ]]; then
+                # triaged-*/ counts as "already have it": pulling a digest the
+                # operator has already mined would resurrect it into the spool
+                # and re-post it (ops#233 — triage is a TERMINAL state).
+                if [[ -f "$target" || -f "$hdir/posted/${base}.md" ]] \
+                   || compgen -G "$hdir/triaged-*/${base}.md" >/dev/null 2>&1; then
                     skipped=$(( skipped + 1 )); name=""; continue
                 fi
                 if [[ "$dry_run" == "true" ]]; then
@@ -4397,6 +4531,196 @@ cmd_harvest_pull() {
     if (( pulled > 0 )) && [[ "$dry_run" != "true" ]]; then
         print_info "Post them with: pl demo harvest-post ${site}"
     fi
+    return 0
+}
+
+################################################################################
+# Subcommand: harvest-triage <site> [--mark=<basename>]... [--mark-all] [--dry-run]
+#
+# ops#233 option B — a digest gets a TERMINAL state, and one verb can see all
+# three directories at once:
+#
+#     sites/<site>/demo-harvest/            the spool (captured, not yet posted)
+#     sites/<site>/demo-harvest/posted/     posted to nwp/ops (iid in demo-reset.log)
+#     sites/<site>/demo-harvest/triaged-*/  mined by a human — TERMINAL
+#
+# They were mutually blind: the 2026-08-01 hand-triage was followed the same
+# day by a harvest-post that re-filed the SAME mined digests as five fresh
+# issues (ops#189–193). This verb reconciles the three, names each
+# posted-but-untriaged digest WITH the issue it became, detects double-posts,
+# and gives the operator --mark / --mark-all to move a digest into
+# triaged-<today>/ and record the move in demo-reset.log.
+#
+# THE HUMAN STILL CLASSIFIES. The verb does lifecycle only: it moves and
+# records, it never summarises, never files issues, never deletes. Fail-closed:
+# a directory it cannot read is exit 2 CANNOT VERIFY, never "nothing there".
+#
+# Exit: 0 reconciled (backlog is workflow, not an anomaly) · 1 anomalies found
+# (double-posts / triaged digests re-materialised in the spool) or a --mark
+# refused · 2 CANNOT VERIFY.
+################################################################################
+cmd_harvest_triage() {
+    local site="$1" dry_run="${2:-false}"
+    local hdir; hdir="$(demo_harvest_dir "$site")"
+
+    print_header "Demo harvest triage: $site"
+
+    if [[ ! -d "$hdir" ]]; then
+        print_info "No harvest state at $hdir — nothing to reconcile."
+        return 0
+    fi
+
+    # --- fail-closed: every directory consulted must actually be readable ----
+    local d
+    for d in "$hdir" "$hdir/posted"; do
+        [[ -d "$d" ]] || continue
+        if [[ ! -r "$d" || ! -x "$d" ]]; then
+            print_status "FAIL" "CANNOT VERIFY: $d exists but is not readable — the spool state is unknown, not empty."
+            return 2
+        fi
+    done
+    local -a tdirs=()
+    for d in "$hdir"/triaged-*/; do
+        [[ -d "$d" ]] || continue
+        if [[ ! -r "$d" || ! -x "$d" ]]; then
+            print_status "FAIL" "CANNOT VERIFY: $d exists but is not readable — triage state is unknown."
+            return 2
+        fi
+        tdirs+=("${d%/}")
+    done
+
+    # --- gather the three sets ----------------------------------------------
+    local -a spooled=() posted=()
+    local f
+    while IFS= read -r f; do [[ -n "$f" ]] && spooled+=("$f"); done \
+        < <(find "$hdir" -maxdepth 1 -name 'harvest-*.md' -type f 2>/dev/null | sort)
+    while IFS= read -r f; do [[ -n "$f" ]] && posted+=("$f"); done \
+        < <(find "$hdir/posted" -maxdepth 1 -name 'harvest-*.md' -type f 2>/dev/null | sort)
+
+    local -A triaged_in=()   # basename → the triaged-* dir(s) holding it
+    local b
+    for d in "${tdirs[@]}"; do
+        for f in "$d"/harvest-*.md; do
+            [[ -e "$f" ]] || continue
+            b="$(basename "$f")"
+            triaged_in["$b"]="${triaged_in[$b]:+${triaged_in[$b]} }$(basename "$d")"
+        done
+    done
+
+    # --- what each posted digest BECAME: demo-reset.log's harvest-posted rows.
+    # (Both the local poster and the box leg write them; via=box is a suffix.)
+    local -A post_iids=() post_count=()
+    local lfile ts ev rest tok pf pi
+    lfile="$(demo_log_file "$site")"
+    if [[ -f "$lfile" ]]; then
+        while read -r ts ev rest; do
+            [[ "$ev" == "harvest-posted" ]] || continue
+            pf=""; pi=""
+            for tok in $rest; do
+                case "$tok" in
+                    file=*)  pf="${tok#file=}" ;;
+                    issue=*) pi="${tok#issue=}" ;;
+                esac
+            done
+            [[ -n "$pf" ]] || continue
+            post_iids["$pf"]="${post_iids[$pf]:+${post_iids[$pf]}, }${pi:-?}"
+            post_count["$pf"]=$(( ${post_count[$pf]:-0} + 1 ))
+        done < "$lfile"
+    fi
+
+    local anomalies=0
+
+    # --- report: the spool ---------------------------------------------------
+    echo "  Spool (captured, not yet posted): ${#spooled[@]}"
+    for f in "${spooled[@]}"; do
+        b="$(basename "$f")"
+        if [[ -n "${triaged_in[$b]:-}" ]]; then
+            print_status "FAIL" "  ${b} — already triaged in ${triaged_in[$b]} but BACK IN THE SPOOL (the ops#189-193 double-post shape; harvest-post will skip it, remove the spool copy by hand)"
+            anomalies=$(( anomalies + 1 ))
+        else
+            echo "    ${b}"
+        fi
+    done
+
+    # --- report: posted, awaiting triage ------------------------------------
+    local -a untriaged=()
+    for f in "${posted[@]}"; do
+        b="$(basename "$f")"
+        [[ -z "${triaged_in[$b]:-}" ]] && untriaged+=("$b")
+    done
+    echo "  Posted, awaiting triage: ${#untriaged[@]}"
+    for b in "${untriaged[@]}"; do
+        if [[ -n "${post_iids[$b]:-}" ]]; then
+            echo "    ${b}   → nwp/ops${post_iids[$b]}"
+        else
+            echo "    ${b}   (no issue recorded in demo-reset.log)"
+        fi
+    done
+
+    # --- report: terminal ----------------------------------------------------
+    echo "  Triaged (terminal): ${#triaged_in[@]}${tdirs[0]:+  (dirs: $(for d in "${tdirs[@]}"; do basename "$d"; done | paste -sd' ' -))}"
+    for f in "${posted[@]}"; do
+        b="$(basename "$f")"
+        [[ -n "${triaged_in[$b]:-}" ]] || continue
+        echo "    note: ${b} sits in BOTH posted/ and ${triaged_in[$b]} — duplicate copy; --mark refuses it, reconcile by hand"
+    done
+
+    # --- anomaly: the same basename posted more than once --------------------
+    for b in "${!post_count[@]}"; do
+        if (( ${post_count[$b]} > 1 )); then
+            print_status "FAIL" "  DOUBLE-POST: ${b} was posted ${post_count[$b]} times → ${post_iids[$b]} — close the duplicates on nwp/ops"
+            anomalies=$(( anomalies + 1 ))
+        fi
+    done
+
+    # --- marking (move + record; the only writes this verb performs) ---------
+    local -a targets=()
+    if [[ "${DEMO_TRIAGE_ALL:-false}" == "true" ]]; then
+        targets=("${untriaged[@]}")
+        (( ${#targets[@]} == 0 )) && print_info "--mark-all: nothing is awaiting triage."
+    fi
+    (( ${#DEMO_TRIAGE_MARKS[@]} > 0 )) && targets+=("${DEMO_TRIAGE_MARKS[@]}")
+
+    local mark_failed=0
+    if (( ${#targets[@]} > 0 )); then
+        echo ""
+        local today_dir="$hdir/triaged-$(date +%Y%m%d)"
+        local base src from
+        for base in "${targets[@]}"; do
+            base="$(basename "$base")"; base="${base%.md}.md"
+            if [[ -n "${triaged_in[$base]:-}" ]]; then
+                print_status "FAIL" "--mark ${base}: already triaged in ${triaged_in[$base]} — refusing to triage it twice"
+                mark_failed=$(( mark_failed + 1 )); continue
+            fi
+            if [[ -f "$hdir/posted/$base" ]]; then
+                src="$hdir/posted/$base"; from="posted"
+            elif [[ -f "$hdir/$base" ]]; then
+                src="$hdir/$base"; from="spool"
+            else
+                print_status "FAIL" "--mark ${base}: no such digest in the spool or posted/"
+                mark_failed=$(( mark_failed + 1 )); continue
+            fi
+            if [[ "$dry_run" == "true" ]]; then
+                echo "  would move: ${src#$hdir/} → $(basename "$today_dir")/${base}"
+                continue
+            fi
+            mkdir -p "$today_dir" || { print_status "FAIL" "cannot create $today_dir"; mark_failed=$(( mark_failed + 1 )); continue; }
+            if mv "$src" "$today_dir/$base"; then
+                demo_log "$site" harvest-triaged "file=${base} dir=$(basename "$today_dir") from=${from} issue=${post_iids[$base]:-none}"
+                print_status "OK" "triaged ${base} → $(basename "$today_dir")/ (from ${from}, issue ${post_iids[$base]:-none})"
+            else
+                print_status "FAIL" "could not move ${base} to $today_dir"
+                mark_failed=$(( mark_failed + 1 ))
+            fi
+        done
+        [[ "$dry_run" == "true" ]] && print_status "OK" "[dry-run] nothing moved, nothing recorded."
+    else
+        echo ""
+        (( ${#untriaged[@]} > 0 )) && print_hint "mark one: pl demo harvest-triage ${site} --mark=<basename>   all posted: --mark-all"
+    fi
+
+    (( mark_failed > 0 )) && return 1
+    (( anomalies > 0 )) && return 1
     return 0
 }
 

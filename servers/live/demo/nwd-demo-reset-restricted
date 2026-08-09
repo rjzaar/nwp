@@ -83,12 +83,20 @@
 #     sees seven identical failures rather than one. It is NOT self-healing —
 #     `status` (which never aborts) is the way to look.
 #
-# THE TWO NON-RESET LEGS (ops#315 — the box completes its own nightly)
+# THE THREE NON-RESET LEGS (ops#315 + ops#219 — the box completes its own loop)
 #   feedback-sync   push pending tester Feedback entities to GitLab through the
 #                   module's OWN drush command, before the reset destroys them.
 #                   The ops#140 minimisation interlock is preserved FAIL-CLOSED
 #                   on this side of the wire: unless the deployed nwc_feedback
 #                   provably carries buildIssueDescription, nothing leaves.
+#   feedback-status the RETURN leg (ops#219 Phase A): the module's own
+#                   nwc-feedback:sync-status pulls each linked GitLab issue's
+#                   state back into the site — a CLOSED issue advances the
+#                   signal fixed → poster_invited and emails the reporter the
+#                   "please check this" invitation. Without it /my/feedback
+#                   says "Sent to the team" for ever. Fired HOURLY from met
+#                   over the same restricted key (pl demo schedule
+#                   <site> --feedback-status --via-key).
 #   harvest-post    post the spooled pre-wipe error digests to nwp/ops issues,
 #                   from the box's own spool, then move them to posted/ so the
 #                   `harvest` drain and this word never double-report.
@@ -105,7 +113,7 @@
 #
 # Exit codes: 0 ok/no-op · 1 failure (incl. [G9] no-manifest abort) ·
 #             2 refused (bad action word) or CANNOT VERIFY (feedback-sync/
-#               harvest-post with no readable token) · 3 active
+#               feedback-status/harvest-post with no readable token) · 3 active
 ################################################################################
 
 set -uo pipefail
@@ -143,6 +151,9 @@ HARVEST_LABELS="demo-tester,auto-harvest"   # matches scripts/commands/demo.sh
 # (DEMO_FEEDBACK_*): one renderer, one probe, two hosts.
 FEEDBACK_SYNC_CMD="nwc-feedback:sync-to-gitlab"
 FEEDBACK_LIMIT=100
+# The return leg (ops#219): same module, the polling sibling command.
+FEEDBACK_STATUS_CMD="nwc-feedback:sync-status"
+FEEDBACK_STATUS_LIMIT=50
 FEEDBACK_NONE_MARKER="No feedback items pending GitLab sync"
 FEEDBACK_MIN_PROBE='echo method_exists(\Drupal::service("nwc_feedback.gitlab_sync"), "buildIssueDescription") ? "MINIMISED-OK" : "MINIMISATION-MISSING";'
 
@@ -208,6 +219,7 @@ resolve_action() {
         status)        echo "status" ;;
         harvest)       echo "harvest" ;;
         feedback-sync) echo "feedback-sync" ;;
+        feedback-status) echo "feedback-status" ;;
         harvest-post)  echo "harvest-post" ;;
         *)             echo "REFUSED" ;;
     esac
@@ -220,7 +232,7 @@ if [[ "$ACTION" == "REFUSED" ]]; then
     cat >&2 <<EOF
 REFUSED: this key may only run the nwd demo reset.
 The command you sent was logged and NOT executed.
-Allowed action words: (empty)|nightly | reset | dry-run | status | harvest | feedback-sync | harvest-post
+Allowed action words: (empty)|nightly | reset | dry-run | status | harvest | feedback-sync | feedback-status | harvest-post
 EOF
     exit 2
 fi
@@ -367,6 +379,61 @@ EOF
 fi
 
 ################################################################################
+# feedback-status — the RETURN leg (ops#219 Phase A)
+#
+# The module's own nwc-feedback:sync-status: for every signal with a GitLab
+# ref still open in the lifecycle it captures the linked MR + preview URL, and
+# when the issue has CLOSED it advances the signal fixed → poster_invited and
+# emails the reporter the "please check this" invitation. Until this runs on a
+# schedule, /my/feedback shows every reporter "Sent to the team" for ever.
+#
+# nwd-ONLY like feedback-sync: the pending set and /my/feedback are Drupal
+# (nwc_feedback) concepts; the ssd wrapper deliberately refuses the word.
+#
+# Unlike feedback-sync there is no token-free probe stage: sync-status cannot
+# even LOOK at GitLab without a token, so a missing token is CANNOT VERIFY
+# immediately — reporters keep seeing stale state and this leg says so.
+#
+# Deliberately LOCKLESS, like feedback-sync: it never touches the golden or the
+# stamp, and a stray overlap with the nightly costs at worst a failed drush
+# call (exit 1, retried on the next hour) — never a wrong state transition.
+################################################################################
+
+if [[ "$ACTION" == "feedback-status" ]]; then
+    FS_TOKEN="$(box_token)"
+    if [[ -z "$FS_TOKEN" ]]; then
+        log "feedback-status-no-token" "file=${TOKEN_FILE}"
+        cat >&2 <<EOF
+CANNOT VERIFY  no api token at ${TOKEN_FILE} — the return leg did NOT run; reporters keep seeing stale feedback state.
+Provisioning is an OPERATOR step (registry entry demo_box_feedback_token); this wrapper never mints or holds one.
+EOF
+        exit 2
+    fi
+
+    # Same stated exposure as feedback-sync: --token= is argv-visible to ps for
+    # the life of the call; the identity is a walled issue-read/write bot, it is
+    # never printed or logged here, and anything drush echoes back is redacted.
+    FS_RC=0
+    FS_OUT="$( cd "$SITE_ROOT" \
+               && "${DRUSH_SUDO[@]}" "$DRUSH_BIN" "$FEEDBACK_STATUS_CMD" \
+                    --limit=${FEEDBACK_STATUS_LIMIT} "--token=${FS_TOKEN}" 2>&1 )" || FS_RC=$?
+    FS_OUT="${FS_OUT//"$FS_TOKEN"/<redacted>}"
+    FS_TOKEN=""
+    if (( FS_RC != 0 )); then
+        log "feedback-status-failed" "rc=${FS_RC}"
+        printf '%s\n' "$FS_OUT"
+        echo "FAIL  feedback-status (return leg) failed rc=${FS_RC} — reporters are seeing stale state." >&2
+        exit 1
+    fi
+    # The command's own summary line: "Done. advanced=N drafts_captured=N checked=N"
+    FS_SUM="$(printf '%s\n' "$FS_OUT" | grep -o 'advanced=[0-9]* drafts_captured=[0-9]* checked=[0-9]*' | tail -1)"
+    log "feedback-status-ok" "${FS_SUM:-summary-unparsed}"
+    printf '%s\n' "$FS_OUT"
+    echo "OK  feedback-status complete${FS_SUM:+ (${FS_SUM})}."
+    exit 0
+fi
+
+################################################################################
 # harvest-post — post the spooled pre-wipe digests to nwp/ops (ops#315)
 #
 # The write-side complement of the read-only `harvest` drain: GitLab confirms
@@ -393,7 +460,27 @@ EOF
         echo "OK  no harvest spool — nothing to post."
         exit 0
     fi
-    mkdir -p "${HARVEST_DIR}/posted" 2>/dev/null || true
+
+    # posted/ must be a directory THIS user can write, or a confirmed post
+    # cannot be moved out of the spool — and a posted-but-not-moved digest is
+    # filed AGAIN on the next run. Found live 2026-08-09: posted/ was
+    # root-owned (created by a sudo-run drain), every mv failed silently after
+    # GitLab had already confirmed the issue. So: repair the ownership via
+    # sudo first (the wrapper's user is the intended owner), and if posted/
+    # still cannot be a writable dir, REFUSE before posting anything — the
+    # fail-closed direction is "no post", never "post and double-file".
+    "${ROOT_SUDO[@]}" install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 \
+        "${HARVEST_DIR}/posted" 2>/dev/null \
+        || mkdir -p "${HARVEST_DIR}/posted" 2>/dev/null || true
+    if [[ ! -d "${HARVEST_DIR}/posted" || ! -w "${HARVEST_DIR}/posted" ]]; then
+        HP_TOKEN=""
+        log "harvest-post-refused" "reason=posted-dir-unusable"
+        cat >&2 <<EOF
+REFUSED  ${HARVEST_DIR}/posted is not a writable directory and could not be repaired.
+Posting anyway would leave every posted digest in the spool and double-post it on the next run — nothing was sent.
+EOF
+        exit 1
+    fi
 
     # The token travels in a 0600 curl config, never in curl's argv (argv is
     # world-readable via ps; the config file is not).
@@ -418,10 +505,20 @@ EOF
                         -d "$HP_PAYLOAD" "${GITLAB_API}/projects/${OPS_PROJECT_ID}/issues" 2>/dev/null)" || HP_RESP=""
         HP_IID="$(printf '%s' "$HP_RESP" | jq -r '.iid // empty' 2>/dev/null)"
         if [[ -n "$HP_IID" ]]; then
-            mv "$HP_F" "${HARVEST_DIR}/posted/${HP_BASE}"
-            log "harvest-posted" "file=${HP_BASE} issue=#${HP_IID}"
-            echo "NWP-HARVEST-POSTED ${HP_BASE} iid=${HP_IID}"
-            HP_POSTED=$(( HP_POSTED + 1 ))
+            # The move is part of the post: a digest GitLab confirmed but the
+            # spool still holds is a double-post on the next run, so a failed
+            # mv is a loud FAILURE (the POSTED line still prints — it is true,
+            # and the pulling verb needs it to dedup its own copy).
+            if mv "$HP_F" "${HARVEST_DIR}/posted/${HP_BASE}" 2>/dev/null; then
+                log "harvest-posted" "file=${HP_BASE} issue=#${HP_IID}"
+                echo "NWP-HARVEST-POSTED ${HP_BASE} iid=${HP_IID}"
+                HP_POSTED=$(( HP_POSTED + 1 ))
+            else
+                log "harvest-posted-not-moved" "file=${HP_BASE} issue=#${HP_IID} DOUBLE-POST-HAZARD"
+                echo "NWP-HARVEST-POSTED ${HP_BASE} iid=${HP_IID}"
+                echo "FAIL  ${HP_BASE} was POSTED as #${HP_IID} but could NOT be moved to posted/ — move it by hand or it will double-post next run." >&2
+                HP_FAILED=$(( HP_FAILED + 1 ))
+            fi
         else
             log "harvest-post-failed" "file=${HP_BASE}"
             echo "FAIL  ${HP_BASE} — not posted (kept in the spool for retry)" >&2

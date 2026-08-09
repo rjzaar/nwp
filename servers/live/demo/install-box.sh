@@ -125,11 +125,16 @@ box "sudo install -o root -g root -m 0755 /tmp/${WRAPPER_NAME}.new '${WRAPPER_DS
 say "2/5  State + log dirs"
 ################################################################################
 # State is root-owned; the wrapper only reads the golden. The log and the
-# stamp/harvest paths must be writable by the ssh user that runs the wrapper.
-box "sudo mkdir -p '${STATE_DIR}/golden' '${STATE_DIR}/harvest' /var/log/nwp-demo \
+# stamp/harvest paths must be writable by the ssh user that runs the wrapper —
+# RECURSIVELY for the harvest spool: posted/ inside it was once created
+# root-owned (by a sudo-run drain), which made every post-then-move fail its
+# second half and double-post the digest on the next run (found live
+# 2026-08-09). chown -R repairs any such residue on every re-run.
+box "sudo mkdir -p '${STATE_DIR}/golden' '${STATE_DIR}/harvest/posted' /var/log/nwp-demo \
      && sudo chown root:root '${STATE_DIR}' '${STATE_DIR}/golden' \
      && sudo chmod 0755 '${STATE_DIR}' '${STATE_DIR}/golden' \
-     && sudo chown ${BOX_USER}:${BOX_USER} '${STATE_DIR}/harvest' /var/log/nwp-demo \
+     && sudo chown -R ${BOX_USER}:${BOX_USER} '${STATE_DIR}/harvest' \
+     && sudo chown ${BOX_USER}:${BOX_USER} /var/log/nwp-demo \
      && sudo touch '${LOG_FILE}' \
      && sudo chown ${BOX_USER}:${BOX_USER} '${LOG_FILE}'"
 
@@ -222,6 +227,12 @@ echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} status"
 echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} dry-run"
 echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} 'id'    # must be REFUSED"
 echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} harvest-post   # exit 2 CANNOT VERIFY until the token is staged"
+if [[ "$DEMO_SITE" == "nwd" ]]; then
+    echo "  ssh -i ${DEMO_KEY} ${BOX_USER}@${BOX_HOST} feedback-status   # the ops#219 return leg; exit 2 CANNOT VERIFY until the token is staged"
+fi
 echo ""
 echo "Then schedule it on met:"
 echo "  pl demo schedule ${DEMO_SITE} --tier=live --via-key"
+if [[ "$DEMO_SITE" == "nwd" ]]; then
+    echo "  pl demo schedule ${DEMO_SITE} --feedback-status --via-key   # hourly return leg (ops#219)"
+fi

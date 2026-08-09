@@ -563,10 +563,18 @@ demo_codes_merge() {
                 home_id: (($g | map(select(.src == $home) | .id)) | .[0] // null),
                 provenance: ($g | map("\(.src):\(.id)"))} )
         | sort_by(.created)
-        | reduce .[] as $r ({next: ($maxall + 1), rows: []};
-            if $r.home_id != null
-            then .rows += [$r + {id: $r.home_id}]
-            else {next: (.next + 1), rows: (.rows + [$r + {id: ("c" + (.next | tostring))}])}
+        # First claimant (earliest created) keeps its home id; later claimants
+        # of the SAME id get fresh ones. The real registries carried c1–c24
+        # each twice (the 2026-08-01 concatenation), and demo_code_revoke
+        # selects by id — a duplicated id makes one revoke kill two codes.
+        | reduce .[] as $r ({next: ($maxall + 1), used: {}, rows: []};
+            if ($r.home_id != null) and ((.used[$r.home_id] // false) | not)
+            then {next: .next,
+                  used: (.used + {($r.home_id): true}),
+                  rows: (.rows + [$r + {id: $r.home_id}])}
+            else {next: (.next + 1),
+                  used: (.used + {("c" + (.next | tostring)): true}),
+                  rows: (.rows + [$r + {id: ("c" + (.next | tostring))}])}
             end)
         | .rows
         | sort_by(.id | ltrimstr("c") | tonumber? // 0)

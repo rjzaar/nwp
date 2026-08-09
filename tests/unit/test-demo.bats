@@ -3627,3 +3627,29 @@ STUB
   run bash "$DEMO_CMD" codes demo1 reconcile "--from=${TEST_TMP}/other-copy.json" --tier=dev
   [ "$status" -ne 0 ]
 }
+
+@test "ops#328 D1 merge: PRE-EXISTING duplicate ids inside one copy are uniquified, never carried through" {
+  # Found live during the D1 migration: the real nwd registries had 72 rows but
+  # only 48 distinct ids (c1–c24 each used TWICE with different hashes — the
+  # 2026-08-01 concatenation). demo_code_revoke selects by id, so a duplicated
+  # id makes one revoke kill TWO different codes. The merge must emit unique
+  # ids: first claimant keeps the home id, later claimants get fresh ones.
+  local now; now="$(date +%s)"
+  HASH_1="$(printf 'd%.0s' {1..64})"
+  HASH_2="$(printf 'e%.0s' {1..64})"
+  cat > "$(demo_codes_file demo1)" <<JSON
+{"version":1,"codes":[
+ {"id":"c9","bundle":"tester-member","hash":"${HASH_1}","expires":$((now+86400)),"created":$((now-1000)),"revoked":false},
+ {"id":"c9","bundle":"tester-guild-leader","hash":"${HASH_2}","expires":$((now+86400)),"created":$((now-900)),"revoked":false}
+]}
+JSON
+  run demo_codes_merge home "$(demo_codes_file demo1)" '{"codes":[]}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.merged.codes | length == 2'
+  echo "$output" | jq -e '[.merged.codes[].id] | unique | length == 2'
+  # Earliest-created claimant keeps c9; the other is re-idd ABOVE max (c10).
+  echo "$output" | jq -e --arg h "$HASH_1" '.merged.codes[] | select(.hash == $h) | .id == "c9"'
+  echo "$output" | jq -e --arg h "$HASH_2" '.merged.codes[] | select(.hash == $h) | .id == "c10"'
+  # Provenance still names the ORIGINAL id, so the audit trail survives the re-id.
+  echo "$output" | jq -e --arg h "$HASH_2" '.report.rows[] | select(.hash_prefix == $h[0:12]) | .provenance == ["home:c9"]'
+}

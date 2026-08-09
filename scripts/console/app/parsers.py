@@ -338,6 +338,40 @@ def parse_seal_status(stdout: str) -> dict:
             "raw": raw}
 
 
+def parse_nwc_drush(stdout: str, command: str) -> dict:
+    """`pl drush <site> --tier=live --execute -- <command> --format=json`
+    (ops#329 tranche 2): the nwc profile's read-only status surface.
+
+    The verb interleaves its own chrome (Target/Fallback/header lines) with
+    drush's stdout, so the JSON is pulled with the same balanced-brace scan
+    every other mixed-output parser here uses.
+
+    THE load-bearing branch is `not_deployed`: until the nwc profile MR is
+    merged AND deployed to live, drush answers `Command "…" is not defined`
+    on stderr — that is a DEPLOY GAP, not a mystery, and the reason says
+    exactly what discharges it. Everything else unreadable is CANNOT VERIFY
+    with the raw tail kept; an ok:false payload keeps the command's own
+    reason (the profile side already fails closed with exit 2).
+    """
+    raw = strip_ansi(stdout or "")
+    if f'Command "{command}" is not defined' in raw:
+        return {"ok": False, "not_deployed": True,
+                "reason": f"drush command {command} is not on live yet — "
+                          f"merge + deploy the nwc profile MR (ops#329 tranche 2), "
+                          f"then refresh this slot",
+                "raw": raw[-2000:]}
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False,
+                "reason": f"no JSON found in {command} output "
+                          f"(box unreachable, or the deployed pl/profile is older than ops#329 t2)",
+                "raw": raw[-2000:]}
+    if not data.get("ok"):
+        return {"ok": False, "reason": str(data.get("reason", "CANNOT VERIFY"))[:300],
+                "raw": raw[-2000:]}
+    return {"ok": True, "data": data, "raw": raw[-2000:]}
+
+
 def parse_checkout(stdout: str) -> dict:
     """`pl fleet checkout --json` (ops#329) — this host's own nwp checkout.
 

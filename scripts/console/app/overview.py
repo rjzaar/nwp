@@ -313,31 +313,201 @@ def replicas_view(sites: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# the demo pair — tranche-2 stubs
+# the demo pair — nwd↔ssd interconnection (tranche 2, ops#329)
 # ---------------------------------------------------------------------------
+def _age_note(parsed: dict) -> str:
+    """Per-value age stamp, threaded from run_pl_cached's own bookkeeping:
+    a cached value says how old it is; a fresh read says so. The stamp is the
+    honest hook the tranche-1 slots lacked — every drush-backed value carries
+    one, because a 5-minute-old queue depth and a live one must not read
+    alike."""
+    if parsed.get("cached"):
+        return f"read {fmt_age(parsed.get('age'))} ago (cached)"
+    return "fresh read"
+
+
+def _drush_nodata(parsed: dict) -> dict:
+    """The shared failure shape for a drush-backed view. `not_deployed` keeps
+    its own state so the template can badge the deploy gap distinctly, but
+    both render as CANNOT VERIFY — never as an empty-but-healthy row."""
+    return {
+        "ok": False,
+        "state": "not_deployed" if parsed.get("not_deployed") else "missing",
+        "reason": _reason_of(parsed, "drush probe unreadable"),
+        "hint": ("merged code reaches this slot only after the coordinator "
+                 "deploys the nwc profile to live nwd"
+                 if parsed.get("not_deployed") else ""),
+        "age_note": _age_note(parsed),
+    }
+
+
+def signals_view(parsed: dict) -> dict:
+    """parse_nwc_drush(nwc:signal-counts) -> the feedback/error/help rows +
+    fast-path depth + help ratio. A measured zero is CLEAN (role ok) — the
+    whole point of the demo pilot is watching these queues, so unknown must
+    shout and zero must reassure."""
+    if not parsed.get("ok"):
+        return _drush_nodata(parsed)
+    d = parsed.get("data") or {}
+    rows = []
+    for source, s in (d.get("sources") or {}).items():
+        s = s if isinstance(s, dict) else {}
+        g = s.get("by_group") if isinstance(s.get("by_group"), dict) else {}
+        open_n = g.get("open") if isinstance(g.get("open"), int) else 0
+        rows.append({
+            "source": str(source)[:16],
+            "open": open_n,
+            "awaiting": int(g.get("awaiting_poster") or 0),
+            "resolved": int(g.get("resolved") or 0),
+            "follow_up": int(g.get("follow_up") or 0),
+            "total": int(s.get("total") or 0),
+            "role": "warn" if open_n else "ok",
+        })
+    q = d.get("fast_path_queue") if isinstance(d.get("fast_path_queue"), dict) else {}
+    depth = q.get("depth") if isinstance(q.get("depth"), int) else None
+    fast_path = ({"depth": depth, "role": "warn" if depth else "ok",
+                  "verdict": f"{depth} queued" if depth else "empty"}
+                 if depth is not None else
+                 {"depth": None, "role": "muted", "verdict": "depth unreadable"})
+    hr = d.get("help_ratio") if isinstance(d.get("help_ratio"), dict) else {}
+    ratio = hr.get("ratio")
+    help_ratio = {
+        "role": "ok" if isinstance(ratio, (int, float)) else "muted",
+        "verdict": (f"{ratio} helpful ({hr.get('up', '?')}↑ {hr.get('down', '?')}↓ "
+                    f"over {hr.get('topics_with_votes', '?')} topic(s))"
+                    if isinstance(ratio, (int, float))
+                    else "no help votes yet — a real (empty) answer"),
+    }
+    return {"ok": True, "state": "ok", "rows": rows, "fast_path": fast_path,
+            "help_ratio": help_ratio, "age_note": _age_note(parsed)}
+
+
+def gap_status_view(parsed: dict) -> dict:
+    """parse_nwc_drush(nwc:editorial:gap-status) -> per-guild backlog rows.
+    members=null means the guild group could not be resolved — CANNOT COUNT,
+    which must never collapse into 0 members."""
+    if not parsed.get("ok"):
+        return _drush_nodata(parsed)
+    d = parsed.get("data") or {}
+    guilds = []
+    for key, g in (d.get("guilds") or {}).items():
+        g = g if isinstance(g, dict) else {}
+        members = g.get("members")
+        open_gaps = int(g.get("open_gaps") or 0)
+        guilds.append({
+            "key": str(key)[:20],
+            "label": str(g.get("label") or key)[:40],
+            "members": members if isinstance(members, int) else None,
+            "members_display": str(members) if isinstance(members, int) else "CANNOT COUNT",
+            "open_gaps": open_gaps,
+            "claimed_gaps": int(g.get("claimed_gaps") or 0),
+            "wip_claims": int(g.get("wip_claims") or 0),
+            "role": ("muted" if not isinstance(members, int)
+                     else ("warn" if open_gaps else "ok")),
+        })
+    sweep = d.get("gap_sweep_last") if isinstance(d.get("gap_sweep_last"), dict) else {}
+    if sweep.get("swept"):
+        age = sweep.get("age_seconds")
+        stale = isinstance(age, int) and age > 2 * 3600  # cron throttle is 1h
+        sweep_row = {"role": "warn" if stale else "ok",
+                     "verdict": f"last swept {fmt_age(age)} ago"
+                                + (" — over 2h, cron may be stuck" if stale else "")}
+    else:
+        sweep_row = {"role": "warn",
+                     "verdict": "NEVER swept (nwc_editorial.gap_sweep_last unset) — "
+                                "gap tasks are not being minted"}
+    gaps = d.get("gaps") if isinstance(d.get("gaps"), dict) else {}
+    return {"ok": True, "state": "ok", "guilds": guilds, "sweep": sweep_row,
+            "open_total": int(gaps.get("open_total") or 0),
+            "claimed_total": int(gaps.get("claimed_total") or 0),
+            "wip_total": int(d.get("wip_claims_total") or 0),
+            "age_note": _age_note(parsed)}
+
+
+def completion_view(parsed: dict, moodle_parsed: dict) -> dict:
+    """parse_nwc_drush(nwc-moodle:completion-status) + (nwc-moodle:status) ->
+    the ssd→nwd completion-pull edge. The last-run stamp is an ATTEMPT (cron
+    stamps before the work — the profile named the field honestly) and is
+    worded as one here too."""
+    if not parsed.get("ok"):
+        return _drush_nodata(parsed)
+    d = parsed.get("data") or {}
+    armed = bool(d.get("armed"))
+    armed_row = {"role": "ok" if armed else "warn",
+                 "verdict": "ARMED" if armed
+                 else f"NOT ARMED — {str(d.get('reason') or 'no reason given')[:160]}"}
+    la = d.get("last_attempt") if isinstance(d.get("last_attempt"), dict) else {}
+    if la.get("ever_attempted"):
+        last_row = {"role": "ok",
+                    "verdict": f"last attempt {fmt_age(la.get('age_seconds'))} ago "
+                               f"(attempt, not success — the stamp precedes the work)"}
+    else:
+        last_row = {"role": "warn" if armed else "muted",
+                    "verdict": "never attempted on this site"}
+    if isinstance(moodle_parsed, dict) and moodle_parsed.get("ok"):
+        md = moodle_parsed.get("data") or {}
+        api_row = ({"role": "ok", "verdict": "Moodle API answered the live probe"}
+                   if md.get("connected") else
+                   {"role": "crit", "verdict": "Moodle API did NOT answer the live probe"})
+    elif isinstance(moodle_parsed, dict) and moodle_parsed.get("not_deployed"):
+        api_row = {"role": "muted",
+                   "verdict": "CANNOT VERIFY — " + _reason_of(moodle_parsed, "probe unreadable")}
+    else:
+        api_row = {"role": "muted",
+                   "verdict": "CANNOT VERIFY — " + _reason_of(moodle_parsed or {}, "probe unreadable")}
+    return {"ok": True, "state": "ok", "armed": armed_row, "last_attempt": last_row,
+            "api": api_row, "age_note": _age_note(parsed)}
+
+
+def users_view(parsed: dict) -> dict:
+    """parse_nwc_drush(nwc:tester-list) -> the user-counts row. The nwd half
+    is measured (fenced vs real, active vs blocked); the ssd half STAYS
+    pending with its exact tranche-3 need — no cheap read-only surface exists
+    and this view will not invent one."""
+    ssd = {"state": "pending",
+           "needs": "no cheap read-only surface for the ssd mdl_user count: "
+                    "pl moodle cli is deploy-gated + typed-confirm, seal-status "
+                    "carries no counts — hoist demo_measure_live's mdl_user query "
+                    "into pl demo measure <site> --tier=live --json (ops#329 tranche 3)"}
+    if not parsed.get("ok"):
+        return dict(_drush_nodata(parsed), ssd=ssd)
+    d = parsed.get("data") or {}
+    c = d.get("counts") if isinstance(d.get("counts"), dict) else {}
+    real_active = c.get("real_active")
+    return {
+        "ok": True, "state": "ok",
+        "nwd": {
+            "fenced_active": int(c.get("fenced_active") or 0),
+            "fenced_blocked": int(c.get("fenced_blocked") or 0),
+            "real_active": real_active if isinstance(real_active, int) else 0,
+            "real_blocked": int(c.get("real_blocked") or 0),
+            # A real (non-fenced) account on the demo tier is a finding, not
+            # a statistic — the fence is the demo tier's whole warrant.
+            "role": "warn" if real_active else "ok",
+        },
+        "ssd": ssd,
+        "age_note": _age_note(parsed),
+    }
+
+
 def pair_pending_slots() -> list[dict]:
-    """The interconnection readings whose data source does not exist yet.
-    Each names its tranche-2 need EXACTLY, so the pane is a work order rather
-    than a blank. Rendered muted with a PENDING badge — never as zeros."""
+    """The interconnection readings whose data source STILL does not exist.
+    Each names its need EXACTLY, so the pane is a work order rather than a
+    blank. Rendered muted with a PENDING badge — never as zeros.
+
+    Shrunk by tranche 2 (ops#329): the queue/guild/user/completion slots are
+    wired to the nwc drush surface now and left this list — a stale PENDING
+    entry over a wired slot would be its own kind of lie."""
     return [
         {"label": "SSO / OIDC pair wiring (nwd↔ssd)", "state": "pending",
-         "needs": "JSON from ssd-oidc-wire.sh --check / pl pair-smoke (tranche 2)"},
-        {"label": "completion pull (ssd→nwd) armed + last run", "state": "pending",
-         "needs": "nwc-moodle:completion-status --format=json + state "
-                  "nwc_moodle_data.completion_pull.last (tranche 2)"},
-        {"label": "error-report queue (source=error)", "state": "pending",
-         "needs": "drush nwc:signal-counts --format=json over nwc_feedback (tranche 2)"},
-        {"label": "help feedback (source=help + helpful ratio)", "state": "pending",
-         "needs": "same nwc:signal-counts + state nwc_help.helpful_ratio (tranche 2)"},
-        {"label": "fast-path queue depth", "state": "pending",
-         "needs": "queue nwc_feedback_fast_path count via the same drush surface (tranche 2)"},
+         "needs": "JSON from ssd-oidc-wire.sh --check / pl pair-smoke (tranche 3)"},
         {"label": "hourly feedback-status return leg (met, minute 7)", "state": "pending",
          "needs": "met log ~/logs/demo-feedback-status-nwd.log is unreachable from the "
                   "console — ops#329 D4 decides the publisher"},
-        {"label": "guild backlogs (gap tasks / WIP claims / members)", "state": "pending",
-         "needs": "drush nwc:editorial:gap-status --format=json (tranche 2)"},
-        {"label": "user counts (nwd fenced vs other; ssd mdl_user)", "state": "pending",
-         "needs": "drush nwc:tester-list + measure feed (tranche 2)"},
+        {"label": "user counts (ssd mdl_user)", "state": "pending",
+         "needs": "no cheap read-only surface exists — hoist demo_measure_live's "
+                  "mdl_user query into pl demo measure <site> --tier=live --json "
+                  "(ops#329 tranche 3)"},
     ]
 
 

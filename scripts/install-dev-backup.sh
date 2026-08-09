@@ -60,11 +60,16 @@ L_REPL="30 2 * * * ${CANON_ROOT}/pl backup replicate --to=rob@100.64.0.2 >> \$HO
 # them into the met cron line (host state), the same pattern as the nightly
 # audit cron.
 FORGE_HOST="${NWP_GITLAB_HOST:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -n 's/^git@\([^:]*\):.*/\1/p')}"
-live_ip="$(sed -n 's/^[[:space:]]*ip:[[:space:]]*//p' "$CANON_ROOT/servers/live/.nwp-server.yml" 2>/dev/null | head -1)"
-live_user="$(sed -n 's/^[[:space:]]*ssh_user:[[:space:]]*//p' "$CANON_ROOT/servers/live/.nwp-server.yml" 2>/dev/null | head -1)"
-[[ -n "$live_ip" && -n "$live_user" ]] || { echo "ERROR: cannot read live box route from $CANON_ROOT/servers/live/.nwp-server.yml" >&2; exit 2; }
 M_PULL="# NWP met user DR pull - dev + live box (ops#330)"
-L_PULL="35 3 * * * NWP_GITLAB_HOST=${FORGE_HOST} NWP_OPS_LOG_PROJECT=11 NWP_DR_LIVE_SRC=${live_user}@${live_ip}: \$HOME/nwp/scripts/met-dr-pull.sh all >> \$HOME/logs/met-dr-pull.log 2>&1"
+# The live-box route is HOST STATE (gitignored .nwp-server.yml) — resolved only
+# by the install path that wires the met cron, so pure-formatter modes
+# (--authorized-line, --check) run on hosts without it (e.g. the CI runner).
+resolve_live_route() {
+    live_ip="$(sed -n 's/^[[:space:]]*ip:[[:space:]]*//p' "$CANON_ROOT/servers/live/.nwp-server.yml" 2>/dev/null | head -1)"
+    live_user="$(sed -n 's/^[[:space:]]*ssh_user:[[:space:]]*//p' "$CANON_ROOT/servers/live/.nwp-server.yml" 2>/dev/null | head -1)"
+    [[ -n "$live_ip" && -n "$live_user" ]] || { echo "ERROR: cannot read live box route from $CANON_ROOT/servers/live/.nwp-server.yml" >&2; exit 2; }
+    L_PULL="35 3 * * * NWP_GITLAB_HOST=${FORGE_HOST} NWP_OPS_LOG_PROJECT=11 NWP_DR_LIVE_SRC=${live_user}@${live_ip}: \$HOME/nwp/scripts/met-dr-pull.sh all >> \$HOME/logs/met-dr-pull.log 2>&1"
+}
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -189,6 +194,7 @@ EOF
 fi
 
 say "7/8  crons (marker blocks; scripts run from the versioned checkouts)"
+resolve_live_route
 cron_ensure "" "$M_REPL" "$L_REPL"
 cron_ensure "" "$M_EXPORT" "$L_EXPORT"
 cron_ensure "$MET" "$M_PULL" "$L_PULL"

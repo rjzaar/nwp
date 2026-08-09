@@ -1,0 +1,119 @@
+{# Per-tester editor (ops#328 t3).
+   Context: site, testers (parse_testers_json), account (name asked for),
+   acct (the roster row, or none), can_act.
+   Rules made visible here:
+     * the guild × role matrix renders from the CATALOGUE (every guild by
+       seed key), so joining a guild the tester is not in yet is one action;
+     * roles offered are the site's own assignable (individual-scope) ids +
+       'member' (plain membership) — there is no guild-leader role;
+     * sojourner level is RAISE-ONLY and works through evidence (course
+       completions), never a raw setter; demotion is a typed refusal;
+     * consent is NEVER console-editable — rendered read-only, said plainly;
+     * the ssd mirror line is the SSO contract, not an ssd DB read;
+     * viewers see everything and can change nothing. #}
+{% if not acct %}
+<p class="err">'{{ account }}' is not in the roster (re-read) for {{ site }} — it may have been
+   erased by a reset, renamed, or never existed. Nothing was assumed.</p>
+{% else %}
+<div class="testerdetail">
+  <h5>{{ acct.name }} <span class="muted">uid {{ acct.uid }} · {{ acct.fence }} ·
+      {{ "active" if acct.active else "blocked" }} · {{ acct.mail }}</span></h5>
+  <p class="muted">redeemed bundle: {{ acct.redeemed_bundle if acct.redeemed_bundle else "not recorded (ops#328 D4 — undecided)" }}
+     · site roles: {{ acct.roles | join(", ") }}</p>
+
+  {# ---- guild × role matrix -------------------------------------------- #}
+  {% set catalog_guilds = testers.guild_catalog.guilds if testers.guild_catalog and testers.guild_catalog.guilds else [] %}
+  <table class="codetable">
+    <tr><th>guild (seed key)</th><th>member</th><th>current roles</th>{% if can_act %}<th>set role</th><th></th>{% endif %}</tr>
+    {% for g in (catalog_guilds if catalog_guilds else acct.guilds) %}
+    {% set mem = (acct.guilds | selectattr("seed_key", "equalto", g.seed_key) | list | first) %}
+    <tr>
+      <td>{{ g.label }} <span class="muted">· {{ g.seed_key }}</span></td>
+      <td>{{ "yes" if mem else "—" }}</td>
+      <td>{% if mem %}{{ mem.roles | join(", ") }}{% else %}<span class="muted">guild-outsider (implicit)</span>{% endif %}</td>
+      {% if can_act %}
+      <td>
+        <form hx-post="/actions/demo_tester" hx-target="#demo-tester-result-{{ site }}"
+              hx-indicator="#tester-spin-{{ site }}">
+          <input type="hidden" name="site" value="{{ site }}">
+          <input type="hidden" name="op" value="set-guild">
+          <input type="hidden" name="account" value="{{ acct.name }}">
+          <input type="hidden" name="seed_key" value="{{ g.seed_key }}">
+          <select name="role">
+            <option value="member">member (no individual role)</option>
+            {% for r in testers.guild_catalog.assignable_roles %}
+            <option value="{{ r }}" {% if mem and r in mem.roles %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+          </select>
+          <button class="primary">{{ "Apply role" if mem else "Join with role" }}</button>
+        </form>
+      </td>
+      <td>
+        {% if mem %}
+        <form hx-post="/actions/demo_tester" hx-target="#demo-tester-result-{{ site }}"
+              hx-indicator="#tester-spin-{{ site }}">
+          <input type="hidden" name="site" value="{{ site }}">
+          <input type="hidden" name="op" value="set-guild">
+          <input type="hidden" name="account" value="{{ acct.name }}">
+          <input type="hidden" name="seed_key" value="{{ g.seed_key }}">
+          <input type="hidden" name="remove" value="1">
+          <button class="warn" hx-confirm="Remove {{ acct.name }} from {{ g.label }} on live {{ site }}? Survives only until the nightly reset unless a new golden is sealed.">Remove</button>
+        </form>
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">no guild catalogue and no memberships — is the profile deploy current?</td></tr>
+    {% endfor %}
+  </table>
+  {% if not catalog_guilds %}
+  <p class="warnnote">guild catalogue unavailable (older profile deploy) — showing only this tester's own memberships; joins need the nwc profile MR deployed.</p>
+  {% endif %}
+  <p class="muted">roles are the site's real Group-2.x ids (individual scope). There is no guild-leader role — leadership = guild-admin.
+     guild-member/guild-outsider are applied by group itself and are not offered.</p>
+
+  {# ---- sojourner level -------------------------------------------------- #}
+  <h5>Sojourner level:
+    {% if acct.sojourner_level is not none %}L{{ acct.sojourner_level }}
+      {%- set lvlname = (testers.guild_catalog.sojourner_levels | selectattr("num", "equalto", acct.sojourner_level) | list | first) %}
+      {%- if lvlname %} <span class="muted">({{ lvlname.name }})</span>{% endif %}
+    {% else %}<span class="muted">n/a on this install</span>{% endif %}</h5>
+  {% if can_act and acct.sojourner_level is not none %}
+  {% set higher = testers.guild_catalog.sojourner_levels | selectattr("num", "gt", acct.sojourner_level) | list %}
+  {% if higher %}
+  <form hx-post="/actions/demo_tester" hx-target="#demo-tester-result-{{ site }}"
+        hx-indicator="#tester-spin-{{ site }}">
+    <input type="hidden" name="site" value="{{ site }}">
+    <input type="hidden" name="op" value="set-level">
+    <input type="hidden" name="account" value="{{ acct.name }}">
+    <select name="level">
+      {% for l in higher %}<option value="{{ l.num }}">L{{ l.num }} — {{ l.name }}</option>{% endfor %}
+    </select>
+    <button class="primary">Raise level</button>
+  </form>
+  {% else %}<p class="muted">already at the top level</p>{% endif %}
+  <p class="muted">raise-only, through evidence: the verb records the qualifying course completions and the level is
+     recomputed by the real engine — there is deliberately no raw setter, and levels never demote
+     (to lower a tester, reset the demo tier).</p>
+  {% endif %}
+
+  {# ---- consent (READ-ONLY, by design) ----------------------------------- #}
+  <h5>Consent <span class="muted">(read-only)</span></h5>
+  <p>Art. 9: <strong>{{ acct.consent.art9 }}</strong>{{ " (current version)" if acct.consent.art9_current }}
+     · may contribute: {{ "yes" if acct.consent.may_contribute else "no" }}
+     · keeps formation: {{ "yes" if acct.consent.may_keep_formation else "no" }}
+     · mode: {{ "TRIALING" if acct.consent.trialing else "full member" }}</p>
+  <p class="warnnote">Consent is never console-editable. It is the member's own act — even for a synthetic
+     tester it changes only through the site's consent flows (or the seeder), so that every consent record
+     stays one a real gate wrote.</p>
+
+  {# ---- moodle mirror ----------------------------------------------------- #}
+  <h5>Saint School (ssd) mirror <span class="muted">(read-only)</span></h5>
+  <p class="muted">{{ acct.mirror }} — ssd accounts are SSO-minted only; guild memberships reconcile into managed
+     nwcguild cohorts at login. There is no console write path to ssd, by design.</p>
+
+  <span id="tester-spin-{{ site }}" class="htmx-indicator">…</span>
+  <div id="demo-tester-result-{{ site }}"></div>
+</div>
+{% endif %}

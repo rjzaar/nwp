@@ -215,6 +215,31 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   over the top). Read-only; records the result
                                   in private/demo-codes/<site>.json, which
                                   pl todo / pl rag grade AMBER on disagreement.
+    testers <site> list [--json]  Roster of the @demo.invalid-fenced tester
+                                  accounts, read from the SITE through drush
+                                  nwc:tester-list (guilds by seed key + group
+                                  roles, sojourner level, consent state, and
+                                  the guild/role catalogue the editor renders
+                                  from). Fail-closed: an unreadable site or an
+                                  undeployed drush command is exit 2 with a
+                                  typed JSON reason, never an empty roster.
+    testers <site> set-guild <account> <seed-key> [--group-role=ID|member] [--remove]
+                                  Per-tester editor write (ops#328 t3): wraps
+                                  drush nwc:tester-set-guild. Guilds resolve by
+                                  field_group_seed_key, NEVER label; roles are
+                                  the real Group-2.x individual-scope ids
+                                  (there is no guild-leader — leadership =
+                                  guild-admin). Requires an explicit --tier AND
+                                  the site reporting demo_mode=true; the drush
+                                  side additionally fences on @demo.invalid.
+                                  --allow-real is NEVER forwarded from here.
+    testers <site> set-level <account> <level>
+                                  Raise a tester's Sojourner level THROUGH
+                                  EVIDENCE (drush nwc:tester-set-level records
+                                  the qualifying course completions and
+                                  recomputes) — there is no raw setter, and
+                                  demotion is a typed refusal. Same guards as
+                                  set-guild.
     invite <site> [--bundles a,b] [--expiry 14d] [--all]
                                   Issue ONE fresh code per level and render a
                                   copy-ready invitation email (stdout + a 0600
@@ -1025,6 +1050,14 @@ demo_rssh() {
 # SQL fragments and JSON payloads survive the round trip intact.
 demo_rdrush() {
     local site="$1"; shift
+    # Resolve the live context BEFORE the command string interpolates it. The
+    # old order relied on demo_rssh's own resolution — but by then the string
+    # had already frozen with an EMPTY ${DEMO_LIVE_PATH}/${DEMO_LIVE_DRUSHSUDO},
+    # so the FIRST demo_rdrush in a fresh process ran `cd  &&  ./vendor/bin/
+    # drush` in the ssh user's $HOME (rc=127). Every pre-ops#328 caller
+    # happened to call demo_live_ctx explicitly first, which is why the trap
+    # sat unnoticed; `pl demo testers` was the first caller that did not.
+    [[ "$DEMO_LIVE_SITE" == "$site" && -n "$DEMO_LIVE_PATH" ]] || demo_live_ctx "$site" || return 1
     local q="" a
     for a in "$@"; do q+=" $(printf '%q' "$a")"; done
     demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush${q}"
@@ -3718,6 +3751,204 @@ demo_box_render_extras_from_json() {
 }
 
 ################################################################################
+# testers — the per-tester editor's pl surface (ops#328 tranche 3)
+#
+# The console NEVER talks drush; it runs these. Reads pass the site's own
+# nwc:tester-list JSON through; writes wrap nwc:tester-set-guild /
+# nwc:tester-set-level. The tier decides the transport: live → demo_rdrush
+# (ssh + remote drush, the ops#170 site-keyed context), dev/stg → the local
+# DDEV project. These are SITE writes, not registry writes, so the D1
+# registry-home guard does not apply — the guards that DO are: an explicit
+# tier (ops#225), the target reporting demo_mode=true (the pl-layer half of
+# the fence; the drush command's @demo.invalid account fence is the other),
+# and fail-closed exit 2 CANNOT VERIFY whenever the site cannot be reached
+# or the command is not deployed there yet.
+################################################################################
+
+# Tier-appropriate drush for the testers verbs. stdout = drush output
+# (stdout+stderr merged, so "Command not defined" is catchable), rc = drush rc.
+demo_testers_drush() {
+    local site="$1" tier="$2"; shift 2
+    if demo_is_live "$tier"; then
+        demo_rdrush "$site" "$@" 2>&1
+    else
+        local proj
+        proj="$(demo_project_dir "$site" "$tier")" || return 1
+        demo_drush "$proj" "$@" 2>&1
+    fi
+}
+
+# One JSON refusal shape for wrapper-level refusals, so the console parses
+# every outcome the same way. Human summary goes to stderr.
+demo_testers_refuse() {
+    local reason="$1"
+    print_error "REFUSED: ${reason}" >&2
+    jq -n --arg r "$reason" '{ok: false, refused: true, reason: $r}'
+    return 1
+}
+
+# Classify a drush result and emit/exit honestly:
+#   rc 0                  → pass the JSON through, exit 0
+#   "Command … not defined" → exit 2, {"ok":false,"not_deployed":true,…} naming the fix
+#   typed drush refusal   → pass it through, exit 1
+#   anything else         → exit 2 CANNOT VERIFY carrying the output tail
+demo_testers_emit() {
+    local site="$1" tier="$2" cmdname="$3" rc="$4" out="$5"
+    if [[ "$rc" -eq 0 ]]; then
+        printf '%s\n' "$out"
+        return 0
+    fi
+    if grep -q 'is not defined' <<<"$out"; then
+        jq -n --arg r "drush command ${cmdname} is not on ${site} ${tier} yet — merge + deploy the nwc profile MR (ops#328 tranche 3), then retry" \
+            '{ok: false, not_deployed: true, reason: $r}'
+        return 2
+    fi
+    if jq -e '.refused == true' <<<"$out" >/dev/null 2>&1; then
+        printf '%s\n' "$out"
+        return 1
+    fi
+    if jq -e '.ok == false' <<<"$out" >/dev/null 2>&1; then
+        # drush's own CANNOT VERIFY document — pass it through at its exit class.
+        printf '%s\n' "$out"
+        return 2
+    fi
+    jq -n --arg r "CANNOT VERIFY: ${cmdname} failed on ${site} ${tier} (rc=${rc})" \
+          --arg raw "$(tail -c 1500 <<<"$out")" \
+          '{ok: false, reason: $r, raw: $raw}'
+    return 2
+}
+
+# The pl-layer fence half for WRITES: the target site must itself say it is a
+# demo tier (demo_mode=true). Anything else — false, empty, unreadable —
+# refuses: this wrapper only ever edits demo testers, and when it cannot
+# prove the target is the demo tier it fails toward the fence. (The drush
+# command's own @demo.invalid fence still applies underneath; dev-tier
+# operators who genuinely need more run drush directly.)
+demo_testers_require_demo_mode() {
+    local site="$1" tier="$2" val
+    val="$(demo_testers_drush "$site" "$tier" cget nwc_demo_access.settings demo_mode --format=string 2>/dev/null \
+           | tr -d '[:space:]')" || val=""
+    case "$val" in
+        1|true|TRUE) return 0 ;;
+    esac
+    demo_testers_refuse "${site} (${tier}) does not report nwc_demo_access demo_mode=true (got '${val:-<unreadable>}') — the testers editor only writes on a demo tier, and an unreadable flag fails toward the fence."
+}
+
+cmd_testers() {
+    local site="$1" tier="$2" remove="$3"; shift 3 || true
+    local action="${1:-list}"; shift || true
+    demo_require_jq || return 1
+
+    # --allow-real is a drush-side hatch for NON-demo installs; the pl wrapper
+    # never forwards it. Refuse it by name wherever it appears, before any
+    # validation could reorder the message.
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --allow-real*)
+                demo_testers_refuse "the pl wrapper never forwards --allow-real — the @demo.invalid fence is the point of this verb. On a dev tier, run the drush command directly if you really mean it."
+                return 1 ;;
+        esac
+    done
+
+    case "$action" in
+        list) ;;
+        set-guild|set-level)
+            # Writes name their tier — the ops#225/#173 rule, same wording as
+            # every code verb.
+            demo_require_explicit_tier "testers ${action}" \
+                "pl demo testers ${site} ${action} <account> … --tier=live" || return 1
+            ;;
+        *)
+            print_error "Unknown testers action '${action}' (list|set-guild|set-level)"
+            return 1 ;;
+    esac
+
+    local out rc
+    case "$action" in
+        list)
+            if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+                rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-list --format=json)" || rc=$?
+                demo_testers_emit "$site" "$tier" nwc:tester-list "$rc" "$out"
+                return $?
+            fi
+            rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-list)" || rc=$?
+            if [[ "$rc" -ne 0 ]]; then
+                demo_testers_emit "$site" "$tier" nwc:tester-list "$rc" "$out"
+                return $?
+            fi
+            printf '%s\n' "$out"
+            ;;
+        set-guild)
+            local acct="${1:-}" key="${2:-}"; shift 2 2>/dev/null || true
+            [[ -n "$acct" && -n "$key" ]] || {
+                demo_testers_refuse "Usage: pl demo testers ${site} set-guild <account> <seed-key> [--group-role=ID|member] [--remove] --tier=…"
+                return 1
+            }
+            [[ "$acct" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$ ]] || {
+                demo_testers_refuse "account '${acct}' fails the shape check (letters/digits/._@- only)"
+                return 1
+            }
+            [[ "$key" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || {
+                demo_testers_refuse "'${key}' is not a seed key (lowercase machine id, e.g. 'writers'). Guilds are addressed by field_group_seed_key, never by label."
+                return 1
+            }
+            local role=""
+            for a in "$@"; do
+                case "$a" in
+                    --group-role=*) role="${a#--group-role=}" ;;
+                    *)
+                        demo_testers_refuse "unrecognised argument '${a}' for set-guild"
+                        return 1 ;;
+                esac
+            done
+            if [[ -n "$role" ]]; then
+                [[ "$role" =~ ^[a-z][a-z0-9-]{0,39}$ ]] || {
+                    demo_testers_refuse "group role '${role}' fails the shape check (drush validates the real role set)"
+                    return 1
+                }
+            fi
+            if [[ "$remove" == "true" && -n "$role" ]]; then
+                demo_testers_refuse "--remove and --group-role are contradictory — pass exactly one"
+                return 1
+            fi
+            demo_testers_require_demo_mode "$site" "$tier" || return 1
+            local dargs=(nwc:tester-set-guild "$acct" "$key")
+            [[ -n "$role" ]] && dargs+=("--group-role=${role}")
+            [[ "$remove" == "true" ]] && dargs+=(--remove)
+            rc=0; out="$(demo_testers_drush "$site" "$tier" "${dargs[@]}")" || rc=$?
+            demo_log "$site" testers-set-guild "acct=${acct} key=${key} role=${role:-—} remove=${remove} tier=${tier} rc=${rc}"
+            demo_testers_emit "$site" "$tier" nwc:tester-set-guild "$rc" "$out"
+            return $?
+            ;;
+        set-level)
+            local acct="${1:-}" level="${2:-}"; shift 2 2>/dev/null || true
+            [[ -n "$acct" && -n "$level" ]] || {
+                demo_testers_refuse "Usage: pl demo testers ${site} set-level <account> <level> --tier=…"
+                return 1
+            }
+            [[ "$acct" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$ ]] || {
+                demo_testers_refuse "account '${acct}' fails the shape check"
+                return 1
+            }
+            [[ "$level" =~ ^[0-9]{1,2}$ ]] || {
+                demo_testers_refuse "level '${level}' is not an integer (the drush side enforces the real 1..max bounds)"
+                return 1
+            }
+            [[ $# -eq 0 ]] || {
+                demo_testers_refuse "unrecognised argument(s) for set-level: $*"
+                return 1
+            }
+            demo_testers_require_demo_mode "$site" "$tier" || return 1
+            rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-set-level "$acct" "$level")" || rc=$?
+            demo_log "$site" testers-set-level "acct=${acct} level=${level} tier=${tier} rc=${rc}"
+            demo_testers_emit "$site" "$tier" nwc:tester-set-level "$rc" "$out"
+            return $?
+            ;;
+    esac
+}
+
+################################################################################
 # codes
 ################################################################################
 
@@ -4901,7 +5132,7 @@ main() {
             return 2
         fi
         case "$sub" in
-            codes|invite) : ;;   # these genuinely take positional actions
+            codes|invite|testers) : ;;   # these genuinely take positional actions
             *)
                 print_error "REFUSED: unrecognised argument(s) for 'pl demo $sub': ${passthru[*]}"
                 echo "  Nothing consumes them, so continuing would run a DIFFERENT command"
@@ -4984,6 +5215,7 @@ main() {
         seal-status) cmd_seal_status "$site" "$tier" ;;
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
+        testers)  cmd_testers "$site" "$tier" "$remove" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" "$raw_ssh" "$fb_status" ;;
         feedback-sync) cmd_feedback_sync "$site" "$tier" "$dry_run" ;;

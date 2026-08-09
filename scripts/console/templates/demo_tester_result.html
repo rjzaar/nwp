@@ -1,0 +1,40 @@
+{# Tester-editor action result (ops#328 t3). The ops#327 rule, structural:
+   below the verdict is the roster RE-READ after the action — the state the
+   action left, not a note about intent. Refusals and the not-deployed state
+   render their typed reasons verbatim; raw output stays in a collapsible. #}
+{% if error %}
+<p class="err">✗ {{ error }}</p>
+{% else %}
+{% if action and action.ok %}
+<p class="okline">{{ label }} — {{ "changed" if action.changed else "no change needed (idempotent)" }}
+   (rc={{ res.rc }}, {{ res.secs }}s)</p>
+{% if action.membership is defined and action.membership %}
+<p class="muted">verb-side re-read: member={{ action.membership.member }}
+   · roles: {{ action.membership.roles | join(", ") or "—" }}</p>
+{% endif %}
+{% if action.level_after is defined %}
+<p class="muted">level {{ action.level_before }} → {{ action.level_after }}
+   {% if action.codes_added %}· completions recorded: {{ action.codes_added | join(", ") }}{% endif %}</p>
+{% endif %}
+{% if action.note %}<p class="muted">{{ action.note }}</p>{% endif %}
+{% elif action and action.refused %}
+<p class="err">REFUSED: {{ action.reason }}</p>
+<p class="muted">a refusal is a result — nothing was changed on {{ site }}</p>
+{% elif action and action.not_deployed %}
+<p class="err">CANNOT VERIFY: {{ action.reason }}</p>
+<p class="warnnote">The write commands ship with the nwp/nwc profile MR — merge it, deploy the profile
+   to live {{ site }}, then retry. Nothing was changed.</p>
+{% else %}
+<p class="err">CANNOT VERIFY: {{ action.reason if action else "no parseable outcome" }} (rc={{ res.rc }})</p>
+{% endif %}
+<details {% if res.rc != 0 %}open{% endif %}><summary>command output</summary>
+<pre>{{ res.out }}
+{{ res.err }}</pre></details>
+
+<h5>Tester as re-read after this action</h5>
+{% if testers and testers.ok %}
+{% include "_demo_tester_detail.html" %}
+{% elif testers %}
+<p class="err">CANNOT VERIFY the roster re-read: {{ testers.reason }}</p>
+{% endif %}
+{% endif %}

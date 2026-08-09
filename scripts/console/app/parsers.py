@@ -512,3 +512,157 @@ def parse_demo_codes(stdout: str) -> dict:
         if re.search(r"[0-9a-f]{8}", s, re.I) or re.search(r"\b(live|active|revoked|expired|used)\b", s, re.I):
             rows.append(s[:200])
     return {"ok": bool(text.strip()), "rows": rows[:100], "raw": text[-6000:]}
+
+
+# ---------------------------------------------------------------------------
+# ops#328 tranche 3 — the per-tester editor's reads
+# ---------------------------------------------------------------------------
+TESTER_ART9_STATES = ("none", "granted", "stale", "withdrawn")
+
+
+def _tester_mirror_note(last_access) -> str:
+    """The Moodle-mirror column is a DERIVATION, never a claim about ssd's DB:
+    ssd accounts are SSO-minted only, and guild memberships reconcile into the
+    managed nwcguild:<uuid> cohorts at login. There is no cheap read-only
+    per-user ssd surface (researched in ops#329 t2), so the honest rendering
+    is what the SSO contract guarantees, keyed on whether the tester has ever
+    logged in."""
+    try:
+        la = int(last_access or 0)
+    except (TypeError, ValueError):
+        la = 0
+    if la <= 0:
+        return "no ssd account yet — SSO-minted at first login"
+    return "guilds mirror to ssd cohorts at next SSO login"
+
+
+def parse_testers_json(stdout: str) -> dict:
+    """`pl demo testers <site> list --json --tier=live` (ops#328 t3).
+
+    Pass-through of drush nwc:tester-list's contract, sanitised. ok:false —
+    including the wrapper's exit-2 CANNOT VERIFY and the not_deployed document
+    it emits while the nwc profile MR is unmerged/undeployed — carries its
+    reason + flags and must never collapse into an empty-but-healthy roster
+    (ops#281)."""
+    raw = strip_ansi(stdout or "")[-4000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "not_deployed": False,
+                "reason": "no JSON found in pl demo testers list --json output "
+                          "(is the deployed pl older than ops#328 tranche 3?)",
+                "raw": raw, "accounts": [], "counts": {}, "guild_catalog": {}}
+    if not data.get("ok"):
+        return {"ok": False,
+                "not_deployed": bool(data.get("not_deployed")),
+                "reason": str(data.get("reason", "roster unreadable"))[:400],
+                "raw": raw, "accounts": [], "counts": {}, "guild_catalog": {}}
+
+    counts = {}
+    raw_counts = data.get("counts", {}) if isinstance(data.get("counts"), dict) else {}
+    for k in ("fenced_active", "fenced_blocked", "real_active", "real_blocked"):
+        try:
+            counts[k] = int(raw_counts.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            counts[k] = 0
+
+    accounts = []
+    for r in data.get("accounts", []) or []:
+        if not isinstance(r, dict):
+            continue
+        guilds = []
+        for g in r.get("guilds", []) or []:
+            if not isinstance(g, dict):
+                continue
+            guilds.append({
+                "group_id": g.get("group_id"),
+                "type": str(g.get("type", ""))[:32],
+                "label": str(g.get("label", ""))[:80],
+                "seed_key": (str(g.get("seed_key"))[:40] if g.get("seed_key") else None),
+                "roles": [str(x)[:40] for x in (g.get("roles") or []) if isinstance(x, str)],
+            })
+        consent_raw = r.get("consent", {}) if isinstance(r.get("consent"), dict) else {}
+        art9 = str(consent_raw.get("art9", "?"))[:12]
+        lvl = r.get("sojourner_level")
+        accounts.append({
+            "uid": r.get("uid"),
+            "name": str(r.get("name", ""))[:60],
+            "mail": str(r.get("mail", ""))[:80],
+            "active": bool(r.get("active")),
+            "fence": str(r.get("fence", "?"))[:10],
+            "last_access": r.get("last_access"),
+            "roles": [str(x)[:40] for x in (r.get("roles") or []) if isinstance(x, str)],
+            "guilds": guilds,
+            "sojourner_level": (int(lvl) if isinstance(lvl, (int, float)) else None),
+            "skill_progress": [
+                {"guild": str(s.get("guild") or "")[:60], "skill": str(s.get("skill") or "")[:60],
+                 "level": s.get("level")}
+                for s in (r.get("skill_progress") or []) if isinstance(s, dict)
+            ][:20],
+            "consent": {
+                "art9": art9 if art9 in TESTER_ART9_STATES else "?",
+                "art9_current": bool(consent_raw.get("art9_current")),
+                "may_contribute": bool(consent_raw.get("may_contribute")),
+                "may_keep_formation": bool(consent_raw.get("may_keep_formation")),
+                "trialing": bool(consent_raw.get("trialing")),
+            },
+            "redeemed_bundle": r.get("redeemed_bundle"),
+            "mirror": _tester_mirror_note(r.get("last_access")),
+        })
+
+    cat_raw = data.get("guild_catalog", {}) if isinstance(data.get("guild_catalog"), dict) else {}
+    catalog = {
+        "guilds": [
+            {"seed_key": str(g.get("seed_key", ""))[:40], "label": str(g.get("label", ""))[:80],
+             "group_id": g.get("group_id"), "type": str(g.get("type", ""))[:32]}
+            for g in (cat_raw.get("guilds") or []) if isinstance(g, dict) and g.get("seed_key")
+        ],
+        "assignable_roles": [str(x)[:40] for x in (cat_raw.get("assignable_roles") or [])
+                             if isinstance(x, str)],
+        "sojourner_levels": [
+            {"num": int(l.get("num", 0) or 0), "name": str(l.get("name", ""))[:60]}
+            for l in (cat_raw.get("sojourner_levels") or []) if isinstance(l, dict)
+        ],
+        "note": str(cat_raw.get("note", ""))[:200],
+    }
+
+    return {"ok": True, "not_deployed": False, "counts": counts, "accounts": accounts,
+            "guild_catalog": catalog, "generated_at": str(data.get("generated_at", ""))[:32],
+            "raw": raw}
+
+
+def parse_tester_action_json(stdout: str) -> dict:
+    """A tester-editor write's outcome (`pl demo testers … set-guild|set-level`).
+
+    Four honest shapes: ok (with the drush side's RE-READ state), a typed
+    refusal (refused:true — rendered verbatim, a refusal is a result), the
+    not_deployed document (the nwc profile MR not on live yet), and CANNOT
+    VERIFY for everything else."""
+    raw = strip_ansi(stdout or "")[-3000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "refused": False, "not_deployed": False,
+                "reason": "no JSON in the verb output", "raw": raw}
+    out = {
+        "ok": bool(data.get("ok")),
+        "refused": bool(data.get("refused")),
+        "not_deployed": bool(data.get("not_deployed")),
+        "reason": str(data.get("reason", ""))[:500],
+        "changed": bool(data.get("changed")),
+        "raw": raw,
+    }
+    if isinstance(data.get("membership"), dict) and out["ok"]:
+        m = data["membership"]
+        out["membership"] = {
+            "member": bool(m.get("member")),
+            "roles": [str(x)[:40] for x in (m.get("roles") or []) if isinstance(x, str)],
+            "individual_roles": [str(x)[:40] for x in (m.get("individual_roles") or [])
+                                 if isinstance(x, str)],
+        }
+    for k in ("level_before", "level_after", "requested"):
+        if isinstance(data.get(k), int):
+            out[k] = data[k]
+    if isinstance(data.get("codes_added"), list):
+        out["codes_added"] = [str(x)[:10] for x in data["codes_added"]][:80]
+    if isinstance(data.get("note"), str):
+        out["note"] = data["note"][:300]
+    return out

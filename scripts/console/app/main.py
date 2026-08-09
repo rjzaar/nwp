@@ -701,6 +701,23 @@ def _gather_nwc(sc: Scope, force: bool = False) -> dict | None:
         "completion": overview.completion_view(got["completion"], got["moodle"]),
         "users": overview.users_view(got["testers"]),
     }
+def _gather_demo_testers(site: str, force: bool = False) -> dict:
+    """The per-tester editor's roster read (ops#328 t3): `pl demo testers
+    <site> list --json --tier=live` — a live drush read over ssh (~5-7 s), so
+    it is lazy-loaded per site and cached, and the DISCHARGE re-read the
+    action route runs with force=True. --tier=live is a fixed literal for the
+    same reason it is everywhere else in this pane: config.DEMO_SITES names
+    the PUBLIC demo sites."""
+    res = run_pl_cached(config.NWP_ROOT, ["demo", "testers", site, "list", "--json", "--tier=live"],
+                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+    return parsers.parse_testers_json(res["out"] + "\n" + res["err"])
+
+
+def _tester_of(testers: dict, account: str) -> dict | None:
+    for a in testers.get("accounts", []) or []:
+        if a.get("name") == account:
+            return a
+    return None
 
 
 ISSUE_STATES = ("opened", "closed", "all")
@@ -1466,6 +1483,97 @@ def action_demo_codes(
                  {"label": spec["label"], "site": argv[2], "res": res_view, "error": None,
                   "codes_json": codes_j, "rows": codes_j.get("codes", []) or [],
                   "filter": "all"}, sc, redactable=False)
+
+
+# -- per-tester editor (ops#328 tranche 3) ----------------------------------
+# Roster + detail are viewer-readable fragments (lazy-loaded: the roster is a
+# live drush read over ssh); writes are operator+ and DISCHARGE by re-reading
+# the roster. Consent is deliberately absent from the writable surface — it
+# is the member's own act and is rendered read-only, stated in the UI.
+def _tester_site_or_404(site: str, sc: Scope) -> str:
+    if site not in sc.demo_sites:
+        raise HTTPException(status_code=404, detail="not a demo site in your scope")
+    return site
+
+
+@app.get("/panes/demo/testers", response_class=HTMLResponse)
+def pane_demo_testers(request: Request, site: str = "", force: int = 0,
+                      sc: Scope = Depends(scoped("viewer"))):
+    site = _tester_site_or_404(site, sc)
+    testers = _gather_demo_testers(site, force=bool(force))
+    return _pane(request, "_demo_testers.html", {"site": site, "testers": testers}, sc,
+                 redactable=False)
+
+
+@app.get("/panes/demo/tester", response_class=HTMLResponse)
+def pane_demo_tester(request: Request, site: str = "", account: str = "",
+                     sc: Scope = Depends(scoped("viewer"))):
+    from .actions import TESTER_ACCOUNT_RE
+
+    site = _tester_site_or_404(site, sc)
+    if not TESTER_ACCOUNT_RE.match(account or ""):
+        raise HTTPException(status_code=400, detail="invalid account name")
+    testers = _gather_demo_testers(site)
+    return _pane(request, "_demo_tester_detail.html",
+                 {"site": site, "testers": testers, "account": account,
+                  "acct": _tester_of(testers, account)}, sc, redactable=False)
+
+
+DEMO_TESTER_OPS = {"set-guild": "demo_tester_set_guild", "set-level": "demo_tester_set_level"}
+
+
+@app.post("/actions/demo_tester", response_class=HTMLResponse)
+def action_demo_tester(
+    request: Request,
+    site: str = Form(""),
+    op: str = Form(""),
+    account: str = Form(""),
+    seed_key: str = Form(""),
+    role: str = Form(""),
+    remove: str = Form(""),
+    level: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "account": account, "seed_key": seed_key,
+              "role": role, "remove": remove, "level": level}
+    name = DEMO_TESTER_OPS.get(op)
+    if name is None:
+        audit.append(sc.user, sc.global_role, "action.demo_tester",
+                     {"params": params, "rejected": f"unknown tester op {op!r}"}, False,
+                     project=sc.project_id)
+        return _pane(request, "demo_tester_result.html",
+                     {"label": "tester action", "site": site, "account": account,
+                      "res": None, "action": None, "error": f"unknown tester op {op!r}",
+                      "testers": None, "acct": None}, sc, redactable=False)
+    try:
+        argv, spec = build_action(name, params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, f"action.{name}",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_tester_result.html",
+                     {"label": ACTIONS[name]["label"], "site": site, "account": account,
+                      "res": None, "action": None, "error": str(e),
+                      "testers": None, "acct": None}, sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(
+        sc.user, sc.global_role, f"action.{name}",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    action = parsers.parse_tester_action_json(res["out"] + "\n" + res["err"])
+    # DISCHARGE (ops#327, structural): re-read the roster the action just
+    # touched, cache bypassed, and render THAT state — on success AND on
+    # refusal; "nothing changed" is a result the operator sees, not infers.
+    testers = _gather_demo_testers(argv[2], force=True)
+    res_view = dict(res, out=parsers.strip_ansi(res["out"])[-8000:],
+                    err=parsers.strip_ansi(res["err"])[-2000:])
+    return _pane(request, "demo_tester_result.html",
+                 {"label": spec["label"], "site": argv[2], "account": account,
+                  "res": res_view, "action": action, "error": None,
+                  "testers": testers, "acct": _tester_of(testers, account)},
+                 sc, redactable=False)
 
 
 # ---------------------------------------------------------------------------

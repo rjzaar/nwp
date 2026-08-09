@@ -336,3 +336,18 @@ scripts/ver-provision/ver-kit.pins
 private/pairs/*.log
 private/pairs/*.rag
 private/pairs/*.cv
+
+# ops#319 F4: the repo's Claude Code harness config ships WITH the repo and is
+# reviewed like code (the PreToolUse raw-remote gate is registered there). Only
+# settings.json is tracked; settings.local.json and anything else under
+# .claude/ stays ignored. Explicit whitelist because the root `/*` deny above
+# would otherwise swallow it silently — the exact trap .nwp-review-mode nearly
+# shipped with (present locally, absent in CI).
+!/.claude/
+.claude/*
+!.claude/settings.json
+
+# ops#319 F4 override ledger — where NWP_RAW_REMOTE_OK reasons land. Private
+# operational record (commands may embed hostnames), never committed; the
+# private/ allowlist above must not be widened to sweep it in.
+private/raw-remote-overrides.log

@@ -3,8 +3,8 @@ set -euo pipefail
 ################################################################################
 # scripts/commands/impact.sh — `pl impact` (P74 Phase 2)
 #
-# Classify a diff as INTERNAL vs BOUNDARY-TOUCHING against the nwc↔ssc pair
-# contract's `boundary:` map. INTERNAL → ship freely (normal single-site CI).
+# Classify a diff as INTERNAL vs BOUNDARY-TOUCHING against a pair contract's
+# `boundary:` map. INTERNAL → ship freely (normal single-site CI).
 # BOUNDARY-TOUCHING → coordinate the other side (cross-site contract-verify +
 # CODEOWNERS review — Phase 2/3). FAIL-SAFE CLOSED: an uncomputable diff is
 # treated as BOUNDARY.
@@ -15,12 +15,13 @@ set -euo pipefail
 # (see below), because an honesty check that always exits 0 cannot fail.
 #
 # Usage:
-#   pl impact [--base=main] [--json] [--pair=ssc] [--honesty] [--advisory]
+#   pl impact [--base=main] [--json] [--pair=<id>] [--honesty] [--advisory]
 #             [--fail-uncomputable] [-h]
 #
 #   --base=<ref>   compare HEAD against <ref> (default: main)
 #   --json         emit a machine summary (for CI) instead of the human report
-#   --pair=<id>    pair contract to use (default: ssc)
+#   --pair=<id>    pair contract to use (REQUIRED unless NWP_BOUNDARY_PAIR is set —
+#                  the engine ships no default pair; ops#326)
 #   --honesty      run the manifest-honesty check instead of classifying a diff
 #   --advisory     with --honesty: report but always exit 0 (legacy behaviour)
 #   --fail-uncomputable
@@ -53,7 +54,9 @@ source "$PROJECT_ROOT/lib/boundary.sh"
 
 BASE="main"
 JSON=0
-PAIR="ssc"
+# ops#326: NO engine default pair — the engine ships no estate. The pair id
+# comes from --pair, or NWP_BOUNDARY_PAIR (estate config / CI job variable).
+PAIR="${NWP_BOUNDARY_PAIR:-}"
 HONESTY=0
 ADVISORY=0
 FAIL_UNCOMPUTABLE=0
@@ -77,7 +80,14 @@ for arg in "$@"; do
     esac
 done
 
-CONTRACT="$(boundary_contract_file "$PAIR")"
+if [ -z "$PAIR" ]; then
+    echo "pl impact: no pair id — the engine ships no default pair (ops#326)." >&2
+    echo "  Pass --pair=<id> or set NWP_BOUNDARY_PAIR. The shipped sample pair is 'ssd';" >&2
+    echo "  a real estate declares its own pair contract in the private overlay (private/pairs/)." >&2
+    exit 2
+fi
+
+CONTRACT="$(boundary_contract_file "$PAIR")" || true
 
 if [ "$HONESTY" -eq 1 ]; then
     # `set -e` is on; boundary_honesty_check returns 1/2 by design.

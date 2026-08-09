@@ -275,8 +275,12 @@ YML
 
 # --- the real contracts in this repo ----------------------------------------
 
-@test "the shipped ssc + ssd contracts satisfy the invariant" {
+@test "the shipped sample contracts satisfy the invariant" {
+  # ops#326: the real pair's contract lives in the private overlay; the
+  # SHIPPED corpus is the sample pair (ssd). Overlay pinned to an empty dir so
+  # this asserts the same thing on every machine, with or without an overlay.
   unset NWP_PAIR_CONTRACT_DIR
+  export NWP_PAIR_OVERLAY_DIR="${BATS_TEST_TMPDIR}/no-overlay"
   local repo; repo="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
   # The consumer checkouts live in the working tree, not the git worktree, so
   # this asserts only when they are present — and says so when they are not.

@@ -73,8 +73,16 @@ done
 case "$PUBLISH_URL" in https://*) : ;; *) die "refusing non-HTTPS --publish-url: $PUBLISH_URL" ;; esac
 
 # Resolve the sanitizer, fail-closed: never publish a site with no reviewed sanitizer.
-[ -z "$SANITIZER" ] && SANITIZER="$NWP_ROOT/lib/sanitizers/${SITE}.sh"
-[ -f "$SANITIZER" ] || die "no sanitizer for '$SITE' ($SANITIZER). Supply --sanitizer PATH (e.g. lib/sanitizers/standard.sh). Refusing to publish unsanitized data."
+# ops#326: per-instance sanitizers live in the PRIVATE OVERLAY repo
+# (private/sanitizers/), searched after the shipped lib/sanitizers/.
+SANITIZER_OVERLAY_DIR="${NWP_SANITIZER_OVERLAY_DIR:-$NWP_ROOT/private/sanitizers}"
+if [ -z "$SANITIZER" ]; then
+  SANITIZER="$NWP_ROOT/lib/sanitizers/${SITE}.sh"
+  if [ ! -f "$SANITIZER" ] && [ -f "$SANITIZER_OVERLAY_DIR/${SITE}.sh" ]; then
+    SANITIZER="$SANITIZER_OVERLAY_DIR/${SITE}.sh"
+  fi
+fi
+[ -f "$SANITIZER" ] || die "no sanitizer for '$SITE' (looked at $NWP_ROOT/lib/sanitizers/${SITE}.sh and $SANITIZER_OVERLAY_DIR/${SITE}.sh). Supply --sanitizer PATH (e.g. lib/sanitizers/standard.sh). Refusing to publish unsanitized data."
 
 # Token file must exist; warn if it is looser than 0600/0400.
 [ -f "$TOKEN_FILE" ] || die "publish token file not found: $TOKEN_FILE"
@@ -82,7 +90,7 @@ perms="$(stat -c '%a' "$TOKEN_FILE" 2>/dev/null || echo '')"
 case "$perms" in 600|400|'') : ;; *) print_warning "token file $TOKEN_FILE is $perms — expected 600/400" ;; esac
 
 # Stack detection (ADR-0032 Flow A): a Moodle root carries version.php and its
-# sanitizer (ssc.sh → moodle-full.sh) emits a .tar.gz BUNDLE {db.sql.gz, manifest};
+# sanitizer (<site>.sh → moodle-full.sh) emits a .tar.gz BUNDLE {db.sql.gz, manifest};
 # a Drupal site emits a plain .sql.gz dump. The extension + gate method follow.
 if [ -f "$SITE_DIR/version.php" ]; then
     STACK="moodle"; ARTIFACT_EXT="tar.gz"

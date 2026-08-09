@@ -168,8 +168,10 @@ cmd_check() {
     # refusal does. Direct verb: `pl impact --honesty`.
     echo ""
     print_header "boundary manifest-honesty (pl impact --honesty --pair=$site)"
-    if [ ! -f "${NWP_PAIR_CONTRACT_DIR:-$PROJECT_ROOT/pairs}/${site}.pair-contract.yml" ]; then
-        print_status "WARN" "no pairs/${site}.pair-contract.yml — nothing to honesty-check for this site."
+    # ops#326: the contract may live in the private overlay — resolve through
+    # the same search path the guard uses.
+    if [ ! -f "$(pair_contract_file "$site" 2>/dev/null || true)" ]; then
+        print_status "WARN" "no ${site}.pair-contract.yml (shipped pairs/ or overlay private/pairs/) — nothing to honesty-check for this site."
         return 0
     fi
     local rc=0

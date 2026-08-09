@@ -143,20 +143,42 @@ boundary:
     direction: "nwd->ssd"
     provider_paths:
       - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_moodle/modules/nwc_moodle_sync/**"
+    provider_symbols:
+      - nwc_moodle_sync_user_login
+      - nwc_moodle_sync_cron
     consumer_paths:
       - "auth/nwc/classes/guild_cohort_map.php"
   badge_read:
     direction: "ssd->nwd"
     provider_paths:
       - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_moodle/modules/nwc_moodle_data/**"
+    provider_symbols:
+      - nwc_moodle_data_theme
     consumer_paths:
       - "badges/**"
   erasure:
     direction: "nwd->ssd"
     provider_paths:
       - "scripts/drupal/nwc_moodle_erase/**"
+    provider_symbols:
+      - NwcMoodleErase
     consumer_paths:
       - "local/nwc_erase/**"
+  # ops#326 (sample parity with the real pair's ops#116 surface): the OIDC
+  # email-hash salt is a data contract — it must be identical on both stacks
+  # so a sanitised pair keeps its SSO join. The sanitizers named here are the
+  # SHIPPED, generic ones; per-instance sanitizers live in the private overlay.
+  shared_salt:
+    direction: "bidirectional"
+    provider_paths:
+      - "lib/sanitizers/oidc-email.sh"   # IN-REPO: the deterministic-email tool
+    provider_symbols:
+      - oidc_email_sanitize
+      - oidc_email_salt_load
+      - oidc_email_rewrite_sql
+    consumer_paths:
+      - "lib/sanitizers/moodle.sh"       # IN-REPO: the Moodle-side sanitizer
+      - "lib/sanitizers/standard.sh"     # IN-REPO: generic Drupal sanitizer — ops#116
   # ops#133 Phase 2: the demo tier itself is a boundary — a change to the
   # paired golden/reset logic can desynchronise the two halves' identities.
   demo_paired_reset:

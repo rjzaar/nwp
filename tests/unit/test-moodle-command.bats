@@ -221,3 +221,23 @@ teardown() { rm -rf "${TEST_TMP}"; }
   [ "$status" -eq 0 ]
   [ "$output" -ge 2 ]
 }
+
+# =============================================================================
+# ops#326 (engine/site separation): the engine ships no default site. The two
+# verbs that used to default to a REAL private site must now refuse, naming
+# what to pass instead.
+# =============================================================================
+
+@test "ops#326: gate-status without a site refuses (no engine default site)" {
+  run bash "${REPO_ROOT}/scripts/commands/moodle.sh" gate-status
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no default site"* ]]
+  [[ "$output" == *"gate-status <site>"* ]]
+}
+
+@test "ops#326: plugin build without --ddev/--tree refuses (no engine default site)" {
+  run bash "${REPO_ROOT}/scripts/commands/moodle.sh" plugin build mod/foo --check-only
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--tree"* ]]
+  [[ "$output" == *"no default site"* ]]
+}

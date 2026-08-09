@@ -344,6 +344,18 @@ private/pairs/*.log
 private/pairs/*.rag
 private/pairs/*.cv
 
+# ops#326: the private OVERLAY repo's content is never this repo's business.
+# The unanchored `!classes/` / `!pairs/` / `!.gitignore` negations above exist
+# for the SHIPPED top-level dirs, but they also re-include the overlay's
+# private/classes/, private/pairs/ and its own .gitignore — which then show up
+# as untracked in every engine status (the exact `git add -A` sweep hazard the
+# note above records). Last-match-wins: re-ignore the overlay's shapes here.
+private/classes/
+private/pairs/
+private/sanitizers/
+private/agent-loop/
+private/.gitignore
+
 # ops#319 F4: the repo's Claude Code harness config ships WITH the repo and is
 # reviewed like code (the PreToolUse raw-remote gate is registered there). Only
 # settings.json is tracked; settings.local.json and anything else under

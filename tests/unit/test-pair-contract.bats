@@ -230,11 +230,9 @@ EOF
 # These read the REAL pairs/*.pair-contract.yml out of the repo. They are the
 # pins that stop the phantom probe URLs coming back.
 
-@test "shipped ssc contract: no consumer smoke_url points at a phantom endpoint" {
-  run grep -E 'nwc_copyright_sync/status\.php|local/feedback/api\.php' \
-      "${BATS_TEST_DIRNAME}/../../pairs/ssc.pair-contract.yml"
-  [ "$status" -ne 0 ]
-}
+# ops#326: the real pair's contract moved to the private overlay — the shipped
+# pins now run against the SAMPLE contract (ssd), which carries the same
+# surfaces. The overlay repo is responsible for the real contract's pins.
 
 @test "shipped ssd contract: no consumer smoke_url points at a phantom endpoint" {
   run grep -E 'nwc_copyright_sync/status\.php|local/feedback/api\.php' \
@@ -242,11 +240,10 @@ EOF
   [ "$status" -ne 0 ]
 }
 
-@test "shipped ssc contract: the ops#116 sanitizer boundary entries are intact" {
-  local f="${BATS_TEST_DIRNAME}/../../pairs/ssc.pair-contract.yml"
+@test "shipped ssd contract: the ops#116 sanitizer boundary entries are intact" {
+  local f="${BATS_TEST_DIRNAME}/../../pairs/ssd.pair-contract.yml"
   grep -q 'oidc_email_rewrite_sql' "$f"
   grep -q 'lib/sanitizers/standard.sh' "$f"
-  grep -q 'lib/sanitizers/mayo.sh' "$f"
 }
 
 @test "shipped contracts: every pair contract declares a crossref corpus" {

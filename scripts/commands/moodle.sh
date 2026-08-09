@@ -342,11 +342,15 @@ cmd_plugin_build() {
     done
     [ -z "$plugin" ] && { print_error "usage: pl moodle plugin build <type>/<name> [--from=DIR] [--ddev=SITE|--tree=DIR] [--check-only]"; return 1; }
 
-    # Resolve the build tree: --tree wins; else --ddev site's dev tree; else ssc dev.
+    # Resolve the build tree: --tree wins; else --ddev site's dev tree.
+    # ops#326: NO engine default site — the engine ships no estate.
     local build_tree="$tree"
     if [ -z "$build_tree" ]; then
-        local dsite="${ddev:-ssc}"
-        build_tree="$PROJECT_ROOT/sites/${dsite}/dev"
+        if [ -z "$ddev" ]; then
+            print_error "no build tree: pass --tree=DIR or --ddev=SITE (ops#326: the engine ships no default site)"
+            return 1
+        fi
+        build_tree="$PROJECT_ROOT/sites/${ddev}/dev"
     fi
 
     print_header "Moodle plugin build: ${plugin} ($([ "$check_only" = true ] && echo check-only || echo build))"
@@ -717,7 +721,12 @@ cmd_gate_status() {
             *)         [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
         esac
     done
-    [ -z "$site" ] && site="ssc"
+    if [ -z "$site" ]; then
+        # ops#326: NO engine default site — the engine ships no estate.
+        print_error "usage: pl moodle gate-status <site> [--no-live]"
+        print_error "no default site: name the Moodle site to inspect (ops#326)."
+        return 1
+    fi
     _resolve_moodle_site "$site" || return 1
 
     local repo cache dev_root toolkit

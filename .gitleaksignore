@@ -170,3 +170,8 @@ scripts/install-mini-runner.sh:internal-bare-hostname:94
 scripts/install-mini-runner.sh:live-internal-domain:190
 scripts/install-mini-runner.sh:live-internal-domain:25
 scripts/install-mini-runner.sh:live-internal-domain:50
+
+# ops#278 front-page copy: "self-contained mini-courses" is member-facing prose
+# (the v1 tile page's own wording, live on ssd) — the substring "mini" is not a
+# host reference. Path+line pinned; re-pin if the file shifts.
+scripts/demo/ssd-front-page-tiles.php:internal-bare-hostname:168

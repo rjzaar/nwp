@@ -37,8 +37,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import (advisories, config, fleet_state, help, library, notify, parsers,
-               quokka, scope as scope_mod, visuals, voice, webauthn_flow)
+from . import (advisories, config, fleet_state, help, library, notify, overview,
+               parsers, quokka, scope as scope_mod, visuals, voice, webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -998,6 +998,181 @@ def pane_review(request: Request, force: int = 0, sc: Scope = Depends(scoped("vi
     )
 
 
+# -- estate overview gatherers (ops#329) -------------------------------------
+def _gather_estate_raw(force: bool = False, project_id: str | None = None) -> tuple[dict, dict, dict]:
+    """The workstation's estate feed (repo drift, deploys, harvest spool,
+    secrets debt, backup ages) — published with the fleet snapshot, local
+    `pl fleet estate --json` as the labelled fallback."""
+    return _gather_fleet_feed("estate", ["fleet", "estate", "--json"],
+                              parsers.parse_estate, "repos", empty_is_missing=True,
+                              force=force, project_id=project_id)
+
+
+def _gather_estate(sc: Scope, force: bool = False) -> tuple[dict, dict, dict]:
+    """Estate infrastructure (repos, deploy records, the secrets registry) is
+    not per-site data: a scoped project reader gets the same refusal marker the
+    Review pane uses — never a filtered subset that implies 'no drift'."""
+    if not sc.all_sites:
+        return {"ok": False, "scoped_out": True, "reason": ""}, {}, {}
+    return _gather_estate_raw(force=force, project_id=sc.project_id)
+
+
+_gl_branch_cache: dict = {}
+
+
+def _gitlab_main_cached(project: str, force: bool = False) -> dict:
+    """TTL-cached GitLab branch-head read — the 'what is main right now' side
+    of every deployed-vs-main verdict. An unreadable API stays ok:false and the
+    views render UNKNOWN rather than claiming equality from one side."""
+    now = time.time()
+    hit = _gl_branch_cache.get(project)
+    if hit and not force and now - hit["t"] < config.OVERVIEW_GITLAB_TTL:
+        return hit["v"]
+    v = gitlab.get_branch(project, "main")
+    _gl_branch_cache[project] = {"t": now, "v": v}
+    return v
+
+
+_webhook_cache = {"t": 0.0, "v": "unknown"}
+
+
+def _webhook_alive() -> str:
+    """'up' | 'down' | 'unknown'. Any HTTP answer (including 404/405) proves
+    the receiver is serving; connection refused proves it is not; everything
+    else — no URL, timeout, weird failure — is UNKNOWN, never either."""
+    if not config.WEBHOOK_PROBE_URL:
+        return "unknown"
+    now = time.time()
+    if now - _webhook_cache["t"] < 60:
+        return _webhook_cache["v"]
+    import urllib.error
+    import urllib.request
+    state = "unknown"
+    try:
+        urllib.request.urlopen(config.WEBHOOK_PROBE_URL, timeout=2)
+        state = "up"
+    except urllib.error.HTTPError:
+        state = "up"          # it answered — that IS liveness
+    except urllib.error.URLError as e:
+        if isinstance(getattr(e, "reason", None), ConnectionRefusedError):
+            state = "down"
+    except Exception:  # noqa: BLE001 — a probe must never take the slot down
+        state = "unknown"
+    _webhook_cache.update(t=now, v=state)
+    return state
+
+
+def _read_deploy_marker() -> dict | None:
+    """The `.nwp-deployed.json` marker `pl console deploy` writes beside the
+    app. Absent or unreadable both return None — marker_view then renders NOT
+    RECORDED, which is the honest reading of either."""
+    try:
+        data = json.loads(config.DEPLOY_MARKER.read_text())
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _replica_state(site: str) -> dict:
+    """This host's `pl backup replicate` landing dir for one site."""
+    base = config.BACKUP_REPLICA_DIR / site
+    try:
+        if not base.is_dir():
+            return {"site": site, "present": False, "readable": True}
+        files = [p for p in base.iterdir() if p.is_file() and p.suffix != ".tmp"]
+        if not files:
+            return {"site": site, "present": False, "readable": True}
+        newest = max(files, key=lambda p: p.stat().st_mtime)
+        return {"site": site, "present": True, "readable": True,
+                "newest": newest.name,
+                "age_seconds": int(time.time() - newest.stat().st_mtime),
+                "count": len(files)}
+    except OSError:
+        return {"site": site, "present": False, "readable": False}
+
+
+def _slot_local_ctx(sc: Scope, force: bool = False) -> dict:
+    """The console host's own state: checkout drift, deploy marker, services,
+    snapshot age, backup replicas. Every part is best-effort and fails to an
+    explicit unknown — never to a blank."""
+    co_res = run_pl_cached(config.NWP_ROOT, ["fleet", "checkout", "--json"],
+                           ttl=config.PANE_CACHE_TTL, timeout=60, force=force)
+    checkout = parsers.parse_checkout(co_res["out"] + "\n" + co_res["err"])
+    gl_main = _gitlab_main_cached(config.CONSOLE_REPO_PROJECT, force=force)
+    services = {
+        "nwp-console": "up",              # we are serving this response
+        "nwp-webhook": _webhook_alive(),
+        "quokka (local LLM)": "up" if _quokka_alive() else "down",
+    }
+    snap, _scoped = fleet_state.load_for(config.DATA_DIR, sc.project_id,
+                                         config.FLEET_STATE_FILE)
+    snap_age = fleet_state.age_seconds(snap)
+    # Replica rows carry the `site` key on purpose: scope.scrub() drops a
+    # foreign site's row if this slot is ever rendered for a scoped reader.
+    replicas = {r["site"]: r for r in (_replica_state(s) for s in sorted(sc.demo_sites))}
+    return {
+        "checkout": overview.checkout_view(checkout, gl_main),
+        "marker": overview.marker_view(_read_deploy_marker(), gl_main),
+        "services": overview.services_view(services),
+        "loop_paused": _loop_paused(),
+        "snapshot": {
+            "present": snap is not None,
+            "age_human": fleet_state.fmt_age(snap_age) if snap_age is not None else "",
+            "stale": bool(snap_age is not None and snap_age > config.FLEET_MAX_AGE),
+            "host": fleet_state.source_host(snap),
+        },
+        "replicas": overview.replicas_view(replicas),
+    }
+
+
+@app.get("/panes/visuals/slots/{slot}", response_class=HTMLResponse)
+def pane_visuals_slot(request: Request, slot: str, force: int = 0,
+                      sc: Scope = Depends(scoped("viewer"))):
+    """One overview slot, AJAXed into the skeleton. The slot name is user
+    input: anything outside overview.SLOTS is a 404, and each latency class
+    loads independently so the ssh-backed reads never block the fast ones.
+    Refresh (`force=1`) is the discharge rule: re-render from the forced
+    re-read, never from intent."""
+    if slot not in overview.SLOTS:
+        raise HTTPException(status_code=404)
+    force_b = bool(force)
+    if slot in ("local", "estate") and not sc.all_sites:
+        # Estate infrastructure — same refusal the Review pane renders.
+        return _pane(request, f"_ov_slot_{slot}.html",
+                     {"scoped_out": True, "slot": slot}, sc)
+    if slot == "local":
+        ctx = dict(_slot_local_ctx(sc, force=force_b), scoped_out=False, slot=slot)
+        return _pane(request, "_ov_slot_local.html", ctx, sc)
+    if slot == "estate":
+        est, _res, prov = _gather_estate(sc, force=force_b)
+        return _pane(request, "_ov_slot_estate.html",
+                     {"est": overview.estate_view(est), "prov": prov,
+                      "scoped_out": False, "slot": slot}, sc)
+    if slot == "pair":
+        sites = _gather_demo(sc, force=force_b)
+        return _pane(request, "_ov_slot_pair.html",
+                     {"pair_sites": sites, "pending": overview.pair_pending_slots(),
+                      "guild_edges": overview.skeleton_context()["guild_edges"],
+                      "slot": slot}, sc)
+    # slot == "ops"
+    q = _gather_review(sc, force=force_b)
+    data = (q.get("data") or {}) if q.get("ok") else {}
+    decisions = data.get("decisions") or []
+    mr_total = sum(len(p.get("items") or [])
+                   for p in (data.get("mrs") or {}).get("projects") or [])
+    try:
+        blocks, api_ok = _gather_ci(sc)
+    except Exception:  # noqa: BLE001
+        blocks, api_ok = [], False
+    rag, _res, rag_prov = _gather_rag(sc, force=force_b)
+    return _pane(request, "_ov_slot_ops.html",
+                 {"q": q, "decisions_n": len(decisions), "mr_total": mr_total,
+                  "ci_blocks": blocks, "ci_api_ok": api_ok,
+                  "ci_running": parsers.ci_running_count(blocks),
+                  "rag": rag, "rag_tab": parsers.fmt_rag_tab(rag),
+                  "rag_prov": rag_prov, "slot": slot}, sc)
+
+
 @app.get("/panes/ci", response_class=HTMLResponse)
 def pane_ci(request: Request, sc: Scope = Depends(scoped("viewer"))):
     blocks, api_ok = _gather_ci(sc)
@@ -1007,23 +1182,38 @@ def pane_ci(request: Request, sc: Scope = Depends(scoped("viewer"))):
 
 
 @app.get("/panes/visuals", response_class=HTMLResponse)
-def pane_visuals(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
-    rag, _res, prov = _gather_rag(sc, force=bool(force))
-    todo = _gather_todo(sc, force=bool(force))[0]
-    # Both of these are best-effort for the same reason pane_fleet treats the
-    # security feed that way: this pane's job is the at-a-glance read, and one
-    # unavailable feed must degrade to one honest "no data" card rather than
-    # taking the whole tab down.
-    sec = {"ok": False, "error": "security data unavailable on this host"}
-    try:
-        sec = _gather_security(sc, force=bool(force))[0]
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        blocks, api_ok = _gather_ci(sc)
-    except Exception:  # noqa: BLE001
-        blocks, api_ok = [], False
-    ctx = visuals.page_context(rag, todo, sec, blocks, api_ok, prov)
+def pane_visuals(request: Request, force: int = 0, sub: str = "",
+                 sc: Scope = Depends(scoped("viewer"))):
+    """The Visuals tab as a subtabbed collection (ops#329): only the ACTIVE
+    subtab's feeds are gathered, so opening the overview costs no rag/todo/
+    security shell-outs at all — its skeleton is static and every value
+    arrives by slot AJAX. Each chart subtab pays only for its own feed."""
+    sub = visuals.norm_subtab(sub)
+    rag = todo = sec = None
+    blocks: list = []
+    api_ok = False
+    prov: dict = {}
+    if sub == "fleet":
+        rag, _res, prov = _gather_rag(sc, force=bool(force))
+    elif sub == "todo":
+        todo, _res, prov = _gather_todo(sc, force=bool(force))
+    elif sub == "security":
+        # Best-effort for the same reason pane_fleet treats this feed that
+        # way: one unavailable feed must degrade to one honest "no data"
+        # card rather than taking the whole tab down.
+        sec = {"ok": False, "error": "security data unavailable on this host"}
+        try:
+            sec, _res, prov = _gather_security(sc, force=bool(force))
+        except Exception:  # noqa: BLE001
+            pass
+    elif sub == "ci":
+        try:
+            blocks, api_ok = _gather_ci(sc)
+        except Exception:  # noqa: BLE001
+            blocks, api_ok = [], False
+    ctx = visuals.page_context(rag, todo, sec, blocks, api_ok, prov, sub=sub)
+    if sub == "overview":
+        ctx["ov"] = overview.skeleton_context()
     return _pane(request, "pane_visuals.html", ctx, sc,
                  tab="visuals", tab_count="", tab_alert=bool(prov.get("stale")))
 

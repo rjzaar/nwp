@@ -1,0 +1,33 @@
+{#
+  The estate overview SKELETON (ops#329). Renders in one pass with ZERO
+  gathers — every value arrives by slot AJAX. Each slot is one latency class,
+  so the ssh-backed pair reads never block the fast local reads; a slot that
+  cannot load leaves its own loading text on screen rather than blanking a
+  neighbour.
+
+  Slot map (see app/overview.py SLOTS):
+    local   this console host: checkout drift, deployed marker, services,
+            snapshot age, backup replicas
+    estate  the workstation's published feed: repos, deploys, harvest spool,
+            secrets debt, backup ages
+    pair    nwd↔ssd: golden seals, invite codes, reset trail + the tranche-2
+            pending readings (queues, SSO, completions, guilds, users)
+    ops     decisions, open MRs, CI, RAG headline
+#}
+<section class="vzcard" aria-labelledby="ov-h">
+  <div class="vzhead">
+    <h3 id="ov-h">Estate overview</h3>
+    <span class="vzlive">values load per-slot</span>
+  </div>
+  <p class="vzsub">Skeleton renders instantly; each block below fetches its own
+    values and says so plainly when it cannot. A grey word is UNKNOWN — never
+    "fine".</p>
+
+  {% for slot in ov.slots %}
+  <div class="ovslot" id="ov-{{ slot }}"
+       hx-get="/panes/visuals/slots/{{ slot }}" hx-trigger="load"
+       hx-swap="innerHTML">
+    <p class="muted">loading {{ slot }}…</p>
+  </div>
+  {% endfor %}
+</section>

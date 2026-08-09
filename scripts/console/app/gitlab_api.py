@@ -190,6 +190,25 @@ class GitLab:
         return self._req("PUT", f"/projects/{self._proj(project)}/issues/{int(iid)}",
                          {"state_event": "close"}, project=project)
 
+    # -- repository (estate overview: deployed-vs-main) -----------------------
+    def get_branch(self, project: str, branch: str = "main") -> dict:
+        """One branch's head commit: {ok, sha, short, committed_at} — the
+        overview's 'what is main right now' side of every drift verdict.
+        Unreadable => ok:false; the caller must then render UNKNOWN, never
+        claim equality from one side."""
+        r = self._req("GET",
+                      f"/projects/{self._proj(project)}/repository/branches/"
+                      f"{urllib.parse.quote(branch, safe='')}",
+                      project=project)
+        if not r.get("ok"):
+            return {"ok": False, "error": r.get("error", "unreadable")}
+        commit = (r.get("data") or {}).get("commit") or {}
+        sha = str(commit.get("id", "") or "")
+        if not sha:
+            return {"ok": False, "error": "no commit in branch response"}
+        return {"ok": True, "sha": sha, "short": str(commit.get("short_id", sha[:7])),
+                "committed_at": str(commit.get("committed_date", ""))[:30]}
+
     # -- CI (open MRs + head pipelines) --------------------------------------
     def open_mrs(self, project: str, per_page: int = 10) -> dict:
         return self._req(

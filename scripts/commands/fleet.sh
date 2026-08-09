@@ -97,6 +97,8 @@ ${BOLD}USAGE:${NC}
                      [--allow-empty] [--force]
     pl fleet snapshot [--out <path>] [--no-todo] [--no-security] [--refresh-security]
     pl fleet security [--json]
+    pl fleet estate [--json]
+    pl fleet checkout [--json]
     pl fleet status [--to <ssh-host>]
     pl fleet schedule [--schedule "<cron>"] [--remove] [-y]
 
@@ -532,6 +534,15 @@ build_snapshot() { # $1 dest, $2 include_todo, $3 quiet, $4 include_security, $5
         _capture_feed "$tmpdir" security fleet security --json
         feeds="$feeds security"
     fi
+    # The estate feed (ops#329): repo drift + deploy records + harvest spool +
+    # secrets debt + backup ages, for the console's overview subtab. Additive —
+    # an older console ignores it (fleet.sh:36-50). Its git fetches are
+    # time-boxed per repo, and the whole feed carries the same 90s deadline as
+    # the others, so the */30 cron budget grows to 4 feeds x 90s + ship ≈ 460s
+    # worst case — still comfortably inside the window.
+    [ "$quiet" = true ] || print_info "Gathering estate drift (pl fleet estate --json)…"
+    _capture_feed "$tmpdir" estate fleet estate --json
+    feeds="$feeds estate"
 
     local json
     json=$(_assemble "$tmpdir" "$feeds") || { print_error "failed to assemble the snapshot"; return 1; }
@@ -852,6 +863,284 @@ $schedule cd $PROJECT_ROOT && PATH=\"$(_cron_path)\" ./pl fleet publish --quiet 
     print_hint "Verify: crontab -l | grep -A1 'NWP Fleet Publish'"
 }
 
+# ---------------------------------------------------------------------------
+# pl fleet checkout [--json] — THIS host's own nwp checkout, network-free
+# (ops#329). The console runs it on its own host to answer "is the code I am
+# running current?": branch, HEAD, ahead/behind vs origin/main AS OF THE LAST
+# FETCH (with the age of that fetch riding along — the pl-freshness rule:
+# never touch the network on a read path), dirtiness, and the loop-pause flag.
+# ---------------------------------------------------------------------------
+cmd_checkout() {
+    local as_json=false a
+    for a in "$@"; do
+        case "$a" in
+            --json) as_json=true ;;
+            *) print_error "REFUSED: unrecognised argument(s) for 'pl fleet checkout': $a"
+               return 2 ;;
+        esac
+    done
+    NWP_ROOT="$PROJECT_ROOT" NWP_AS_JSON="$as_json" python3 - <<'PY'
+import json, os, subprocess, sys
+
+root = os.environ["NWP_ROOT"]
+
+def git(*args, timeout=10):
+    try:
+        p = subprocess.run(["git", "-C", root, *args], capture_output=True,
+                           text=True, timeout=timeout)
+        return p.stdout.strip() if p.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+head = git("rev-parse", "HEAD")
+if head is None:
+    doc = {"ok": False, "reason": f"{root} is not a readable git checkout"}
+    print(json.dumps(doc)); sys.exit(2)
+
+counts = git("rev-list", "--left-right", "--count", "origin/main...HEAD")
+behind = ahead = None
+if counts:
+    try:
+        behind, ahead = (int(x) for x in counts.split())
+    except ValueError:
+        pass
+
+# Age of the last fetch: newest of the ref artefacts a fetch touches. This is
+# what makes the behind-count honest — it is a fact about that moment.
+fetched = None
+gitdir = git("rev-parse", "--git-common-dir") or git("rev-parse", "--git-dir")
+if gitdir:
+    if not os.path.isabs(gitdir):
+        gitdir = os.path.join(root, gitdir)
+    import time
+    times = []
+    for rel in ("FETCH_HEAD", "refs/remotes/origin/main", "packed-refs"):
+        try:
+            times.append(os.stat(os.path.join(gitdir, rel)).st_mtime)
+        except OSError:
+            pass
+    if times:
+        fetched = max(0, int(time.time() - max(times)))
+
+doc = {
+    "ok": True,
+    "root": root,
+    "branch": git("rev-parse", "--abbrev-ref", "HEAD") or "",
+    "head": head,
+    "head_short": head[:7],
+    "head_time": git("log", "-1", "--format=%cI") or "",
+    "ahead": ahead,
+    "behind": behind,
+    "fetched_age_seconds": fetched,
+    "dirty": bool(git("status", "--porcelain", "-uno")),
+    "loop_paused": os.path.exists(os.path.join(root, ".loop-paused")),
+}
+if os.environ.get("NWP_AS_JSON") == "true":
+    print(json.dumps(doc, sort_keys=True))
+else:
+    b = "?" if behind is None else behind
+    a = "?" if ahead is None else ahead
+    print(f"checkout : {root}")
+    print(f"branch   : {doc['branch']} @ {doc['head_short']}  ({doc['head_time']})")
+    print(f"vs origin/main : {b} behind / {a} ahead"
+          + (f"  (as of last fetch, {fetched}s ago)" if fetched is not None
+             else "  (fetch age unknown)"))
+    print(f"dirty    : {doc['dirty']}   loop_paused: {doc['loop_paused']}")
+PY
+}
+
+# ---------------------------------------------------------------------------
+# pl fleet estate [--json] — the estate feed (ops#329): repo drift for the
+# fixed set of checkouts the demo pair runs from, deploy records, harvest
+# spool counts, secrets rotation debt, and local backup ages. Published with
+# the fleet snapshot (feeds.estate) so the console renders it with provenance
+# and age; each git fetch is time-boxed and a failed fetch is RECORDED
+# (fetched:false) rather than silently serving stale counts as current.
+# ---------------------------------------------------------------------------
+cmd_estate() {
+    local as_json=false a
+    for a in "$@"; do
+        case "$a" in
+            --json) as_json=true ;;
+            *) print_error "REFUSED: unrecognised argument(s) for 'pl fleet estate': $a"
+               return 2 ;;
+        esac
+    done
+    NWP_ROOT="$PROJECT_ROOT" NWP_AS_JSON="$as_json" python3 - <<'PY'
+import glob, json, os, re, subprocess, sys, time
+from datetime import datetime, timezone
+
+root = os.environ["NWP_ROOT"]
+DEMO_SITES = ("nwd", "ssd")
+
+# The fixed, reviewable checkout set. Growing it is a reviewed change, not a
+# discovery pass — a repo nobody expected must not silently join the feed.
+REPOS = [
+    ("nwp", "."),
+    ("nwc-profile (nwd/stg)", "sites/nwd/stg/html/profiles/custom/nwc"),
+    ("nwc-profile (nwd/dev)", "sites/nwd/dev/html/profiles/custom/nwc"),
+    ("nwc-profile (nwc/dev)", "sites/nwc/dev/html/profiles/custom/nwc"),
+    ("ss-moodle-plugins (ssd)", "sites/ssd/.plugin-src/ss-moodle-plugins"),
+]
+
+
+def git(path, *args, timeout=10):
+    try:
+        p = subprocess.run(["git", "-C", path, *args], capture_output=True,
+                           text=True, timeout=timeout)
+        return p.stdout.strip() if p.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+repos = []
+for name, rel in REPOS:
+    path = os.path.normpath(os.path.join(root, rel))
+    if git(path, "rev-parse", "HEAD") is None:
+        repos.append({"name": name, "path": rel, "present": False})
+        continue
+    fetched = git(path, "fetch", "-q", "origin", timeout=25) is not None
+    counts = git(path, "rev-list", "--left-right", "--count", "origin/main...HEAD")
+    behind = ahead = None
+    if counts:
+        try:
+            behind, ahead = (int(x) for x in counts.split())
+        except ValueError:
+            pass
+    head = git(path, "rev-parse", "HEAD") or ""
+    repos.append({
+        "name": name, "path": rel, "present": True,
+        "branch": git(path, "rev-parse", "--abbrev-ref", "HEAD") or "",
+        "head": head[:12],
+        "head_time": git(path, "log", "-1", "--format=%cI") or "",
+        "ahead": ahead, "behind": behind, "fetched": fetched,
+        "dirty": bool(git(path, "status", "--porcelain", "-uno")),
+    })
+
+# --- deploy records ---------------------------------------------------------
+deploys = {}
+manifests = sorted(glob.glob(os.path.join(root, "private/deploys/nwd/stg2live-*.json")))
+if manifests:
+    try:
+        with open(manifests[-1]) as f:
+            m = json.load(f)
+        deploys["nwd"] = {"last": m.get("timestamp", ""),
+                          "nwp_sha": str(m.get("nwp_sha", ""))[:12],
+                          "code_only": str(m.get("code_only", "")) == "true"}
+    except (OSError, ValueError):
+        deploys["nwd"] = None
+else:
+    deploys["nwd"] = None
+
+# ssd plugin lockfile — a tiny tolerant walk of the known shape; stdlib has no
+# YAML and this file is machine-written by moodle_lock_record.
+plugins = []
+lock = os.path.join(root, "sites/ssd/.nwp-plugins.lock.yml")
+try:
+    tier = plugin = None
+    row = {}
+    with open(lock) as f:
+        for line in f:
+            if re.match(r"^  (\S+):\s*$", line):
+                tier = line.strip().rstrip(":")
+                plugin = None
+            elif re.match(r"^    \S+.*:\s*$", line):
+                if plugin and row:
+                    plugins.append(dict(row, plugin=plugin, tier=tier))
+                plugin = line.strip().rstrip(":")
+                row = {}
+            else:
+                m = re.match(r"^      (\w+):\s*\"?([^\"\n]*)\"?\s*$", line)
+                if m:
+                    row[m.group(1)] = m.group(2)
+    if plugin and row:
+        plugins.append(dict(row, plugin=plugin, tier=tier))
+except OSError:
+    pass
+deploys["ssd_plugins"] = [
+    {"plugin": p.get("plugin", "?"), "tier": p.get("tier", ""),
+     "version": p.get("version", ""), "release": p.get("release", ""),
+     "repo_commit": str(p.get("repo_commit", ""))[:12],
+     "deployed_at": p.get("deployed_at", "")}
+    for p in plugins if p.get("tier") == "live"
+]
+
+# --- harvest spool ----------------------------------------------------------
+harvest = {}
+for site in DEMO_SITES:
+    hdir = os.path.join(root, "sites", site, "demo-harvest")
+    if not os.path.isdir(hdir):
+        harvest[site] = {"present": False}
+        continue
+    try:
+        spool = len(glob.glob(os.path.join(hdir, "harvest-*.md")))
+        posted = len(glob.glob(os.path.join(hdir, "posted", "harvest-*.md")))
+        triaged = sum(len(glob.glob(os.path.join(d, "harvest-*.md")))
+                      for d in glob.glob(os.path.join(hdir, "triaged-*")))
+        harvest[site] = {"present": True, "spool": spool, "posted": posted,
+                         "triaged": triaged}
+    except OSError:
+        harvest[site] = {"present": True, "spool": None}
+
+# --- secrets rotation debt --------------------------------------------------
+debt = {"ok": False}
+try:
+    p = subprocess.run([os.path.join(root, "pl"), "secrets", "debt", "--json"],
+                       capture_output=True, text=True, timeout=30, cwd=root)
+    rows = json.loads(p.stdout or "[]")
+    if isinstance(rows, list):
+        debt = {"ok": True, "open": len(rows)}
+except (OSError, ValueError, subprocess.TimeoutExpired):
+    pass
+
+# --- local backup ages ------------------------------------------------------
+backups = {}
+for site in DEMO_SITES:
+    bdir = os.path.join(root, "sites", site, "backups")
+    try:
+        files = [p for p in glob.glob(os.path.join(bdir, "*"))
+                 if os.path.isfile(p) and (p.endswith(".sql.gz") or p.endswith(".tar.gz"))]
+        if not files:
+            backups[site] = {"present": False}
+            continue
+        newest = max(files, key=os.path.getmtime)
+        backups[site] = {"present": True,
+                         "newest": os.path.basename(newest),
+                         "age_seconds": max(0, int(time.time() - os.path.getmtime(newest))),
+                         "size_bytes": os.path.getsize(newest),
+                         "count": len(files)}
+    except OSError:
+        backups[site] = {"present": False}
+
+doc = {
+    "ok": True,
+    "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "host": __import__("socket").gethostname(),
+    "repos": repos,
+    "deploys": deploys,
+    "harvest": harvest,
+    "secrets_debt": debt,
+    "backups": backups,
+}
+if os.environ.get("NWP_AS_JSON") == "true":
+    print(json.dumps(doc, sort_keys=True))
+else:
+    print(f"estate feed from {doc['host']} at {doc['generated_at']}")
+    for r in repos:
+        if not r["present"]:
+            print(f"  {r['name']}: NOT PRESENT")
+        else:
+            b = "?" if r["behind"] is None else r["behind"]
+            a = "?" if r["ahead"] is None else r["ahead"]
+            f = "" if r["fetched"] else "  [FETCH FAILED — counts vs last fetch]"
+            print(f"  {r['name']}: {r['branch']}@{r['head'][:7]}  {b} behind / {a} ahead{f}")
+    print(f"  secrets debt: {'open=' + str(debt.get('open')) if debt.get('ok') else 'UNREADABLE'}")
+    for site, h in harvest.items():
+        print(f"  {site} harvest: " + ("absent" if not h.get("present")
+              else f"spool={h.get('spool')} posted={h.get('posted')} triaged={h.get('triaged')}"))
+PY
+}
+
 main() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -859,6 +1148,8 @@ main() {
         publish)  cmd_publish "$@" ;;
         snapshot) cmd_snapshot "$@" ;;
         security) cmd_security "$@" ;;
+        estate)   cmd_estate "$@" ;;
+        checkout) cmd_checkout "$@" ;;
         status)   cmd_status "$@" ;;
         schedule) cmd_schedule "$@" ;;
         *) print_error "Unknown subcommand: $sub"; show_help; return 1 ;;

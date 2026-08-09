@@ -571,8 +571,24 @@ def ci_view(blocks, api_ok: bool) -> dict:
 # ---------------------------------------------------------------------------
 # the pane context
 # ---------------------------------------------------------------------------
-def page_context(rag, todo, sec, ci_blocks, ci_api_ok, prov) -> dict:
+# The Visuals tab is a SUBTABBED collection (ops#329): one visual per subtab,
+# overview first. A fixed, reviewable tuple — the route validates against it
+# and an unrecognised value falls back to the default rather than being
+# reflected into the page.
+SUBTABS = ("overview", "fleet", "security", "todo", "ci")
+DEFAULT_SUBTAB = SUBTABS[0]
+
+
+def norm_subtab(sub) -> str:
+    return sub if sub in SUBTABS else DEFAULT_SUBTAB
+
+
+def page_context(rag, todo, sec, ci_blocks, ci_api_ok, prov, sub: str = DEFAULT_SUBTAB) -> dict:
     """Everything the Visuals pane renders, from already-scoped inputs.
+
+    With subtabs, only the ACTIVE subtab's view is computed — the caller may
+    pass None/[] for the feeds the other subtabs would need, and those views
+    are simply not built. `vz.sub` is always one of SUBTABS.
 
     `prov` is returned at the TOP LEVEL on purpose. `scope.redact()` strips
     `ctx["prov"]["host"]` and `["note"]` by EXACT PATH, so nesting it under
@@ -582,17 +598,24 @@ def page_context(rag, todo, sec, ci_blocks, ci_api_ok, prov) -> dict:
     if you move it.
     """
     prov = prov if isinstance(prov, dict) else {}
-    return {
-        "prov": prov,
-        "vz": {
-            "fleet": fleet_view(rag),
-            "severity": severity_view(sec),
-            "todo": todo_view(todo),
-            "ci": ci_view(ci_blocks, ci_api_ok),
-            # Staleness must SHOUT on every chart, not only in the provenance
-            # line: a chart screenshotted or scrolled to on its own must still
-            # carry the warning that its numbers are not current.
-            "stale": bool(prov.get("stale")),
-            "chart_w": CHART_W,
-        },
+    sub = norm_subtab(sub)
+    vz: dict = {
+        "sub": sub,
+        "subtabs": list(SUBTABS),
+        # Staleness must SHOUT on every chart, not only in the provenance
+        # line: a chart screenshotted or scrolled to on its own must still
+        # carry the warning that its numbers are not current.
+        "stale": bool(prov.get("stale")),
+        "chart_w": CHART_W,
     }
+    if sub == "fleet":
+        vz["fleet"] = fleet_view(rag)
+    elif sub == "security":
+        vz["severity"] = severity_view(sec)
+    elif sub == "todo":
+        vz["todo"] = todo_view(todo)
+    elif sub == "ci":
+        vz["ci"] = ci_view(ci_blocks, ci_api_ok)
+    # sub == "overview" builds nothing here: the overview's skeleton is static
+    # (overview.skeleton_context()) and its VALUES arrive by slot AJAX.
+    return {"prov": prov, "vz": vz}

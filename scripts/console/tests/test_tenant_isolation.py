@@ -158,7 +158,14 @@ def assert_no_foreign(text, where):
 # read panes
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("path", ["/panes/fleet", "/panes/todo", "/panes/backups",
-                                  "/panes/demo", "/panes/visuals", "/tabs/counts", "/"])
+                                  "/panes/demo", "/panes/visuals", "/tabs/counts", "/",
+                                  # ops#329: every visuals subtab and every
+                                  # overview slot is its own response now, so
+                                  # each is its own leakage surface.
+                                  "/panes/visuals?sub=fleet", "/panes/visuals?sub=security",
+                                  "/panes/visuals?sub=todo", "/panes/visuals?sub=ci",
+                                  "/panes/visuals/slots/local", "/panes/visuals/slots/estate",
+                                  "/panes/visuals/slots/pair", "/panes/visuals/slots/ops"])
 def test_read_surfaces_carry_no_foreign_site(dana, path):
     r = dana.get(path)
     assert r.status_code == 200, r.text[:300]
@@ -173,7 +180,10 @@ def test_the_visuals_pane_actually_charts_dana_own_sites(dana):
     nothing. This asserts the pane really did draw dana's fleet, so the
     leakage assertion is measuring a populated page.
     """
-    r = dana.get("/panes/visuals")
+    # ops#329: the default subtab is the overview SKELETON (deliberately
+    # data-free — its values arrive by slot AJAX), so the positive control
+    # points at the fleet chart subtab, which is where dana's sites draw.
+    r = dana.get("/panes/visuals?sub=fleet")
     assert r.status_code == 200, r.text[:300]
     assert "<svg" in r.text, "visuals pane drew no chart at all — leakage check would be vacuous"
     assert any(s in r.text for s in MINE), "visuals pane shows none of dana's own sites"

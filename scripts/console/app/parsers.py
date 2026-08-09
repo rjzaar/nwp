@@ -338,6 +338,60 @@ def parse_seal_status(stdout: str) -> dict:
             "raw": raw}
 
 
+def parse_checkout(stdout: str) -> dict:
+    """`pl fleet checkout --json` (ops#329) — this host's own nwp checkout.
+
+    Network-free by contract on the emitting side (pl-freshness idiom): the
+    behind-count is vs origin/main AS OF THE LAST FETCH, and the age of that
+    fetch rides along so the consumer can say so."""
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "reason": "no JSON from pl fleet checkout --json "
+                "(is this checkout older than ops#329?)"}
+    if not data.get("ok"):
+        return {"ok": False, "reason": str(data.get("reason", "checkout unreadable"))[:300]}
+    def _int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+    return {"ok": True,
+            "root": str(data.get("root", ""))[:200],
+            "branch": str(data.get("branch", ""))[:60],
+            "head": str(data.get("head", ""))[:40],
+            "head_short": str(data.get("head_short", ""))[:12],
+            "head_time": str(data.get("head_time", ""))[:30],
+            "ahead": _int(data.get("ahead")),
+            "behind": _int(data.get("behind")),
+            "fetched_age_seconds": _int(data.get("fetched_age_seconds")),
+            "dirty": bool(data.get("dirty")),
+            "loop_paused": bool(data.get("loop_paused"))}
+
+
+def parse_estate(stdout: str) -> dict:
+    """`pl fleet estate --json` (ops#329) — the workstation's estate feed:
+    repo drift, deploy records, harvest spool, secrets debt, backup ages.
+
+    ok:false keeps its reason and must never collapse into empty lists — an
+    empty repos table reads as "no drift anywhere", which is exactly the lie
+    the overview exists to prevent."""
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "reason": "no JSON from pl fleet estate --json "
+                "(is the publisher's pl older than ops#329?)"}
+    if not data.get("ok"):
+        return {"ok": False, "reason": str(data.get("reason", "estate feed unreadable"))[:300]}
+    repos = [r for r in (data.get("repos") or []) if isinstance(r, dict)]
+    return {"ok": True,
+            "generated_at": str(data.get("generated_at", ""))[:30],
+            "host": str(data.get("host", ""))[:60],
+            "repos": repos,
+            "deploys": data.get("deploys") if isinstance(data.get("deploys"), dict) else {},
+            "harvest": data.get("harvest") if isinstance(data.get("harvest"), dict) else {},
+            "secrets_debt": data.get("secrets_debt") if isinstance(data.get("secrets_debt"), dict) else {},
+            "backups": data.get("backups") if isinstance(data.get("backups"), dict) else {}}
+
+
 def parse_demo_codes(stdout: str) -> dict:
     """`pl demo codes <site> list` — hashes only. Keep rows that look tabular."""
     text = strip_ansi(stdout or "")

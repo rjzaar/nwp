@@ -1,0 +1,50 @@
+{#
+  Overview slot: THE DEMO PAIR (nwd ↔ ssd). What is live now: golden seals
+  (what tonight's reset restores), invite codes, the last reset event — plus
+  the interconnection readings that are PENDING tranche 2, each naming its
+  exact need. Pending is muted and worded; it is never a zero.
+#}
+<h4>Demo pair
+  <button class="ghost ovrefresh" title="re-read this slot"
+          hx-get="/panes/visuals/slots/pair?force=1"
+          hx-target="#ov-pair" hx-swap="innerHTML">⟳</button>
+</h4>
+<ul class="ovrows">
+  {% for d in pair_sites %}
+  <li><span class="ovname">{{ d.site }} golden seal</span>
+      {% if d.seal.ok %}
+      <span class="ovv-ok">sealed {{ d.seal.age_human }} ago</span>
+      <span class="ovmeta">{{ d.seal.source }}</span>
+      {% else %}
+      <span class="ovv-muted">CANNOT VERIFY — {{ d.seal.reason }}</span>
+      {% endif %}</li>
+  <li><span class="ovname">{{ d.site }} invite codes</span>
+      {% if d.codes_json.ok %}
+      <span class="ovv-ok">{{ d.codes_json.counts.live }} live</span>
+      <span class="ovmeta">{{ d.codes_json.counts.revoked }} revoked · {{ d.codes_json.counts.expired }} expired</span>
+      {% else %}
+      <span class="ovv-muted">registry CANNOT VERIFY — {{ d.codes_json.reason }}</span>
+      {% endif %}</li>
+  <li><span class="ovname">{{ d.site }} last reset event</span>
+      {% if d.last_event %}
+      <span class="ovv-{{ 'ok' if d.last_event == 'reset-ok' else 'warn' }}">{{ d.last_event }}</span>
+      {% else %}
+      <span class="ovv-muted">no reset events in this checkout's log</span>
+      {% endif %}</li>
+  {% else %}
+  <li><span class="ovv-muted">no demo sites in this view</span></li>
+  {% endfor %}
+</ul>
+
+<h4>Content flows → guilds <span class="ovbadge">wiring is fact; counts pending</span></h4>
+<ul class="ovrows">
+  {% for e in guild_edges %}
+  <li><span class="ovname">{{ e.what }}</span>
+      <span class="ovv-muted">→ {{ e.guild }} Guild</span></li>
+  {% endfor %}
+</ul>
+
+{% for p in pending %}
+<div class="ovpend"><b>{{ p.label }}</b> — <span class="ovbadge">PENDING</span>
+  needs: {{ p.needs }}</div>
+{% endfor %}

@@ -326,14 +326,24 @@ FRESH_PROV = {"source": "published", "host": "ws", "age_human": "14 min", "stale
               "generated_at": "2099-01-01T00:00:00Z", "local_host": "console"}
 
 
+# With subtabs (ops#329) each render shows ONE chart, so the honesty and
+# leakage assertions below sweep EVERY chart subtab and concatenate the bytes:
+# the coverage claim ("no chart may…") stays exactly as wide as before.
+CHART_SUBS = ("fleet", "security", "todo", "ci")
+
+
 def _render(rag=GOOD_RAG, todo=GOOD_TODO, sec=GOOD_SEC, ci=GOOD_CI, api_ok=True,
             prov=None, user_role="owner"):
     jinja2 = pytest.importorskip("jinja2")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TPL)), autoescape=True)
-    ctx = visuals.page_context(rag, todo, sec, ci, api_ok, prov or dict(FRESH_PROV))
-    ctx.update(user={"name": "rob", "role": user_role}, can_act=False, scope=None,
-               tab="visuals", tab_count="", tab_alert=False)
-    return env.get_template("pane_visuals.html").render(**ctx)
+    outs = []
+    for sub in CHART_SUBS:
+        ctx = visuals.page_context(rag, todo, sec, ci, api_ok,
+                                   prov or dict(FRESH_PROV), sub=sub)
+        ctx.update(user={"name": "rob", "role": user_role}, can_act=False, scope=None,
+                   tab="visuals", tab_count="", tab_alert=False)
+        outs.append(env.get_template("pane_visuals.html").render(**ctx))
+    return "\n".join(outs)
 
 
 def test_the_pane_renders_all_four_visuals_from_fixture_data():
@@ -348,10 +358,14 @@ def test_the_pane_renders_all_four_visuals_from_fixture_data():
 
 def test_the_pane_is_read_only():
     """No form, no POST, no action. The Visuals tab is a read surface; the
-    allowlist and the Quokka AST test are unaffected by it."""
+    allowlist and the Quokka AST test are unaffected by it.
+
+    Since ops#329 the pane DOES carry <button> elements — the subtab bar and
+    the overview's per-slot ⟳ — but every one of them is an hx-GET (a re-read,
+    never a write), so the assertion that matters is the absence of any POST
+    path, not the absence of buttons."""
     out = _render()
     assert "<form" not in out and "hx-post" not in out
-    assert "<button" not in out
 
 
 def test_no_state_is_encoded_by_colour_alone():
@@ -496,9 +510,17 @@ def _context_for(mod, who, ci_blocks=None, api_ok=False):
     rag, _res, prov = mod._gather_rag(sc)
     todo = mod._gather_todo(sc)[0]
     sec = mod._gather_security(sc)[0]
-    ctx = mod.visuals.page_context(rag, todo, sec, ci_blocks or [], api_ok, prov) \
-        if hasattr(mod, "visuals") else visuals.page_context(
-            rag, todo, sec, ci_blocks or [], api_ok, prov)
+    pc = mod.visuals.page_context if hasattr(mod, "visuals") else visuals.page_context
+    # One MERGED context across every chart subtab, so the assertions below
+    # keep covering all four views exactly as they did pre-subtabs.
+    ctx = None
+    for sub in CHART_SUBS:
+        c = pc(rag, todo, sec, ci_blocks or [], api_ok, prov, sub=sub)
+        if ctx is None:
+            ctx = c
+        else:
+            for k, v in c["vz"].items():
+                ctx["vz"].setdefault(k, v)
     clean, dropped = scope_mod.scrub(ctx, sc)
     if not sc.all_sites:
         clean = scope_mod.redact(clean, sc)
@@ -506,11 +528,18 @@ def _context_for(mod, who, ci_blocks=None, api_ok=False):
 
 
 def _render_ctx(ctx, role="operator"):
+    """Render a (possibly merged) context across every chart subtab and
+    concatenate — a leak into ANY chart's bytes still fails."""
     jinja2 = pytest.importorskip("jinja2")
     env_ = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TPL)), autoescape=True)
-    ctx = dict(ctx, user={"name": "x", "role": role}, can_act=False, scope=None,
-               tab="visuals", tab_count="", tab_alert=False)
-    return env_.get_template("pane_visuals.html").render(**ctx)
+    outs = []
+    for sub in CHART_SUBS:
+        c = dict(ctx, vz=dict(ctx["vz"], sub=sub,
+                              subtabs=ctx["vz"].get("subtabs", list(CHART_SUBS))),
+                 user={"name": "x", "role": role}, can_act=False, scope=None,
+                 tab="visuals", tab_count="", tab_alert=False)
+        outs.append(env_.get_template("pane_visuals.html").render(**c))
+    return "\n".join(outs)
 
 
 def test_a_member_sees_no_foreign_site_in_any_chart(mod):

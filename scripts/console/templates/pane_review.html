@@ -92,8 +92,13 @@ This is not "nothing to review" — it is "the console could not look".</p>
     <h4>{{ gates[d.gate][0] if d.gate in gates else d.gate }}
       <span class="muted">— {{ gates[d.gate][1] if d.gate in gates else '' }}</span></h4>
     {% endif %}
-    <div class="rev-card">
-      <p><a href="{{ d.url }}" target="_blank" rel="noopener">#{{ d.iid }}</a>
+    {# ops#292: the tier marker rides on EVERY item, not only the section head —
+       a scrolled list must still read red-vs-amber at a glance. CVD discipline
+       (same as _visual_fleet.html): the marker is a WORD in a coloured chip
+       plus a coloured border, never colour alone. #}
+    <div class="rev-card rev-red">
+      <p><span class="chip rag-chip-red">RED</span>
+        <a href="{{ d.url }}" target="_blank" rel="noopener">#{{ d.iid }}</a>
         <strong>{{ d.title }}</strong>
         <span class="labels">{% for l in d.labels %}{% if l != 'needs-decision' %}<span class="chip">{{ l }}</span>{% endif %}{% endfor %}</span>
       </p>
@@ -160,12 +165,26 @@ This is not "nothing to review" — it is "the console could not look".</p>
   exist (<code>go-live-prereq</code>, <code>security</code>, <code>priority::*</code>) — so the
   order is <em>partly inferred</em>. Treat it as a reading sequence, not a ruling.
   Promote one with <code>pl issue label &lt;iid&gt; --add needs-decision</code>.</p>
+  {% if outside_queue.count and outside_queue.count > outside_queue.issues|length %}
+  {# Fail-closed (ops#292): the tracker says MORE ambers exist than this list
+     fetched. A truncated tier rendering as the whole tier is the
+     unreadable-renders-as-clean failure again — say so, never trim silently. #}
+  <p class="warnfg">⚠ PARTIAL: showing {{ outside_queue.issues|length }} of {{ outside_queue.count }}
+  <code>decision::wanted</code> issues — the rest were not fetched this run.
+  Do not read this list as the whole amber tier.</p>
+  {% endif %}
   {% set ns2 = namespace(bucket='') %}
   {% for a in outside_queue.issues %}
     {% if a.bucket != ns2.bucket %}{% set ns2.bucket = a.bucket %}
     <h4 class="amber-bucket">{{ a.bucket|replace('-', ' ')|title }}</h4>
     {% endif %}
+    {# ops#292: every row carries its own worded AMBER chip + gate chip + amber
+       border — the colour must be evident per item, and (CVD) never colour
+       alone. The gate chip shows a DECLARED gate when the issue states one,
+       else the bucket the sequence inferred. #}
     <p class="rev-amber-row">
+      <span class="chip rag-chip-amber">AMBER</span>
+      <span class="chip amber-gate-chip">{{ a.gate if a.gate else a.bucket }}</span>
       <a href="{{ a.url }}" target="_blank" rel="noopener">#{{ a.iid }}</a>
       <strong>{{ a.title }}</strong>
       <span class="muted">— {{ a.why }}</span>

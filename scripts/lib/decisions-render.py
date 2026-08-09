@@ -243,11 +243,23 @@ if amber_file:
                 "bucket": key,
                 "why": why,
                 "what": (b or {}).get("what", ""),
+                # ops#292: the row's own gate label. Declared beats inferred —
+                # a row that states its Gate shows it; the rest show "".
+                "gate": (b or {}).get("gate", "") if b is not None else "",
             })
         ambers.sort(key=lambda r: (AMBER_RANK[r["bucket"]], r["iid"]))
     except Exception:
         amber_readable = False
         ambers = []
+
+# ── PARTIAL detection (ops#292) ──────────────────────────────────────────────
+# The list fetch and the count fetch are independent reads of the same filter.
+# If the tracker's X-Total says MORE ambers exist than the list carries, the
+# list was truncated (a capped fetch, a dropped page) — and a truncated tier
+# rendering as the whole tier is the unreadable-renders-as-clean failure with
+# a smaller blast radius. Declared, never silently trimmed.
+amber_partial = (amber_readable and bool(ambers)
+                 and outside_count.isdigit() and int(outside_count) > len(ambers))
 
 if mode == "json":
     out = {"count": len(rows), "decisions": rows, "mrs": mrs,
@@ -259,6 +271,9 @@ if mode == "json":
                              # text renderer makes.
                              "attempted": amber_attempted,
                              "readable": amber_readable,
+                             # ops#292: true when the tracker's total says the
+                             # list below is not the whole tier.
+                             "partial": amber_partial,
                              # NOT "items": Jinja resolves `.items` to dict.items
                              # (the METHOD), so a template reading
                              # outside_queue.items got a bound builtin and blew
@@ -313,6 +328,9 @@ def footer():
         return
     if ambers:
         print(f"{AMB}{B}\u25cf AMBER — DECISION WANTED{R}  {B}({len(ambers)}){R}")
+        if amber_partial:
+            print(f"{AMB}⚠ PARTIAL: showing {len(ambers)} of {outside_count} — the rest were")
+            print(f"not fetched this run. Do not read this list as the whole tier.{R}")
         print(f"{D}Real questions, but nothing is standing still waiting for them.{R}")
         print(f"{D}Only {sum(1 for a in ambers if a['bucket'] == 'declared')} of these state their own question; the rest are ordered by{R}")
         print(f"{D}labels that already exist — the order is partly inferred, so treat it as{R}")

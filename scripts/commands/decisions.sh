@@ -244,25 +244,58 @@ _dec_fetch_outside_count(){
 #
 # Writes the issue JSON to the path given in $1; empty output means "could not
 # read", which the renderer reports rather than showing an empty amber tier.
+#
+# PAGINATED (ops#292): a single per_page=100 request silently drops amber #101
+# onward — exactly the truncated-renders-as-whole failure, just deferred until
+# the tier grows. So this follows pages until a short page. The loop is bounded
+# (20 pages = 2000 issues, a size at which the tier is a different problem);
+# hitting the bound is LOGGED and the partial fetch still ships, because the
+# renderer compares the list against the tracker's X-Total and declares
+# "PARTIAL: showing N of M" rather than trimming silently.
 _dec_fetch_outside(){
-    local out="$1" tok cfg host rc
+    local out="$1" tok cfg host rc=0 page=1 pagedir n
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
     cfg=$(mktemp); chmod 600 "$cfg"
     printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
-    # -f so a 404 from a walled token is an ERROR, never an empty list parsed as
-    # "no ambers" — the unreadable-renders-as-clean failure this repo keeps
-    # re-learning (ops#281).
-    curl -sS -f -K "$cfg" --get \
-        --data-urlencode "labels=decision::wanted" \
-        --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
-        --data-urlencode "state=opened" \
-        --data-urlencode "per_page=100" \
-        "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" > "$out" 2>/dev/null
-    rc=$?
+    pagedir=$(mktemp -d)
+    while :; do
+        # -f so a 404 from a walled token is an ERROR, never an empty list
+        # parsed as "no ambers" — the unreadable-renders-as-clean failure this
+        # repo keeps re-learning (ops#281).
+        curl -sS -f -K "$cfg" --get \
+            --data-urlencode "labels=decision::wanted" \
+            --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
+            --data-urlencode "state=opened" \
+            --data-urlencode "per_page=100" \
+            --data-urlencode "page=${page}" \
+            "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" \
+            > "$pagedir/page-$(printf '%03d' "$page").json" 2>/dev/null || { rc=$?; break; }
+        n=$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+print(len(d) if isinstance(d, list) else -1)' \
+            "$pagedir/page-$(printf '%03d' "$page").json" 2>/dev/null) || n=-1
+        # An unparseable page fails the WHOLE fetch: a half-merged list would
+        # render as a complete tier.
+        [ "$n" -ge 0 ] 2>/dev/null || { rc=1; break; }
+        [ "$n" -lt 100 ] && break
+        page=$((page+1))
+        if [ "$page" -gt 20 ]; then
+            echo "WARNING: decision::wanted fetch stopped at 20 pages (2000 issues); the rest were dropped and the renderer will mark the tier PARTIAL" >&2
+            break
+        fi
+    done
+    if [ $rc -eq 0 ]; then
+        python3 -c 'import glob, json, sys
+merged = []
+for p in sorted(glob.glob(sys.argv[1] + "/page-*.json")):
+    merged.extend(json.load(open(p)))
+json.dump(merged, open(sys.argv[2], "w"))' "$pagedir" "$out" 2>/dev/null || rc=1
+    fi
     rm -f "$cfg"
+    rm -rf "$pagedir"
     return $rc
 }
 

@@ -1,6 +1,6 @@
 # ADR-0036: Site classes — what a site IS, and therefore which invariants apply
 
-**Status:** Proposed (operator to accept)
+**Status:** Accepted (2026-08-09 — ops#234 operator ruling of 2026-08-07 ordered the demo-class attestations; the machinery is merged and in force — `lib/siteclass.sh` + `pl class`, 73 tests via !289, gate-status/deploy class-aware — and the attestations are executed: `classes/ssc|rgs|ssd|nwd.class.yml` are declared in-tree)
 **Date:** 2026-07-28
 **Decision Makers:** Robert Karsten Zaar (to accept); drafted under nwp/ops#153
 **Related Issues:** nwp/ops#153 (rgs Art.9 gate absent), nwp/ops#154 (the gate is

@@ -189,7 +189,7 @@ nearly bit for real: `.nwp-review-mode` was silently gitignored on first writing
 absent in CI — and because the fallback is `team`, that surfaced as CI holding
 everything rather than as two-person review silently switched off.
 
-See [ADR-0032](docs/decisions/0032-review-mode-follows-approvers.md).
+See [ADR-0037](docs/decisions/0037-review-mode-follows-approvers.md) (renumbered from a duplicate 0032, ops#319).
 
 ## STANDING ORDER: a check that has never been proven to fail is not a check
 

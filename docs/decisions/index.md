@@ -64,6 +64,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0032](0032-non-prod-data-refresh-and-file-store.md) | Non-prod data refresh & file store (Flow B) | 2026-07-23 | Accepted (2026-07-23) — implementation merged to `main`; live host validation still outstanding (nwp/ops#120) |
 | [0034](0034-paired-restore-identity-invariant-enforcement.md) | Paired-restore identity invariant — enforcement | 2026-07-28 | Proposed (nwp/ops#83) — amends 0031 D9: unrecorded counterpart position is CANNOT-VERIFY and refuses; adds the paired-checkpoint "both" branch |
 | [0035](0035-erasure-propagation-op-to-rp.md) | Erasure propagation nwc (OP) → ss/ssc (RP) | 2026-07-28 | **Proposed** — bespoke signed channel over the P74 contract machinery, not OpenID Provider Commands (draft-02); staged path with the operator runbook as the standing fallback (nwp/ops#81) |
+| [0037](0037-review-mode-follows-approvers.md) | Review mode follows `approvers:` — one reviewer today, two when there are two | 2026-08-06 | Accepted (renumbered from a duplicate 0032, 2026-08-09, nwp/ops#319) |
 
 ## Rejected Proposals
 

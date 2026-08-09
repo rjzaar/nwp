@@ -20,12 +20,16 @@ art9:
   # a demo is a standing class property, not an expiring exemption.
   evidence:
     # Counts member_count + formation_rows across the practice/depthcontent
-    # member tables. The script ships at classes/probe-art9-rows.php; on the
-    # box it belongs at admin/cli/probe_art9_rows.php (containment: pl moodle
-    # cli refuses paths outside admin/cli/ or a declared plugin's own cli/).
+    # member tables. The script is canonical in ss-moodle-plugins at
+    # mod/depthcontent/cli/probe_art9_rows.php (ssmp!26), so it reaches the box
+    # through the ordinary gated plugin deploy — no hand-copy into admin/cli/.
+    # `pl moodle cli` accepts it because ssd declares mod/depthcontent in
+    # .moodle.plugins[].path (containment: admin/cli/ or a declared plugin's
+    # own cli/, bare leaf). classes/probe-art9-rows.php stays as the in-repo
+    # reference copy the siteclass tests check a source against.
     # The 2026-08-07 reading was taken with the same script via the staged-PHP
     # transport (lib/demo-pair.sh demo_moodle_php_run) pending that deploy.
-    probe_cmd: "pl moodle cli ssd --tier=live --execute -- admin/cli/probe_art9_rows.php"
+    probe_cmd: "pl moodle cli ssd --tier=live --execute -- mod/depthcontent/cli/probe_art9_rows.php"
     # The SAME fact every golden/reset verb refuses without (ops#170 lesson:
     # the marker lives in the mdl_config TABLE — config.php reads it UNSET):
     # lib/demo-live-moodle.sh demo_moodle_is_demo(), surfaced by

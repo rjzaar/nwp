@@ -748,21 +748,43 @@ EOF
   # A recorded probe that the named verb would REFUSE is folklore with extra
   # steps. The first shipped rgs declaration recorded
   #   pl moodle cli ... -- classes/probe-art9-rows.php
-  # which `pl moodle cli` rejects outright (containment: only admin/cli/*.php
-  # may run on a live host) — and the script did not exist. This test makes
-  # that class of rot mechanical: for each shipped declaration whose probe_cmd
-  # uses `pl moodle cli`, the script path must satisfy the verb's containment
-  # rule, and a source for the script must exist in the repo.
+  # which `pl moodle cli` rejects outright — and the script did not exist.
+  # This test makes that class of rot mechanical: for each shipped declaration
+  # whose probe_cmd uses `pl moodle cli`, the script path must satisfy the
+  # verb's containment rule, and a source for the script must exist in the
+  # repo. The rule mirrored here is cmd_cli's own (scripts/commands/moodle.sh),
+  # BOTH arms: a repo-relative admin/cli/<name>.php, OR a plugin's own
+  # cli/<name>.php with a bare leaf (the ops#279 arm — the plugin must also be
+  # declared in the site's .moodle.plugins[].path, but sites/*.nwp.yml is
+  # gitignored so only the verb itself can check that half at run time).
+  # No path may contain '..' (traversal refusal, same as the verb).
   local decl script found=0
   for decl in "${REPO_ROOT}"/classes/*.class.yml; do
     probe="$(yq eval '.art9.evidence.probe_cmd // ""' "$decl")"
     [[ "$probe" == *"pl moodle cli"* ]] || continue
     found=1
     script="${probe##*-- }"
-    [[ "$script" == admin/cli/*.php ]] || {
-      echo "probe_cmd in $(basename "$decl") names '$script', which 'pl moodle cli' refuses (must be admin/cli/*.php)"
+    [[ "$script" != *..* ]] || {
+      echo "probe_cmd in $(basename "$decl") names '$script', which 'pl moodle cli' refuses (contains '..')"
       return 1
     }
+    case "$script" in
+      admin/cli/*.php)
+        ;;
+      */cli/*.php)
+        # plugin arm: bare <name>.php directly under the plugin's cli/ dir.
+        local plug leaf
+        plug="${script%%/cli/*}"; leaf="${script#"${plug}"/cli/}"
+        [[ "$leaf" != */* ]] || {
+          echo "probe_cmd in $(basename "$decl") names '$script', which 'pl moodle cli' refuses (only a bare <name>.php directly under the plugin's cli/)"
+          return 1
+        }
+        ;;
+      *)
+        echo "probe_cmd in $(basename "$decl") names '$script', which 'pl moodle cli' refuses (must be admin/cli/<name>.php or a declared plugin's cli/<name>.php)"
+        return 1
+        ;;
+    esac
     # the deployable source must ship in the repo (classes/<kebab-name>.php)
     local base; base="$(basename "$script" .php)"
     ls "${REPO_ROOT}/classes/${base//_/-}.php" >/dev/null

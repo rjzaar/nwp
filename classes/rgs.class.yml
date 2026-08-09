@@ -54,13 +54,17 @@ art9:
     # MANDATORY: an unset probe_cmd is NO-PROBE and the exemption fails closed,
     # because a claim nobody can re-check is folklore.
     # Goes through the verb, per the CLAUDE.md standing order — never raw ssh.
-    # The script ships at classes/probe-art9-rows.php in this repo; it must be
-    # placed at admin/cli/probe_art9_rows.php on the site (`pl moodle cli`
-    # correctly refuses any path outside admin/cli/ — containment). Deploying
-    # it rides the same ops#154 unblocking as everything else on this site;
-    # until then re-attestation is pending, and max_age_days is what stops the
-    # 2026-07-28 reading from being trusted forever.
-    probe_cmd: "pl moodle cli rgs --tier=live --execute -- admin/cli/probe_art9_rows.php"
+    # The script is canonical in ss-moodle-plugins at
+    # mod/depthcontent/cli/probe_art9_rows.php (ssmp!26), so it reaches rgs
+    # through the ordinary gated plugin deploy (the ops#154 train, exercised
+    # end-to-end on rgs 2026-08-01) — no hand-copy into admin/cli/. `pl moodle
+    # cli` accepts it because rgs declares mod/depthcontent in
+    # .moodle.plugins[].path (containment: admin/cli/ or a declared plugin's
+    # own cli/, bare leaf). classes/probe-art9-rows.php stays as the in-repo
+    # reference copy the siteclass tests check a source against. Until the
+    # deploy lands, re-attestation is pending, and max_age_days is what stops
+    # the 2026-07-28 reading from being trusted forever.
+    probe_cmd: "pl moodle cli rgs --tier=live --execute -- mod/depthcontent/cli/probe_art9_rows.php"
 
     # The cap that makes the exemption self-dissolving. rgs today has exactly
     # one non-admin account (the sample account, last login 2026-07-08, the day

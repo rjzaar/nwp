@@ -9,13 +9,17 @@
  *   formation_rows:          rows in depthcontent_progress (0 if table absent)
  *   consent_tables_present:  whether any consent/art9/nwc table exists
  *
- * DEPLOYMENT: this file ships in the nwp repo at classes/probe-art9-rows.php
- * and must be placed at admin/cli/probe_art9_rows.php on the target Moodle
- * site — `pl moodle cli` refuses (correctly: containment) to execute any path
- * outside admin/cli/. Once deployed it is run exactly as the declaration
- * records:
+ * DEPLOYMENT: this file is the nwp-repo REFERENCE COPY (the siteclass tests
+ * assert a source ships here for every recorded probe_cmd). The CANONICAL,
+ * deployed copy lives in ss-moodle-plugins at
+ * mod/depthcontent/cli/probe_art9_rows.php (ssmp!26) — identical logic, with
+ * the config.php require adapted to THREE levels up for a plugin cli/ dir
+ * (this copy's two-level require is the admin/cli/ depth) — and reaches every
+ * site carrying mod_depthcontent via the ordinary gated plugin deploy.
+ * `pl moodle cli` accepts a declared plugin's own cli/ (bare leaf), so it is
+ * run exactly as the declarations record:
  *
- *   pl moodle cli <site> --tier=live --execute -- admin/cli/probe_art9_rows.php
+ *   pl moodle cli <site> --tier=live --execute -- mod/depthcontent/cli/probe_art9_rows.php
  *
  * FAIL CLOSED: any unreadable source exits non-zero. "I could not look" must
  * never print a reading of 0.

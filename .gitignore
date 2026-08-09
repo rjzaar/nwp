@@ -267,6 +267,13 @@ servers/**/*.env
 !.gate-redproof-baseline
 !.test-honesty-baseline
 
+# Private-site-name baseline (ops#326). SHRINK-ONLY name-free path→count rows;
+# the deny-list itself is NEVER tracked (private/site-names.deny + the
+# NWP_SITE_NAME_DENYLIST CI variable). Whitelisted here explicitly because the
+# root `/*` rule would otherwise swallow it silently — the exact trap
+# .nwp-review-mode nearly fell into (see line ~126).
+!.site-name-baseline
+
 # bin/ holds operational helper scripts (audit-authors, migrate-* per F33, etc.)
 # tracked alongside lib/ and scripts/
 !bin/

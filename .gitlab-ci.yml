@@ -1303,6 +1303,36 @@ verify:honesty:
     - nwp
   allow_failure: false
 
+# Private-site-name guard (ops#326). The engine repo is publicly mirrored;
+# private instance names in tracked files are disclosures. The deny-list is
+# DELIBERATELY not in this repo (it would be the leak — and hashing fails,
+# the names are dictionary-trivial): CI reads it from the protected file-type
+# variable NWP_SITE_NAME_DENYLIST; locally the lint reads
+# private/site-names.deny. `.site-name-baseline` (tracked, name-free
+# path→count rows) holds the pre-existing debt, shrink-only and exact.
+#
+# EXIT CONTRACT, and why allow_failure lists exit code 2:
+#   1 = a NEW private-name reference (or baseline drift)   → job FAILS, blocks
+#   2 = CANNOT VERIFY — the deny-list variable is not registered on this
+#       project (a Maintainer must add it; every automation token probes
+#       ci-variables:no). Per the estate rule an exit-2 is graded AMBER, never
+#       a pass: `exit_codes: [2]` renders it "failed (allowed)" — a visible
+#       warning on every pipeline until the variable exists, without training
+#       people to merge past a permanently red gate they cannot fix
+#       (the boundary:classify lesson, ops#165). Once the variable is set the
+#       amber disappears; a real finding still blocks.
+lint:site-names:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-site-names.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+  allow_failure:
+    exit_codes: [2]
+
 lint:secrets:
   stage: lint
   before_script:

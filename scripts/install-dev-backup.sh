@@ -195,8 +195,9 @@ cron_ensure "$MET" "$M_PULL" "$L_PULL"
 echo "  laptop 02:30 replicate→agent-host · 02:45 export+push · met 03:35 met-dr-pull all"
 
 say "8/8  one real met-side cycle NOW (piped runner; cron picks up the versioned copy at merge)"
+# Same env the cron line injects — the piped copy has no crontab to read it from.
 # shellcheck disable=SC2029
-ssh -o BatchMode=yes "$MET" "bash -s all" < "$REPO_ROOT/scripts/met-dr-pull.sh"
+ssh -o BatchMode=yes "$MET" "NWP_GITLAB_HOST='${FORGE_HOST}' NWP_OPS_LOG_PROJECT=11 NWP_DR_LIVE_SRC='${live_user}@${live_ip}:' bash -s all" < "$REPO_ROOT/scripts/met-dr-pull.sh"
 
 say "spot-check: laptop file vs the restic snapshot on met (byte identity)"
 lsha="$(sha256sum "$HOME/nwp/.secrets.yml" | cut -d' ' -f1)"

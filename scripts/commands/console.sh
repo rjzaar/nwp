@@ -354,11 +354,11 @@ _deploy_backup_target() {
 ################################################################################
 
 # The transfer, defined ONCE so the dry run and the real run cannot diverge.
+# .nwp-deployed.json is WRITTEN ON THE TARGET after each rsync (see
+# _console_write_marker) and exists in no checkout, so it must be excluded
+# here AND in CONSOLE_MANIFEST_CMD (lib/console-deploy.sh) or --delete
+# would remove it / the divergence gate would flag it as 'D' every time.
 _console_rsync() {  # extra args (e.g. --dry-run) passed through
-    # .nwp-deployed.json is WRITTEN ON THE TARGET after each rsync (see
-    # _console_write_marker) and exists in no checkout, so it must be excluded
-    # here AND in CONSOLE_MANIFEST_CMD (lib/console-deploy.sh) or --delete
-    # would remove it / the divergence gate would flag it as 'D' every time.
     rsync -az --delete \
         --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' \
         --exclude '.nwp-deployed.json' \

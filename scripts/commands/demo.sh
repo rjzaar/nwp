@@ -3516,6 +3516,85 @@ cmd_status_box() {
         echo "    box log (/var/log/nwp-demo/${site}-demo-reset.log, pipe-separated):"
         printf '%s\n' "$tailed" | sed 's/^/      /'
     fi
+
+    demo_box_render_extras "$site" "$raw"
+}
+
+# demo_box_render_extras <site> <raw-status-output> — the ops#329 D4/D5 blocks
+# of the box's status word, rendered with the same three-state honesty as the
+# reset stamp: a value, NOT REPORTED (old wrapper — a redeploy fixes it), or
+# CANNOT VERIFY. The return leg is hourly, so a newest event older than two
+# cycles is CANNOT VERIFY (stale return leg) — a stopped leg must never keep
+# reading as its last good run.
+demo_box_render_extras() {
+    local site="$1" raw="$2" extras
+    if [[ -n "${NWP_DEMO_EXTRAS_PREBUILT:-}" ]]; then
+        extras="$NWP_DEMO_EXTRAS_PREBUILT"
+    else
+        extras="$(demo_box_extras_json "$raw")"
+    fi
+
+    echo ""
+    echo "  Return leg (hourly feedback-status, box's own log):"
+    local fb_reported fb_result fb_ts fb_summary fb_age fb_stale
+    fb_reported="$(jq -r '.feedback_status.reported' <<<"$extras")"
+    if [[ "$fb_reported" != "true" ]]; then
+        print_status "WARN" "NOT REPORTED — $(jq -r '.feedback_status.reason' <<<"$extras")"
+    else
+        fb_result="$(jq -r '.feedback_status.result' <<<"$extras")"
+        fb_ts="$(jq -r '.feedback_status.ts // ""' <<<"$extras")"
+        fb_summary="$(jq -r '.feedback_status.summary // ""' <<<"$extras")"
+        fb_age="$(jq -r '.feedback_status.age_seconds // ""' <<<"$extras")"
+        fb_stale="$(jq -r '.feedback_status.stale // false' <<<"$extras")"
+        if [[ "$fb_result" == "none" ]]; then
+            print_status "WARN" "the return leg has NEVER run on the box"
+            print_hint "  pl demo schedule $site --feedback-status --via-key"
+        elif [[ "$fb_result" == "unreadable" ]]; then
+            print_status "WARN" "CANNOT VERIFY — the box log is unreadable"
+        elif [[ "$fb_stale" == "true" ]]; then
+            print_status "WARN" "CANNOT VERIFY (stale return leg): newest feedback-status ${fb_ts} ($(demo_box_human_age "$fb_age") ago) — expected hourly"
+        elif [[ "$fb_result" == "ok" ]]; then
+            print_status "OK" "last run ${fb_ts} ($(demo_box_human_age "$fb_age") ago): ${fb_summary}"
+        else
+            print_status "FAIL" "last run ${fb_ts} ${fb_result}: ${fb_summary}"
+        fi
+    fi
+
+    echo ""
+    echo "  Live-box nightly backups (newest per subdir):"
+    local bk_reported bk_state bk_dir
+    bk_reported="$(jq -r '.backups.reported' <<<"$extras")"
+    if [[ "$bk_reported" != "true" ]]; then
+        print_status "WARN" "NOT REPORTED — $(jq -r '.backups.reason' <<<"$extras")"
+        return 0
+    fi
+    bk_state="$(jq -r '.backups.state' <<<"$extras")"
+    bk_dir="$(jq -r '.backups.dir' <<<"$extras")"
+    case "$bk_state" in
+        missing)    print_status "WARN" "CANNOT VERIFY — ${bk_dir} is MISSING on the box (the 01:30 producer cron has no landing dir)" ;;
+        unreadable) print_status "WARN" "CANNOT VERIFY — ${bk_dir} exists but the wrapper cannot read it" ;;
+        ok)
+            local n; n="$(jq -r '.backups.entries | length' <<<"$extras")"
+            if [[ "$n" == "0" ]]; then
+                print_status "WARN" "${bk_dir} exists but holds no backup subdirs"
+            else
+                echo "    ${bk_dir}:"
+                local entry sub newest bytes age
+                while IFS= read -r entry; do
+                    sub="$(jq -r '.subdir' <<<"$entry")"
+                    if [[ "$(jq -r '.empty // false' <<<"$entry")" == "true" ]]; then
+                        echo "      ${sub}: EMPTY"
+                        continue
+                    fi
+                    newest="$(jq -r '.newest' <<<"$entry")"
+                    bytes="$(jq -r '.bytes // "?"' <<<"$entry")"
+                    age="$(jq -r '.age_seconds // ""' <<<"$entry")"
+                    echo "      ${sub}: ${newest} (${bytes} bytes, $(demo_box_human_age "$age") old)"
+                done < <(jq -c '.backups.entries[]' <<<"$extras")
+            fi
+            ;;
+        *) print_status "WARN" "CANNOT VERIFY — unrecognised backups state '${bk_state}'" ;;
+    esac
 }
 
 ################################################################################
@@ -3547,7 +3626,9 @@ demo_seal_emit_fail() {
 cmd_seal_status() {
     local site="$1" tier="${2:-dev}"
     demo_require_jq || return 2
-    local src captured="" last_reset=""
+    # extras = the ops#329 D4/D5 blocks; `{}` at dev/stg (no box, no leg —
+    # absent keys, not fabricated not-reported ones).
+    local src captured="" last_reset="" extras='{}'
 
     if demo_is_live "$tier"; then
         src="box:$(demo_box_state_dir "$site")/golden"
@@ -3569,6 +3650,20 @@ cmd_seal_status() {
             return 2
         fi
         last_reset="$(demo_rssh "$site" "cat $(demo_box_state_dir "$site")/last-reset 2>/dev/null" 2>/dev/null | tr -d '\r\n')" || last_reset=""
+
+        # ops#329 D4/D5 — the return leg + the box's nightly pull backups ride
+        # the same read, through the SAME parser the status verb uses
+        # (demo_box_extras_json: one renderer, no drift). The consumer half of
+        # a pair skips the probe BY DESIGN: the leg and the pull dir are
+        # box-level facts and the pair provider's wrapper is their one
+        # reporter — a by_design absence must never render as an error.
+        if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
+            extras='{"feedback_status":{"reported":false,"by_design":true,"reason":"reported by the pair provider'\''s wrapper"},"backups":{"reported":false,"by_design":true,"reason":"reported by the pair provider'\''s wrapper"}}'
+        else
+            local box_raw=""
+            box_raw="$(demo_box_reset_status "$site" 2>/dev/null)" || box_raw=""
+            extras="$(demo_box_extras_json "$box_raw")"
+        fi
     else
         local gdir; gdir="$(demo_golden_dir "$site" "$tier")"
         src="$gdir"
@@ -3594,10 +3689,11 @@ cmd_seal_status() {
         jq -cn --arg site "$site" --arg tier "$tier" --arg captured "$captured" \
                --arg last_reset "$last_reset" --arg src "$src" --arg age "$age_secs" \
                --arg window "$window" --arg warning "$warning" \
+               --argjson extras "$extras" \
            '{ok:true, site:$site, tier:$tier, sealed_at:$captured,
              age_seconds:(($age|tonumber?) // null),
              last_reset:(if $last_reset == "" then null else $last_reset end),
-             source:$src, reset_window:$window, warning:$warning}'
+             source:$src, reset_window:$window, warning:$warning} + $extras'
     else
         print_header "Demo seal status: $site ($tier)"
         echo "    sealed_at:  $captured$( [[ -n "$age_secs" ]] && echo " ($(demo_human_age "$cap_epoch"))" )"
@@ -3605,8 +3701,20 @@ cmd_seal_status() {
         [[ -n "$last_reset" ]] && echo "    last reset: $last_reset"
         echo "    window:     $window"
         print_status "WARN" "$warning"
+        # ops#329 D4/D5 — same extras, same renderer as `pl demo status`.
+        if [[ "$extras" != "{}" ]]; then
+            demo_box_render_extras_from_json "$site" "$extras"
+        fi
     fi
     return 0
+}
+
+# demo_box_render_extras_from_json <site> <extras-json> — text renderer for an
+# already-assembled extras document (seal-status text mode; the status verb
+# goes through demo_box_render_extras which builds the doc from the raw read).
+demo_box_render_extras_from_json() {
+    local site="$1" extras="$2"
+    NWP_DEMO_EXTRAS_PREBUILT="$extras" demo_box_render_extras "$site" ""
 }
 
 ################################################################################

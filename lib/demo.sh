@@ -168,6 +168,10 @@ demo_golden_dir() {
 demo_codes_file()  { echo "$(demo_site_dir "$1")/demo-codes.json"; }
 demo_log_file()    { echo "$(demo_site_dir "$1")/demo-reset.log"; }
 demo_harvest_dir() { echo "$(demo_site_dir "$1")/demo-harvest"; }
+# Purged (archived) code rows — `pl demo codes <site> purge` moves revoked and
+# expired rows here so the working registry stays small WITHOUT destroying the
+# audit trail (ops#328). Same 0600 posture as the registry itself.
+demo_purged_file() { echo "$(demo_site_dir "$1")/demo-codes-purged.json"; }
 
 ################################################################################
 # Logging — every reset / skip is a line in sites/<site>/demo-reset.log
@@ -353,6 +357,75 @@ demo_codes_payload() {
     jq -c --argjson now "$now" \
        '{version:1, codes:[.codes[] | select(.revoked == false and .expires > $now) | {bundle, hash, expires}]}' \
        "$file"
+}
+
+# demo_codes_list_json <site> <file> — machine-readable registry view for the
+# console demo tab (ops#328). Contract:
+#   * ABSENT registry  → ok:true, registry:"absent", empty codes, exit 0 —
+#     genuinely no codes were ever issued on this host.
+#   * UNREADABLE file  → ok:false, registry:"unreadable", exit 2 — a broken
+#     registry must NEVER render as an empty clean list (ops#281 / !394).
+#   * Hashes ship as a 12-char prefix only; the full sha256 stays at rest.
+demo_codes_list_json() {
+    local site="$1" file="$2" now
+    now="$(date +%s)"
+    if ! demo_require_jq >/dev/null 2>&1; then
+        printf '{"ok":false,"site":"%s","registry":"unreadable","reason":"jq missing on this host - CANNOT VERIFY"}\n' "$site"
+        return 2
+    fi
+    if [[ ! -f "$file" ]]; then
+        jq -cn --arg site "$site" --arg file "$file" \
+           '{ok:true, site:$site, registry:"absent", registry_path:$file,
+             codes:[], counts:{live:0, revoked:0, expired:0, total:0}}'
+        return 0
+    fi
+    local out=""
+    out="$(jq -c --arg site "$site" --arg file "$file" --argjson now "$now" '
+        {ok:true, site:$site, registry:"present", registry_path:$file,
+         generated_at:($now|todate),
+         codes:[.codes[] | {id, bundle,
+             state:(if .revoked then "revoked"
+                    elif .expires <= $now then "expired"
+                    else "live" end),
+             expires, expires_iso:(.expires|todate),
+             created:(.created // 0), created_iso:((.created // 0)|todate),
+             hash_prefix:(.hash[0:12])}]}
+        | .counts = {live:([.codes[]|select(.state=="live")]|length),
+                     revoked:([.codes[]|select(.state=="revoked")]|length),
+                     expired:([.codes[]|select(.state=="expired")]|length),
+                     total:(.codes|length)}' "$file" 2>/dev/null)" || out=""
+    if [[ -z "$out" ]]; then
+        jq -cn --arg site "$site" --arg file "$file" \
+           '{ok:false, site:$site, registry:"unreadable", registry_path:$file,
+             reason:"registry exists but could not be parsed - CANNOT VERIFY, not empty"}'
+        return 2
+    fi
+    printf '%s\n' "$out"
+}
+
+# demo_codes_purge <registry> <archive> <id...> — move rows OUT of the working
+# registry into the archive (ops#328). The caller has already validated that
+# every id exists and none is live; this is the mechanical move. Archive is
+# written FIRST, so a crash between the two writes duplicates a row rather
+# than losing one. Both writes are atomic (tmp+mv), archive kept 0600.
+demo_codes_purge() {
+    local file="$1" archive="$2"; shift 2
+    demo_require_jq || return 1
+    [[ -f "$file" ]] || { echo "ERROR: no code registry at $file" >&2; return 1; }
+    local ids_json
+    ids_json="$(printf '%s\n' "$@" | jq -R . | jq -cs .)" || return 1
+    [[ -f "$archive" ]] || ( umask 077; printf '{"version":1,"purged":[]}\n' > "$archive" )
+    local now tmp
+    now="$(date +%s)"
+    tmp="${archive}.tmp.$$"
+    jq -c --argjson ids "$ids_json" --argjson now "$now" --slurpfile reg "$file" \
+       '.purged += [$reg[0].codes[] | select(.id as $i | $ids | index($i) != null) | . + {purged_at:$now}]' \
+       "$archive" > "$tmp" && mv "$tmp" "$archive" || { rm -f "$tmp"; return 1; }
+    chmod 600 "$archive" 2>/dev/null || true
+    tmp="${file}.tmp.$$"
+    jq -c --argjson ids "$ids_json" \
+       '.codes = [.codes[] | select(.id as $i | ($ids | index($i)) == null)]' \
+       "$file" > "$tmp" && mv "$tmp" "$file" || { rm -f "$tmp"; return 1; }
 }
 
 ################################################################################

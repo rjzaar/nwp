@@ -295,7 +295,8 @@ for p in sorted(glob.glob(sys.argv[1] + "/page-*.json")):
 json.dump(merged, open(sys.argv[2], "w"))' "$pagedir" "$out" 2>/dev/null || rc=1
     fi
     rm -f "$cfg"
-    rm -rf "$pagedir"
+    rm -f "$pagedir"/page-*.json
+    rmdir "$pagedir" 2>/dev/null || true
     return $rc
 }
 

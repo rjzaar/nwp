@@ -237,3 +237,67 @@ rot_log()  { echo "${NWP_ROOT}/private/rotation-$(date +%Y-%m).md"; }
   run git -C "$root" rev-parse --path-format=absolute --git-common-dir
   [[ "$output" == "${TEST_TMP}/sandbox"* ]]
 }
+
+# ── ops#317: host= @file — write over ssh or refuse the stamp ────────────────
+#
+# WHY: rotate consumed a shown-once pasted token, its writer returned
+# "skip by design" for the entry's ONLY location (host=…:@file), and the
+# registry stamped a clean rotation over a box file that was never written.
+# The value was lost; the record said done. A host= @file location is
+# WRITABLE (stdin → root 0600 install → hash read-back) and anything less
+# than a verified write must block the stamp.
+
+_arm_ssh_stub() { # $1 = ok | writefail | mismatch
+  export SSH_STUB_LOG="${TEST_TMP}/ssh.log" SSH_STUB_CAP="${TEST_TMP}/ssh.stdin" SSH_STUB_MODE="$1"
+  : > "$SSH_STUB_LOG"
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+printf 'ARGS:%s\n' "$*" >> "$SSH_STUB_LOG"
+case "$*" in
+  *install*)
+    cat > "$SSH_STUB_CAP"
+    [ "$SSH_STUB_MODE" = writefail ] && exit 1
+    exit 0 ;;
+  *sha256sum*)
+    if [ "$SSH_STUB_MODE" = mismatch ]; then echo deadbeefdeadbeef
+    else head -1 "$SSH_STUB_CAP" | tr -d '\n' | sha256sum | cut -c1-16; fi
+    exit 0 ;;
+esac
+exit 0
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+}
+
+_rotate_hostfile() { # runs rotate against a host=-only entry with the stub armed
+  yq e -i '.secrets[0].stored_in = ["host=stubbox:/etc/nwp-demo/feedback.token:@file"]' \
+    "$NWP_SECRETS_REGISTRY"
+  pty_run 'PLACEHOLDER_canonical_value_A
+2030-01-01
+' "env NWP_ROOT='$NWP_ROOT' HOME='$HOME' PATH='$PATH' \
+        NWP_SECRETS_FILE='$NWP_SECRETS_FILE' NWP_SECRETS_REGISTRY='$NWP_SECRETS_REGISTRY' \
+        NWP_LEAK_SURFACES='$NWP_LEAK_SURFACES' FAKE_CURL_ALIVE='$FAKE_CURL_ALIVE' \
+        SSH_STUB_LOG='$SSH_STUB_LOG' SSH_STUB_CAP='$SSH_STUB_CAP' SSH_STUB_MODE='$SSH_STUB_MODE' \
+        bash '$SECRETS_SH' rotate fixture_token"
+}
+
+@test "ops#317: rotate WRITES a host= @file location — value via stdin, NEVER argv, then stamps" {
+  _arm_ssh_stub ok
+  _rotate_hostfile
+  [ -f "$SSH_STUB_CAP" ]
+  [ "$(head -1 "$SSH_STUB_CAP")" = "PLACEHOLDER_canonical_value_A" ]
+  ! grep -q 'PLACEHOLDER_canonical_value_A' "$SSH_STUB_LOG"
+  [ "$(stamped)" = "$(date +%F)" ]
+}
+
+@test "ops#317: ssh write FAILS → registry NOT stamped, rotation NOT logged" {
+  _arm_ssh_stub writefail
+  _rotate_hostfile || true
+  [ "$(stamped)" = "2026-01-01" ]
+  ! grep -q 'fixture_token — rotated' "${NWP_ROOT}/private/rotation-$(date +%Y-%m).md" 2>/dev/null
+}
+
+@test "ops#317: read-back hash MISMATCH → not trusted, registry NOT stamped" {
+  _arm_ssh_stub mismatch
+  _rotate_hostfile || true
+  [ "$(stamped)" = "2026-01-01" ]
+}

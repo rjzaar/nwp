@@ -49,7 +49,7 @@ artifacts:
   - id: cron-nwp-box-backup
     kind: file
     remote: /etc/cron.d/nwp-box-backup
-    why: "Producer half of the fleet backup chain (site DBs + nginx tarball -> /var/backups/nwp-pull, nightly 01:30). The consumer half is the ci-host stick pull. Without this cron the box has NO backup at all."
+    why: "Producer half of the fleet backup chain (site DBs + nginx tarball -> /var/backups/nwp-pull, nightly 01:30). Consumer half: the ci-host's USER-LEVEL met-dr-pull.sh cron (03:35, ops#330) → ~/nwp-dr restic. The previous claim that the stick pull consumed this box was FALSE — the root dr-pull/stick crons pull only the forge box; until ops#330 this dir had NO off-box consumer at all (ops#329 D3/D5). Without this cron the box has NO backup at all."
   - id: nwp-box-backup-script
     kind: file
     remote: /usr/local/sbin/nwp-box-backup.sh

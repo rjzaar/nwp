@@ -432,6 +432,54 @@ PY
     [[ "$output" == "True 1 go-live" ]]
 }
 
+# ── ops#292: every amber visible, colours evident ────────────────────────────
+
+@test "PARTIAL: a list shorter than the tracker's total is DECLARED, never silent" {
+    # The list fetch and the count fetch read the same filter; when the count
+    # says more ambers exist than the list carries, the list was truncated —
+    # and a truncated tier rendering as the whole tier is the
+    # unreadable-renders-as-clean failure with a smaller blast radius.
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    _amber "$TMP/amber.json" "60:decision::wanted"
+    run bash -c "python3 '$RENDER' text '' h '' '' '150' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"PARTIAL: showing 1 of 150"* ]]
+}
+
+@test "no PARTIAL warning when the list matches the tracker's total" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    _amber "$TMP/amber.json" "60:decision::wanted"
+    run bash -c "python3 '$RENDER' text '' h '' '' '1' '$TMP/amber.json' < '$TMP/j'"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"PARTIAL"* ]]
+}
+
+@test "--json carries the partial flag and each amber row's declared gate" {
+    _issue 1 blocks-testers "A red decision" > "$TMP/j"
+    python3 - "$TMP/amber.json" <<'PY'
+import json,sys
+body = """## Decision
+
+**Gate:** blocks-prod
+
+**What:** States its own gate.
+"""
+json.dump([
+  {"iid": 70, "title": "Has a block", "web_url": "u", "labels": ["decision::wanted"], "description": body},
+  {"iid": 71, "title": "No block", "web_url": "u", "labels": ["decision::wanted"], "description": ""},
+], open(sys.argv[1], "w"))
+PY
+    cat > "$TMP/probe.py" <<'PY'
+import json, sys
+d = json.load(sys.stdin)
+o = d["outside_queue"]
+print(o["partial"], o["issues"][0]["gate"], repr(o["issues"][1]["gate"]))
+PY
+    run bash -c "python3 '$RENDER' json '' h '' '' '9' '$TMP/amber.json' < '$TMP/j' | python3 '$TMP/probe.py'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "True blocks-prod ''" ]]
+}
+
 # ── promote (ops#305): the decision::wanted → needs-decision promotion verb ──
 #
 # RULING A (2026-08-07): promotion gets a verb that adds the label AND

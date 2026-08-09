@@ -242,3 +242,18 @@ details > summary { cursor: pointer; color: var(--muted); }
   text-transform: uppercase; color: var(--amber);
 }
 .rev-amber-row { margin: .15rem 0 .35rem; line-height: 1.35; }
+
+/* ops#292: the tier colour rides on EVERY item, not only the section heads.
+   Border + worded chip together — the _visual_fleet.html CVD rule ("the colour
+   alone carries nothing" for a protan reader) applies here too, so the word
+   RED/AMBER is the load-bearing channel and the colour is the fast one. */
+.rev-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; margin: 6px 0; }
+.rev-card.rev-red { border-left: 3px solid var(--red); }
+.chip.rag-chip-red   { border-color: var(--red);   color: var(--red);   font-weight: 700; }
+.chip.rag-chip-amber { border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.review-amber .rev-amber-row {
+  border-left: 3px solid var(--amber); padding-left: .6rem;
+}
+.chip.amber-gate-chip { border-color: var(--line); color: var(--muted);
+  text-transform: uppercase; letter-spacing: .03em; }

@@ -297,3 +297,61 @@ def test_amber_key_is_issues_not_items():
     """`items` collides with dict.items in Jinja — the bug this rename fixed."""
     h = _render_review(outside_queue=_amber())
     assert "#81" in h        # would raise TypeError on |length if it regressed
+
+
+# ── colours EVIDENT per item (nwp/ops#292) ───────────────────────────────────
+#
+# Operator: "I want to be able to see all ambers in my decision list with the
+# colors evident." Section headers carried the colour; the ITEMS did not, so a
+# scrolled list read as an undifferentiated wall. Each row now carries its own
+# tier marker — and, per the estate's CVD discipline (_visual_fleet.html: "the
+# colour alone carries nothing" for a protan reader), the marker is a WORD in a
+# coloured chip plus a coloured border, never colour alone.
+
+RED_DECISIONS = [
+    {"iid": 279, "title": "Practice tick decision", "url": "u",
+     "labels": ["needs-decision"], "complete": True, "gate": "blocks-testers",
+     "what": "w", "options": [], "recommend": "", "unblocks": "", "depends_on": [],
+     "possibly_stale": False},
+    {"iid": 143, "title": "Second red", "url": "u",
+     "labels": ["needs-decision"], "complete": False, "gate": "housekeeping",
+     "what": "", "options": [], "recommend": "", "unblocks": "", "depends_on": [],
+     "possibly_stale": False},
+]
+
+
+def test_every_red_item_carries_the_red_marker():
+    h = _render_review(decisions=RED_DECISIONS, outside_queue=_amber())
+    # one coloured card border + one worded chip PER red item, not per section
+    assert h.count("rev-card rev-red") == 2
+    assert h.count('rag-chip-red">RED<') == 2
+
+
+def test_every_amber_row_carries_the_amber_marker_and_gate():
+    h = _render_review(outside_queue=_amber())
+    # each row: amber-bordered row class + worded AMBER chip + its gate/bucket chip
+    assert h.count("rev-amber-row") >= 2
+    assert h.count('rag-chip-amber">AMBER<') == 2
+    assert 'amber-gate-chip">go-live<' in h
+    assert 'amber-gate-chip">security<' in h
+
+
+def test_amber_with_declared_gate_shows_the_declared_gate():
+    oq = _amber()
+    oq["issues"][0].update(bucket="declared", gate="blocks-prod",
+                           why="declares its own Gate")
+    h = _render_review(outside_queue=oq)
+    assert 'amber-gate-chip">blocks-prod<' in h
+
+
+def test_partial_amber_fetch_is_declared_never_silent():
+    """32 fetched of 150 existing must say so — a truncated tier rendering as
+    the whole tier is the unreadable-renders-as-clean failure again."""
+    h = _render_review(outside_queue=_amber(count=150))
+    assert "PARTIAL" in h
+    assert "2 of 150" in h
+
+
+def test_complete_amber_fetch_shows_no_partial_warning():
+    h = _render_review(outside_queue=_amber(count=2))
+    assert "PARTIAL" not in h

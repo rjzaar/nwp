@@ -374,6 +374,15 @@ case "$1" in
             *--dry-run*) echo "${NWD_TEST_FEEDBACK_PROBE:-[DRY] feedback #12 (bug): would sync}" ;;
             *)           echo "[OK] feedback #12 -> nwp/nwc#41" ;;
         esac ;;
+    nwc-feedback:sync-status)
+        if [[ -n "${NWD_TEST_STATUS_RC:-}" ]]; then
+            echo "status leg exploded" >&2
+            exit "${NWD_TEST_STATUS_RC}"
+        fi
+        echo "  feedback #12 -> 16#41 = closed"
+        echo "    -> fixed + poster_invited; notified poster."
+        echo "Done. advanced=1 drafts_captured=0 checked=1"
+        ;;
 esac
 exit 0
 DRUSH
@@ -518,4 +527,111 @@ CURL
     _run_action harvest-post
     [ "$status" -eq 0 ]
     ! _wiped
+}
+
+# ---------------------------------------------------------------------------
+# ops#219 Phase A — feedback-status: the RETURN leg, box-side.
+#
+# `drush nwc-feedback:sync-status` is what turns /my/feedback from a permanent
+# "Sent to the team" into the link set the operator asked for — and it was
+# scheduled NOWHERE. The box already holds the one walled token the command
+# needs (ops#315), so the return leg becomes a third action word on the same
+# fixed [G1] allowlist, fired hourly from met over the same restricted key.
+# nwd-ONLY like feedback-sync: the pending set and /my/feedback are Drupal
+# (nwc_feedback) concepts; the ssd suite pins the refusal.
+# ---------------------------------------------------------------------------
+
+@test "ops#219 control: the refusal message names feedback-status" {
+    _build_box
+    _rehome
+    _run_action 'rm -rf /'
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"feedback-status"* ]]
+}
+
+@test "ops#219 feedback-status with NO token is exit 2 CANNOT VERIFY, logged — never a silent skip" {
+    # Unlike feedback-sync there is no token-free probe: sync-status cannot even
+    # LOOK at GitLab without a token, so a missing token is CANNOT VERIFY
+    # immediately — reporters keep seeing stale state, and the leg says so.
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _run_action feedback-status
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CANNOT VERIFY"* ]]
+    grep -q 'feedback-status-no-token' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    # and the module command never ran
+    run grep -- 'nwc-feedback:sync-status' "$TRACE"
+    [ "$status" -ne 0 ]
+    ! _wiped
+}
+
+@test "ops#219 feedback-status runs the module's own sync-status with the walled token — never printed" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    _run_action feedback-status
+    [ "$status" -eq 0 ]
+    grep -q 'nwc-feedback:sync-status --limit=50 --token=glpat-sekret-test-value' "$TRACE"
+    # the value reaches drush's argv only — never stdout, never the log
+    [[ "$output" != *"glpat-sekret-test-value"* ]]
+    [[ "$output" == *"advanced=1"* ]]
+    run grep 'glpat-sekret-test-value' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    [ "$status" -ne 0 ]
+    grep -q 'feedback-status-ok' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    ! _wiped
+}
+
+@test "ops#219 a failing sync-status is exit 1 and logged — never swallowed" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    NWD_TEST_STATUS_RC=3 SSH_ORIGINAL_COMMAND=feedback-status SSH_CLIENT="10.0.0.1 1 22" \
+        NWD_TEST_TRACE="$TRACE" run bash "$REHOMED"
+    [ "$status" -eq 1 ]
+    grep -q 'feedback-status-failed' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    ! _wiped
+}
+
+# ---------------------------------------------------------------------------
+# ops#219 rider — the posted/ move must be as reliable as the POST.
+#
+# Found live 2026-08-09: posted/ was root-owned (created by a sudo-run harvest),
+# so every `mv` to it failed AFTER GitLab had already confirmed the issue — the
+# digest stayed in the spool and the next run filed it AGAIN. A digest that is
+# posted but not moved is a double-post factory, so the wrapper must either
+# repair posted/ or refuse BEFORE posting anything.
+# ---------------------------------------------------------------------------
+
+@test "ops#219 harvest-post REFUSES before posting when posted/ cannot be a writable dir (double-post guard)" {
+    _build_box
+    _rehome
+    _spool_digest_and_curl
+    _stage_token
+    # a regular file where posted/ must be: mkdir -p and install -d both fail
+    : > "${BOX}/var/lib/nwp-demo/nwd/harvest/posted"
+    _run_action harvest-post
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"double-post"* ]]
+    # the refusal came BEFORE any API call — nothing was posted
+    run grep 'curl .*issues' "$TRACE"
+    [ "$status" -ne 0 ]
+    [ -f "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt" ]
+    grep -q 'harvest-post-refused|reason=posted-dir-unusable' \
+        "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+}
+
+@test "ops#219 harvest-post REPAIRS a wrongly-permissioned posted/ instead of double-posting" {
+    _build_box
+    _rehome
+    _spool_digest_and_curl
+    _stage_token
+    mkdir -p "${BOX}/var/lib/nwp-demo/nwd/harvest/posted"
+    chmod 000 "${BOX}/var/lib/nwp-demo/nwd/harvest/posted"
+    _run_action harvest-post
+    [ "$status" -eq 0 ]
+    [ -f "${BOX}/var/lib/nwp-demo/nwd/harvest/posted/harvest-20260807-120000.txt" ]
+    [ ! -f "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt" ]
 }

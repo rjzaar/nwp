@@ -675,3 +675,69 @@ CURL
     [ "$status" -eq 0 ]
     grep -q 'php8.3 .*max_input_vars=5000 admin/cli/purge_caches.php' "$TRACE"
 }
+
+# ---------------------------------------------------------------------------
+# ops#219 — the RETURN leg (feedback-status) is nwd-ONLY, and the posted/ move
+# must be as reliable as the POST (double-post guard; found live 2026-08-09
+# when a root-owned posted/ made every post-then-move fail its second half).
+# ---------------------------------------------------------------------------
+
+@test "ops#219 ssd REFUSES feedback-status — the return leg is nwd-only, by design (pinned negative)" {
+    # /my/feedback and the pending set are nwc_feedback (Drupal) concepts; the
+    # Moodle half forwards at submit time and has no return leg to run. The
+    # word stays off THIS allowlist on purpose, and the refusal must SAY so.
+    _build_box
+    _rehome
+    _run_action feedback-status
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"REFUSED"* ]]
+    [[ "$output" == *"feedback-status"* ]]
+    ! _dropped
+    ! _canary_gone
+}
+
+@test "ops#219 ssd harvest-post REFUSES before posting when posted/ cannot be a writable dir" {
+    _build_box
+    _rehome
+    _stage_token
+    mkdir -p "${BOX}/var/lib/nwp-demo/ssd/harvest"
+    printf 'task_log digest\n' \
+        > "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt"
+    # a regular file where posted/ must be: mkdir -p and install -d both fail
+    : > "${BOX}/var/lib/nwp-demo/ssd/harvest/posted"
+    _run_action harvest-post
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"double-post"* ]]
+    # nothing was posted: the refusal came before any API call
+    run grep 'curl .*issues' "$TRACE"
+    [ "$status" -ne 0 ]
+    [ -f "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt" ]
+    grep -q 'harvest-post-refused|reason=posted-dir-unusable' \
+        "${BOX}/var/log/nwp-demo/ssd-demo-reset.log"
+    ! _dropped
+}
+
+@test "ops#219 ssd harvest-post REPAIRS a wrongly-permissioned posted/ instead of double-posting" {
+    _build_box
+    _rehome
+    _stage_token
+    mkdir -p "${BOX}/var/lib/nwp-demo/ssd/harvest"
+    printf 'task_log digest\n' \
+        > "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt"
+    mkdir -p "${BOX}/var/lib/nwp-demo/ssd/harvest/posted"
+    chmod 000 "${BOX}/var/lib/nwp-demo/ssd/harvest/posted"
+    cat > "${BOX}/stubs/curl" <<'CURL'
+#!/bin/bash
+printf 'curl %s\n' "$*" >> "$SSD_TEST_TRACE"
+case "$*" in
+    *issues*) printf '%s' '{"iid": 79}' ;;
+    *)        printf '%s' "${SSD_TEST_HTTP:-200}" ;;
+esac
+CURL
+    chmod +x "${BOX}/stubs/curl"
+    _run_action harvest-post
+    [ "$status" -eq 0 ]
+    [ -f "${BOX}/var/lib/nwp-demo/ssd/harvest/posted/harvest-20260807-120000.txt" ]
+    [ ! -f "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt" ]
+    ! _dropped
+}

@@ -267,6 +267,8 @@ ssh nwd-demo-reset status                # box-side log, from either machine
    and `harvest-post` action words that implement (a) — see §14. Until the
    operator approves the ruling and stages the token, they answer exit 2
    CANNOT VERIFY and everything in item 7 still describes the running state.
+   **Update (ops#219 Phase A):** the nwd wrapper also carries the RETURN leg,
+   `feedback-status`, scheduled hourly from met — see §15.
 
 ---
 
@@ -699,3 +701,66 @@ operator's, in order:
 5. **Prove it:** `ssh -i ~/.ssh/nwd_demo_reset gitlab@<box> harvest-post`
    (posts or says `posted=0`), and the next `pl demo nightly … --via-key` run
    logs `feedback-sync-box-ok` / `harvest-post-box-ok` instead of the WARNs.
+
+## 15. ops#219 Phase A — the HOURLY return leg (`feedback-status`)
+
+§14 closed the *outbound* legs. This closes the **return** leg: `drush
+nwc-feedback:sync-status` — the command that pulls each linked GitLab issue's
+state back into the site, advances a CLOSED issue's signal
+`fixed → poster_invited`, and emails the reporter the "please check this"
+invitation — ran **nowhere**. Until it runs on a schedule, `/my/feedback`
+shows every reporter "Sent to the team" for ever (nwp/ops#219).
+
+The nwd wrapper now carries a third action word, `feedback-status`, on the
+same fixed [G1] allowlist: token from the same root-owned 0600
+`/etc/nwp-demo/feedback.token` (missing = exit 2 CANNOT VERIFY, never a
+silent skip), drush output token-redacted, one `feedback-status-ok|advanced=…`
+line in the box log per run. **nwd-only by design** — `/my/feedback` and the
+pending set are `nwc_feedback` (Drupal) concepts, and the ssd wrapper's
+refusal of the word is pinned by a test.
+
+**The met cron line.** Hourly, minute 7 (off the nightly's 0/15/30/45 grid),
+same restricted key, no checkout needed for this line:
+
+```
+# NWP Demo Feedback Status - nwd (restricted key; hourly return leg — nwp/ops#219)
+CRON_TZ=Australia/Melbourne
+7 * * * * ssh -F /dev/null -i $HOME/.ssh/nwd_demo_reset -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=30 gitlab@<box> feedback-status >> $HOME/logs/demo-feedback-status-nwd.log 2>&1
+```
+
+Do not paste that by hand — the schedule verb renders and installs it (same
+byte-identity contract as §11.5):
+
+```bash
+# ON MET (or anywhere with the key): install into this machine's crontab
+pl demo schedule nwd --feedback-status --via-key --host gitlab@<box>
+
+# ANYWHERE: emit the block for hand-installation on the scheduler
+pl demo schedule nwd --feedback-status --via-key --print-only
+
+# undo (removes ONLY the return-leg block; the nightly block is untouched)
+pl demo schedule nwd --feedback-status --remove
+```
+
+Check the log path in a `--print-only` block before installing it — it is
+resolved from the generating machine's checkout, exactly as in §11.5.
+
+The consumer half is refused by both ends (`pl demo schedule ssd
+--feedback-status` refuses; the ssd wrapper refuses the word), and until the
+ops#315 token is staged every run answers exit 2 CANNOT VERIFY **visibly in
+the cron log** — a leg that could not run and says so, never "no news".
+
+**Rider shipped with this section (found live 2026-08-09):** `harvest-post` on
+both wrappers now *owns* its `posted/` dir — a root-owned `posted/` (left by a
+sudo-run drain) made every post-then-move fail its second half, so the spool
+re-filed already-posted digests. The wrappers repair the ownership via
+`sudo install -d -o <user>`, refuse (exit 1, nothing sent) if `posted/` still
+cannot be a writable directory, and treat a confirmed-post-but-failed-move as
+a loud FAILURE naming the double-post hazard. `install-box.sh` now creates
+`harvest/posted` and `chown -R`s the spool on every re-run. Redeploy to pick
+this up:
+
+```bash
+bash servers/live/demo/install-box.sh nwd --no-key
+bash servers/live/demo/install-box.sh ssd --no-key
+```

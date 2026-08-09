@@ -2984,3 +2984,286 @@ YML
   grep -q '^15,45 1-3 \* \* \*' "$STUB_CRON"
   grep -q 'pl demo nightly cons1 --tier=live --via-key' "$STUB_CRON"
 }
+
+################################################################################
+# ops#233 — harvest-triage: a digest gets a TERMINAL state.
+#
+# The three directories (spool, posted/, triaged-*/) were mutually blind: the
+# 2026-08-01 hand-triage ran, then harvest-post re-filed the SAME already-mined
+# digests as five fresh issues (ops#189–193), because posting consults only
+# posted/ and triage consults nothing. The verb reconciles the three, names
+# posted-but-untriaged digests with their issue iids (read from demo-reset.log),
+# detects double-posts, and gives the operator a --mark that MOVES + RECORDS.
+# The human still classifies; the verb only does lifecycle.
+################################################################################
+
+# One reconcilable site: a spooled digest, a posted digest with a logged iid,
+# and a triaged dir. Callers add their own anomalies on top.
+_triage_fixture() {
+  HDIR="$(demo_harvest_dir demo1)"
+  mkdir -p "$HDIR/posted" "$HDIR/triaged-20260801"
+  printf 'digest S\n' > "$HDIR/harvest-20260808-010101.md"
+  printf 'digest P\n' > "$HDIR/posted/harvest-20260725-135120.md"
+  printf 'digest T\n' > "$HDIR/triaged-20260801/harvest-20260720-020202.md"
+  demo_log demo1 harvest-posted "file=harvest-20260725-135120.md issue=#189"
+}
+
+@test "ops#233 harvest-triage on a site with no harvest dir is a clean no-op" {
+  run bash "$DEMO_CMD" harvest-triage demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to reconcile"* ]]
+}
+
+@test "ops#233 harvest-triage lists posted-but-untriaged digests WITH their issue iids" {
+  _triage_fixture
+  run bash "$DEMO_CMD" harvest-triage demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"harvest-20260725-135120.md"* ]]
+  [[ "$output" == *"#189"* ]]
+  # the spooled (unposted) digest is named too — reconciliation covers all three
+  [[ "$output" == *"harvest-20260808-010101.md"* ]]
+}
+
+@test "ops#233 harvest-triage reads a via=box posted record (the box posts its own spool)" {
+  _triage_fixture
+  printf 'digest B\n' > "$HDIR/posted/harvest-20260726-030303.md"
+  demo_log demo1 harvest-posted "file=harvest-20260726-030303.md issue=#204 via=box"
+  run bash "$DEMO_CMD" harvest-triage demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"harvest-20260726-030303.md"* ]]
+  [[ "$output" == *"#204"* ]]
+}
+
+@test "ops#233 harvest-triage DETECTS a double-post (same basename posted twice) and exits 1" {
+  _triage_fixture
+  demo_log demo1 harvest-posted "file=harvest-20260725-135120.md issue=#204"
+  run bash "$DEMO_CMD" harvest-triage demo1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"DOUBLE-POST"* ]]
+  [[ "$output" == *"#189"* ]]
+  [[ "$output" == *"#204"* ]]
+}
+
+@test "ops#233 harvest-triage FLAGS a spooled digest whose basename is already triaged (the ops#189-193 shape)" {
+  _triage_fixture
+  printf 'digest T\n' > "$HDIR/harvest-20260720-020202.md"
+  run bash "$DEMO_CMD" harvest-triage demo1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already triaged"* ]]
+}
+
+@test "ops#233 harvest-triage --mark moves a posted digest into triaged-<today>/ and records it" {
+  _triage_fixture
+  run bash "$DEMO_CMD" harvest-triage demo1 --mark=harvest-20260725-135120.md
+  [ "$status" -eq 0 ]
+  local today; today="$(date +%Y%m%d)"
+  [ -f "$HDIR/triaged-${today}/harvest-20260725-135120.md" ]
+  [ ! -f "$HDIR/posted/harvest-20260725-135120.md" ]
+  grep -q "harvest-triaged file=harvest-20260725-135120.md" "$(demo_log_file demo1)"
+  grep -q "issue=#189" "$(demo_log_file demo1)"
+  # and the report no longer lists it as awaiting triage
+  run bash "$DEMO_CMD" harvest-triage demo1
+  [[ "$output" != *"awaiting triage:  harvest-20260725-135120.md"* ]]
+}
+
+@test "ops#233 harvest-triage --mark works on a spooled (never-posted) digest too" {
+  _triage_fixture
+  run bash "$DEMO_CMD" harvest-triage demo1 --mark=harvest-20260808-010101
+  [ "$status" -eq 0 ]
+  local today; today="$(date +%Y%m%d)"
+  [ -f "$HDIR/triaged-${today}/harvest-20260808-010101.md" ]
+  [ ! -f "$HDIR/harvest-20260808-010101.md" ]
+  grep -q "harvest-triaged file=harvest-20260808-010101.md" "$(demo_log_file demo1)"
+}
+
+@test "ops#233 harvest-triage --mark-all triages every posted-but-untriaged digest" {
+  _triage_fixture
+  printf 'digest Q\n' > "$HDIR/posted/harvest-20260726-030303.md"
+  demo_log demo1 harvest-posted "file=harvest-20260726-030303.md issue=#204 via=box"
+  run bash "$DEMO_CMD" harvest-triage demo1 --mark-all
+  [ "$status" -eq 0 ]
+  local today; today="$(date +%Y%m%d)"
+  [ -f "$HDIR/triaged-${today}/harvest-20260725-135120.md" ]
+  [ -f "$HDIR/triaged-${today}/harvest-20260726-030303.md" ]
+  # --mark-all is about POSTED digests; the spool is left for the poster
+  [ -f "$HDIR/harvest-20260808-010101.md" ]
+}
+
+@test "ops#233 harvest-triage --mark REFUSES a basename that is already triaged" {
+  _triage_fixture
+  printf 'digest T\n' > "$HDIR/posted/harvest-20260720-020202.md"
+  run bash "$DEMO_CMD" harvest-triage demo1 --mark=harvest-20260720-020202
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already triaged"* ]]
+  # nothing moved, nothing deleted — the verb is not a destroyer
+  [ -f "$HDIR/posted/harvest-20260720-020202.md" ]
+  [ -f "$HDIR/triaged-20260801/harvest-20260720-020202.md" ]
+}
+
+@test "ops#233 harvest-triage --dry-run moves nothing and writes no log" {
+  _triage_fixture
+  run bash "$DEMO_CMD" harvest-triage demo1 --mark=harvest-20260725-135120 --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would move"* ]]
+  [ -f "$HDIR/posted/harvest-20260725-135120.md" ]
+  ! grep -q "harvest-triaged" "$(demo_log_file demo1)"
+}
+
+@test "ops#233 harvest-triage is FAIL-CLOSED on an unreadable spool (exit 2, CANNOT VERIFY)" {
+  _triage_fixture
+  chmod 000 "$HDIR"
+  run bash "$DEMO_CMD" harvest-triage demo1
+  chmod 755 "$HDIR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+}
+
+# --- harvest-post learns the terminal state (the mutual-blindness fix) --------
+
+@test "ops#233 harvest-post SKIPS a digest whose basename is already under triaged-*/" {
+  demo_harvest demo1 live echo "PHP Fatal error: kaboom"
+  HDIR="$(demo_harvest_dir demo1)"
+  local base; base="$(basename "$(ls "$HDIR"/harvest-*.md | head -1)")"
+  mkdir -p "$HDIR/triaged-20260801"
+  cp "$HDIR/$base" "$HDIR/triaged-20260801/$base"
+  # every spooled digest is triaged → the poster must stop BEFORE needing a
+  # token, so this is runnable (and red) with no GitLab config at all
+  run bash "$DEMO_CMD" harvest-post demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already"*"triaged"* ]]
+  [ -f "$HDIR/$base" ]          # skip ≠ delete: the spool copy survives
+  [ ! -d "$HDIR/posted" ] || [ -z "$(ls -A "$HDIR/posted" 2>/dev/null)" ]
+}
+
+@test "ops#233 harvest-post --dry-run says 'would skip' for triaged digests, 'would post' for the rest" {
+  demo_harvest demo1 live echo "PHP Fatal error: kaboom"
+  HDIR="$(demo_harvest_dir demo1)"
+  local base; base="$(basename "$(ls "$HDIR"/harvest-*.md | head -1)")"
+  mkdir -p "$HDIR/triaged-20260801"
+  cp "$HDIR/$base" "$HDIR/triaged-20260801/$base"
+  printf 'fresh digest\n' > "$HDIR/harvest-20260809-999999.md"
+  run bash "$DEMO_CMD" harvest-post demo1 --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would skip: ${base}"* ]]
+  [[ "$output" == *"would post: harvest-20260809-999999.md"* ]]
+}
+
+@test "ops#233 harvest-pull refuses to resurrect a triaged digest (static + spool dedup covers triaged-*/)" {
+  grep -q 'triaged-\*' "$DEMO_CMD"
+}
+
+@test "ops#233 the nightly box-leg drain records each box-posted iid locally (via=box)" {
+  # demo_nightly_harvest_drain marks local copies posted when the box confirms;
+  # without a local harvest-posted log line the iid existed only in the box's
+  # stdout and harvest-triage would render '(no issue recorded)' for ever.
+  grep -q 'via=box' "$DEMO_CMD"
+}
+
+################################################################################
+# ops#219 Phase A — schedule the RETURN LEG: an hourly feedback-status line.
+################################################################################
+
+_fb_sched_fixture() {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"
+  : > "$STUB_CRON"
+  mkdir -p "${PROJECT_ROOT}/sites/demo1"
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'YML'
+schema_version: 2
+project:
+  name: demo1
+live:
+  enabled: true
+  domain: demo1.example.com
+  server_ip: 203.0.113.9
+YML
+}
+
+@test "ops#219 schedule --feedback-status writes an HOURLY return-leg line via the restricted key" {
+  _fb_sched_fixture
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --feedback-status --via-key
+  [ "$status" -eq 0 ]
+  grep -q '# NWP Demo Feedback Status - demo1' "$STUB_CRON"
+  grep -q 'demo1_demo_reset' "$STUB_CRON"
+  grep -q ' feedback-status ' "$STUB_CRON"
+  # hourly, off the nightly's 0/15/30/45 minutes, and agent-hijack-proof
+  grep -Eq '^7 \* \* \* \* ssh -F /dev/null ' "$STUB_CRON"
+}
+
+@test "ops#219 schedule --feedback-status without --via-key is REFUSED (the leg runs ON the box)" {
+  _fb_sched_fixture
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --feedback-status
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--via-key"* ]]
+}
+
+@test "ops#219 schedule --feedback-status REFUSES the consumer half (no return leg on Moodle)" {
+  _fb_sched_fixture
+  mkdir -p "${PROJECT_ROOT}/sites/prov1" "${PROJECT_ROOT}/sites/cons1" "${PROJECT_ROOT}/pairs"
+  for s in prov1 cons1; do
+    cat > "${PROJECT_ROOT}/sites/${s}/.nwp.yml" <<YML
+schema_version: 2
+project:
+  name: ${s}
+live:
+  enabled: true
+  domain: ${s}.example.com
+  server_ip: 203.0.113.9
+YML
+  done
+  cat > "${PROJECT_ROOT}/pairs/cons1.pair-contract.yml" <<'YML'
+pair: cons1-prov1
+provider: prov1
+consumer: cons1
+demo:
+  enabled: true
+  paired_golden: true
+  paired_reset: true
+YML
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule cons1 --feedback-status --via-key
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"consumer half"* ]]
+}
+
+@test "ops#219 installing/removing the RESET block leaves the return-leg line intact" {
+  _fb_sched_fixture
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --feedback-status --via-key >/dev/null 2>&1
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --tier=live --via-key >/dev/null 2>&1
+  # both blocks coexist
+  grep -q '# NWP Demo Reset - demo1' "$STUB_CRON"
+  grep -q '# NWP Demo Feedback Status - demo1' "$STUB_CRON"
+  grep -q ' feedback-status ' "$STUB_CRON"
+  # removing the reset block keeps the return leg
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --remove >/dev/null 2>&1
+  ! grep -q '# NWP Demo Reset - demo1' "$STUB_CRON"
+  grep -q ' feedback-status ' "$STUB_CRON"
+}
+
+@test "ops#219 schedule --feedback-status --remove removes ONLY the return-leg block" {
+  _fb_sched_fixture
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --tier=live --via-key >/dev/null 2>&1
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --feedback-status --via-key >/dev/null 2>&1
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --feedback-status --remove >/dev/null 2>&1
+  ! grep -q '# NWP Demo Feedback Status - demo1' "$STUB_CRON"
+  ! grep -q ' feedback-status ' "$STUB_CRON"
+  # the nightly reset block survives
+  grep -q '# NWP Demo Reset - demo1' "$STUB_CRON"
+  grep -q 'pl demo nightly demo1' "$STUB_CRON"
+}
+
+@test "ops#219 schedule --feedback-status --print-only emits the block and touches no crontab" {
+  _fb_sched_fixture
+  printf '# sentinel\n' > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --feedback-status --via-key --print-only
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"# NWP Demo Feedback Status - demo1"* ]]
+  [[ "$output" == *" feedback-status "* ]]
+  grep -q '# sentinel' "$STUB_CRON"
+  ! grep -q 'feedback-status' "$STUB_CRON"
+}

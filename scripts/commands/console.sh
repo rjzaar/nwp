@@ -559,7 +559,9 @@ cmd_deploy() {
     _write_default_env
     _ssh 'mkdir -p ~/.config/systemd/user && cp ~/nwp-console/src/nwp-console.service ~/.config/systemd/user/ && systemctl --user daemon-reload'
 
+    local cert_present=true
     if ! _ssh 'test -f ~/.config/nwp-console/tls/fullchain.pem'; then
+        cert_present=false
         print_warning "No TLS cert on ${CONSOLE_HOST} — run 'pl console dns' then 'pl console cert' first."
         print_warning "The service will fail to start until the cert exists (WebAuthn requires HTTPS)."
     fi
@@ -572,6 +574,20 @@ cmd_deploy() {
     fi
 
     print_info "5/5 health check over the mesh"
+    # NOT YET SERVING is not BROKEN — and this verb already knew which one it
+    # was, one screen up. Probing anyway made the FIRST deploy onto a virgin
+    # host end RED every time, with every step having succeeded, and pointed the
+    # operator at `pl console status` / `pl console logs` to debug a service
+    # that is behaving exactly as designed: it cannot start without a cert.
+    # The verb's own help prescribes dns -> cert -> deploy; now it branches on
+    # it instead of only mentioning it.
+    if [ "$cert_present" = false ]; then
+        print_warning "NOT YET SERVING — the code is deployed and the unit is installed, but"
+        print_warning "there is no TLS cert, so the service cannot start (WebAuthn needs HTTPS)."
+        print_warning "Nothing here is broken and nothing needs debugging."
+        print_hint "finish the bring-up:  pl console dns  &&  pl console cert  &&  pl console deploy"
+        return 0
+    fi
     if curl -fsS --max-time 8 --resolve "${CONSOLE_FQDN}:${CONSOLE_PORT}:${CONSOLE_TAILNET_IP}" \
             "https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health" | grep -q '"ok"'; then
         print_success "healthy: https://${CONSOLE_FQDN}:${CONSOLE_PORT}/ (mesh-only)"
@@ -999,6 +1015,15 @@ cmd_enroll() {
 }
 
 cmd_logs() {
+    # Before the first deploy there is no log, and `tail` says so in its own
+    # words — "tail: cannot open …: No such file or directory" — which reads as
+    # a broken install rather than one that has not happened yet.
+    if ! _ssh 'test -f ~/nwp-console/console.log'; then
+        print_warning "NOT DEPLOYED YET — no ~/nwp-console/console.log on ${CONSOLE_HOST}."
+        print_info "A console that has never been deployed has never written a log line."
+        print_hint "deploy it:  pl console deploy"
+        return 0
+    fi
     _ssh 'tail -n 100 ~/nwp-console/console.log'
 }
 

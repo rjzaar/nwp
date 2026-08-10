@@ -98,3 +98,8 @@ _steps() { run env NWP_ROOT="$NWP_ROOT" HOME="$HOME" \
   [[ "$output" == *"Revoke the OLD token"* ]]
   [[ "$output" != *"NOT YET ISSUED"* ]]
 }
+
+@test "first-issue: does NOT offer the rotate_url — it 404s until the identity exists" {
+  _steps brand_new_admin
+  [[ "$output" != *"admin/users/fixture-bot/impersonation_tokens"* ]]
+}

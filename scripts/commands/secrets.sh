@@ -3366,7 +3366,11 @@ cmd_steps(){
         [ -z "$line" ] && continue
         printf '    %d) %s\n' "$j" "$line"; j=$((j+1))
       done < <("$YQ" e ".secrets[$idx].provision_steps[]" "$REGISTRY" 2>/dev/null)
-      [ -n "$url" ] && echo "       page: $url"
+      # Deliberately NOT printing rotate_url here. For a not-provisioned entry
+      # it points at the credential's page on an identity that does not exist
+      # yet (…/admin/users/<bot>/impersonation_tokens), so it 404s — offering
+      # it as "the page" is the same time-waster this whole branch fixes, one
+      # line lower. The provision_steps carry their own, valid, URLs.
     else
       echo "  CREATE IT: no provision_steps recorded in the registry for this entry."
       echo "       Add them (they are the operator-facing recipe), or work from:"

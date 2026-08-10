@@ -225,6 +225,92 @@ entry_canonical_loc(){ # idx
 }
 
 ################################################################################
+# FIRST ISSUANCE — does-not-exist-yet is not is-broken
+#
+# This whole file was written for ROTATING credentials that already exist, and
+# first issuance was never a supported path. The operator hit that three times
+# in one evening (2026-08-10, ops#331): the remote writer assumed a root-owned
+# system file (!407), `steps` told him to revoke a token that had never existed
+# and linked a page that 404s (!409), and the local `@file` writer refused to
+# create the file whose creation IS the first issuance (!409). These three
+# helpers close the rest of the family.
+#
+# Two distinct jobs:
+#
+#  (a) SAY WHICH STATE IT IS. "canonical location unreadable" and "refusing to
+#      make another copy of a credential that is on its way out" both describe a
+#      BROKEN entry. A never-minted one is not broken, it is empty, and the two
+#      need different actions — repair versus mint. Following `pl forge`'s
+#      refusal (ADR-0038) and the estate rule, that reads as exit 2 CANNOT
+#      VERIFY, never a silent success and never a generic failure.
+#
+#  (b) LET THE FLAG GO. `status: not-provisioned` is read in eleven places here
+#      plus lib/todo-checks.sh, and every one SKIPS the entry: audit never
+#      probes it, `capabilities` never asks what it can do, `lint` never demands
+#      a probe, `rotate --due` never schedules it, the daily liveness cron
+#      ignores it. Correct while the credential does not exist; fail-OPEN the
+#      moment it does — and nothing ever cleared it, because `stamp_registry`
+#      and `mark_done` write `last_rotated`/`expires` and nothing else. A
+#      credential minted through the exact path `pl secrets steps` prescribes
+#      therefore stayed marked not-provisioned for ever and was invisible to the
+#      entire audit machinery, silently. The live registry already carries two
+#      entries hand-edited to `provisioned-<date>`: the same repair performed
+#      outside a verb, which the pl-first standing order calls a bug report.
+################################################################################
+
+# Does the entry's canonical location actually hold a value on this host?
+# rc 0 = yes. Deliberately a MEASUREMENT: everything below keys off evidence,
+# never off having been asked.
+first_issue_value_present(){ # idx
+  local idx="$1" canon ckind chost cpath cref
+  canon=$(entry_canonical_loc "$idx"); [ -n "$canon" ] || return 1
+  IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+  { [ "$ckind" = "bad" ] || [ "$ckind" = "external" ] || [ -n "$chost" ]; } && return 1
+  loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref" >/dev/null 2>&1
+}
+
+# Is this entry AWAITING MINT — declared, but never issued?
+# Both halves are required. `status: not-provisioned` over a location that DOES
+# hold a value is a different finding (`lint` already reports it), and treating
+# it as "nothing here" would hide a live credential.
+entry_awaiting_mint(){ # idx
+  [ "$(field "$1" status)" = "not-provisioned" ] || return 1
+  ! first_issue_value_present "$1"
+}
+
+# The named refusal, in one place so every verb tells the same story.
+# rc 2 = CANNOT VERIFY (the estate rule; `pl server health` and `pl forge` both
+# already work this way). Never rc 0 — a verb that shrugs at a credential that
+# does not exist is how "AWAITING OPERATOR MINT" becomes invisible.
+refuse_not_provisioned(){ # idx id verb-phrase
+  local idx="$1" id="$2" what="$3" canon; canon=$(entry_canonical_loc "$idx")
+  print_error "$id: NOT ISSUED YET — this credential does not exist, so there is nothing to $what."
+  echo "  registry status : not-provisioned"
+  echo "  canonical       : ${canon:-<no machine-readable location declared>}"
+  echo "  This is NOT a broken entry and nothing here needs repairing."
+  print_hint "first issue it:  pl secrets steps $id     (the create-it recipe, provider page and all)"
+  print_hint "then feed it in: pl secrets rotate $id    (writes EVERY declared location, stamps expiry)"
+  return 2
+}
+
+# The transition nothing owned: not-provisioned -> provisioned-<date>.
+# Called after a rotation or a `done` has been RECORDED, and only when the
+# canonical location can be read — promoting on the strength of having been
+# asked would put the entry back under the audit's eye while it was still
+# empty, which is the mirror-image lie.
+# rc 0 = promoted (and said so), 1 = nothing to do.
+promote_first_issue(){ # idx id
+  local idx="$1" id="$2" new
+  [ "$(field "$idx" status)" = "not-provisioned" ] || return 1
+  first_issue_value_present "$idx" || return 1
+  new="provisioned-$(date +%F)"
+  IDX="$idx" ST="$new" "$YQ" e -i '.secrets[env(IDX)|tonumber].status = strenv(ST)' "$REGISTRY" || return 1
+  print_success "$id: FIRST ISSUE — status not-provisioned -> $new"
+  print_hint    "  it is now visible to: pl secrets audit · capabilities · lint · rotate --due · pl todo"
+  return 0
+}
+
+################################################################################
 # leak surfaces — ONE definition, shared by `scan` and `scrub`.
 # They diverged once (scrub omitted logs/, the single surface scan reported
 # in-repo), so the sets are now the same function and a test asserts it.
@@ -588,6 +674,10 @@ post_rotate(){ # idx id cadence [partial-marker]
   # that was seen.
   local cleared=""
   if [ -z "$partial" ]; then cleared=$(exposure_discharge "$idx" "$(date +%F)"); fi
+  # A rotation of something that had never been issued IS its first issuance,
+  # and the flag that hid it from every check has to come off here — nothing
+  # else in the tree ever removed it.
+  promote_first_issue "$idx" "$id" || true
   log_rotation "$id" "$exp" "${partial:-${cleared:+cleared exposure debt: $cleared}}"
   if [ -n "$partial" ]; then
     print_warning "rotated $id — expiry recorded $exp, logged as $partial"
@@ -717,6 +807,18 @@ cmd_rotate(){
 mark_done(){ # idx when
   local idx="$1" when="$2" id cadence exp
   id=$(field "$idx" id); cadence=$(field "$idx" cadence_days); [ -z "$cadence" ] && cadence=90
+  # A credential that has NEVER EXISTED has no rotation to record. `done --all`
+  # walked every entry and called this for the not-provisioned ones too, and
+  # sailed through the propagation gate below because `entry_locations_in_sync`
+  # reports "in sync" when canonical is unreadable — so it stamped today into
+  # `last_rotated`, computed an expiry from it, and wrote a "- [x] … rotated …"
+  # line into the month's log for a token nobody had ever minted. The registry
+  # asserting a state the estate is not in is the one thing this file exists to
+  # prevent.
+  if entry_awaiting_mint "$idx"; then
+    refuse_not_provisioned "$idx" "$id" "record a rotation for"
+    return 3
+  fi
   exp=$(date -d "$when + $cadence days" +%F 2>/dev/null) || { print_error "bad date: $when (use YYYY-MM-DD)"; return 1; }
   # You may not RECORD a rotation you did not PROPAGATE. Stamping last_rotated
   # while half the declared copies still hold the old value is precisely how the
@@ -736,6 +838,10 @@ mark_done(){ # idx when
   # right to clear a recorded exposure. Doing it in only one of the two verbs
   # would leave a debt standing forever for anyone who rotates at the provider.
   local cleared; cleared=$(exposure_discharge "$idx" "$when")
+  # Same transition as `rotate`: this is the "I minted it at the provider by
+  # hand" path, and it passes the SAME propagation gate above, so it earns the
+  # same right to take the flag off.
+  promote_first_issue "$idx" "$id" || true
   [ -f "$ROT_LOG" ] || printf '# Credential rotation — %s\n\nDates only; never paste values.\n\n' "$(date +%Y-%m)" > "$ROT_LOG"
   printf -- "- [x] %s — rotated %s, next expiry %s%s\n" "$id" "$when" "$exp" \
     "${cleared:+ — cleared exposure debt: $cleared}" >> "$ROT_LOG"
@@ -2335,7 +2441,13 @@ cmd_sync(){
   local idx; if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
   { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
   local id canon ckind chost cpath cref canonval
-  id=$(field "$idx" id); canon=$(entry_canonical_loc "$idx")
+  id=$(field "$idx" id)
+  # Before anything else: is there a credential at all? `sync` propagates a
+  # value from canonical to every copy, so for one that has never been issued
+  # there is nothing to propagate — and "canonical location unreadable" sent
+  # the operator looking for a corrupted file that was simply not there yet.
+  entry_awaiting_mint "$idx" && { refuse_not_provisioned "$idx" "$id" "propagate"; return 2; }
+  canon=$(entry_canonical_loc "$idx")
   [ -n "$canon" ] || die "$id: no machine-readable canonical location"
   IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
   canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") \
@@ -2742,7 +2854,11 @@ cmd_verify_copy(){
   local idx; if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
   { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg"
   local id canon ckind chost cpath cref canonval canonhash
-  id=$(field "$idx" id); canon=$(entry_canonical_loc "$idx")
+  id=$(field "$idx" id)
+  # There are no copies of a credential that has never existed. Saying
+  # "canonical unreadable" here reads as a broken local file.
+  entry_awaiting_mint "$idx" && { refuse_not_provisioned "$idx" "$id" "compare copies of"; return 2; }
+  canon=$(entry_canonical_loc "$idx")
   [ -n "$canon" ] || die "$id: no readable canonical location on this host"
   IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
   canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") || die "$id: canonical unreadable"
@@ -2833,6 +2949,13 @@ PROVISION_FORBIDDEN_ROLES="ver verifier signed-deploy prod-agent prod-cluster"
 # its way out, or one sitting in the wrong tier, is not one to make more copies
 # of. Widening the blast radius of a token you are about to revoke is strictly
 # worse than doing nothing.
+#
+# `not-provisioned` stays in the list as a fail-closed backstop, but the normal
+# case is caught EARLIER, by `entry_awaiting_mint`, with its own message: the
+# wording below is about retirement and tiering and was actively misleading for
+# a credential that had simply never been minted. What reaches here is the rare
+# mislabelled entry — marked not-provisioned while a value really is present,
+# which `pl secrets lint` already reports — and refusing that is still right.
 PROVISION_FORBIDDEN_STATUS="RETIRED REVOKE-PENDING TIER-VIOLATION not-provisioned"
 
 # Build the remote command that writes stdin into <path>:<ref>. Path and ref
@@ -2888,6 +3011,16 @@ cmd_provision(){
   { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
 
   local id status; id=$(field "$idx" id); status=$(field "$idx" status)
+  # NOT ISSUED YET is checked BEFORE the on-its-way-out list, and separately,
+  # because it is a different problem with a different fix. The old message —
+  # "refusing to make another copy of a credential that is on its way out or in
+  # the wrong tier. Fix the entry first." — described a retirement or a tier
+  # violation and sent the operator to repair a registry entry that was
+  # perfectly correct. There is simply no value to copy anywhere yet.
+  if entry_awaiting_mint "$idx"; then
+    refuse_not_provisioned "$idx" "$id" "copy to another host"
+    return 2
+  fi
   local s; for s in $PROVISION_FORBIDDEN_STATUS; do
     [ "$status" = "$s" ] && die "$id: status is $status — refusing to make another copy of a credential that is on its way out or in the wrong tier. Fix the entry first."
   done

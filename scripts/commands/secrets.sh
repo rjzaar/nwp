@@ -363,14 +363,27 @@ write_value_to_location(){ # $1=location; value in env NWP_NEWVAL
       [ -n "$sip" ] && sshdest="gitlab@${sip}"
     fi
     qp=$(loc_remote_quoted "$path")
+    # A `~`-relative target IS the login user's own file. Writing it root-owned
+    # is wrong twice: on a host where that user has no passwordless sudo the
+    # write just fails (measured on the agent host, 2026-08-10), and where sudo
+    # DOES work the resulting root:root 0600 file is unreadable by the service
+    # that runs as that user. System paths keep the privileged writer.
+    local wrap="sudo -n " kindword="root-owned"
+    case "$path" in "~"*) wrap="" kindword="user-owned" ;; esac
     if ! printf '%s\n' "$NWP_NEWVAL" | ssh -o BatchMode=yes -o ConnectTimeout=10 "$sshdest" \
-        "sudo -n install -D -m 600 -o root -g root /dev/stdin $qp" 2>/dev/null; then
-      print_error "  FAILED   $loc  (remote write via $sshdest — needs ssh reach + sudo -n install)"
+        "${wrap}install -D -m 600 ${wrap:+-o root -g root }/dev/stdin $qp" 2>/dev/null; then
+      if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$sshdest" true 2>/dev/null; then
+        print_error "  FAILED   $loc  (cannot reach $sshdest over ssh)"
+      elif [ -n "$wrap" ]; then
+        print_error "  FAILED   $loc  (reached $sshdest; the privileged write failed — 'sudo -n install' denied?)"
+      else
+        print_error "  FAILED   $loc  (reached $sshdest; the $kindword write failed — path not writable?)"
+      fi
       return 2
     fi
     lh=$(printf '%s' "$NWP_NEWVAL" | sha256sum | cut -c1-16)
     rh=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$sshdest" \
-        "sudo -n head -1 $qp | tr -d '\n' | sha256sum | cut -c1-16" 2>/dev/null)
+        "${wrap}head -1 $qp | tr -d '\n' | sha256sum | cut -c1-16" 2>/dev/null)
     if [ -n "$rh" ] && [ "$lh" = "$rh" ]; then
       print_success "  WROTE    $loc  (remote, hash-verified)"
       return 0

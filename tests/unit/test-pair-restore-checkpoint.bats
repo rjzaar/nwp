@@ -19,8 +19,10 @@
 #      --paired-restore-ack CP-<id> is the "both" branch, and it is checked
 #      against a RECORDED joint checkpoint, not taken as a promise.
 #
-# Fixtures are self-contained; two tests run against the SHIPPED pairs/ so CI
-# asserts the REAL ssc↔nwc pair binds this gate. No network, no site, no secrets.
+# Fixtures are self-contained; the coupled member-paired shape (the REAL
+# pair's shape — its contract lives in the private overlay since ops#326) is
+# pinned by the cons/prov fixture, and the SHIPPED sample pair (ssd↔nwd) is
+# pinned as the committed corpus. No network, no site, no secrets.
 
 setup() {
   TEST_TMP=$(mktemp -d)
@@ -199,46 +201,33 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-# --- 5. THE REAL PAIR. CI must see this gate bind ssc↔nwc -------------------
+# --- 5. THE SHIPPED SAMPLE. ops#326: the real pair's contract lives in the
+# private overlay; the committed corpus is the sample pair. CI pins that the
+# sample contract still parses into this gate's vocabulary, and that the
+# coupled refusals above are carried by the member-paired fixture shape.
 
-@test "SHIPPED: a single-half DB restore of ssc live is REFUSED by the real contract" {
-  # No sites/, no nwp.yml — only what git carries, plus the two pre-check
-  # artifacts, so nothing but the invariant itself can be what refuses.
-  export PROJECT_ROOT="${TEST_TMP}/bare"; mkdir -p "${PROJECT_ROOT}"
-  export NWP_YML="${PROJECT_ROOT}/nwp.yml"
+@test "SHIPPED: the sample ssd contract carries its ops#83 restore block" {
   export NWP_PAIR_CONTRACT_DIR="${BATS_TEST_DIRNAME}/../../pairs"
-  export NWP_PAIR_STATE_DIR="${PROJECT_ROOT}/state"
-  export NWP_PAIR_LEDGER_DIR="${PROJECT_ROOT}/state/ledger"
-  mkdir -p "${NWP_PAIR_STATE_DIR}" "${NWP_PAIR_LEDGER_DIR}"
-  echo '{"t":"snap","snap":1,"sha256":"x"}' > "${NWP_PAIR_LEDGER_DIR}/ssc.provider-identity.jsonl"
-  echo 'row' > "${NWP_PAIR_STATE_DIR}/ssc.live.join-snapshot.tsv"
-
-  run pair_guard_restore ssc live restore 5 false "" false ""
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"REFUSED"* ]]
-
-  run pair_guard_restore nwc live restore 5 false "" false ""
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"REFUSED"* ]]
-}
-
-@test "SHIPPED: the real contract carries the ops#83 restore block this gate reads" {
-  export NWP_PAIR_CONTRACT_DIR="${BATS_TEST_DIRNAME}/../../pairs"
-  local c; c="$(pair_contract_file ssc)"
-  [ "$(pair_contract_get "$c" '.identity.restore.invariant')" = "both-or-forward" ]
-  [ "$(pair_contract_get "$c" '.identity.restore.pre_check_required')" = "true" ]
-  # sub_stability is the durable-anchor half of D9; the gate's messages cite it.
+  export NWP_PAIR_OVERLAY_DIR="${TEST_TMP}/no-overlay"
+  local c; c="$(pair_contract_file ssd)"
+  [ "$(pair_contract_get "$c" '.identity.restore.invariant')" = "both-or-nothing" ]
+  [ "$(pair_contract_get "$c" '.identity.restore.reconcile')" = "recapture" ]
   [ "$(pair_contract_get "$c" '.identity.sub_stability')" = "uuid" ]
 }
 
-@test "SHIPPED: a code-only restore of ssc live is still ALLOWED" {
-  export PROJECT_ROOT="${TEST_TMP}/bare2"; mkdir -p "${PROJECT_ROOT}"
+@test "SHIPPED: the sample pair is UNCOUPLED, so a live DB restore passes this gate" {
+  # The demo pair's both-or-nothing invariant is enforced by the pair-cut
+  # manifest at reset time (lib/demo-pair.sh), not by pair_guard_restore. This
+  # is the committed-corpus negative control: the gate READS the sample
+  # contract and correctly leaves an uncoupled pair alone.
+  export PROJECT_ROOT="${TEST_TMP}/bare"; mkdir -p "${PROJECT_ROOT}"
   export NWP_YML="${PROJECT_ROOT}/nwp.yml"
   export NWP_PAIR_CONTRACT_DIR="${BATS_TEST_DIRNAME}/../../pairs"
+  export NWP_PAIR_OVERLAY_DIR="${PROJECT_ROOT}/no-overlay"
   export NWP_PAIR_STATE_DIR="${PROJECT_ROOT}/state"
   export NWP_PAIR_LEDGER_DIR="${PROJECT_ROOT}/state/ledger"
   mkdir -p "${NWP_PAIR_STATE_DIR}" "${NWP_PAIR_LEDGER_DIR}"
-  run pair_guard_restore ssc live restore "" false "" true ""
+  run pair_guard_restore ssd live restore 5 false "" false ""
   [ "$status" -eq 0 ]
 }
 

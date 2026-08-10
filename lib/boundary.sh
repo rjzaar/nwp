@@ -52,12 +52,31 @@ BOUNDARY_REASON=""           # short human reason
 
 # --- contract access ---------------------------------------------------------
 
-# Echo the pair contract file. Default pair id: ssc (the real nwc↔ssc pair).
-# Honors NWP_PAIR_CONTRACT_DIR (same override lib/pair.sh uses).
+# Echo the pair contract file for a pair id. ops#326: there is NO engine
+# default pair id — the engine ships no estate. The pair id is configuration:
+# an explicit argument, or NWP_BOUNDARY_PAIR. With neither, echo nothing and
+# return 1; every downstream reader then fails safe CLOSED (uncomputable),
+# and `pl impact` refuses up front naming the knobs.
+# Search order (same as lib/pair.sh): shipped pairs/ first, then the private
+# overlay (NWP_PAIR_OVERLAY_DIR, default $PROJECT_ROOT/private/pairs). A pair
+# declared in BOTH resolves to a path that cannot exist — fail closed, never
+# a precedence rule.
 boundary_contract_file() {
-    local pair_id="${1:-ssc}"
+    local pair_id="${1:-${NWP_BOUNDARY_PAIR:-}}"
+    [ -n "$pair_id" ] || return 1
     local dir="${NWP_PAIR_CONTRACT_DIR:-${PROJECT_ROOT}/pairs}"
-    echo "${dir}/${pair_id}.pair-contract.yml"
+    local odir="${NWP_PAIR_OVERLAY_DIR:-${PROJECT_ROOT}/private/pairs}"
+    local shipped="${dir}/${pair_id}.pair-contract.yml"
+    local overlay="${odir}/${pair_id}.pair-contract.yml"
+    if [ -f "$shipped" ] && [ -f "$overlay" ] && [ "$shipped" != "$overlay" ]; then
+        echo "${shipped}.DUPLICATE-DECLARATION"
+        return 2
+    fi
+    if [ ! -f "$shipped" ] && [ -f "$overlay" ]; then
+        echo "$overlay"
+    else
+        echo "$shipped"
+    fi
 }
 
 _boundary_yq() { command -v yq 2>/dev/null || true; }

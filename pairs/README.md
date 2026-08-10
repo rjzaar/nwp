@@ -5,7 +5,7 @@ and `scripts/commands/pair-smoke.sh` consume — one file per pair, named
 `<consumer>.pair-contract.yml` (the pair id is the **consumer** site key):
 
 ```
-pairs/ssc.pair-contract.yml    # nwc (provider) ↔ ssc (consumer)
+private/pairs/ssc.pair-contract.yml   # the REAL pair — private overlay repo (ops#326)
 pairs/ssd.pair-contract.yml    # nwd (provider) ↔ ssd (consumer)
 ```
 
@@ -33,7 +33,7 @@ Deployed-version + RAG **state** lives elsewhere — `private/pairs/` (gitignore
 
 | File | Pair | contract_version | identity coupling |
 |---|---|---|---|
-| [`ssc.pair-contract.yml`](ssc.pair-contract.yml) | nwc (provider) ↔ ssc (consumer, **real students**) | 2 | `uid_lock`, `coupled_tiers: [live, prod]` — D6 `--code-only` applies |
+| `private/pairs/ssc.pair-contract.yml` (overlay, ops#326) | nwc (provider) ↔ ssc (consumer, **real students**) | 2 | `uid_lock`, `coupled_tiers: [live, prod]` — D6 `--code-only` applies |
 | [`ssd.pair-contract.yml`](ssd.pair-contract.yml) | nwd (provider) ↔ ssd (consumer, **demo twin**) | 3 | none (`uid_lock: false`, `coupled_tiers: []`) — full-DB rebuild is fine |
 
 Both hold only versions + public URLs (no secrets) and pass `pair_contract_valid`.

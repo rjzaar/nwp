@@ -14,7 +14,6 @@
 # Inspect:    scripts/ci/lint-site-names.sh --list
 .doc-truth-baseline	14
 .gitignore	1
-.gitlab-ci.yml	3
 .gitleaks.toml	5
 .gitleaksignore	2
 .verification-scenarios/S11-specialized-installs.yml	15
@@ -24,9 +23,7 @@ CLAUDE.md	5
 README.md	11
 classes/README.md	2
 classes/probe-art9-rows.php	1
-classes/registry.yml	10
-classes/rgs.class.yml	28
-classes/ssc.class.yml	11
+classes/registry.yml	5
 classes/ssd.class.yml	2
 contracts/erasure.command.schema.json	1
 docs/COMMAND_INVENTORY.md	6
@@ -224,7 +221,7 @@ docs/testing/human-testing.md	18
 example.nwp.v2.yml	31
 example.nwp.yml	10
 lib/avc-moodle.sh	8
-lib/boundary.sh	7
+lib/boundary.sh	5
 lib/bundle-build.sh	2
 lib/common.sh	2
 lib/config-drift.sh	1
@@ -232,7 +229,6 @@ lib/database-router.sh	3
 lib/demo-pair.sh	3
 lib/dns-inventory.sh	5
 lib/git.sh	3
-lib/impact-contract.allowlist	1
 lib/impact.sh	5
 lib/install-common.sh	2
 lib/moodle-deploy.sh	7
@@ -245,11 +241,8 @@ lib/pii-gate.sh	2
 lib/prod-guard.sh	1
 lib/project-resolver.sh	4
 lib/restore-remote.sh	1
-lib/sanitizers/mayo.allow	5
-lib/sanitizers/mayo.sh	10
 lib/sanitizers/moodle.sh	3
 lib/sanitizers/oidc-email.sh	1
-lib/sanitizers/ssc.sh	6
 lib/sanitizers/standard.sh	2
 lib/served-roots.sh	11
 lib/server-handoff.sh	1
@@ -262,13 +255,11 @@ lib/verify-cross-validate.sh	15
 lib/yaml-write.sh	3
 pair-contract.example.yml	5
 pairs/README.md	15
-pairs/ssc.pair-contract.yml	26
 pairs/ssd.pair-contract.yml	22
 pl	3
 private/pairs/ssc.live.rag	1
 private/pairs/ssc.log	1
 scripts/agent-loop/agent-loop.sh	1
-scripts/agent-loop/deploy-on-merge.sh	2
 scripts/agent-loop/fix-repo-map.json	7
 scripts/agent-loop/prompts/docs.md	1
 scripts/ci/lint-gate-redproof.sh	1
@@ -280,7 +271,7 @@ scripts/commands/backup.sh	5
 scripts/commands/branch.sh	1
 scripts/commands/build.sh	3
 scripts/commands/class.sh	1
-scripts/commands/contracts.sh	8
+scripts/commands/contracts.sh	7
 scripts/commands/cutover.sh	1
 scripts/commands/delete.sh	1
 scripts/commands/demo.sh	1
@@ -288,7 +279,6 @@ scripts/commands/dev2stg.sh	7
 scripts/commands/doctor.sh	2
 scripts/commands/drush.sh	1
 scripts/commands/erasure.sh	4
-scripts/commands/impact.sh	4
 scripts/commands/install.sh	4
 scripts/commands/link.sh	14
 scripts/commands/live.sh	1
@@ -297,14 +287,14 @@ scripts/commands/mass-times.sh	1
 scripts/commands/migrate-secrets.sh	1
 scripts/commands/moodle-promote.sh	2
 scripts/commands/moodle-smoke.sh	1
-scripts/commands/moodle.sh	17
-scripts/commands/onboard.sh	4
+scripts/commands/moodle.sh	14
+scripts/commands/onboard.sh	3
 scripts/commands/pair-smoke.sh	3
 scripts/commands/pair.sh	2
 scripts/commands/publish.sh	5
 scripts/commands/secrets.sh	3
 scripts/commands/seo-check.sh	5
-scripts/commands/server-publish.sh	2
+scripts/commands/server-publish.sh	1
 scripts/commands/server.sh	6
 scripts/commands/site.sh	2
 scripts/commands/snapshot.sh	1
@@ -331,7 +321,7 @@ scripts/console/tests/test_review_pane.py	3
 scripts/console/tests/test_scope.py	43
 scripts/console/tests/test_tenant_isolation.py	31
 scripts/console/tests/test_visuals.py	22
-scripts/demo/nwd-issuer-provision.sh	3
+scripts/demo/nwd-issuer-provision.sh	2
 scripts/demo/ssd-completion-ws-provision.php	1
 scripts/demo/ssd-completion-ws-provision.sh	2
 scripts/demo/ssd-consent-arc.sh	1
@@ -396,8 +386,6 @@ templates/ddev/commands/web/email-reply-test	1
 templates/site-gitignore.tmpl	3
 tests/fixtures/cnwp.yml	1
 tests/test-yaml-remove-duplicate.sh	14
-tests/unit/test-boundary-honesty.bats	2
-tests/unit/test-boundary.bats	4
 tests/unit/test-bundle.bats	14
 tests/unit/test-common.bats	1
 tests/unit/test-composer-truth.bats	2
@@ -409,11 +397,11 @@ tests/unit/test-deploy-gate-marker-blind.bats	4
 tests/unit/test-dns-list.bats	1
 tests/unit/test-drush-command.bats	2
 tests/unit/test-fleet-publish.bats	14
-tests/unit/test-guards-fail-closed.bats	18
+tests/unit/test-guards-fail-closed.bats	11
 tests/unit/test-impact.bats	2
 tests/unit/test-install-sitename-validation.bats	16
 tests/unit/test-leakage-gate.bats	3
-tests/unit/test-link-verify.bats	21
+tests/unit/test-link-verify.bats	3
 tests/unit/test-live-drush-policy.bats	5
 tests/unit/test-monitor.bats	3
 tests/unit/test-moodle-backup-subplugin.bats	2
@@ -426,16 +414,12 @@ tests/unit/test-moodle-privacy.bats	2
 tests/unit/test-nginx-conf-parity.bats	6
 tests/unit/test-nginx-versioning.bats	3
 tests/unit/test-nwc-identity-ledger.bats	1
-tests/unit/test-oidc-key-rotation.bats	5
+tests/unit/test-oidc-key-rotation.bats	4
 tests/unit/test-oversight-freshness.bats	19
-tests/unit/test-pair-contract.bats	5
-tests/unit/test-pair-join-probe.bats	10
-tests/unit/test-pair-membership.bats	87
-tests/unit/test-pair-restore-checkpoint.bats	9
+tests/unit/test-pair-membership.bats	80
 tests/unit/test-rag-unscanned.bats	2
 tests/unit/test-rollback-dispatch.bats	2
 tests/unit/test-rollback-restore-remote.bats	1
-tests/unit/test-sanitize-dispatch.bats	8
 tests/unit/test-secrets-exposure.bats	1
 tests/unit/test-secrets-registry-truth.bats	1
 tests/unit/test-served-roots-infra.bats	4
@@ -446,7 +430,7 @@ tests/unit/test-server-state.bats	1
 tests/unit/test-server-sync.bats	2
 tests/unit/test-session-bounds.bats	1
 tests/unit/test-site-containment.bats	12
-tests/unit/test-siteclass.bats	17
+tests/unit/test-siteclass.bats	12
 tests/unit/test-ssd-completion-bridge.bats	1
 tests/unit/test-todo-pair-cut.bats	7
 tests/unit/test-todo-suppression.bats	7

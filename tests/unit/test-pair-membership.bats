@@ -243,40 +243,31 @@ EOF
 
 # --- the SHIPPED contracts, so CI notices if the real pair stops binding ------
 
-@test "SHIPPED: the committed pairs/ bind ssc↔nwc and ssd↔nwd with no operator config" {
+@test "SHIPPED: the committed pairs/ bind the SAMPLE pair with no operator config" {
   # No sites/, no nwp.yml — only what git carries. This is the property the old
-  # resolver could not have: a pair that CI itself can see.
+  # resolver could not have: a pair that CI itself can see. ops#326: the REAL
+  # pair's contract lives in the private overlay now, so the committed corpus
+  # is the sample pair (ssd↔nwd) and must NOT bind the real one.
   export PROJECT_ROOT="${TEST_TMP}/bare"; mkdir -p "${PROJECT_ROOT}"
   export NWP_YML="${PROJECT_ROOT}/nwp.yml"
   export NWP_PAIR_CONTRACT_DIR="${BATS_TEST_DIRNAME}/../../pairs"
+  export NWP_PAIR_OVERLAY_DIR="${PROJECT_ROOT}/no-overlay"
 
   [ -z "$(pair_scan_problems)" ]
-  [ "$(pair_membership_of ssc)" = "consumer ssc" ]
-  [ "$(pair_membership_of nwc)" = "provider ssc" ]
   [ "$(pair_membership_of ssd)" = "consumer ssd" ]
   [ "$(pair_membership_of nwd)" = "provider ssd" ]
 
-  # And the ssc pair really does couple live — the fact D6 hangs off.
-  run pair_contract_couples_tier "${NWP_PAIR_CONTRACT_DIR}/ssc.pair-contract.yml" live
-  [ "$status" -eq 0 ]
-}
+  # The real pair is genuinely absent from the engine corpus (not blind — absent).
+  run pair_membership_of ssc
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
 
-@test "SHIPPED: a full-DB push to ssc live is REFUSED using the real contract" {
-  export PROJECT_ROOT="${TEST_TMP}/bare"; mkdir -p "${PROJECT_ROOT}"
-  export NWP_YML="${PROJECT_ROOT}/nwp.yml"
-  export NWP_PAIR_CONTRACT_DIR="${BATS_TEST_DIRNAME}/../../pairs"
-  # The real contract carries schema_sha256 pins against repo-relative paths, so
-  # the schema-pin gate needs contracts/ reachable from PROJECT_ROOT — otherwise
-  # it refuses first and we would never reach the D6 branch under test.
-  ln -s "$(cd "${BATS_TEST_DIRNAME}/../../contracts" && pwd)" "${PROJECT_ROOT}/contracts"
-  pair_rag_set ssc live green
-  pair_guard_record ssc provider live 99      # ordering satisfied; isolate D6
-  run pair_guard ssc live stg2live false false
+  # And the sample pair deliberately does NOT couple live (uid_lock:false,
+  # coupled_tiers:[] — the demo shape). The D6 coupling walk is pinned by the
+  # CASE 1/1b fixtures above and, for the real pair, by the overlay corpus
+  # (`pl pair check ssc live` on the operator's estate).
+  run pair_contract_couples_tier "${NWP_PAIR_CONTRACT_DIR}/ssd.pair-contract.yml" live
   [ "$status" -ne 0 ]
-  [[ "$output" == *"identity-coupled CONSUMER"* ]]
-  run pair_guard nwc live stg2live false false
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"identity-coupled PROVIDER"* ]]
 }
 
 @test "a map-shaped paired_with in the GLOBAL file is also CANNOT-VERIFY" {

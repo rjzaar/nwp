@@ -38,7 +38,17 @@ source "$PROJECT_ROOT/lib/pii-gate.sh"
 
 PL="$PROJECT_ROOT/pl"
 SANITIZERS_DIR="$PROJECT_ROOT/lib/sanitizers"
+# ops#326: per-instance sanitizers (+ .allow lists) live in the private
+# overlay repo, searched after the shipped lib/sanitizers/.
+SANITIZERS_OVERLAY_DIR="${NWP_SANITIZER_OVERLAY_DIR:-$PROJECT_ROOT/private/sanitizers}"
 SITES_DIR="$PROJECT_ROOT/sites"
+
+# First existing lib/sanitizers/<name> or private/sanitizers/<name>; rc 1 if neither.
+resolve_sanitizer_file(){ # <basename, e.g. site.sh or site.allow>
+  if [ -f "$SANITIZERS_DIR/$1" ]; then echo "$SANITIZERS_DIR/$1"; return 0; fi
+  if [ -f "$SANITIZERS_OVERLAY_DIR/$1" ]; then echo "$SANITIZERS_OVERLAY_DIR/$1"; return 0; fi
+  return 1
+}
 
 # ── Options ──────────────────────────────────────────────────────────────────
 OPT_SITE="" OPT_SERVER="" OPT_SOURCE="" OPT_RECIPE=""
@@ -76,7 +86,7 @@ parse_args(){
 # a sanitized dump. Defaults to lib/sanitizers/<site>.allow if present.
 resolve_allowlist(){
   [ -n "$OPT_ALLOWLIST" ] && { echo "$OPT_ALLOWLIST"; return; }
-  [ -f "$SANITIZERS_DIR/$OPT_SITE.allow" ] && { echo "$SANITIZERS_DIR/$OPT_SITE.allow"; return; }
+  resolve_sanitizer_file "$OPT_SITE.allow" 2>/dev/null && return
   echo ""
 }
 
@@ -99,13 +109,15 @@ step_preflight(){
 
   # A reviewed sanitizer must exist (the prod-side, human-run step). We do NOT run
   # it; we require its presence so onboarding a site without one is a hard stop.
-  if [ ! -f "$SANITIZERS_DIR/$OPT_SITE.sh" ]; then
-    print_error "no sanitizer at lib/sanitizers/$OPT_SITE.sh"
-    print_hint  "write one (see lib/sanitizers/mayo.sh) and have it human-reviewed first —"
-    print_hint  "sanitization is security-critical (CLAUDE.md). Onboarding cannot proceed without it."
+  local sanitizer_path
+  if ! sanitizer_path="$(resolve_sanitizer_file "$OPT_SITE.sh")"; then
+    print_error "no sanitizer at $SANITIZERS_DIR/$OPT_SITE.sh or $SANITIZERS_OVERLAY_DIR/$OPT_SITE.sh"
+    print_hint  "write one (see lib/sanitizers/standard.sh, the generic Drupal model) and have it"
+    print_hint  "human-reviewed first — sanitization is security-critical (CLAUDE.md). A per-instance"
+    print_hint  "sanitizer belongs in the private overlay repo (private/sanitizers/), not the engine."
     exit 1
   fi
-  print_status "OK" "sanitizer present: lib/sanitizers/$OPT_SITE.sh"
+  print_status "OK" "sanitizer present: $sanitizer_path"
 
   # Tooling.
   for t in ssh scp ddev; do command -v "$t" >/dev/null 2>&1 || die "$t is required but not installed"; done
@@ -147,7 +159,7 @@ step_sanitize_and_gate(){
     print_warning "no --sanitized-db supplied — the prod sanitize step is HUMAN-SUPERVISED."
     echo
     print_info "Run this ON the production server (it sanitizes a scratch copy; live DB stays read-only):"
-    echo "    scp -i $OPT_KEY lib/sanitizers/$OPT_SITE.sh <prod>:/tmp/$OPT_SITE-sanitizer.sh"
+    echo "    scp -i $OPT_KEY $(resolve_sanitizer_file "$OPT_SITE.sh" 2>/dev/null || echo "lib/sanitizers/$OPT_SITE.sh") <prod>:/tmp/$OPT_SITE-sanitizer.sh"
     echo "    ssh -i $OPT_KEY <prod> \\"
     echo "        \"cd '$remote_root' && sudo -u www-data /tmp/$OPT_SITE-sanitizer.sh \\"
     echo "             --site-dir '$remote_root' --output /tmp/$OPT_SITE-sanitized.sql.gz\""

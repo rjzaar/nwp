@@ -473,8 +473,14 @@ main(){
   if [ "$SANITIZE" = y ]; then
     repo_site="${site}-sanitized"
     DB_ONLY=y
-    [ -n "$SANITIZER" ] || SANITIZER="${PROJECT_ROOT:-.}/lib/sanitizers/${site}.sh"
-    [ -f "$SANITIZER" ] || die "--sanitize: no sanitiser at '$SANITIZER' — pass --sanitizer PATH. Refusing to write an unsanitised long-term archive (fail-closed)."
+    # ops#326: per-instance sanitizers live in the private overlay
+    # (private/sanitizers/), searched after the shipped lib/sanitizers/.
+    if [ -z "$SANITIZER" ]; then
+      SANITIZER="${PROJECT_ROOT:-.}/lib/sanitizers/${site}.sh"
+      _san_ovl="${NWP_SANITIZER_OVERLAY_DIR:-${PROJECT_ROOT:-.}/private/sanitizers}/${site}.sh"
+      if [ ! -f "$SANITIZER" ] && [ -f "$_san_ovl" ]; then SANITIZER="$_san_ovl"; fi
+    fi
+    [ -f "$SANITIZER" ] || die "--sanitize: no sanitiser at '$SANITIZER' (or the private/sanitizers overlay) — pass --sanitizer PATH. Refusing to write an unsanitised long-term archive (fail-closed)."
   fi
   [ -n "$REPO" ]  || REPO="/var/backups/nwp-server/$repo_site"
   [ -n "$DRUSH" ] || DRUSH="$SITE_DIR/vendor/bin/drush"

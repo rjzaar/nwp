@@ -61,6 +61,8 @@ NWP_REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # as scripts/commands/contracts.sh.
 PROJECT_ROOT="${PROJECT_ROOT:-$NWP_REPO_ROOT}"
 PAIRS_DIR="${NWP_PAIR_CONTRACT_DIR:-$PROJECT_ROOT/pairs}"
+# ops#326: real pair contracts live in the private overlay, searched second.
+PAIRS_OVERLAY_DIR="${NWP_PAIR_OVERLAY_DIR:-$PROJECT_ROOT/private/pairs}"
 STATE_DIR="${NWP_ERASURE_STATE_DIR:-$PROJECT_ROOT/private/erasure}"
 LEDGER="$STATE_DIR/ledger.jsonl"
 
@@ -82,7 +84,16 @@ _yqe() { # <file> <expr>  -> value or empty (never the literal "null")
     yq e -r "$e" "$f" 2>/dev/null | grep -v '^null$' || true
 }
 
-_contract_for() { echo "$PAIRS_DIR/${1}.pair-contract.yml"; }
+_contract_for() {
+    # ops#326: shipped first, then overlay; a pair declared in BOTH echoes a
+    # path that cannot exist (fail-closed — same rule as lib/pair.sh).
+    local shipped="$PAIRS_DIR/${1}.pair-contract.yml"
+    local overlay="$PAIRS_OVERLAY_DIR/${1}.pair-contract.yml"
+    if [ -f "$shipped" ] && [ -f "$overlay" ] && [ "$shipped" != "$overlay" ]; then
+        echo "$shipped.DUPLICATE-DECLARATION"; return 0
+    fi
+    if [ ! -f "$shipped" ] && [ -f "$overlay" ]; then echo "$overlay"; else echo "$shipped"; fi
+}
 
 # Resolve the pair contract or fail closed. Echoes the path on success.
 _require_contract() {
@@ -90,7 +101,7 @@ _require_contract() {
     contract="$(_contract_for "$pair")"
     if [ ! -f "$contract" ]; then
         _err "erasure: NO-CONTRACT — no pair contract for '$pair' at $contract"
-        _say  "  Pairs available: $(ls "$PAIRS_DIR"/*.pair-contract.yml 2>/dev/null | xargs -r -n1 basename | sed 's/\.pair-contract\.yml//' | tr '\n' ' ')"
+        _say  "  Pairs available: $(ls "$PAIRS_DIR"/*.pair-contract.yml "$PAIRS_OVERLAY_DIR"/*.pair-contract.yml 2>/dev/null | xargs -r -n1 basename | sed 's/\.pair-contract\.yml//' | sort -u | tr '\n' ' ')"
         return 1
     fi
     if ! command -v yq >/dev/null 2>&1; then

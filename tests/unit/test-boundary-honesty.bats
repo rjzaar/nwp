@@ -69,7 +69,7 @@ _load_libs() {
     export NWP_PAIR_CONTRACT_DIR="${REAL_ROOT}/pairs"
     source "${REAL_ROOT}/lib/impact.sh"
     source "${REAL_ROOT}/lib/boundary.sh"
-    local c="${REAL_ROOT}/pairs/ssc.pair-contract.yml"
+    local c="${REAL_ROOT}/pairs/ssd.pair-contract.yml"   # ops#326: the shipped sample pair
     local surface n=0
     while IFS= read -r surface; do
         [ -n "$surface" ] || continue
@@ -184,7 +184,7 @@ PHP
     export NWP_PAIR_CONTRACT_DIR="${REAL_ROOT}/pairs"
     source "${REAL_ROOT}/lib/impact.sh"
     source "${REAL_ROOT}/lib/boundary.sh"
-    run boundary_honesty_check "${REAL_ROOT}/pairs/ssc.pair-contract.yml"
+    run boundary_honesty_check "${REAL_ROOT}/pairs/ssd.pair-contract.yml"
     case "$status" in
         0) [[ "$output" == *"VERIFIED CLEAN"* ]] ;;
         1) [[ "$output" == *"VIOLATIONS"*     ]] ;;

@@ -15,7 +15,7 @@ set -euo pipefail
 #
 # ops#146 implemented the live half, so the tier gate now admits dev and live and
 # refuses stg/prod. What bounds this script is therefore the CONTRACT gate, not
-# the tier: `pairs/ssc.pair-contract.yml` carries no `demo:` block, so the real
+# the tier: the real pair's contract (private overlay, ops#326) carries no `demo:` block, so that
 # student-bearing pair is unreachable from here no matter what --tier says.
 # Nothing on the live path relaxes a security control — the live JWKS probe
 # verifies TLS (dev keeps -k for ddev's self-signed cert), the client secret is

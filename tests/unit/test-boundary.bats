@@ -8,13 +8,17 @@
 setup() {
   export PROJECT_ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
   export NWP_PAIR_CONTRACT_DIR="${PROJECT_ROOT}/pairs"
-  CONTRACT="${NWP_PAIR_CONTRACT_DIR}/ssc.pair-contract.yml"
-  NWC="sites/nwc/dev/html/profiles/custom/nwc/modules/nwc_features"
+  # ops#326: this suite runs against the SHIPPED SAMPLE pair (ssd↔nwd) — the
+  # real pair's contract lives in the private overlay and is not in this repo.
+  export NWP_BOUNDARY_PAIR=ssd
+  export NWP_PAIR_OVERLAY_DIR="${BATS_TEST_TMPDIR}/no-overlay"
+  CONTRACT="${NWP_PAIR_CONTRACT_DIR}/ssd.pair-contract.yml"
+  NWC="sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features"
   source "${PROJECT_ROOT}/lib/impact.sh"
   source "${PROJECT_ROOT}/lib/boundary.sh"
 }
 
-@test "contract exposes the 7 boundary surfaces" {
+@test "contract exposes the 8 boundary surfaces" {
   run boundary_surfaces "$CONTRACT"
   [ "$status" -eq 0 ]
   [[ "$output" == *oauth_sso* ]]
@@ -23,12 +27,13 @@ setup() {
   [[ "$output" == *role_cohort_sync* ]]
   [[ "$output" == *badge_read* ]]
   [[ "$output" == *shared_salt* ]]
-  [[ "$output" == *erasure* ]]   # ops#81 P0 — 7th surface (nwc→ssc RTBF erase)
-  [ "$(boundary_surfaces "$CONTRACT" | wc -l)" -eq 7 ]
+  [[ "$output" == *erasure* ]]           # ops#81 P0 — provider→consumer RTBF erase
+  [[ "$output" == *demo_paired_reset* ]] # ops#133 Phase 2 — the demo tier itself
+  [ "$(boundary_surfaces "$CONTRACT" | wc -l)" -eq 8 ]
 }
 
 @test "BOUNDARY-TOUCHING: erasure (ops#81 consumer plugin glob fires)" {
-  export NWP_IMPACT_FILES="moodle/local/nwc_erase/erase.php"
+  export NWP_IMPACT_FILES="local/nwc_erase/erase.php"
   boundary_classify main "$CONTRACT"
   [ "$BOUNDARY_CLASS" = "BOUNDARY-TOUCHING" ]
   [ "${BOUNDARY_SURFACES[0]}" = "erasure" ]
@@ -88,7 +93,7 @@ setup() {
 }
 
 @test "BOUNDARY-TOUCHING: consumer-side Moodle plugin glob fires" {
-  export NWP_IMPACT_FILES="moodle/auth/oauth2/classes/foo.php"
+  export NWP_IMPACT_FILES="auth/nwc/classes/foo.php"
   boundary_classify main "$CONTRACT"
   [ "${BOUNDARY_SURFACES[0]}" = "oauth_sso" ]
 }
@@ -150,7 +155,7 @@ setup() {
   command -v yq >/dev/null || skip "needs yq present to prove the contrast"
   # Same diff twice: with yq it is BOUNDARY-TOUCHING; without yq the old code
   # said INTERNAL (the ops#165 false-green). Now it must say uncomputable.
-  run env PATH=/usr/bin:/bin NWP_IMPACT_FILES="moodle/local/nwc_erase/erase.php" \
+  run env PATH=/usr/bin:/bin NWP_IMPACT_FILES="local/nwc_erase/erase.php" \
       bash -c "source '${PROJECT_ROOT}/lib/boundary.sh'; boundary_classify main '$CONTRACT'; echo \"\$BOUNDARY_CLASS/\$BOUNDARY_UNCOMPUTABLE\""
   [ "$status" -eq 0 ]
   [[ "$output" == *"BOUNDARY/1"* ]]
@@ -208,7 +213,7 @@ setup() {
 @test "FAIL-SAFE CLOSED: a contract declaring ZERO surfaces ⇒ BOUNDARY / uncomputable" {
   command -v yq >/dev/null || skip "needs yq"
   local empty="${BATS_TEST_TMPDIR}/empty.pair-contract.yml"
-  printf 'pair: ssc\nboundary: {}\n' > "$empty"
+  printf 'pair: fx\nboundary: {}\n' > "$empty"
   export NWP_IMPACT_FILES="README.md"
   boundary_classify main "$empty"
   [ "$BOUNDARY_CLASS" = "BOUNDARY" ]
@@ -220,7 +225,7 @@ setup() {
   command -v yq >/dev/null || skip "needs yq"
   local dir="${BATS_TEST_TMPDIR}/pairs-bad"
   mkdir -p "$dir"
-  printf 'boundary:\n  oauth_sso:\n   provider_paths: [\n' > "$dir/ssc.pair-contract.yml"
+  printf 'boundary:\n  oauth_sso:\n   provider_paths: [\n' > "$dir/ssd.pair-contract.yml"
   run env NWP_PAIR_CONTRACT_DIR="$dir" NWP_IMPACT_FILES="README.md" \
       bash "${PROJECT_ROOT}/scripts/commands/impact.sh" --base=main --json --fail-uncomputable
   [ "$status" -eq 2 ]

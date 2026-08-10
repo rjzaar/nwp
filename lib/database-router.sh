@@ -559,7 +559,7 @@ _sanitize_staging_db_moodle() {
     fail "Moodle DDEV in-place sanitize (Path B) is intentionally not wired — use Path A"
     note "Target '$target_site' is a Moodle stack (ADR-0031 plane 5b: student learning records + tool_policy consent)."
     note "Moodle sanitisation runs prod-native: scripts/commands/server-publish.sh with"
-    note "  lib/sanitizers/${target_site}.sh (→ lib/sanitizers/moodle.sh). See ops#110."
+    note "  lib/sanitizers/${target_site}.sh or private/sanitizers/${target_site}.sh (→ lib/sanitizers/moodle.sh). See ops#110/#326."
     note "Refusing to promote a Moodle DB un-sanitized via the DDEV path (fail-closed)."
     return 1
 }

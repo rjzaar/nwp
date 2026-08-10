@@ -389,7 +389,7 @@ def test_bad_site_is_rejected_by_the_allowlist(mod, monkeypatch):
 
     monkeypatch.setattr(mod, "run_pl", boom)
     r = _client(mod).post("/actions/demo_codes",
-                          data={"site": "avc", "op": "revoke", "code_ids": ["c1"]})
+                          data={"site": "fxreal", "op": "revoke", "code_ids": ["c1"]})
     assert r.status_code == 200
     assert "not a demo site" in r.text
 

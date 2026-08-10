@@ -35,6 +35,12 @@ artifacts:
     remote: /etc/cron.d/nwp-stick-backup
     why: "The offline leg — pushes to the LUKS sticks N1/N2/N3. The only copy of the fleet that is not online; unversioned until now."
 
+  - id: cron-nwp-met-user-dr
+    kind: cmd
+    remote: "crontab -l | grep -A1 'NWP met user DR pull'"
+    why: "The USER-LEVEL DR leg (ops#330): scripts/met-dr-pull.sh at 03:35 pulls the dev laptop's curated export (rrsync-ro key, push-fallback while the laptop's sshd awaits the operator) AND the LIVE box's nightly /var/backups/nwp-pull (proven to have NO off-box consumer before this) into ~/nwp-dr/repo, with post-run snapshot freshness+size verification. User crontab because rob has no passwordless sudo here; folding it into /srv/nwp-dr (so the 03:15 stick pull carries it) is a flagged operator option."
+    repo_counterpart: servers/met/system/cron-nwp-met-user-dr
+
   - id: systemd-cpu-freq-cap.service
     kind: cmd
     remote: "systemctl cat cpu-freq-cap.service"

@@ -10,6 +10,18 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/hooks/userpromptsubmit-om-freshness.sh",
+            "timeout": 60,
+            "statusMessage": "Checking OPERATING-MODEL state freshness (ops#319 F2)"
+          }
+        ]
+      }
     ]
   }
 }

@@ -213,6 +213,15 @@ _run_action() {
     run bash "$REHOMED"
 }
 
+# The OTHER route into this wrapper, and the one no test exercised until
+# ops#329 D6: `sudo /usr/local/bin/ssd-demo-reset-restricted <word>` over the
+# ordinary admin ssh. sudo's env_reset strips SSH_ORIGINAL_COMMAND *and*
+# SSH_CLIENT, so the action word can only arrive as a positional argument.
+_run_action_sudo() {
+    unset SSH_ORIGINAL_COMMAND SSH_CLIENT
+    SSD_TEST_TRACE="$TRACE" run bash "$REHOMED" "$@"
+}
+
 _dropped()      { grep -q 'DROP-APPLIED' "$TRACE"; }
 _imported()     { grep -q 'IMPORT-APPLIED' "$TRACE"; }
 _canary_gone()  { [[ ! -f "${BOX}/var/www/ssd_moodledata/filedir/tester-upload.txt" ]]; }
@@ -303,6 +312,73 @@ _golden_here()  { [[ -f "${BOX}/var/www/ssd_moodledata/filedir/golden-marker.txt
     [ "$status" -eq 0 ]
     ! _dropped
     ! _canary_gone
+}
+
+# ---------------------------------------------------------------------------
+# [G1] ops#329 D6 — the SUDO route must carry the action word too
+#
+# MEASURED 2026-08-10. `pl demo status ssd --tier=live` reported
+#   "[!] UNKNOWN — the box answered but named no 'last reset'".
+# It had asked the box for `status` over the admin path:
+#   ssh … "sudo /usr/local/bin/ssd-demo-reset-restricted status"
+# and the box answered
+#   2026-08-10T12:31:02Z|invoked|action=nightly client=local original=
+#   2026-08-10T12:31:02Z|skip-locked|another ssd reset is already running
+# The wrapper read its action word ONLY from $SSH_ORIGINAL_COMMAND, which sudo
+# strips. The positional `status` was dropped on the floor and the empty string
+# fell into the `""|nightly)` arm — so a READ-ONLY monitoring probe asked the
+# box to WIPE the site, and only an already-held lock stopped it.
+#
+# UNKNOWN was the symptom. "status runs a reset" was the defect.
+# ---------------------------------------------------------------------------
+
+@test "[G1] ops#329 the action word is honoured on the SUDO route (positional arg)" {
+    _build_box
+    _rehome
+    _run_action_sudo status
+    [ "$status" -eq 0 ]
+    # The thing the caller parses. Its absence is what rendered as UNKNOWN.
+    [[ "$output" == *"last reset:"* ]]
+    # …and, far more importantly, it must not have run a reset.
+    [[ "$output" != *"action=nightly"* ]]
+    ! _dropped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 a positional harvest drains, it does not wipe" {
+    # `pl demo harvest --pull` takes the same sudo route when the restricted
+    # key is not on this host (scripts/commands/demo.sh cmd_harvest).
+    _build_box
+    _rehome
+    _run_action_sudo harvest
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"action=nightly"* ]]
+    ! _dropped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 a BAD positional word is refused — it must not fall through to nightly" {
+    # The dangerous default: an unrecognised word arriving positionally must
+    # take the REFUSED arm, never the empty-string/nightly arm.
+    _build_box
+    _rehome
+    _run_action_sudo 'rm -rf /'
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"REFUSED"* ]]
+    ! _dropped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 the CRON contract survives: no word at all is still nightly" {
+    # The forced command runs with SSH_ORIGINAL_COMMAND empty and no argv when
+    # the nightly cron fires. Honouring $1 must not break that.
+    _build_box
+    _rehome
+    _run_action_sudo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FATE MANIFEST"* ]]
+    _dropped
+    _canary_gone
 }
 
 # ---------------------------------------------------------------------------
@@ -740,4 +816,54 @@ CURL
     [ -f "${BOX}/var/lib/nwp-demo/ssd/harvest/posted/harvest-20260807-120000.txt" ]
     [ ! -f "${BOX}/var/lib/nwp-demo/ssd/harvest/harvest-20260807-120000.txt" ]
     ! _dropped
+}
+
+# ---------------------------------------------------------------------------
+# [G1] static: the client's string is never in a command position
+#
+# The Drupal half has carried this check since ops#133 (test-demo.bats). The
+# Moodle half never did — and ops#329 D6 has just WIDENED where the client's
+# word can arrive from (argv as well as $SSH_ORIGINAL_COMMAND), so the gap
+# stops being theoretical. Same property, same two shapes of failure proven
+# below before the tick above is believed.
+# ---------------------------------------------------------------------------
+
+_client_input_uses_are_safe() {
+    local f="$1" line
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" == *'scrub "$RAW_CMD"'* ]] && continue
+        if [[ "$line" == *'$('* || "$line" == *'`'* || "$line" == *'eval'* ]]; then
+            echo "unsafe use of client input (command substitution): $line"; return 1
+        fi
+        [[ "$line" =~ ^[[:space:]]*(RAW_CMD|ARGV_CMD)=\" ]] && continue
+        [[ "$line" == *'[['*']]'* ]]                        && continue
+        [[ "$line" == *'case "$RAW_CMD" in'* ]]             && continue
+        echo "unsafe use of client input: $line"; return 1
+    done < <(grep -E 'RAW_CMD|ARGV_CMD' "$f")
+    return 0
+}
+
+@test "[G1] the ssd wrapper never evals or shells out to client input" {
+    ! grep -qE '\beval\b' "$SCRIPT"
+    ! grep -qE '(sh|bash) +-c +.*SSH_ORIGINAL_COMMAND' "$SCRIPT"
+    _client_input_uses_are_safe "$SCRIPT"
+}
+
+@test "[G1] NEGATIVE CONTROL: that guard actually rejects an unsafe use" {
+    local copy="${BATS_TEST_TMPDIR}/wrapper-unsafe"
+    cp "$SCRIPT" "$copy"
+    printf '\n$RAW_CMD\n' >> "$copy"
+    run _client_input_uses_are_safe "$copy"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"unsafe use of client input"* ]]
+
+    cp "$SCRIPT" "$copy"
+    printf '\nX="$(echo "$ARGV_CMD")"\n' >> "$copy"
+    run _client_input_uses_are_safe "$copy"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"command substitution"* ]]
+
+    run _client_input_uses_are_safe "$SCRIPT"
+    [ "$status" -eq 0 ]
 }

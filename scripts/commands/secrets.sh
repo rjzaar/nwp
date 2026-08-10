@@ -393,7 +393,23 @@ write_value_to_location(){ # $1=location; value in env NWP_NEWVAL
   fi
 
   f=$(loc_abspath "$path")
-  [ -f "$f" ] || { print_error "  MISSING  $loc  -> $f"; return 2; }
+  # An @file location IS the credential — the whole file is the value — so a
+  # missing one is something this writer can put right, and on FIRST ISSUE
+  # creating it is precisely the job. Refusing there was a chicken-and-egg the
+  # operator could not break through any verb (found 2026-08-10 minting the
+  # forge-admin token). It is still reported as CREATED, never silently, so a
+  # copy that vanished between rotations is visible rather than papered over.
+  # yaml/env kinds keep the hard failure: you cannot edit a key inside a file
+  # that does not exist, and inventing one would invent its other keys too.
+  if [ ! -f "$f" ]; then
+    if [ "$kind" = "file" ]; then
+      mkdir -p "$(dirname "$f")" 2>/dev/null || { print_error "  FAILED   $loc  (cannot create $(dirname "$f"))"; return 2; }
+      ( umask 077; : > "$f" ) 2>/dev/null || { print_error "  FAILED   $loc  (cannot create $f)"; return 2; }
+      print_info "  CREATED  $loc  -> $f (did not exist; first issue or a vanished copy)"
+    else
+      print_error "  MISSING  $loc  -> $f"; return 2
+    fi
+  fi
 
   case "$kind" in
     yaml)

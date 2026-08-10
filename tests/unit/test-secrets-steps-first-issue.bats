@@ -103,3 +103,80 @@ _steps() { run env NWP_ROOT="$NWP_ROOT" HOME="$HOME" \
   _steps brand_new_admin
   [[ "$output" != *"admin/users/fixture-bot/impersonation_tokens"* ]]
 }
+
+# ── first issue of a LOCAL @file credential ─────────────────────────────────
+# The writer required every local location to exist already — correct for a
+# yaml/env key, a chicken-and-egg for an @file credential being issued for the
+# FIRST time: the file cannot exist until it is written, and no verb would
+# write it. Hit for real on 2026-08-10 minting gitlab_forge_admin.
+_reg_localfile() {
+  cat > "$NWP_SECRETS_REGISTRY" <<YML
+secrets:
+  - id: newfile_cred
+    provider: gitlab
+    type: whole-file credential issued for the first time
+    scopes: [api]
+    stored_in: ['${TEST_TMP}/newdir/cred.token:@file']
+    rotate_via: manual
+    rotate_url: https://fixture.example.org/x
+    expires: ""
+    last_rotated: ""
+    owner: operator
+    status: not-provisioned
+YML
+}
+
+@test "first issue: a local @file location that does not exist yet is CREATED and written" {
+  _reg_localfile
+  pty_run 'fixture-value-1
+2030-01-01
+' "env NWP_ROOT='$NWP_ROOT' HOME='$HOME' PATH='$PATH' \
+     NWP_SECRETS_REGISTRY='$NWP_SECRETS_REGISTRY' NWP_SECRETS_FILE='$NWP_SECRETS_FILE' \
+     bash '$SECRETS_SH' rotate newfile_cred"
+  [ -f "${TEST_TMP}/newdir/cred.token" ]
+  [ "$(cat "${TEST_TMP}/newdir/cred.token")" = "fixture-value-1" ]
+}
+
+@test "first issue: the created file is 0600 — a token must never be world-readable" {
+  _reg_localfile
+  pty_run 'fixture-value-1
+2030-01-01
+' "env NWP_ROOT='$NWP_ROOT' HOME='$HOME' PATH='$PATH' \
+     NWP_SECRETS_REGISTRY='$NWP_SECRETS_REGISTRY' NWP_SECRETS_FILE='$NWP_SECRETS_FILE' \
+     bash '$SECRETS_SH' rotate newfile_cred"
+  [ "$(stat -c %a "${TEST_TMP}/newdir/cred.token")" = "600" ]
+}
+
+@test "first issue: creating is REPORTED, never silent" {
+  _reg_localfile
+  local out
+  out=$(pty_run 'fixture-value-1
+2030-01-01
+' "env NWP_ROOT='$NWP_ROOT' HOME='$HOME' PATH='$PATH' \
+     NWP_SECRETS_REGISTRY='$NWP_SECRETS_REGISTRY' NWP_SECRETS_FILE='$NWP_SECRETS_FILE' \
+     bash '$SECRETS_SH' rotate newfile_cred")
+  [[ "$out" == *"CREATED"* ]]
+}
+
+@test "NEGATIVE CONTROL: a missing yaml-key file still FAILS — inventing it invents its other keys" {
+  cat > "$NWP_SECRETS_REGISTRY" <<YML
+secrets:
+  - id: yaml_cred
+    provider: gitlab
+    type: a key inside a yaml file
+    scopes: [api]
+    stored_in: ['${TEST_TMP}/nope/absent.yml:gitlab.thing']
+    rotate_via: manual
+    expires: ""
+    last_rotated: ""
+    owner: operator
+YML
+  local out
+  out=$(pty_run 'fixture-value-1
+2030-01-01
+' "env NWP_ROOT='$NWP_ROOT' HOME='$HOME' PATH='$PATH' \
+     NWP_SECRETS_REGISTRY='$NWP_SECRETS_REGISTRY' NWP_SECRETS_FILE='$NWP_SECRETS_FILE' \
+     bash '$SECRETS_SH' rotate yaml_cred" || true)
+  [[ "$out" == *"MISSING"* ]]
+  [ ! -e "${TEST_TMP}/nope/absent.yml" ]
+}

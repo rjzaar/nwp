@@ -1,0 +1,6 @@
+ssh-ed25519 <KEY-REDACTED len=68> gitlab@nwpcode.org
+command="/usr/bin/rrsync -ro /var/backups/nwp-pull",restrict ssh-ed25519 <KEY-REDACTED len=68> met-stick-backup-pull
+command="rrsync -ro /var/backups/nwp-pull",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 <KEY-REDACTED len=68> nwp-dr-pull@met
+command="/usr/local/bin/nwd-demo-reset-restricted",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 <KEY-REDACTED len=68> nwd-demo-reset@met
+ssh-ed25519 <KEY-REDACTED len=68> nwp-forge-ops@authoring
+command="/usr/local/bin/forge-probe-restricted",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 <KEY-REDACTED len=68> nwp-forge-probe@authoring

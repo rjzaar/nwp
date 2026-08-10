@@ -1097,8 +1097,22 @@ cmd_work(){
   # ledger permitted (observed 2026-08-07, ops#279). So: link the whole thing when
   # absent, and when git checked out a partial dir, descend and link the MISSING
   # children instead. Tracked files came from the branch and are never touched.
+  #
+  # ops#331: `servers` belongs in this list for exactly the same reason and was
+  # missing. It is partially tracked (nginx/, system/, backup/… are versioned;
+  # `servers/*/.nwp-server.yml` is gitignored), so a worktree got the tracked
+  # skeleton and NO identity file — and every server verb then failed inside a
+  # worktree. Observed 2026-08-10 while building `pl forge`:
+  #     $ pl server health <forge>        # run inside a worktree
+  #     UNKNOWN: health probe failed (rc=255) — treating as UNREACHABLE
+  # …against a box that was HEALTHY from the main checkout one second earlier.
+  # That is the ops#279 shadowing bug wearing a different hat, and it fails in
+  # the *safe* direction only by luck: an unreachable box is refused, but a verb
+  # that reads a server list would have read an EMPTY fleet and said so
+  # confidently. `_wt_link_missing` skips `.git`, so the nested
+  # `servers/nwpcode/.git` repo is left alone.
   local s
-  for s in .secrets.yml nwp.yml private sites; do
+  for s in .secrets.yml nwp.yml private sites servers; do
     [ -e "$PROJECT_ROOT/$s" ] || continue
     if [ ! -e "$wt/$s" ]; then
       ln -s "$PROJECT_ROOT/$s" "$wt/$s" && print_info "linked shared state → $s"

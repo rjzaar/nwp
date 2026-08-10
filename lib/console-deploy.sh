@@ -29,6 +29,7 @@
 CONSOLE_MANIFEST_CMD='find . -type f \
   ! -path "*/__pycache__/*" ! -name "*.pyc" ! -name "*.pyo" \
   ! -path "*/.pytest_cache/*" ! -path "*/.git/*" \
+  ! -name ".nwp-deployed.json" \
   -print | LC_ALL=C sort | while IFS= read -r f; do
     printf "%s %s %s\n" "$(sha256sum "$f" | cut -d" " -f1)" "$(stat -c %Y "$f")" "${f#./}"
   done'

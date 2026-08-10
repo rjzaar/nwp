@@ -11,6 +11,53 @@
     <span class="warnnote">Changes made on live now — revoke, purge, guild edits — <strong>revert</strong> at the
     next nightly reset ({{ d.seal.reset_window }}) unless a new golden is sealed:
     <code>pl demo golden {{ d.site }} --tier=live --with-pair</code> (~4–6 min paired, run on the workstation).</span>
+
+    {# --- return leg (ops#329 D4): the box's own last feedback-status run --- #}
+    {% set fb = d.seal.feedback_status %}
+    {% if fb %}
+    <div class="sealleg">
+      {% if fb.reported %}
+        {% if fb.stale %}
+          <span class="err"><strong>CANNOT VERIFY (stale return leg)</strong>: newest feedback-status
+          {{ fb.ts }} ({{ fb.age_human }} ago) — the leg is hourly, so it has stopped and nobody has said so.</span>
+        {% elif fb.result == "ok" %}
+          <span><strong>Return leg OK</strong> {{ fb.ts }} ({{ fb.age_human }} ago): {{ fb.summary }}</span>
+        {% elif fb.result == "none" %}
+          <span class="warnnote"><strong>Return leg has NEVER run</strong> on the box —
+          <code>pl demo schedule {{ d.site }} --feedback-status --via-key</code></span>
+        {% else %}
+          <span class="err"><strong>Return leg {{ fb.result }}</strong> {{ fb.ts }}: {{ fb.summary }}</span>
+        {% endif %}
+      {% elif fb.by_design %}
+        <span class="muted">Return leg: {{ fb.reason }}</span>
+      {% else %}
+        <span class="err"><strong>Return leg: CANNOT VERIFY</strong> — {{ fb.reason }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# --- live-box backups (ops#329 D5): newest per subdir of nwp-pull ------ #}
+    {% set bk = d.seal.backups %}
+    {% if bk %}
+    <div class="sealleg">
+      {% if bk.reported %}
+        {% if bk.state == "ok" %}
+          <span><strong>Live-box backups</strong> ({{ bk.dir }}):
+          {% for e in bk.entries %}
+            {% if e.empty %}{{ e.subdir }}: EMPTY{% else %}{{ e.subdir }}: {{ e.newest }} ({{ e.bytes }} bytes, {{ e.age_human }} old){% endif %}{% if not loop.last %} · {% endif %}
+          {% endfor %}
+          {% if not bk.entries %}<span class="warnnote">no backup subdirs</span>{% endif %}
+          </span>
+        {% else %}
+          <span class="err"><strong>Live-box backups: CANNOT VERIFY</strong> — {{ bk.dir }} is {{ bk.state | upper }}</span>
+        {% endif %}
+      {% elif bk.by_design %}
+        <span class="muted">Live-box backups: {{ bk.reason }}</span>
+      {% else %}
+        <span class="err"><strong>Live-box backups: CANNOT VERIFY</strong> — {{ bk.reason }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% else %}
   <div class="sealband err">
@@ -33,6 +80,15 @@
     {% include "_demo_codes.html" %}
   {% endwith %}
   <div id="demo-codes-{{ d.site }}"></div>
+
+  {# --- per-tester editor (ops#328 t3): lazy — the roster is a live drush
+        read over ssh (~5-7 s), so it loads when revealed, not with the pane #}
+  <h4>Testers</h4>
+  <div id="demo-testers-{{ d.site }}"
+       hx-get="/panes/demo/testers?site={{ d.site }}" hx-trigger="revealed once"
+       hx-swap="innerHTML">
+    <p class="muted">tester roster loads when scrolled into view — it is read live from the site (nwc:tester-list)</p>
+  </div>
 
   {% if can_act %}
   <div class="actions">

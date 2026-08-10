@@ -65,7 +65,11 @@ teardown() {
   # every path git reports under private/ must be one of the two exceptions —
   # if a future widening lets anything else through, this goes red.
   # -uall: without it git collapses an untracked tree to a single 'private/' entry
-  run bash -c "git -C '$REPO' status --porcelain -uall private/ | awk '{print \$2}' \
+  # 2>/dev/null: the property is the PATH LIST on stdout. In a `pl issue work`
+  # worktree the linker leaves private/.gitignore as a symlink, which git
+  # (O_NOFOLLOW on nested ignore files) cannot read and warns about on stderr;
+  # that warning is a worktree artifact, not a leaked path.
+  run bash -c "git -C '$REPO' status --porcelain -uall private/ 2>/dev/null | awk '{print \$2}' \
                | grep -vE 'private/(token-consumers\.md|rotation-[0-9]{4}-[0-9]{2}\.md)$' || true"
   [ -z "$output" ]
 }

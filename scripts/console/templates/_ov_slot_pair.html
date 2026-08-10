@@ -1,0 +1,121 @@
+{#
+  Overview slot: THE DEMO PAIR (nwd ↔ ssd). What is live now: golden seals
+  (what tonight's reset restores), invite codes, the last reset event — plus
+  the interconnection readings that are PENDING tranche 2, each naming its
+  exact need. Pending is muted and worded; it is never a zero.
+#}
+<h4>Demo pair
+  <button class="ghost ovrefresh" title="re-read this slot"
+          hx-get="/panes/visuals/slots/pair?force=1"
+          hx-target="#ov-pair" hx-swap="innerHTML">⟳</button>
+</h4>
+<ul class="ovrows">
+  {% for d in pair_sites %}
+  <li><span class="ovname">{{ d.site }} golden seal</span>
+      {% if d.seal.ok %}
+      <span class="ovv-ok">sealed {{ d.seal.age_human }} ago</span>
+      <span class="ovmeta">{{ d.seal.source }}</span>
+      {% else %}
+      <span class="ovv-muted">CANNOT VERIFY — {{ d.seal.reason }}</span>
+      {% endif %}</li>
+  <li><span class="ovname">{{ d.site }} invite codes</span>
+      {% if d.codes_json.ok %}
+      <span class="ovv-ok">{{ d.codes_json.counts.live }} live</span>
+      <span class="ovmeta">{{ d.codes_json.counts.revoked }} revoked · {{ d.codes_json.counts.expired }} expired</span>
+      {% else %}
+      <span class="ovv-muted">registry CANNOT VERIFY — {{ d.codes_json.reason }}</span>
+      {% endif %}</li>
+  <li><span class="ovname">{{ d.site }} last reset event</span>
+      {% if d.last_event %}
+      <span class="ovv-{{ 'ok' if d.last_event == 'reset-ok' else 'warn' }}">{{ d.last_event }}</span>
+      {% else %}
+      <span class="ovv-muted">no reset events in this checkout's log</span>
+      {% endif %}</li>
+  {% else %}
+  <li><span class="ovv-muted">no demo sites in this view</span></li>
+  {% endfor %}
+</ul>
+
+{% if nwc %}
+{#
+  Tranche 2 (ops#329): the interconnection readings, from the nwc profile's
+  read-only drush surface over `pl drush nwd --tier=live` (TTL-cached; each
+  value carries its own age stamp). A command that is not on live yet renders
+  CANNOT VERIFY with the deploy hint — the state the console is in until the
+  nwc MR is merged AND deployed. Never an empty-but-healthy row.
+#}
+<h4>{{ nwc.site }} ↔ ssd interconnection <span class="ovmeta">drush over ssh, cached</span></h4>
+<ul class="ovrows">
+  {% if nwc.signals.ok %}
+  {% for r in nwc.signals.rows %}
+  <li><span class="ovname">{{ r.source }} signals</span>
+      <span class="ovv-{{ r.role }}">{{ r.open }} open</span>
+      <span class="ovmeta">{{ r.awaiting }} awaiting poster · {{ r.resolved }} resolved · {{ r.total }} total</span></li>
+  {% endfor %}
+  <li><span class="ovname">fast-path queue</span>
+      <span class="ovv-{{ nwc.signals.fast_path.role }}">{{ nwc.signals.fast_path.verdict }}</span>
+      <span class="ovmeta">{{ nwc.signals.age_note }}</span></li>
+  <li><span class="ovname">help ratio</span>
+      <span class="ovv-{{ nwc.signals.help_ratio.role }}">{{ nwc.signals.help_ratio.verdict }}</span></li>
+  {% else %}
+  <li><span class="ovname">signal queues (feedback / error / help)</span>
+      <span class="ovv-muted">CANNOT VERIFY — {{ nwc.signals.reason }}</span>
+      {% if nwc.signals.hint %}<span class="ovmeta">{{ nwc.signals.hint }}</span>{% endif %}</li>
+  {% endif %}
+
+  {% if nwc.completion.ok %}
+  <li><span class="ovname">completion pull (ssd→nwd)</span>
+      <span class="ovv-{{ nwc.completion.armed.role }}">{{ nwc.completion.armed.verdict }}</span>
+      <span class="ovmeta">{{ nwc.completion.last_attempt.verdict }} · {{ nwc.completion.age_note }}</span></li>
+  <li><span class="ovname">Moodle API (data pull)</span>
+      <span class="ovv-{{ nwc.completion.api.role }}">{{ nwc.completion.api.verdict }}</span></li>
+  {% else %}
+  <li><span class="ovname">completion pull (ssd→nwd)</span>
+      <span class="ovv-muted">CANNOT VERIFY — {{ nwc.completion.reason }}</span>
+      {% if nwc.completion.hint %}<span class="ovmeta">{{ nwc.completion.hint }}</span>{% endif %}</li>
+  {% endif %}
+
+  {% if nwc.users.ok %}
+  <li><span class="ovname">{{ nwc.site }} accounts</span>
+      <span class="ovv-{{ nwc.users.nwd.role }}">{{ nwc.users.nwd.fenced_active }} fenced testers active</span>
+      <span class="ovmeta">{{ nwc.users.nwd.fenced_blocked }} blocked · {{ nwc.users.nwd.real_active }} real active
+        (a real account on the demo tier is a finding) · {{ nwc.users.age_note }}</span></li>
+  {% else %}
+  <li><span class="ovname">{{ nwc.site }} accounts</span>
+      <span class="ovv-muted">CANNOT VERIFY — {{ nwc.users.reason }}</span>
+      {% if nwc.users.hint %}<span class="ovmeta">{{ nwc.users.hint }}</span>{% endif %}</li>
+  {% endif %}
+</ul>
+
+<h4>Guild backlogs <span class="ovmeta">gap tasks · WIP claims (24h TTL) · members</span></h4>
+{% if nwc.gaps.ok %}
+<ul class="ovrows">
+  <li><span class="ovname">gap sweep</span>
+      <span class="ovv-{{ nwc.gaps.sweep.role }}">{{ nwc.gaps.sweep.verdict }}</span>
+      <span class="ovmeta">{{ nwc.gaps.age_note }}</span></li>
+  {% for g in nwc.gaps.guilds %}
+  <li><span class="ovname">{{ g.label }}</span>
+      <span class="ovv-{{ g.role }}">{{ g.open_gaps }} open gap(s)</span>
+      <span class="ovmeta">{{ g.claimed_gaps }} claimed · {{ g.wip_claims }} WIP claim(s) ·
+        members: {{ g.members_display }}</span></li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="ovpend"><b>guild backlogs</b> —
+  <span class="ovv-muted">CANNOT VERIFY — {{ nwc.gaps.reason }}</span>
+  {% if nwc.gaps.hint %}<span class="ovmeta">{{ nwc.gaps.hint }}</span>{% endif %}</div>
+{% endif %}
+{% endif %}
+
+<h4>Content flows → guilds <span class="ovbadge">{% if nwc and nwc.gaps.ok %}wiring is fact; counts above{% else %}wiring is fact; counts pending{% endif %}</span></h4>
+<ul class="ovrows">
+  {% for e in guild_edges %}
+  <li><span class="ovname">{{ e.what }}</span>
+      <span class="ovv-muted">→ {{ e.guild }} Guild</span></li>
+  {% endfor %}
+</ul>
+
+{% for p in pending %}
+<div class="ovpend"><b>{{ p.label }}</b> — <span class="ovbadge">PENDING</span>
+  needs: {{ p.needs }}</div>
+{% endfor %}

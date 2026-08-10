@@ -196,6 +196,46 @@ TTS_TIMEOUT = int(_env("NWP_CONSOLE_TTS_TIMEOUT", "60"))
 # truncated + unlinked in a finally). Default: the system temp dir.
 VOICE_TMPDIR = _env("NWP_CONSOLE_VOICE_TMPDIR", "")
 
+# -- Estate overview (ops#329) -----------------------------------------------
+# The console's own deploy marker, written by `pl console deploy` into the
+# rsync'd src tree (and excluded from the divergence manifest). Absent on a
+# dev checkout and on any deploy older than ops#329 — both render NOT
+# RECORDED, never "in sync".
+DEPLOY_MARKER = Path(__file__).resolve().parent.parent / ".nwp-deployed.json"
+
+# The GitLab project whose main branch the console's own code (and this
+# host's ~/nwp checkout) is compared against.
+CONSOLE_REPO_PROJECT = _env("NWP_CONSOLE_REPO_PROJECT", "nwp/nwp")
+
+# How long a GitLab branch-head read may be reused (the overview's
+# deployed-vs-main verdicts). One HTTP call per repo, ~1s each — cached so the
+# skeleton's slots stay snappy.
+OVERVIEW_GITLAB_TTL = int(_env("NWP_CONSOLE_OVERVIEW_GITLAB_TTL", "300"))
+
+# -- ops#329 tranche 2: the nwd↔ssd interconnection slots -------------------
+# The demo pair's queue/guild/user readings come from read-only drush commands
+# in the nwc profile, reached over `pl drush <site> --tier=live` (ssh + remote
+# drush, MEASURED 5-7s per probe). That is snapshot-class latency: the probes
+# are TTL-cached well above the pane cache and only ever run inside the async
+# `pair` slot, so they can never sync-block a fast slot or a page load.
+OVERVIEW_DRUSH_TTL = int(_env("NWP_CONSOLE_OVERVIEW_DRUSH_TTL", "300"))
+# Per-probe subprocess budget. One ssh round trip in the good case; the verb
+# itself gives up long before the pane's 180s action budget would.
+OVERVIEW_DRUSH_TIMEOUT = int(_env("NWP_CONSOLE_OVERVIEW_DRUSH_TIMEOUT", "60"))
+# The site whose profile carries the nwc drush surface (the Drupal half of the
+# demo pair). Scope-checked against sc.demo_sites before any shell-out.
+NWC_DRUSH_SITE = _env("NWP_CONSOLE_NWC_DRUSH_SITE", "nwd")
+
+# The agent-loop webhook receiver on this host, probed for liveness with one
+# local HTTP request (any HTTP answer = the service is up; connection refused
+# = down; anything else = unknown). "" disables the probe (renders unknown).
+WEBHOOK_PROBE_URL = _env("NWP_CONSOLE_WEBHOOK_PROBE_URL", "http://127.0.0.1:5099/")
+
+# Where `pl backup replicate` lands replicas on this host. The overview reads
+# it directly (a local dir listing); absence renders NONE — a real answer —
+# while an unreadable dir renders CANNOT VERIFY.
+BACKUP_REPLICA_DIR = Path(_env("NWP_CONSOLE_BACKUP_REPLICA_DIR", str(HOME / "nwp-backup-set")))
+
 # -- Published fleet state ---------------------------------------------------
 # The console DISPLAYS fleet state; it does not compute it. The machine that
 # holds the sites runs `pl fleet publish`, which drops a schema-versioned

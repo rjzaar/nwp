@@ -93,12 +93,12 @@ scripts/agent-loop/agent-loop.sh:operator-home-path:9
 scripts/agent-loop/agent-loop.sh:operator-home-path:89
 
 scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:34
-scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:116
-scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:218
-scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:219
-scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:220
-scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:221
-scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:222
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:149
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:257
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:258
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:259
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:260
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:261
 scripts/agent-loop/deploy-on-merge.sh:operator-home-path:31
 
 # ---------------------------------------------------------------------------

@@ -51,7 +51,6 @@ lib/pii-gate.sh                     # scratch scan trees
 lib/todo-checks.sh                  # scratch dirs in checks (item 4 territory)
 lib/verify-checkpoint.sh            # verification checkpoint scratch
 lib/verify-runner.sh                # verification scenario scratch trees
-lib/sanitizers/mayo.sh              # SANITIZER — human-review class; runs on the prod server
 lib/sanitizers/moodle.sh            # SANITIZER — human-review class
 lib/sanitizers/moodle-dataroot.sh   # SANITIZER — human-review class
 lib/sanitizers/moodle-full.sh       # SANITIZER — human-review class

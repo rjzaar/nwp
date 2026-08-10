@@ -215,6 +215,31 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   over the top). Read-only; records the result
                                   in private/demo-codes/<site>.json, which
                                   pl todo / pl rag grade AMBER on disagreement.
+    testers <site> list [--json]  Roster of the @demo.invalid-fenced tester
+                                  accounts, read from the SITE through drush
+                                  nwc:tester-list (guilds by seed key + group
+                                  roles, sojourner level, consent state, and
+                                  the guild/role catalogue the editor renders
+                                  from). Fail-closed: an unreadable site or an
+                                  undeployed drush command is exit 2 with a
+                                  typed JSON reason, never an empty roster.
+    testers <site> set-guild <account> <seed-key> [--group-role=ID|member] [--remove]
+                                  Per-tester editor write (ops#328 t3): wraps
+                                  drush nwc:tester-set-guild. Guilds resolve by
+                                  field_group_seed_key, NEVER label; roles are
+                                  the real Group-2.x individual-scope ids
+                                  (there is no guild-leader — leadership =
+                                  guild-admin). Requires an explicit --tier AND
+                                  the site reporting demo_mode=true; the drush
+                                  side additionally fences on @demo.invalid.
+                                  --allow-real is NEVER forwarded from here.
+    testers <site> set-level <account> <level>
+                                  Raise a tester's Sojourner level THROUGH
+                                  EVIDENCE (drush nwc:tester-set-level records
+                                  the qualifying course completions and
+                                  recomputes) — there is no raw setter, and
+                                  demotion is a typed refusal. Same guards as
+                                  set-guild.
     invite <site> [--bundles a,b] [--expiry 14d] [--all]
                                   Issue ONE fresh code per level and render a
                                   copy-ready invitation email (stdout + a 0600
@@ -1025,6 +1050,14 @@ demo_rssh() {
 # SQL fragments and JSON payloads survive the round trip intact.
 demo_rdrush() {
     local site="$1"; shift
+    # Resolve the live context BEFORE the command string interpolates it. The
+    # old order relied on demo_rssh's own resolution — but by then the string
+    # had already frozen with an EMPTY ${DEMO_LIVE_PATH}/${DEMO_LIVE_DRUSHSUDO},
+    # so the FIRST demo_rdrush in a fresh process ran `cd  &&  ./vendor/bin/
+    # drush` in the ssh user's $HOME (rc=127). Every pre-ops#328 caller
+    # happened to call demo_live_ctx explicitly first, which is why the trap
+    # sat unnoticed; `pl demo testers` was the first caller that did not.
+    [[ "$DEMO_LIVE_SITE" == "$site" && -n "$DEMO_LIVE_PATH" ]] || demo_live_ctx "$site" || return 1
     local q="" a
     for a in "$@"; do q+=" $(printf '%q' "$a")"; done
     demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush${q}"
@@ -3485,6 +3518,24 @@ cmd_status_box() {
     echo "  Box-side (unattended) resets:"
     raw="$(demo_box_reset_status "$site")" || rc=$?
 
+    # rc 4 (ops#329 D6): the box answered a DIFFERENT question. Measured
+    # 2026-08-10 on ssd — the admin route sends the action word positionally,
+    # a pre-D6 wrapper read only $SSH_ORIGINAL_COMMAND, and what came back was
+    # the transcript of a nightly RESET the monitoring probe had just asked for.
+    # "The wrapper format changed?" is far too mild a thing to say about that.
+    if [[ "$rc" -eq 4 ]]; then
+        print_status "FAIL" "CANNOT VERIFY — the box answered, but not a status block (no 'last reset:' line)"
+        echo "    It said:"
+        printf '%s\n' "$raw" | head -3 | sed 's/^/      /'
+        if printf '%s\n' "$raw" | grep -q 'action=nightly'; then
+            echo "    That is a RESET transcript. The deployed wrapper predates ops#329 D6:"
+            echo "    it reads its action word only from \$SSH_ORIGINAL_COMMAND, which sudo"
+            echo "    strips, so this read-only probe resolved to the nightly reset."
+        fi
+        print_hint "  redeploy the wrapper: bash servers/live/demo/install-box.sh $site --no-key"
+        return 0
+    fi
+
     if [[ "$rc" -ne 0 ]]; then
         print_status "WARN" "UNKNOWN — could not read the box (no ${site}_demo_reset key, ssh refused, or timed out)"
         echo "    This is NOT 'no resets'. The box may be resetting perfectly."
@@ -3516,6 +3567,103 @@ cmd_status_box() {
         echo "    box log (/var/log/nwp-demo/${site}-demo-reset.log, pipe-separated):"
         printf '%s\n' "$tailed" | sed 's/^/      /'
     fi
+
+    # The pair CONSUMER's wrapper reports neither the return leg nor the backup
+    # census, by design (ops#329 D4/D5 — see demo_box_extras_by_design_json).
+    # seal-status has always made that distinction; without the same branch here
+    # the text surface told the operator to redeploy for a block that half will
+    # never emit.
+    if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
+        NWP_DEMO_EXTRAS_PREBUILT="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER")" \
+            demo_box_render_extras "$site" "$raw"
+    else
+        demo_box_render_extras "$site" "$raw"
+    fi
+}
+
+# demo_box_render_extras <site> <raw-status-output> — the ops#329 D4/D5 blocks
+# of the box's status word, rendered with the same three-state honesty as the
+# reset stamp: a value, NOT REPORTED (old wrapper — a redeploy fixes it), or
+# CANNOT VERIFY. The return leg is hourly, so a newest event older than two
+# cycles is CANNOT VERIFY (stale return leg) — a stopped leg must never keep
+# reading as its last good run.
+demo_box_render_extras() {
+    local site="$1" raw="$2" extras
+    if [[ -n "${NWP_DEMO_EXTRAS_PREBUILT:-}" ]]; then
+        extras="$NWP_DEMO_EXTRAS_PREBUILT"
+    else
+        extras="$(demo_box_extras_json "$raw")"
+    fi
+
+    echo ""
+    echo "  Return leg (hourly feedback-status, box's own log):"
+    local fb_reported fb_result fb_ts fb_summary fb_age fb_stale
+    fb_reported="$(jq -r '.feedback_status.reported' <<<"$extras")"
+    if [[ "$fb_reported" != "true" && "$(jq -r '.feedback_status.by_design // false' <<<"$extras")" == "true" ]]; then
+        # DECLARED-ABSENT, not unknown. There is nothing to fix and nothing to
+        # wait for, so this must not carry the redeploy hint.
+        print_status "INFO" "not applicable — $(jq -r '.feedback_status.reason' <<<"$extras")"
+    elif [[ "$fb_reported" != "true" ]]; then
+        print_status "WARN" "NOT REPORTED — $(jq -r '.feedback_status.reason' <<<"$extras")"
+    else
+        fb_result="$(jq -r '.feedback_status.result' <<<"$extras")"
+        fb_ts="$(jq -r '.feedback_status.ts // ""' <<<"$extras")"
+        fb_summary="$(jq -r '.feedback_status.summary // ""' <<<"$extras")"
+        fb_age="$(jq -r '.feedback_status.age_seconds // ""' <<<"$extras")"
+        fb_stale="$(jq -r '.feedback_status.stale // false' <<<"$extras")"
+        if [[ "$fb_result" == "none" ]]; then
+            print_status "WARN" "the return leg has NEVER run on the box"
+            print_hint "  pl demo schedule $site --feedback-status --via-key"
+        elif [[ "$fb_result" == "unreadable" ]]; then
+            print_status "WARN" "CANNOT VERIFY — the box log is unreadable"
+        elif [[ "$fb_stale" == "true" ]]; then
+            print_status "WARN" "CANNOT VERIFY (stale return leg): newest feedback-status ${fb_ts} ($(demo_box_human_age "$fb_age") ago) — expected hourly"
+        elif [[ "$fb_result" == "ok" ]]; then
+            print_status "OK" "last run ${fb_ts} ($(demo_box_human_age "$fb_age") ago): ${fb_summary}"
+        else
+            print_status "FAIL" "last run ${fb_ts} ${fb_result}: ${fb_summary}"
+        fi
+    fi
+
+    echo ""
+    echo "  Live-box nightly backups (newest per subdir):"
+    local bk_reported bk_state bk_dir
+    bk_reported="$(jq -r '.backups.reported' <<<"$extras")"
+    if [[ "$bk_reported" != "true" && "$(jq -r '.backups.by_design // false' <<<"$extras")" == "true" ]]; then
+        print_status "INFO" "not applicable — $(jq -r '.backups.reason' <<<"$extras")"
+        return 0
+    fi
+    if [[ "$bk_reported" != "true" ]]; then
+        print_status "WARN" "NOT REPORTED — $(jq -r '.backups.reason' <<<"$extras")"
+        return 0
+    fi
+    bk_state="$(jq -r '.backups.state' <<<"$extras")"
+    bk_dir="$(jq -r '.backups.dir' <<<"$extras")"
+    case "$bk_state" in
+        missing)    print_status "WARN" "CANNOT VERIFY — ${bk_dir} is MISSING on the box (the 01:30 producer cron has no landing dir)" ;;
+        unreadable) print_status "WARN" "CANNOT VERIFY — ${bk_dir} exists but the wrapper cannot read it" ;;
+        ok)
+            local n; n="$(jq -r '.backups.entries | length' <<<"$extras")"
+            if [[ "$n" == "0" ]]; then
+                print_status "WARN" "${bk_dir} exists but holds no backup subdirs"
+            else
+                echo "    ${bk_dir}:"
+                local entry sub newest bytes age
+                while IFS= read -r entry; do
+                    sub="$(jq -r '.subdir' <<<"$entry")"
+                    if [[ "$(jq -r '.empty // false' <<<"$entry")" == "true" ]]; then
+                        echo "      ${sub}: EMPTY"
+                        continue
+                    fi
+                    newest="$(jq -r '.newest' <<<"$entry")"
+                    bytes="$(jq -r '.bytes // "?"' <<<"$entry")"
+                    age="$(jq -r '.age_seconds // ""' <<<"$entry")"
+                    echo "      ${sub}: ${newest} (${bytes} bytes, $(demo_box_human_age "$age") old)"
+                done < <(jq -c '.backups.entries[]' <<<"$extras")
+            fi
+            ;;
+        *) print_status "WARN" "CANNOT VERIFY — unrecognised backups state '${bk_state}'" ;;
+    esac
 }
 
 ################################################################################
@@ -3547,7 +3695,9 @@ demo_seal_emit_fail() {
 cmd_seal_status() {
     local site="$1" tier="${2:-dev}"
     demo_require_jq || return 2
-    local src captured="" last_reset=""
+    # extras = the ops#329 D4/D5 blocks; `{}` at dev/stg (no box, no leg —
+    # absent keys, not fabricated not-reported ones).
+    local src captured="" last_reset="" extras='{}'
 
     if demo_is_live "$tier"; then
         src="box:$(demo_box_state_dir "$site")/golden"
@@ -3569,6 +3719,20 @@ cmd_seal_status() {
             return 2
         fi
         last_reset="$(demo_rssh "$site" "cat $(demo_box_state_dir "$site")/last-reset 2>/dev/null" 2>/dev/null | tr -d '\r\n')" || last_reset=""
+
+        # ops#329 D4/D5 — the return leg + the box's nightly pull backups ride
+        # the same read, through the SAME parser the status verb uses
+        # (demo_box_extras_json: one renderer, no drift). The consumer half of
+        # a pair skips the probe BY DESIGN: the leg and the pull dir are
+        # box-level facts and the pair provider's wrapper is their one
+        # reporter — a by_design absence must never render as an error.
+        if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
+            extras="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER")"
+        else
+            local box_raw=""
+            box_raw="$(demo_box_reset_status "$site" 2>/dev/null)" || box_raw=""
+            extras="$(demo_box_extras_json "$box_raw")"
+        fi
     else
         local gdir; gdir="$(demo_golden_dir "$site" "$tier")"
         src="$gdir"
@@ -3594,10 +3758,11 @@ cmd_seal_status() {
         jq -cn --arg site "$site" --arg tier "$tier" --arg captured "$captured" \
                --arg last_reset "$last_reset" --arg src "$src" --arg age "$age_secs" \
                --arg window "$window" --arg warning "$warning" \
+               --argjson extras "$extras" \
            '{ok:true, site:$site, tier:$tier, sealed_at:$captured,
              age_seconds:(($age|tonumber?) // null),
              last_reset:(if $last_reset == "" then null else $last_reset end),
-             source:$src, reset_window:$window, warning:$warning}'
+             source:$src, reset_window:$window, warning:$warning} + $extras'
     else
         print_header "Demo seal status: $site ($tier)"
         echo "    sealed_at:  $captured$( [[ -n "$age_secs" ]] && echo " ($(demo_human_age "$cap_epoch"))" )"
@@ -3605,8 +3770,218 @@ cmd_seal_status() {
         [[ -n "$last_reset" ]] && echo "    last reset: $last_reset"
         echo "    window:     $window"
         print_status "WARN" "$warning"
+        # ops#329 D4/D5 — same extras, same renderer as `pl demo status`.
+        if [[ "$extras" != "{}" ]]; then
+            demo_box_render_extras_from_json "$site" "$extras"
+        fi
     fi
     return 0
+}
+
+# demo_box_render_extras_from_json <site> <extras-json> — text renderer for an
+# already-assembled extras document (seal-status text mode; the status verb
+# goes through demo_box_render_extras which builds the doc from the raw read).
+demo_box_render_extras_from_json() {
+    local site="$1" extras="$2"
+    NWP_DEMO_EXTRAS_PREBUILT="$extras" demo_box_render_extras "$site" ""
+}
+
+################################################################################
+# testers — the per-tester editor's pl surface (ops#328 tranche 3)
+#
+# The console NEVER talks drush; it runs these. Reads pass the site's own
+# nwc:tester-list JSON through; writes wrap nwc:tester-set-guild /
+# nwc:tester-set-level. The tier decides the transport: live → demo_rdrush
+# (ssh + remote drush, the ops#170 site-keyed context), dev/stg → the local
+# DDEV project. These are SITE writes, not registry writes, so the D1
+# registry-home guard does not apply — the guards that DO are: an explicit
+# tier (ops#225), the target reporting demo_mode=true (the pl-layer half of
+# the fence; the drush command's @demo.invalid account fence is the other),
+# and fail-closed exit 2 CANNOT VERIFY whenever the site cannot be reached
+# or the command is not deployed there yet.
+################################################################################
+
+# Tier-appropriate drush for the testers verbs. stdout = drush output
+# (stdout+stderr merged, so "Command not defined" is catchable), rc = drush rc.
+demo_testers_drush() {
+    local site="$1" tier="$2"; shift 2
+    if demo_is_live "$tier"; then
+        demo_rdrush "$site" "$@" 2>&1
+    else
+        local proj
+        proj="$(demo_project_dir "$site" "$tier")" || return 1
+        demo_drush "$proj" "$@" 2>&1
+    fi
+}
+
+# One JSON refusal shape for wrapper-level refusals, so the console parses
+# every outcome the same way. Human summary goes to stderr.
+demo_testers_refuse() {
+    local reason="$1"
+    print_error "REFUSED: ${reason}" >&2
+    jq -n --arg r "$reason" '{ok: false, refused: true, reason: $r}'
+    return 1
+}
+
+# Classify a drush result and emit/exit honestly:
+#   rc 0                  → pass the JSON through, exit 0
+#   "Command … not defined" → exit 2, {"ok":false,"not_deployed":true,…} naming the fix
+#   typed drush refusal   → pass it through, exit 1
+#   anything else         → exit 2 CANNOT VERIFY carrying the output tail
+demo_testers_emit() {
+    local site="$1" tier="$2" cmdname="$3" rc="$4" out="$5"
+    if [[ "$rc" -eq 0 ]]; then
+        printf '%s\n' "$out"
+        return 0
+    fi
+    if grep -q 'is not defined' <<<"$out"; then
+        jq -n --arg r "drush command ${cmdname} is not on ${site} ${tier} yet — merge + deploy the nwc profile MR (ops#328 tranche 3), then retry" \
+            '{ok: false, not_deployed: true, reason: $r}'
+        return 2
+    fi
+    if jq -e '.refused == true' <<<"$out" >/dev/null 2>&1; then
+        printf '%s\n' "$out"
+        return 1
+    fi
+    if jq -e '.ok == false' <<<"$out" >/dev/null 2>&1; then
+        # drush's own CANNOT VERIFY document — pass it through at its exit class.
+        printf '%s\n' "$out"
+        return 2
+    fi
+    jq -n --arg r "CANNOT VERIFY: ${cmdname} failed on ${site} ${tier} (rc=${rc})" \
+          --arg raw "$(tail -c 1500 <<<"$out")" \
+          '{ok: false, reason: $r, raw: $raw}'
+    return 2
+}
+
+# The pl-layer fence half for WRITES: the target site must itself say it is a
+# demo tier (demo_mode=true). Anything else — false, empty, unreadable —
+# refuses: this wrapper only ever edits demo testers, and when it cannot
+# prove the target is the demo tier it fails toward the fence. (The drush
+# command's own @demo.invalid fence still applies underneath; dev-tier
+# operators who genuinely need more run drush directly.)
+demo_testers_require_demo_mode() {
+    local site="$1" tier="$2" val
+    val="$(demo_testers_drush "$site" "$tier" cget nwc_demo_access.settings demo_mode --format=string 2>/dev/null \
+           | tr -d '[:space:]')" || val=""
+    case "$val" in
+        1|true|TRUE) return 0 ;;
+    esac
+    demo_testers_refuse "${site} (${tier}) does not report nwc_demo_access demo_mode=true (got '${val:-<unreadable>}') — the testers editor only writes on a demo tier, and an unreadable flag fails toward the fence."
+}
+
+cmd_testers() {
+    local site="$1" tier="$2" remove="$3"; shift 3 || true
+    local action="${1:-list}"; shift || true
+    demo_require_jq || return 1
+
+    # --allow-real is a drush-side hatch for NON-demo installs; the pl wrapper
+    # never forwards it. Refuse it by name wherever it appears, before any
+    # validation could reorder the message.
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --allow-real*)
+                demo_testers_refuse "the pl wrapper never forwards --allow-real — the @demo.invalid fence is the point of this verb. On a dev tier, run the drush command directly if you really mean it."
+                return 1 ;;
+        esac
+    done
+
+    case "$action" in
+        list) ;;
+        set-guild|set-level)
+            # Writes name their tier — the ops#225/#173 rule, same wording as
+            # every code verb.
+            demo_require_explicit_tier "testers ${action}" \
+                "pl demo testers ${site} ${action} <account> … --tier=live" || return 1
+            ;;
+        *)
+            print_error "Unknown testers action '${action}' (list|set-guild|set-level)"
+            return 1 ;;
+    esac
+
+    local out rc
+    case "$action" in
+        list)
+            if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+                rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-list --format=json)" || rc=$?
+                demo_testers_emit "$site" "$tier" nwc:tester-list "$rc" "$out"
+                return $?
+            fi
+            rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-list)" || rc=$?
+            if [[ "$rc" -ne 0 ]]; then
+                demo_testers_emit "$site" "$tier" nwc:tester-list "$rc" "$out"
+                return $?
+            fi
+            printf '%s\n' "$out"
+            ;;
+        set-guild)
+            local acct="${1:-}" key="${2:-}"; shift 2 2>/dev/null || true
+            [[ -n "$acct" && -n "$key" ]] || {
+                demo_testers_refuse "Usage: pl demo testers ${site} set-guild <account> <seed-key> [--group-role=ID|member] [--remove] --tier=…"
+                return 1
+            }
+            [[ "$acct" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$ ]] || {
+                demo_testers_refuse "account '${acct}' fails the shape check (letters/digits/._@- only)"
+                return 1
+            }
+            [[ "$key" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || {
+                demo_testers_refuse "'${key}' is not a seed key (lowercase machine id, e.g. 'writers'). Guilds are addressed by field_group_seed_key, never by label."
+                return 1
+            }
+            local role=""
+            for a in "$@"; do
+                case "$a" in
+                    --group-role=*) role="${a#--group-role=}" ;;
+                    *)
+                        demo_testers_refuse "unrecognised argument '${a}' for set-guild"
+                        return 1 ;;
+                esac
+            done
+            if [[ -n "$role" ]]; then
+                [[ "$role" =~ ^[a-z][a-z0-9-]{0,39}$ ]] || {
+                    demo_testers_refuse "group role '${role}' fails the shape check (drush validates the real role set)"
+                    return 1
+                }
+            fi
+            if [[ "$remove" == "true" && -n "$role" ]]; then
+                demo_testers_refuse "--remove and --group-role are contradictory — pass exactly one"
+                return 1
+            fi
+            demo_testers_require_demo_mode "$site" "$tier" || return 1
+            local dargs=(nwc:tester-set-guild "$acct" "$key")
+            [[ -n "$role" ]] && dargs+=("--group-role=${role}")
+            [[ "$remove" == "true" ]] && dargs+=(--remove)
+            rc=0; out="$(demo_testers_drush "$site" "$tier" "${dargs[@]}")" || rc=$?
+            demo_log "$site" testers-set-guild "acct=${acct} key=${key} role=${role:-—} remove=${remove} tier=${tier} rc=${rc}"
+            demo_testers_emit "$site" "$tier" nwc:tester-set-guild "$rc" "$out"
+            return $?
+            ;;
+        set-level)
+            local acct="${1:-}" level="${2:-}"; shift 2 2>/dev/null || true
+            [[ -n "$acct" && -n "$level" ]] || {
+                demo_testers_refuse "Usage: pl demo testers ${site} set-level <account> <level> --tier=…"
+                return 1
+            }
+            [[ "$acct" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$ ]] || {
+                demo_testers_refuse "account '${acct}' fails the shape check"
+                return 1
+            }
+            [[ "$level" =~ ^[0-9]{1,2}$ ]] || {
+                demo_testers_refuse "level '${level}' is not an integer (the drush side enforces the real 1..max bounds)"
+                return 1
+            }
+            [[ $# -eq 0 ]] || {
+                demo_testers_refuse "unrecognised argument(s) for set-level: $*"
+                return 1
+            }
+            demo_testers_require_demo_mode "$site" "$tier" || return 1
+            rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-set-level "$acct" "$level")" || rc=$?
+            demo_log "$site" testers-set-level "acct=${acct} level=${level} tier=${tier} rc=${rc}"
+            demo_testers_emit "$site" "$tier" nwc:tester-set-level "$rc" "$out"
+            return $?
+            ;;
+    esac
 }
 
 ################################################################################
@@ -4793,7 +5168,7 @@ main() {
             return 2
         fi
         case "$sub" in
-            codes|invite) : ;;   # these genuinely take positional actions
+            codes|invite|testers) : ;;   # these genuinely take positional actions
             *)
                 print_error "REFUSED: unrecognised argument(s) for 'pl demo $sub': ${passthru[*]}"
                 echo "  Nothing consumes them, so continuing would run a DIFFERENT command"
@@ -4876,6 +5251,7 @@ main() {
         seal-status) cmd_seal_status "$site" "$tier" ;;
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
+        testers)  cmd_testers "$site" "$tier" "$remove" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" "$box_host" "$print_only" "$raw_ssh" "$fb_status" ;;
         feedback-sync) cmd_feedback_sync "$site" "$tier" "$dry_run" ;;

@@ -167,6 +167,93 @@ def test_approve_posts_a_tagged_note(mod, monkeypatch):
     assert "APPROVED" in seen["body"]
 
 
+def test_approve_discharges_the_decision_labels(mod, monkeypatch):
+    """ops#327: an approval that leaves `needs-decision` / `decision::wanted`
+    on the issue is an undischarged instruction — the queue keeps showing it
+    and the operator re-approves (#139 was approved FOUR times). Approve must
+    drop both labels in the same action and then RE-READ the issue, so what
+    renders is the tracker's state, not the console's hope."""
+    seen = {}
+    monkeypatch.setattr(mod.gitlab, "post_note",
+                        lambda p, i, b: {"ok": True, "status": 201, "data": {}})
+
+    def fake_remove(project, iid, label):
+        seen.update(project=project, iid=iid, label=label)
+        return {"ok": True, "status": 200, "data": {"labels": ["console"]}}
+
+    def fake_get(project, iid):
+        seen["reread"] = True
+        return {"ok": True, "status": 200, "data": {"labels": ["console"]}}
+
+    monkeypatch.setattr(mod.gitlab, "remove_label", fake_remove)
+    monkeypatch.setattr(mod.gitlab, "get_issue", fake_get)
+    r = _client(mod).post("/review/decision/279/approve")
+    assert r.status_code == 200
+    assert seen["project"] == mod.config.OPS_PROJECT and seen["iid"] == 279
+    assert "needs-decision" in seen["label"] and "decision::wanted" in seen["label"]
+    assert seen.get("reread") is True, "must re-read the issue, not trust the PUT"
+    assert "discharged" in r.text
+    assert "NOT DISCHARGED" not in r.text
+
+
+def test_approve_that_cannot_discharge_is_loud(mod, monkeypatch):
+    """The label mutation failing (403, network, walled token) must NOT look
+    discharged — a quiet half-success recreates the exact re-approval loop."""
+    monkeypatch.setattr(mod.gitlab, "post_note",
+                        lambda p, i, b: {"ok": True, "status": 201, "data": {}})
+    monkeypatch.setattr(mod.gitlab, "remove_label",
+                        lambda p, i, l: {"ok": False, "error": "http-403",
+                                         "detail": "insufficient scope"})
+    r = _client(mod).post("/review/decision/279/approve")
+    assert r.status_code == 200
+    assert "NOT DISCHARGED" in r.text
+    assert "http-403" in r.text
+    # and it must point at the recovery path
+    assert "sweep-approved" in r.text
+
+
+def test_approve_reread_showing_labels_is_not_discharged(mod, monkeypatch):
+    """A PUT that claims ok while the tracker still shows the labels is a lie
+    the re-read catches; render the re-read, loudly."""
+    monkeypatch.setattr(mod.gitlab, "post_note",
+                        lambda p, i, b: {"ok": True, "status": 201, "data": {}})
+    monkeypatch.setattr(mod.gitlab, "remove_label",
+                        lambda p, i, l: {"ok": True, "status": 200, "data": {}})
+    monkeypatch.setattr(mod.gitlab, "get_issue",
+                        lambda p, i: {"ok": True, "status": 200,
+                                      "data": {"labels": ["needs-decision"]}})
+    r = _client(mod).post("/review/decision/279/approve")
+    assert "NOT DISCHARGED" in r.text
+    assert "needs-decision" in r.text
+
+
+def test_approve_unverifiable_reread_is_not_discharged(mod, monkeypatch):
+    """Labels removed but the verifying re-read failed => CANNOT VERIFY, which
+    must render as not-discharged, never as success."""
+    monkeypatch.setattr(mod.gitlab, "post_note",
+                        lambda p, i, b: {"ok": True, "status": 201, "data": {}})
+    monkeypatch.setattr(mod.gitlab, "remove_label",
+                        lambda p, i, l: {"ok": True, "status": 200, "data": {}})
+    monkeypatch.setattr(mod.gitlab, "get_issue",
+                        lambda p, i: {"ok": False, "error": "timeout"})
+    r = _client(mod).post("/review/decision/279/approve")
+    assert "NOT DISCHARGED" in r.text
+
+
+def test_failed_approval_note_never_touches_labels(mod, monkeypatch):
+    """No note, no discharge: the note IS the instruction; labels must not be
+    dropped for an approval that was never recorded."""
+    called = {}
+    monkeypatch.setattr(mod.gitlab, "post_note",
+                        lambda p, i, b: {"ok": False, "error": "no-token"})
+    monkeypatch.setattr(mod.gitlab, "remove_label",
+                        lambda p, i, l: called.update(hit=True) or {"ok": True})
+    r = _client(mod).post("/review/decision/279/approve")
+    assert r.status_code == 200
+    assert not called, "labels were mutated for an approval that failed to record"
+    assert "failed" in r.text
+
+
 def test_comment_is_tagged_server_side(mod, monkeypatch):
     seen = {}
 

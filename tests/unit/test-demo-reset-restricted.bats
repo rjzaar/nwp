@@ -115,6 +115,7 @@ _rehome() {
         -e "s#^LOCK_FILE=\"/var/lock/#LOCK_FILE=\"${BOX}/var/lock/#" \
         -e "s#^LOG_FILE=\"/var/log/nwp-demo/#LOG_FILE=\"${BOX}/var/log/nwp-demo/#" \
         -e "s#^TOKEN_FILE=\"/etc/nwp-demo/#TOKEN_FILE=\"${BOX}/etc/nwp-demo/#" \
+        -e "s#^BACKUP_PULL_DIR=\"/var/backups/nwp-pull\"#BACKUP_PULL_DIR=\"${BOX}/var/backups/nwp-pull\"#" \
         -e "s#^PATH=/usr/local/sbin:#PATH=${BOX}/stubs:/usr/local/sbin:#" \
         "$SCRIPT" > "$REHOMED"
     chmod +x "$REHOMED"
@@ -157,6 +158,15 @@ _run_action() {
     run bash "$REHOMED"
 }
 
+# The OTHER route into this wrapper, and the one no test exercised until
+# ops#329 D6: `sudo /usr/local/bin/nwd-demo-reset-restricted <word>` over the
+# ordinary admin ssh. sudo's env_reset strips SSH_ORIGINAL_COMMAND *and*
+# SSH_CLIENT, so the action word can only arrive as a positional argument.
+_run_action_sudo() {
+    unset SSH_ORIGINAL_COMMAND SSH_CLIENT
+    NWD_TEST_TRACE="$TRACE" run bash "$REHOMED" "$@"
+}
+
 _wiped()      { grep -q 'sql:drop' "$TRACE"; }
 _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upload.txt" ]]; }
 
@@ -174,12 +184,12 @@ _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upl
     done
 }
 
-@test "control: rehoming is narrow — only the 6 path/PATH lines differ from the shipped script" {
+@test "control: rehoming is narrow — only the 7 path/PATH lines differ from the shipped script" {
     _build_box
     _rehome
     local changed
     changed="$(diff "$SCRIPT" "$REHOMED" | grep -c '^< ' || true)"
-    [ "$changed" -eq 6 ]
+    [ "$changed" -eq 7 ]
     # and the guard logic itself is untouched
     for marker in '\[G1\]' '\[G2\]' '\[G3\]' '\[G4\]' '\[G5\]' '\[G6\]' 'golden_verify' 'require_demo_mode' 'idle_ok'; do
         grep -q "$marker" "$REHOMED"
@@ -218,6 +228,49 @@ _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upl
     [[ "$output" == *"REFUSED"* ]]
     ! _wiped
     ! _canary_gone
+}
+
+# ---------------------------------------------------------------------------
+# [G1] ops#329 D6 — the SUDO route must carry the action word too
+#
+# The defect was MEASURED on the ssd half on 2026-08-10 (`pl demo status ssd
+# --tier=live` → "UNKNOWN — the box answered but named no 'last reset'"; the box
+# log showed `action=nightly … original=` for what was sent as `status`). This
+# file has the identical construction. nwd escaped it only because the dev
+# workstation happens to hold ~/.ssh/nwd_demo_reset and so never takes the sudo
+# fallback — an accident of key placement, not a property of the wrapper. These
+# cases pin the property on this half so it cannot regress into a live wipe.
+# ---------------------------------------------------------------------------
+
+@test "[G1] ops#329 the action word is honoured on the SUDO route (positional arg)" {
+    _build_box
+    _rehome
+    _run_action_sudo status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"last reset:"* ]]
+    [[ "$output" != *"action=nightly"* ]]
+    ! _wiped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 a BAD positional word is refused — it must not fall through to nightly" {
+    _build_box
+    _rehome
+    _run_action_sudo 'rm -rf /'
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"REFUSED"* ]]
+    ! _wiped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 the CRON contract survives: no word at all is still nightly" {
+    _build_box
+    _rehome
+    _run_action_sudo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FATE MANIFEST"* ]]
+    _wiped
+    _canary_gone
 }
 
 # ---------------------------------------------------------------------------
@@ -634,4 +687,173 @@ CURL
     [ "$status" -eq 0 ]
     [ -f "${BOX}/var/lib/nwp-demo/nwd/harvest/posted/harvest-20260807-120000.txt" ]
     [ ! -f "${BOX}/var/lib/nwp-demo/nwd/harvest/harvest-20260807-120000.txt" ]
+}
+
+# ---------------------------------------------------------------------------
+# ops#329 D4 — the return-leg summary must parse the module's REAL output.
+#
+# THE DEFECT THIS PINS (observed live 2026-08-09, met's trigger log): every
+# hourly run since the leg armed logged `feedback-status-ok|summary-unparsed`.
+# The wrapper's FS_SUM regex expects the module's happy-path summary
+#   Done. advanced=N drafts_captured=N checked=N
+# but nwc-feedback:sync-status RETURNS EARLY when no escalated signal carries a
+# GitLab link, printing only
+#   No escalated signals with a GitLab link to check.
+# — so on every quiet hour (i.e. every hour so far) the counts were dropped on
+# the floor. The old fixture stub only ever emitted the happy-path line, which
+# is why this check was green without ever having been proven able to fail.
+# ---------------------------------------------------------------------------
+
+# The module's REAL empty-set output, byte-identical to
+# NwcFeedbackCommands::syncStatus()'s early return.
+_drush_feedback_answer_empty_set() {
+    _drush_feedback_answer
+    cat > "${BOX}/var/www/nwd/vendor/bin/drush" <<'DRUSH'
+#!/bin/bash
+printf 'drush %s\n' "$*" >> "$NWD_TEST_TRACE"
+case "$1" in
+    cget)    echo true ;;
+    sqlq)    echo 12345678 ;;
+    sql:cli) cat >/dev/null ;;
+    php:eval) echo "MINIMISED-OK" ;;
+    nwc-feedback:sync-status)
+        echo "No escalated signals with a GitLab link to check."
+        ;;
+esac
+exit 0
+DRUSH
+    chmod +x "${BOX}/var/www/nwd/vendor/bin/drush"
+}
+
+@test "ops#329 D4: the REAL empty-set sync-status output parses to advanced=0 — never summary-unparsed" {
+    _build_box
+    _rehome
+    _drush_feedback_answer_empty_set
+    _stage_token
+    _run_action feedback-status
+    [ "$status" -eq 0 ]
+    # the quiet hour is a PARSED zero, not an unparsed shrug
+    grep -q 'feedback-status-ok|advanced=0 drafts_captured=0 checked=0' \
+        "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    run grep 'summary-unparsed' "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+    [ "$status" -ne 0 ]
+}
+
+@test "ops#329 D4: the happy-path Done. summary still parses (the fix is additive)" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    _run_action feedback-status
+    [ "$status" -eq 0 ]
+    grep -q 'feedback-status-ok|advanced=1 drafts_captured=0 checked=1' \
+        "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+}
+
+@test "ops#329 D4: truly unrecognised output still logs summary-unparsed (honesty is kept)" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    cat > "${BOX}/var/www/nwd/vendor/bin/drush" <<'DRUSH'
+#!/bin/bash
+printf 'drush %s\n' "$*" >> "$NWD_TEST_TRACE"
+case "$1" in
+    cget) echo true ;;
+    nwc-feedback:sync-status) echo "some future output shape" ;;
+esac
+exit 0
+DRUSH
+    chmod +x "${BOX}/var/www/nwd/vendor/bin/drush"
+    _run_action feedback-status
+    [ "$status" -eq 0 ]
+    grep -q 'feedback-status-ok|summary-unparsed' \
+        "${BOX}/var/log/nwp-demo/nwd-demo-reset.log"
+}
+
+# ---------------------------------------------------------------------------
+# ops#329 D4 — `status` carries the return leg's last run, read from the box's
+# OWN log (the primary record; met's log is only the trigger transcript).
+# ---------------------------------------------------------------------------
+
+@test "ops#329 D4: status reports last_feedback_status from the box's own log" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    _run_action feedback-status
+    [ "$status" -eq 0 ]
+    _run_action status
+    [ "$status" -eq 0 ]
+    # a structured line, not just the log tail: <utc>|<event>|<detail>
+    echo "$output" | grep -qE '^last_feedback_status: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z\|feedback-status-ok\|advanced=1 drafts_captured=0 checked=1$'
+}
+
+@test "ops#329 D4: status says 'none' when the return leg has never run — never silent" {
+    _build_box
+    _rehome
+    _run_action status
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx 'last_feedback_status: none'
+}
+
+@test "ops#329 D4: a FAILED return leg is what status reports — not the last good one" {
+    _build_box
+    _rehome
+    _drush_feedback_answer
+    _stage_token
+    _run_action feedback-status
+    NWD_TEST_STATUS_RC=3 SSH_ORIGINAL_COMMAND=feedback-status SSH_CLIENT="10.0.0.1 1 22" \
+        NWD_TEST_TRACE="$TRACE" run bash "$REHOMED"
+    _run_action status
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qE '^last_feedback_status: [0-9TZ:-]+\|feedback-status-failed\|rc=3$'
+}
+
+# ---------------------------------------------------------------------------
+# ops#329 D5 — `status` carries the newest nightly backup per subdir of the
+# box's /var/backups/nwp-pull (names, sizes and ages only — no contents, no
+# sudo; the dir is gitlab-readable by design). The git box's equivalent stays
+# with met's dr-pull and is deliberately NOT this wrapper's business.
+# ---------------------------------------------------------------------------
+
+_stage_pull_backups() {
+    mkdir -p "${BOX}/var/backups/nwp-pull/db" "${BOX}/var/backups/nwp-pull/nginx"
+    printf 'old\n'    > "${BOX}/var/backups/nwp-pull/db/ssd-2026-08-08.sql.gz"
+    printf 'newer!\n' > "${BOX}/var/backups/nwp-pull/db/ssd-2026-08-09.sql.gz"
+    touch -d '2026-08-08 01:30:00 UTC' "${BOX}/var/backups/nwp-pull/db/ssd-2026-08-08.sql.gz"
+    touch -d '2026-08-09 01:30:00 UTC' "${BOX}/var/backups/nwp-pull/db/ssd-2026-08-09.sql.gz"
+    printf 'nginx-conf\n' > "${BOX}/var/backups/nwp-pull/nginx/nginx-conf-2026-08-09.tgz"
+    touch -d '2026-08-09 01:30:00 UTC' "${BOX}/var/backups/nwp-pull/nginx/nginx-conf-2026-08-09.tgz"
+}
+
+@test "ops#329 D5: status reports the newest backup per subdir — name, bytes, mtime" {
+    _build_box
+    _rehome
+    _stage_pull_backups
+    _run_action status
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx "backups: ${BOX}/var/backups/nwp-pull"
+    echo "$output" | grep -qx 'backup: db|newest=ssd-2026-08-09.sql.gz|bytes=7|mtime=2026-08-09T01:30:00Z'
+    echo "$output" | grep -qx 'backup: nginx|newest=nginx-conf-2026-08-09.tgz|bytes=11|mtime=2026-08-09T01:30:00Z'
+    # the older file is never the answer
+    run bash -c "printf '%s\n' \"\$1\" | grep 'backup: db' | grep '2026-08-08'" _ "$output"
+    [ "$status" -ne 0 ]
+}
+
+@test "ops#329 D5: a MISSING pull dir is named MISSING — never silently absent" {
+    _build_box
+    _rehome
+    _run_action status
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx "backups: ${BOX}/var/backups/nwp-pull MISSING"
+}
+
+@test "ops#329 D5: an empty subdir says empty — an empty dir and an unreported dir never look alike" {
+    _build_box
+    _rehome
+    mkdir -p "${BOX}/var/backups/nwp-pull/db"
+    _run_action status
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx 'backup: db|empty'
 }

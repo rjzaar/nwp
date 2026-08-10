@@ -140,25 +140,46 @@ teardown() {
   [[ "$output" == *"version.php"* ]]
 }
 
-# ── ssc.sh: the Path A per-site resolver delegates to moodle-full.sh (ops#110/#111) ─
-# server-publish.sh resolves lib/sanitizers/<site>.sh; ssc's is a thin wrapper
-# that must (a) delegate verbatim to moodle.sh, and (b) propagate its fail-closed
-# non-zero exit unchanged.
+# ── the per-site Moodle wrapper shape (ops#110/#111, ops#326) ─────────────────
+# server-publish.sh resolves <site>.sh from lib/sanitizers/ then the private
+# overlay (private/sanitizers/). The real instance wrappers now LIVE in the
+# overlay (ops#326), so the shape under test is a fixture built exactly like
+# them: a thin overlay wrapper that (a) delegates verbatim to the SHIPPED
+# moodle-full.sh via the engine-lib search the overlay wrappers use, and
+# (b) propagates its fail-closed non-zero exit unchanged.
 
-@test "lib/sanitizers/ssc.sh delegates to moodle-full.sh (--verify on missing bundle fails closed)" {
-  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --verify --output "${TEST_TMP}/nope.tar.gz"
+_overlay_wrapper() { # builds <overlay>/fxm.sh exactly in the moved wrappers' shape
+  OVERLAY="${TEST_TMP}/overlay-sanitizers"
+  mkdir -p "$OVERLAY"
+  cat > "${OVERLAY}/fxm.sh" <<WRAP
+#!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_SAN_DIR="\${NWP_ENGINE_SANITIZER_DIR:-\$SCRIPT_DIR/../../lib/sanitizers}"
+[ -f "\$ENGINE_SAN_DIR/moodle-full.sh" ] || ENGINE_SAN_DIR="\$SCRIPT_DIR"
+exec bash "\$ENGINE_SAN_DIR/moodle-full.sh" "\$@"
+WRAP
+  chmod +x "${OVERLAY}/fxm.sh"
+  export NWP_ENGINE_SANITIZER_DIR="${BATS_TEST_DIRNAME}/../../lib/sanitizers"
+}
+
+@test "overlay wrapper delegates to moodle-full.sh (--verify on missing bundle fails closed)" {
+  _overlay_wrapper
+  run bash "${OVERLAY}/fxm.sh" --verify --output "${TEST_TMP}/nope.tar.gz"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no bundle to verify"* ]]   # message originates in moodle-full.sh
 }
 
-@test "lib/sanitizers/ssc.sh requires --site-dir (fail-closed, propagated from moodle-full.sh)" {
-  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh"
+@test "overlay wrapper requires --site-dir (fail-closed, propagated from moodle-full.sh)" {
+  _overlay_wrapper
+  run bash "${OVERLAY}/fxm.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"--site-dir"* ]]
 }
 
-@test "lib/sanitizers/ssc.sh refuses a non-Moodle dir (delegation reaches the version.php guard)" {
-  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --site-dir "${TEST_TMP}"
+@test "overlay wrapper refuses a non-Moodle dir (delegation reaches the version.php guard)" {
+  _overlay_wrapper
+  run bash "${OVERLAY}/fxm.sh" --site-dir "${TEST_TMP}"
   [ "$status" -ne 0 ]
   [[ "$output" == *"version.php"* ]]
 }

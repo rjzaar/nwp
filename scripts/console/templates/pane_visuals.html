@@ -1,21 +1,23 @@
 {#
-  The Visuals pane — the at-a-glance graphical read of the fleet.
+  The Visuals pane — a SUBTABBED collection (ops#329): the estate overview
+  first, then the four charts, one per subtab.
 
-  READ-ONLY. There is no form, no button and no action anywhere in this pane
-  or its partials; it renders four charts from the same scoped gatherers the
-  Fleet/Todo/CI tabs already use, so it can never disagree with them.
+  READ-ONLY. There is no form and no action anywhere in this pane or its
+  partials (the overview's per-slot ⟳ is a GET with force=1 — a re-read, not
+  an action); the charts render from the same scoped gatherers the Fleet/
+  Todo/CI tabs already use, so they can never disagree with them.
 
-  Everything is SERVER-RENDERED SVG. No chart library, no CDN, no new
-  dependency — the geometry is computed in app/visuals.py and this template
-  only places the numbers.
+  Everything is SERVER-RENDERED SVG/HTML. No chart library, no CDN, no new
+  dependency — geometry is computed in app/visuals.py, overview verdicts in
+  app/overview.py; the templates only place the numbers.
 
   Styles live in the <style> block below rather than in static/style.css
   because several workstreams are editing that file; every selector is
-  `.vz*`-prefixed and the block is self-contained, so it can be lifted into
-  the stylesheet later as a single move.
+  `.vz*`/`.ov*`-prefixed and the block is self-contained, so it can be lifted
+  into the stylesheet later as a single move.
 #}
 {% include "_tabcount.html" %}
-{% include "_provenance.html" %}
+{% if vz.sub != 'overview' %}{% include "_provenance.html" %}{% endif %}
 
 <style>
 /* Roles, not hexes. These resolve to the console's OWN status tokens, so a
@@ -85,25 +87,74 @@
 .vznodata-clean .vznodata-head { color: var(--ok); }
 .vznodata-why { margin: 0; color: var(--fg); }
 .vznodata-hint { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+
+/* -- subtab bar (ops#329) ------------------------------------------------- */
+.vzsubbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
+.vzsubbar .chip { cursor: pointer; }
+
+/* -- overview slots -------------------------------------------------------- */
+.ovslot { margin: 12px 0; }
+.ovrows { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; }
+.ovrows li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0;
+  border-bottom: 1px solid var(--line); }
+.ovrows li:last-child { border-bottom: 0; }
+.ovname { flex: 0 0 38%; min-width: 130px; color: var(--fg); }
+.ovmeta { color: var(--muted); font-size: 12px; }
+/* state words wear the STATUS token; identity stays in text ink */
+.ovv-crit  { color: var(--err); font-weight: 600; }
+.ovv-warn  { color: var(--warn); font-weight: 600; }
+.ovv-ok    { color: var(--ok); }
+.ovv-muted { color: var(--muted); }
+.ovpend { border: 1px dashed var(--line); border-radius: 8px; padding: 7px 10px;
+  margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+.ovpend b { color: var(--fg); font-weight: 600; }
+.ovbadge { font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 7px;
+  color: var(--muted); }
+.ovrefresh { float: right; }
 </style>
 
-{% if vz.stale %}
-<p class="vzwarn"><strong>⚠ These charts are drawn from STALE fleet state.</strong>
-  Every number below is older than the freshness window shown above — treat them as
+{#- Subtabs. Buttons, not links: each swaps the whole pane body with the
+    chosen subtab, so the poller below always polls what is on screen. -#}
+<nav class="vzsubbar" role="tablist" aria-label="Visuals subtabs">
+  {% for s in vz.subtabs %}
+  <button class="chip {{ 'chip-on' if s == vz.sub }}" role="tab"
+          aria-selected="{{ 'true' if s == vz.sub else 'false' }}"
+          hx-get="/panes/visuals?sub={{ s }}" hx-target="#pane-body"
+          hx-indicator="#pane-spin">{{ s }}</button>
+  {% endfor %}
+</nav>
+
+{#- The stale banner covers the SNAPSHOT-FED charts only: the CI strip is read
+    live from GitLab and must not claim to be stale, and the overview's slots
+    each carry their own age. -#}
+{% if vz.stale and vz.sub in ('fleet', 'security', 'todo') %}
+<p class="vzwarn"><strong>⚠ This chart is drawn from STALE fleet state.</strong>
+  Every number below is older than the freshness window shown above — treat it as
   history, not as the current state of the fleet.</p>
 {% endif %}
 
-{% include "_visual_fleet.html" %}
-{% include "_visual_severity.html" %}
-{% include "_visual_todo.html" %}
-{% include "_visual_ci.html" %}
+{% if vz.sub == 'overview' %}
+  {% include "_visual_overview.html" %}
+{% elif vz.sub == 'fleet' %}
+  {% include "_visual_fleet.html" %}
+{% elif vz.sub == 'security' %}
+  {% include "_visual_severity.html" %}
+{% elif vz.sub == 'todo' %}
+  {% include "_visual_todo.html" %}
+{% elif vz.sub == 'ci' %}
+  {% include "_visual_ci.html" %}
+{% endif %}
 
-<p class="muted footnote">Read-only. Charts are rendered on the console host from the
-  published fleet snapshot (and, for CI, live from GitLab); no chart library and no
-  external request is involved. Every chart carries a table view with the same numbers.</p>
+<p class="muted footnote">Read-only. Rendered on the console host from the published
+  fleet snapshot plus this host's own reads (and, for CI/MRs, live from GitLab); no
+  chart library and no external request is involved. Every chart carries a table view
+  with the same numbers.</p>
 
 {#- Self-refresh, matching the tab bar's own 90 s count poll. The poller lives
     INSIDE the pane, so switching tabs replaces #pane-body and it stops by
     construction — no orphaned timer, and no polling of a pane nobody is
-    looking at. htmx swaps atomically, so there is no skeleton flash. -#}
-<div hx-get="/panes/visuals" hx-target="#pane-body" hx-trigger="every 120s" hx-swap="innerHTML"></div>
+    looking at. It preserves the active SUBTAB, so a reader parked on the CI
+    chart is not yanked back to the overview. htmx swaps atomically, so there
+    is no skeleton flash. -#}
+<div hx-get="/panes/visuals?sub={{ vz.sub }}" hx-target="#pane-body" hx-trigger="every 120s" hx-swap="innerHTML"></div>

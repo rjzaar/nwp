@@ -63,8 +63,35 @@ SITECLASS_CLASSES="${SITECLASS_CLASSES:-member-paired member-standalone demo ser
 SITECLASS_POSTURES="delegated local none-stored"
 
 siteclass_dir()          { echo "${NWP_SITECLASS_DIR:-${PROJECT_ROOT:-$HOME/nwp}/classes}"; }
+
+# ops#326 (engine/site separation): REAL instance declarations live in the
+# PRIVATE OVERLAY repo (private/classes/ — its own reviewed git repo, remote
+# nwp/private), searched AFTER the shipped classes/ (which carries only the
+# sample pair: ssd, nwd). This preserves the ADR-0036 "reviewable in an MR"
+# property — the MR simply lives on the overlay repo — without shipping the
+# operator's estate in the engine tree. A site declared in BOTH dirs is
+# contradictory and FAILS CLOSED (siteclass_of → cannot-verify:duplicate-…).
+siteclass_overlay_dir()  { echo "${NWP_SITECLASS_OVERLAY_DIR:-${PROJECT_ROOT:-$HOME/nwp}/private/classes}"; }
 siteclass_registry()     { echo "$(siteclass_dir)/registry.yml"; }
-siteclass_decl_file()    { echo "$(siteclass_dir)/${1}.class.yml"; }
+siteclass_decl_file()    {
+    local shipped overlay
+    shipped="$(siteclass_dir)/${1}.class.yml"
+    overlay="$(siteclass_overlay_dir)/${1}.class.yml"
+    if [ ! -f "$shipped" ] && [ -f "$overlay" ]; then
+        echo "$overlay"
+    else
+        echo "$shipped"
+    fi
+}
+# 0 iff <site> is declared in BOTH the shipped and overlay dirs. Never resolve
+# one silently: two reviewed files disagreeing about what a site IS must be a
+# refusal, not a precedence rule nobody remembers.
+siteclass_decl_duplicate() {
+    local shipped overlay
+    shipped="$(siteclass_dir)/${1}.class.yml"
+    overlay="$(siteclass_overlay_dir)/${1}.class.yml"
+    [ -f "$shipped" ] && [ -f "$overlay" ] && [ "$shipped" != "$overlay" ]
+}
 
 siteclass_valid_class() {
     local c="${1:-}" k
@@ -113,6 +140,12 @@ siteclass_of() {
 
     if ! command -v yq >/dev/null 2>&1; then
         echo "cannot-verify:yq-not-installed"; return 2
+    fi
+
+    # ops#326: a declaration present in BOTH the shipped dir and the private
+    # overlay is ambiguity about the authority itself — fail closed.
+    if siteclass_decl_duplicate "$site"; then
+        echo "cannot-verify:duplicate-declaration:${site}"; return 2
     fi
 
     local decl tracked site_cfg from_site from_global
@@ -270,7 +303,7 @@ siteclass_art9_check() {
         return 2
     fi
     if [ ! -f "$decl" ]; then
-        _sc_err "[$site] CANNOT-VERIFY: no class declaration at classes/${site}.class.yml."
+        _sc_err "[$site] CANNOT-VERIFY: no class declaration at classes/${site}.class.yml (shipped) or private/classes/${site}.class.yml (overlay)."
         _sc_say "  A site with no declared class has not been said to be safe; it has only"
         _sc_say "  not been described. Declare one:  pl class set $site <class>"
         return 2
@@ -318,7 +351,14 @@ siteclass_art9_check() {
                 _sc_err "                          Delegation to nothing is not delegation."
                 bad=1
             else
-                pair_contract="${PROJECT_ROOT:-$HOME/nwp}/pairs/${site}.pair-contract.yml"
+                # ops#326: the contract, like the declaration, may live in the
+                # private overlay (same search order as lib/pair.sh).
+                pair_contract="${NWP_PAIR_CONTRACT_DIR:-${PROJECT_ROOT:-$HOME/nwp}/pairs}/${site}.pair-contract.yml"
+                if [ ! -f "$pair_contract" ]; then
+                    local _sc_ovl_contract
+                    _sc_ovl_contract="${NWP_PAIR_OVERLAY_DIR:-${PROJECT_ROOT:-$HOME/nwp}/private/pairs}/${site}.pair-contract.yml"
+                    [ -f "$_sc_ovl_contract" ] && pair_contract="$_sc_ovl_contract"
+                fi
                 if [ ! -f "$pair_contract" ]; then
                     _sc_err "[$site] NO-CONSENT-SOURCE: posture=delegated names consent_source='$src',"
                     _sc_err "                          but there is no pair contract at pairs/${site}.pair-contract.yml."

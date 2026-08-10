@@ -65,6 +65,9 @@ def test_no_live_prod_verbs_in_map():
             {"site": "nwd"},
             {"site": "nwd", "bundle": "tester-member"},
             {"site": "nwd", "code_id": "x1"},
+            # ops#328 t3 — the per-tester editor's two writes
+            {"site": "nwd", "account": "demo_writer", "seed_key": "writers"},
+            {"site": "nwd", "account": "demo_writer", "level": "2"},
         ):
             try:
                 argv, _ = build_action(name, params, DEMO)

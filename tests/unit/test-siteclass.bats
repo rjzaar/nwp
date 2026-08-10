@@ -30,6 +30,9 @@ setup() {
   mkdir -p "${NWP_SITECLASS_DIR}"
   cp "${REPO_ROOT}/classes/registry.yml" "${NWP_SITECLASS_DIR}/registry.yml"
 
+  # ops#326: never inherit an operator's overlay into a fixture run.
+  unset NWP_SITECLASS_OVERLAY_DIR NWP_PAIR_OVERLAY_DIR NWP_PAIR_CONTRACT_DIR
+
   source "${REPO_ROOT}/lib/siteclass.sh"
 
   TODAY="$(date -u +%F)"
@@ -549,19 +552,89 @@ PHP
 # Real declarations shipped in this repo must themselves be valid
 # =============================================================================
 
-@test "the shipped rgs declaration is internally consistent" {
+@test "every shipped declaration (the sample pair) is internally consistent" {
+  # ops#326: real instance declarations live in the private overlay repo; the
+  # engine ships only the sample pair (ssd, nwd). Every declaration that DOES
+  # ship must still resolve cleanly.
   export NWP_SITECLASS_DIR="${REPO_ROOT}/classes"
-  run siteclass_of rgs
+  local decl site n=0
+  for decl in "${REPO_ROOT}"/classes/*.class.yml; do
+    site="$(yq eval '.site' "$decl")"
+    n=$((n + 1))
+    run siteclass_of "$site"
+    [ "$status" -eq 0 ]
+  done
+  [ "$n" -ge 2 ]   # the sample pair: ssd + nwd at minimum
+}
+
+# =============================================================================
+# ops#326: the private overlay — instance declarations resolve from
+# private/classes/ AFTER the shipped classes/; a site declared in BOTH is
+# contradictory and fails closed. Reviewability is preserved because private/
+# is its own reviewed git repo (ADR-0038 shape).
+# =============================================================================
+
+@test "ops#326: a declaration in the private overlay resolves (search path)" {
+  export NWP_SITECLASS_OVERLAY_DIR="${TEST_TMP}/overlay-classes"
+  mkdir -p "$NWP_SITECLASS_OVERLAY_DIR"
+  cat > "${NWP_SITECLASS_OVERLAY_DIR}/ovl.class.yml" <<'EOF'
+site: ovl
+class: member-standalone
+EOF
+  run siteclass_of ovl
   [ "$status" -eq 0 ]
   [ "$output" = "member-standalone" ]
 }
 
-@test "the shipped ssc declaration is member-paired and DELEGATED (never exempt)" {
-  export NWP_SITECLASS_DIR="${REPO_ROOT}/classes"
-  run siteclass_art9_posture ssc
-  [ "$output" = "delegated" ]
-  run siteclass_art9_exempt ssc
-  [ "$status" -ne 0 ]
+@test "ops#326: the overlay default path is PROJECT_ROOT/private/classes (no env needed)" {
+  mkdir -p "${PROJECT_ROOT}/private/classes"
+  cat > "${PROJECT_ROOT}/private/classes/dflt.class.yml" <<'EOF'
+site: dflt
+class: service
+EOF
+  run siteclass_of dflt
+  [ "$status" -eq 0 ]
+  [ "$output" = "service" ]
+}
+
+@test "ops#326: a site declared in BOTH shipped and overlay dirs fails closed" {
+  export NWP_SITECLASS_OVERLAY_DIR="${TEST_TMP}/overlay-classes2"
+  mkdir -p "$NWP_SITECLASS_OVERLAY_DIR"
+  cat > "${NWP_SITECLASS_DIR}/both.class.yml" <<'EOF'
+site: both
+class: service
+EOF
+  cat > "${NWP_SITECLASS_OVERLAY_DIR}/both.class.yml" <<'EOF'
+site: both
+class: demo
+EOF
+  run siteclass_of both
+  [ "$status" -eq 2 ]
+  [[ "$output" == cannot-verify:duplicate-declaration* ]]
+}
+
+@test "ops#326: art9_check resolves an overlay declaration + overlay pair contract" {
+  # The real member-paired shape after the move: the declaration AND its pair
+  # contract both live in the overlay; the delegated posture's consent-source
+  # check must find both.
+  export NWP_SITECLASS_OVERLAY_DIR="${TEST_TMP}/overlay-classes3"
+  export NWP_PAIR_OVERLAY_DIR="${TEST_TMP}/overlay-pairs3"
+  mkdir -p "$NWP_SITECLASS_OVERLAY_DIR" "$NWP_PAIR_OVERLAY_DIR"
+  cat > "${NWP_SITECLASS_OVERLAY_DIR}/ovlpaired.class.yml" <<'EOF'
+site: ovlpaired
+class: member-paired
+art9:
+  posture: delegated
+  consent_source: provider9
+  consent_source_class: auth_nwc
+EOF
+  cat > "${NWP_PAIR_OVERLAY_DIR}/ovlpaired.pair-contract.yml" <<'EOF'
+pair: ovlpaired-provider9
+provider: provider9
+consumer: ovlpaired
+EOF
+  run siteclass_art9_check ovlpaired
+  [ "$status" -eq 0 ]
 }
 
 # =============================================================================

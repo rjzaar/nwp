@@ -155,6 +155,16 @@ FEEDBACK_LIMIT=100
 FEEDBACK_STATUS_CMD="nwc-feedback:sync-status"
 FEEDBACK_STATUS_LIMIT=50
 FEEDBACK_NONE_MARKER="No feedback items pending GitLab sync"
+# sync-status's EARLY RETURN when no escalated signal carries a GitLab link —
+# byte-identical to NwcFeedbackCommands::syncStatus(). On a quiet hour this is
+# the ONLY output: the `Done. advanced=…` summary line never prints, which is
+# why every hourly run from 2026-08-09's arming logged `summary-unparsed`
+# (ops#329 D4). An empty set is a PARSED zero, not an unparsed shrug.
+FEEDBACK_STATUS_NONE_MARKER="No escalated signals with a GitLab link to check"
+# ops#329 D5: the box's own nightly backup landing dir (written by the 01:30
+# producer cron, gitlab-readable by design). `status` reports the newest file
+# per subdir — names, sizes and ages only, never contents.
+BACKUP_PULL_DIR="/var/backups/nwp-pull"
 FEEDBACK_MIN_PROBE='echo method_exists(\Drupal::service("nwc_feedback.gitlab_sync"), "buildIssueDescription") ? "MINIMISED-OK" : "MINIMISATION-MISSING";'
 
 DRUSH_SUDO=(sudo -u www-data)
@@ -206,7 +216,37 @@ scrub() {
 # [G1] Action word: fixed literal allowlist, never executed as a command
 ################################################################################
 
+# The action word arrives by exactly TWO routes, and until ops#329 D6 this read
+# only the first:
+#
+#   1. the FORCED COMMAND route — the restricted key. sshd puts whatever the
+#      client asked for in $SSH_ORIGINAL_COMMAND and runs this script with no
+#      argv. This is how the nightly cron and `pl demo schedule --via-key` call.
+#   2. the SUDO route — `ssh box "sudo /usr/local/bin/nwd-demo-reset-restricted
+#      status"`, which is what `pl demo status --tier=live` and `pl demo harvest
+#      --pull` fall back to on a host that has no restricted key. sudo's
+#      env_reset strips $SSH_ORIGINAL_COMMAND (and $SSH_CLIENT), so here the
+#      word can ONLY arrive in argv.
+#
+# MEASURED 2026-08-10 on the ssd half (this file has the identical defect and
+# is fixed with it): reading route 1 alone meant a route-2 `status` resolved to
+# the EMPTY string, fell into the `""|nightly)` arm, and asked the box to WIPE
+# the site. The read-only monitoring probe was a destructive one. nwd escaped
+# only because the dev workstation happens to hold ~/.ssh/nwd_demo_reset and so
+# never took route 2 — an accident of which key is where, not a guarantee.
+#
+# argv is joined with "$*" on purpose: `status extra` must be ONE unrecognised
+# string that the allowlist REFUSES, not a `status` with something ignored.
 RAW_CMD="${SSH_ORIGINAL_COMMAND:-}"
+ARGV_CMD="$*"
+if [[ -z "$RAW_CMD" ]]; then
+    RAW_CMD="$ARGV_CMD"
+elif [[ -n "$ARGV_CMD" && "$ARGV_CMD" != "$RAW_CMD" ]]; then
+    # Two different words in one invocation. There is no honest way to choose,
+    # and the dangerous reading (fall back to nightly) is the one the old code
+    # would have taken — so this is built to land in the REFUSED arm below.
+    RAW_CMD="ambiguous: ssh='${RAW_CMD}' argv='${ARGV_CMD}'"
+fi
 CLIENT="${SSH_CLIENT:-local}"
 
 resolve_action() {
@@ -252,6 +292,48 @@ if [[ "$ACTION" == "status" ]]; then
         echo "golden:      MISSING"
     fi
     echo "last reset:  $(cat "$STAMP_FILE" 2>/dev/null || echo none)"
+
+    # ops#329 D4 — the return leg's last run, read from this box's OWN log
+    # (the primary record; met's cron log is only the trigger transcript).
+    # One structured line: the newest feedback-status-* record verbatim
+    # (<utc>|<event>|<detail>), `none` when the leg has never run here, or a
+    # named CANNOT-VERIFY when the log exists but cannot be read — three
+    # states, never collapsed, never silent.
+    if [[ -e "$LOG_FILE" && ! -r "$LOG_FILE" ]]; then
+        echo "last_feedback_status: CANNOT-VERIFY log-unreadable"
+    else
+        FS_LAST="$(grep '|feedback-status-' "$LOG_FILE" 2>/dev/null | tail -1)"
+        echo "last_feedback_status: ${FS_LAST:-none}"
+    fi
+
+    # ops#329 D5 — newest nightly backup per subdir of the box's pull dir.
+    # Names, byte counts and mtimes only; no contents, no sudo (the dir is
+    # gitlab-readable by design). A missing or unreadable dir is NAMED, an
+    # empty subdir says `empty` — absence of backups must never render as
+    # absence of the report.
+    if [[ ! -d "$BACKUP_PULL_DIR" ]]; then
+        echo "backups: ${BACKUP_PULL_DIR} MISSING"
+    elif [[ ! -r "$BACKUP_PULL_DIR" || ! -x "$BACKUP_PULL_DIR" ]]; then
+        echo "backups: ${BACKUP_PULL_DIR} UNREADABLE"
+    else
+        echo "backups: ${BACKUP_PULL_DIR}"
+        BK_FOUND=0
+        for BK_D in "$BACKUP_PULL_DIR"/*/; do
+            [[ -d "$BK_D" ]] || continue
+            BK_FOUND=1
+            BK_SUB="$(basename "$BK_D")"
+            BK_NEWEST="$(ls -1t "$BK_D" 2>/dev/null | head -1)"
+            if [[ -n "$BK_NEWEST" && -f "${BK_D}${BK_NEWEST}" ]]; then
+                BK_BYTES="$(stat -c%s "${BK_D}${BK_NEWEST}" 2>/dev/null || echo '?')"
+                BK_MTIME="$(date -u -r "${BK_D}${BK_NEWEST}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo '?')"
+                echo "backup: ${BK_SUB}|newest=${BK_NEWEST}|bytes=${BK_BYTES}|mtime=${BK_MTIME}"
+            else
+                echo "backup: ${BK_SUB}|empty"
+            fi
+        done
+        [[ "$BK_FOUND" -eq 1 ]] || echo "backup: none"
+    fi
+
     echo "--- last 15 log lines ---"
     tail -n 15 "$LOG_FILE" 2>/dev/null || true
     exit 0
@@ -425,8 +507,17 @@ EOF
         echo "FAIL  feedback-status (return leg) failed rc=${FS_RC} — reporters are seeing stale state." >&2
         exit 1
     fi
-    # The command's own summary line: "Done. advanced=N drafts_captured=N checked=N"
+    # The command's own summary line: "Done. advanced=N drafts_captured=N checked=N".
+    # That line only prints when there WAS something to check — the empty set
+    # returns early with FEEDBACK_STATUS_NONE_MARKER and no counts at all, so
+    # it is folded to an explicit zero (ops#329 D4; before this, every quiet
+    # hour logged `summary-unparsed` and the counts were dropped on the floor).
+    # Anything matching NEITHER shape still logs summary-unparsed: an output
+    # format this wrapper does not recognise is a fact worth keeping visible.
     FS_SUM="$(printf '%s\n' "$FS_OUT" | grep -o 'advanced=[0-9]* drafts_captured=[0-9]* checked=[0-9]*' | tail -1)"
+    if [[ -z "$FS_SUM" && "$FS_OUT" == *"$FEEDBACK_STATUS_NONE_MARKER"* ]]; then
+        FS_SUM="advanced=0 drafts_captured=0 checked=0"
+    fi
     log "feedback-status-ok" "${FS_SUM:-summary-unparsed}"
     printf '%s\n' "$FS_OUT"
     echo "OK  feedback-status complete${FS_SUM:+ (${FS_SUM})}."

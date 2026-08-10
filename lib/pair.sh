@@ -58,8 +58,11 @@
 # separately — see docs/guides/ops75-pair-contract-schema.md §OAuth (STUB).
 #
 # Config (env overrides; sane defaults):
-#   NWP_PAIR_CONTRACT_DIR   default: $PROJECT_ROOT/pairs   (real contracts;
-#                           empty today → no real pair configured → no-op)
+#   NWP_PAIR_CONTRACT_DIR   default: $PROJECT_ROOT/pairs   (SHIPPED contracts —
+#                           the ssd↔nwd sample pair)
+#   NWP_PAIR_OVERLAY_DIR    default: $PROJECT_ROOT/private/pairs (the PRIVATE
+#                           OVERLAY: real instance contracts, searched second;
+#                           ops#326 — a pair declared in both dirs fails closed)
 #   NWP_PAIR_STATE_DIR      default: $PROJECT_ROOT/private/pairs (deployed-version
 #                           + RAG state, never committed)
 #   NWP_PAIR_GATE_SOFT      "true" ⇒ declared-pair-with-missing-contract WARNS
@@ -84,6 +87,16 @@ pair_contract_dir() {
     echo "${NWP_PAIR_CONTRACT_DIR:-${PROJECT_ROOT:-$HOME/nwp}/pairs}"
 }
 
+# ops#326 (engine/site separation): REAL pair contracts live in the PRIVATE
+# OVERLAY repo (private/pairs/ — its own reviewed git repo, remote nwp/private),
+# searched AFTER the shipped pairs/ (which carries only the ssd↔nwd sample
+# pair). The contract stays versioned and MR-reviewable — the MR simply lives
+# on the overlay repo. NWP_PAIR_STATE_DIR already points into private/pairs;
+# the contract now joins its state.
+pair_contract_overlay_dir() {
+    echo "${NWP_PAIR_OVERLAY_DIR:-${PROJECT_ROOT:-$HOME/nwp}/private/pairs}"
+}
+
 pair_state_dir() {
     echo "${NWP_PAIR_STATE_DIR:-${PROJECT_ROOT:-$HOME/nwp}/private/pairs}"
 }
@@ -94,9 +107,23 @@ pair_actor() {
 
 # Contract file for a pair id. A pair id is the CONSUMER site name (each
 # consumer has exactly one provider). Echoes the path (may not exist).
+# ops#326: shipped dir first, then the private overlay. A contract declared in
+# BOTH is ambiguity about the authority itself — the echoed path is one that
+# cannot exist, so every `[ -f ]` / pair_contract_valid caller fails closed.
 pair_contract_file() {
-    local pair_id="$1"
-    echo "$(pair_contract_dir)/${pair_id}.pair-contract.yml"
+    local pair_id="$1" shipped overlay
+    shipped="$(pair_contract_dir)/${pair_id}.pair-contract.yml"
+    overlay="$(pair_contract_overlay_dir)/${pair_id}.pair-contract.yml"
+    if [ -f "$shipped" ] && [ -f "$overlay" ] && [ "$shipped" != "$overlay" ]; then
+        echo "pair contract for '${pair_id}' exists in BOTH $(pair_contract_dir) and $(pair_contract_overlay_dir) — remove one; refusing to pick between two reviewed declarations (fail-closed)." >&2
+        echo "${shipped}.DUPLICATE-DECLARATION"
+        return 2
+    fi
+    if [ ! -f "$shipped" ] && [ -f "$overlay" ]; then
+        echo "$overlay"
+    else
+        echo "$shipped"
+    fi
 }
 
 # --- role / membership resolution --------------------------------------------
@@ -275,11 +302,21 @@ pair_scan() {
     if [ -d "$cdir" ] && { [ ! -r "$cdir" ] || [ ! -x "$cdir" ]; }; then
         out+="blind${tab}?${tab}${cdir}${tab}pair contract directory exists but is not readable — any contract in it is invisible${nl}"
     fi
+    # ops#326: the private overlay is a contract source of equal standing —
+    # an unreadable overlay dir is blindness there too.
+    local odir; odir="$(pair_contract_overlay_dir)"
+    if [ -d "$odir" ] && { [ ! -r "$odir" ] || [ ! -x "$odir" ]; }; then
+        out+="blind${tab}?${tab}${odir}${tab}pair contract OVERLAY directory exists but is not readable — any contract in it is invisible${nl}"
+    fi
     local sdir="${root}/sites"
     if [ -d "$sdir" ] && { [ ! -r "$sdir" ] || [ ! -x "$sdir" ]; }; then
         out+="blind${tab}?${tab}${sdir}${tab}sites directory exists but is not readable — any per-site 'paired_with:' in it is invisible${nl}"
     fi
-    for f in "$cdir"/*.pair-contract.yml; do
+    local _cdirs=("$cdir")
+    [ "$odir" != "$cdir" ] && _cdirs+=("$odir")
+    local _dir
+    for _dir in "${_cdirs[@]}"; do
+    for f in "$_dir"/*.pair-contract.yml; do
         [ -f "$f" ] || continue
         stem="$(basename "$f")"; stem="${stem%.pair-contract.yml}"
         cons="$(_pair_contract_side "$f" consumer || true)"
@@ -301,7 +338,15 @@ pair_scan() {
             out+="blind${tab}${cons}${tab}${f}${tab}contract declares 'consumer: ${cons}' but is filed as '${stem}.pair-contract.yml' — pair_guard resolves contracts by consumer name and would not find it${nl}"
             continue
         fi
+        if [ "$_dir" = "$odir" ] && [ -n "${_p_prov[$cons]:-}" ]; then
+            # ops#326: declared in BOTH the shipped and overlay dirs. Two
+            # reviewed declarations for one pair is ambiguity about the
+            # authority itself — blind, never a precedence rule.
+            out+="blind${tab}${cons}${tab}${f}${tab}pair contract for '${cons}' exists in BOTH ${cdir} and ${odir} — remove one (fail-closed)${nl}"
+            continue
+        fi
         _p_prov["$cons"]="$prov"; _p_file["$cons"]="$f"
+    done
     done
 
     # 1. Per-site v2 operator config.

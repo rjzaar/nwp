@@ -354,10 +354,37 @@ _deploy_backup_target() {
 ################################################################################
 
 # The transfer, defined ONCE so the dry run and the real run cannot diverge.
+# .nwp-deployed.json is WRITTEN ON THE TARGET after each rsync (see
+# _console_write_marker) and exists in no checkout, so it must be excluded
+# here AND in CONSOLE_MANIFEST_CMD (lib/console-deploy.sh) or --delete
+# would remove it / the divergence gate would flag it as 'D' every time.
 _console_rsync() {  # extra args (e.g. --dry-run) passed through
     rsync -az --delete \
         --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' \
+        --exclude '.nwp-deployed.json' \
         "$@" "$CONSOLE_SRC/" "$CONSOLE_HOST":nwp-console/src/
+}
+
+# Record WHICH commit was just deployed, on the target, beside the app
+# (ops#329). Before this marker existed the deployed console version was
+# recorded NOWHERE — on 2026-08-09 the console sat stale after a merge and no
+# probe could say so. The console's overview reads this file and compares it
+# with GitLab main; an ABSENT marker renders "NOT RECORDED", never "in sync".
+# Best-effort: a marker failure must not fail a deploy that already shipped.
+_console_write_marker() {
+    local sha branch dirty="false"
+    sha=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "")
+    branch=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    [ -n "$(git -C "$REPO_ROOT" status --porcelain -uno -- scripts/console 2>/dev/null)" ] && dirty="true"
+    if [ -z "$sha" ]; then
+        print_warning "could not resolve HEAD — deploy marker not written (overview will say NOT RECORDED)"
+        return 0
+    fi
+    printf '{"sha":"%s","branch":"%s","dirty":%s,"deployed_at":"%s","by":"%s"}\n' \
+        "$sha" "$branch" "$dirty" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(whoami)@$(hostname)" \
+        | _ssh 'cat > ~/nwp-console/src/.nwp-deployed.json && chmod 600 ~/nwp-console/src/.nwp-deployed.json' \
+        || print_warning "deploy marker write failed — overview will say NOT RECORDED"
 }
 
 # Compact "a, b, c … and N more" for a fate line.
@@ -521,6 +548,7 @@ cmd_deploy() {
     print_info "1/5 rsync source"
     _ssh 'mkdir -p ~/nwp-console/src'
     _console_rsync
+    _console_write_marker
 
     print_info "2/5 venv + deps"
     _ssh 'python3 -m venv ~/nwp-console/venv 2>/dev/null || true;

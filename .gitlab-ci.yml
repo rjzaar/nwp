@@ -371,8 +371,12 @@ lint:doc-truth:
 
 # Intersite change-impact classifier (P74 Phase 2 / boundary gate). Cloned from
 # lint:doc-truth above. Runs `pl impact --json` on an MR to classify the diff
-# INTERNAL vs BOUNDARY-TOUCHING against pairs/ssc.pair-contract.yml's `boundary:`
-# block, and artifacts the JSON verdict. Uses the merge-base sha GitLab sets for
+# INTERNAL vs BOUNDARY-TOUCHING against the SHIPPED SAMPLE pair contract
+# (pairs/ssd.pair-contract.yml)'s `boundary:` block, and artifacts the JSON
+# verdict. ops#326: the real pair's contract lives in the private overlay repo
+# and is deliberately not on any runner — the boundary is a PRODUCT property,
+# expressed identically by the sample contract; NWP_BOUNDARY_PAIR selects it
+# because the engine ships no default pair id. Uses the merge-base sha GitLab sets for
 # MR pipelines as the compare base; a missing/unfetched base makes `pl impact`
 # fail-safe CLOSED (⇒ BOUNDARY), never silently "internal".
 #
@@ -411,11 +415,12 @@ boundary:classify:
   stage: lint
   variables:
     GIT_DEPTH: "0"   # base sha must be reachable or classification fail-safes closed
+    NWP_BOUNDARY_PAIR: "ssd"   # ops#326: engine CI runs against the shipped sample pair
   before_script:
     - ./scripts/ci/ensure-yq.sh
     - export PATH="${HOME}/.cache/nwp-ci/yq-v4.44.1:${PATH}"
   script:
-    - echo "Classifying diff against the nwc<->ssc boundary (P74 Phase 2)..."
+    - echo "Classifying diff against the sample-pair (nwd<->ssd) boundary (P74 Phase 2)..."
     - BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-main}"
     - echo "Compare base ${BASE}"
     - ./scripts/commands/impact.sh --base="${BASE}" --fail-uncomputable  # human report
@@ -545,10 +550,11 @@ test:unit:
     # EXACTLY TWO skips are expected on the CI runner, and both are named:
     #   1. tests/unit/test-stale-branch-sweep.bats B2 (see above);
     #   2. tests/unit/test-oidc-key-rotation.bats case 15 — it runs the
-    #      key-rotation gate against the REAL ssc/ssd contracts, which needs
-    #      the consumer checkout under sites/; sites/ is gitignored and never
-    #      on a runner, and the gate correctly refuses to call absence of
-    #      evidence a pass (CANNOT-VERIFY), so the test skips rather than
+    #      key-rotation gate against the SHIPPED SAMPLE contracts (ssd; the
+    #      real pair's contract lives in the private overlay, ops#326), which
+    #      needs the consumer checkout under sites/; sites/ is gitignored and
+    #      never on a runner, and the gate correctly refuses to call absence
+    #      of evidence a pass (CANNOT-VERIFY), so the test skips rather than
     #      passing blind. It runs for real on the operator's clone, where
     #      tests/.skip-budget still pins unit=0.
     NWP_BATS_MAX_SKIPPED: "2"

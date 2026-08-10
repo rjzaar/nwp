@@ -105,7 +105,7 @@ print('ok')"
   root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
   env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --no-security --out "$WORK/s.json"
   run python3 -c "
-import json;d=json.load(open('$WORK/s.json'));assert list(d['feeds'])==['rag'];print('ok')"
+import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['estate','rag'], list(d['feeds']);print('ok')"
   [ "$status" -eq 0 ]
 }
 
@@ -113,7 +113,7 @@ import json;d=json.load(open('$WORK/s.json'));assert list(d['feeds'])==['rag'];p
   root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
   env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-todo --out "$WORK/s.json"
   run python3 -c "
-import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['rag','security'];print('ok')"
+import json;d=json.load(open('$WORK/s.json'));assert sorted(d['feeds'])==['estate','rag','security'], list(d['feeds']);print('ok')"
   [ "$status" -eq 0 ]
 }
 
@@ -448,7 +448,7 @@ print('ok')"
   [[ "$output" == *"security     : not in this snapshot"* ]]
   run python3 -c "
 import json;d=json.load(open('$WORK/s.json'))
-assert sorted(d['feeds'])==['rag','todo'], list(d['feeds'])
+assert sorted(d['feeds'])==['estate','rag','todo'], list(d['feeds'])
 assert not [k for k in d['summary'] if k.startswith('security_')], d['summary']
 print('ok')"
   [ "$status" -eq 0 ]
@@ -633,6 +633,177 @@ print('ok')"
 import json;d=json.load(open('$WORK/d.json'))
 assert d['summary']['population']==3
 assert d['summary']['degraded'] is True   # the todo feed failed
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ops#329 D7 — the todo feed published BLIND, every single run
+#
+# MEASURED 2026-08-10 during `pl fleet publish`:
+#   feed todo : BLIND (90.0s, rc=124) — feed exceeded its 90s deadline (rc=124)
+#               — published as blind, not as clean
+#
+# The reporting was honest. The arithmetic underneath was not survivable:
+#
+#   the feed's deadline          FLEET_FEED_BUDGET        90s
+#   the sweep's OWN budget       TODO_SWEEP_BUDGET       150s   (lib/todo-checks.sh)
+#   what the sweep actually took                          98.4s cold / 72.6s warm
+#
+# `pl todo check` is built to self-truncate at its own budget and file an
+# explicit `UNK-budget-<check>` item for every check it did not reach — a
+# PARTIAL result that names its own gaps. Handing it a 90s deadline while its
+# own budget is 150s means that machinery can never engage: the outer timeout
+# always fires first and throws away everything the sweep had gathered. The
+# console panel that consumes the feed was therefore permanently unknown, and
+# the */30 cron burned 90s producing nothing, every half hour.
+#
+# THE INVARIANT: the sweep's own budget must be strictly SHORTER than the
+# deadline the feed gives it — derived from it, not written down twice — so the
+# sweep always gets to finish and report, and the outer timeout is a last
+# resort rather than the normal path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Read a shell value out of fleet.sh as fleet.sh itself would compute it.
+_fleet_eval() { # $1 = expression, $2… = env assignments
+  env "${@:2}" bash -c "
+    PROJECT_ROOT='$REPO_ROOT'
+    source '$FLEET_SH'
+    $1"
+}
+
+@test "ops#329 D7: the todo sweep's own budget is SHORTER than the feed's deadline" {
+  local outer inner
+  outer="$(_fleet_eval '_feed_budget todo')"
+  inner="$(_fleet_eval '_todo_sweep_budget')"
+  [ -n "$outer" ]
+  [ -n "$inner" ]
+  # The whole defect in one comparison.
+  [ "$inner" -lt "$outer" ]
+}
+
+@test "ops#329 D7: the sweep budget is DERIVED from the deadline, not a second literal" {
+  # Two independent numbers drift; one derived from the other cannot. Moving
+  # the deadline must move the sweep budget with it.
+  local a b
+  a="$(_fleet_eval '_todo_sweep_budget' FLEET_FEED_BUDGET_TODO=200)"
+  b="$(_fleet_eval '_todo_sweep_budget' FLEET_FEED_BUDGET_TODO=300)"
+  [ "$a" -lt "$b" ]
+  [ "$a" -lt 200 ]
+  [ "$b" -lt 300 ]
+}
+
+@test "ops#329 D7: a nonsensically small deadline still yields inner < outer" {
+  # Fail-closed on the arithmetic: an operator who sets a 5s deadline gets a
+  # sweep budget that is still strictly inside it, never a negative one and
+  # never one that guarantees the kill.
+  local outer=5 inner
+  inner="$(_fleet_eval '_todo_sweep_budget' FLEET_FEED_BUDGET_TODO=5)"
+  [ "$inner" -ge 1 ]
+  [ "$inner" -lt "$outer" ]
+}
+
+@test "ops#329 D7: build_snapshot hands the todo feed its derived budget" {
+  # The invariant is worthless if the value never reaches `pl todo check`.
+  # This stub records the environment it was called with.
+  local root="$WORK/envroot"; mkdir -p "$root"
+  cat > "$root/pl" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "rag --json")  printf '%s' '{"summary":{"RED":0,"AMBER":0,"GREEN":1},"sites":[{"site":"a","rag":"GREEN"}]}'; exit 0 ;;
+  "todo check")  printf 'TODO_SWEEP_BUDGET=%s\n' "${TODO_SWEEP_BUDGET:-UNSET}" >> "$NWP_ENV_TRACE"
+                 printf '%s' '{"items":[]}'; exit 0 ;;
+esac
+case "$1" in --version) echo "NWP CLI (pl) version 9.9.9"; exit 0 ;; esac
+exit 64
+EOF
+  chmod +x "$root/pl"
+  export NWP_ENV_TRACE="$WORK/envtrace"; : > "$NWP_ENV_TRACE"
+  run env PROJECT_ROOT="$root" NWP_ENV_TRACE="$NWP_ENV_TRACE" \
+      "$FLEET_SH" snapshot --no-security --out "$WORK/e.json"
+  [ "$status" -eq 0 ]
+  grep -q '^TODO_SWEEP_BUDGET=[0-9]\+$' "$NWP_ENV_TRACE"
+  local seen; seen="$(sed -n 's/^TODO_SWEEP_BUDGET=//p' "$NWP_ENV_TRACE" | head -1)"
+  [ "$seen" != "UNSET" ]
+  [ "$seen" -lt "$(_fleet_eval '_feed_budget todo')" ]
+}
+
+@test "ops#329 D7: the todo feed's deadline clears the sweep's real measured cost" {
+  # 98.4s cold, 72.6s warm, measured 2026-08-10 on the dev workstation. A
+  # deadline at or below the cold figure is a feed that publishes blind on
+  # every cold start — which is what 90s was.
+  local outer; outer="$(_fleet_eval '_feed_budget todo')"
+  [ "$outer" -gt 99 ]
+}
+
+@test "ops#329 D7: the whole publish still fits the */30 cron window" {
+  # Raising one feed's deadline must not silently spend the window. Worst case
+  # is every feed timing out plus the ship leg.
+  local rag todo sec est ship1 ship2 total
+  rag="$(_fleet_eval '_feed_budget rag')"
+  todo="$(_fleet_eval '_feed_budget todo')"
+  sec="$(_fleet_eval '_feed_budget security')"
+  est="$(_fleet_eval '_feed_budget estate')"
+  ship1="$(_fleet_eval 'printf "%s" "$SSH_STEP_BUDGET"')"
+  ship2="$(_fleet_eval 'printf "%s" "$SSH_SHIP_BUDGET"')"
+  total=$(( rag + todo + sec + est + ship1 + ship1 + ship2 ))
+  # 30 minutes, with the run finishing well before the next one starts.
+  [ "$total" -lt 1500 ]
+}
+
+# A todo feed that ran only PART of the sweep: real findings, plus the sweep's
+# own UNK-budget rows naming the checks it never reached. This is the shape
+# `pl todo check` emits when it stops at TODO_SWEEP_BUDGET (verified live on
+# 2026-08-10: FLEET_FEED_BUDGET_TODO=45 → 50 items, 20 of them UNK-budget-*).
+TODO_PARTIAL='{"items":[{"id":"BAK-demo1","category":"BAK","priority":"high","title":"Backup is 14 days old","site":"demo1"},{"id":"UNK-budget-check_disk_usage","category":"UNK","priority":"medium","title":"Check could not run: budget-check_disk_usage","description":"NOT a clean result — this check did not complete."},{"id":"UNK-budget-check_gitlab_issues","category":"UNK","priority":"medium","title":"Check could not run: budget-check_gitlab_issues","description":"NOT a clean result — this check did not complete."}]}'
+
+@test "ops#329 D7: a PARTIAL sweep is counted, not smoothed into the item total" {
+  # 3 items of which 2 are "we never asked". A summary that says only "3 items"
+  # lets a reader take a small number of FINDINGS for a small number of
+  # QUESTIONS ASKED — the same defect as a blind feed, one level in.
+  root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_PARTIAL")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/p.json"
+  [ "$status" -eq 0 ]
+  run python3 -c "
+import json;d=json.load(open('$WORK/p.json'));s=d['summary']
+assert s['todo_items']==3, s['todo_items']
+assert s['todo_unknown_checks']==2, s.get('todo_unknown_checks')
+assert s['degraded'] is True, 'a partial sweep must degrade the snapshot'
+assert d['feeds']['todo']['ok'] is True, 'partial is not blind — the findings are real'
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "ops#329 D7: the partial sweep is NAMED in what the operator reads" {
+  root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_PARTIAL")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/p2.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"did NOT run"* ]]
+  [[ "$output" == *"UNKNOWN, not clean"* ]]
+}
+
+@test "ops#329 D7: NEGATIVE CONTROL — a COMPLETE sweep is not flagged partial" {
+  # The counter must be able to read zero, or it is not a measurement. This
+  # root answers EVERY feed, so `degraded` is decided by the sweep alone.
+  local root="$WORK/cleanroot"; mkdir -p "$root"
+  cat > "$root/pl" <<EOF
+#!/bin/bash
+case "\$1 \$2" in
+  "rag --json")     printf '%s' '${RAG_OK}'; exit 0 ;;
+  "todo check")     printf '%s' '${TODO_OK}'; exit 0 ;;
+  "fleet estate")   printf '%s' '{"repos":[]}'; exit 0 ;;
+esac
+case "\$1" in --version) echo "NWP CLI (pl) version 9.9.9"; exit 0 ;; esac
+exit 64
+EOF
+  chmod +x "$root/pl"
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/c.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"did NOT run"* ]]
+  run python3 -c "
+import json;d=json.load(open('$WORK/c.json'));s=d['summary']
+assert s['todo_unknown_checks']==0, s['todo_unknown_checks']
+assert s['degraded'] is False, 'a complete sweep must not degrade the snapshot'
 print('ok')"
   [ "$status" -eq 0 ]
 }

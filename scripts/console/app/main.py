@@ -27,6 +27,7 @@ import asyncio
 import contextlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,8 +38,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import (advisories, config, fleet_state, help, library, notify, parsers,
-               quokka, scope as scope_mod, visuals, voice, webauthn_flow)
+from . import (advisories, config, fleet_state, help, library, notify, overview,
+               parsers, quokka, scope as scope_mod, visuals, voice, webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -645,6 +646,80 @@ def _gather_demo(sc: Scope, force: bool = False) -> list[dict]:
     return _gather_demo_raw(sorted(sc.demo_sites), force=force)
 
 
+# ops#329 tranche 2 — the nwd↔ssd interconnection readings, from the nwc
+# profile's read-only drush surface over `pl drush <site> --tier=live`.
+# Fixed argv literals, same doctrine as actions.py: nothing here is built
+# from user input, and every command on this list is read-only by contract
+# (each fails closed with exit 2 on the profile side).
+NWC_DRUSH_CMDS = {
+    "signals": ["nwc:signal-counts", "--format=json"],
+    "gaps": ["nwc:editorial:gap-status", "--format=json"],
+    "completion": ["nwc-moodle:completion-status", "--format=json"],
+    "moodle": ["nwc-moodle:status", "--format=json"],
+    "testers": ["nwc:tester-list", "--format=json"],
+}
+
+
+def _nwc_drush_probe(name: str, force: bool = False) -> dict:
+    """One drush-over-ssh probe, through the cached collector. MEASURED 5-7s
+    per probe, so the TTL is snapshot-class (OVERVIEW_DRUSH_TTL) — a second
+    caller inside the window pays nothing, and run_pl_cached's in-flight lock
+    means at most one ssh per command at a time. stderr is included in the
+    parse because drush's `Command "…" is not defined` arrives there."""
+    cmd = NWC_DRUSH_CMDS[name]
+    res = run_pl_cached(
+        config.NWP_ROOT,
+        ["drush", config.NWC_DRUSH_SITE, "--tier=live", "--execute", "--", *cmd],
+        ttl=config.OVERVIEW_DRUSH_TTL, timeout=config.OVERVIEW_DRUSH_TIMEOUT,
+        force=force)
+    parsed = parsers.parse_nwc_drush(res["out"] + "\n" + res["err"], cmd[0])
+    # Per-value age stamp: thread the collector's own bookkeeping into the
+    # view, so a 5-minute-old queue depth never reads like a live one.
+    parsed["cached"] = bool(res.get("cached"))
+    parsed["age"] = res.get("age", 0) if res.get("cached") else 0
+    return parsed
+
+
+def _gather_nwc(sc: Scope, force: bool = False) -> dict | None:
+    """The interconnection block for the pair slot, or None when the nwc site
+    is outside this scope — checked against sc.demo_sites BEFORE any
+    shell-out, like every scoped gatherer. The five probes run concurrently
+    (they are independent ssh round trips; serial would be ~30s cold, parallel
+    is one probe's latency) and each fails closed independently."""
+    if config.NWC_DRUSH_SITE not in sc.demo_sites:
+        return None
+    with ThreadPoolExecutor(max_workers=len(NWC_DRUSH_CMDS)) as ex:
+        futs = {name: ex.submit(_nwc_drush_probe, name, force)
+                for name in NWC_DRUSH_CMDS}
+        got = {name: f.result() for name, f in futs.items()}
+    return {
+        # The `site` key is deliberate: _pane()'s scrub drops this whole block
+        # for a reader scoped away from the nwc site (belt to the check above).
+        "site": config.NWC_DRUSH_SITE,
+        "signals": overview.signals_view(got["signals"]),
+        "gaps": overview.gap_status_view(got["gaps"]),
+        "completion": overview.completion_view(got["completion"], got["moodle"]),
+        "users": overview.users_view(got["testers"]),
+    }
+def _gather_demo_testers(site: str, force: bool = False) -> dict:
+    """The per-tester editor's roster read (ops#328 t3): `pl demo testers
+    <site> list --json --tier=live` — a live drush read over ssh (~5-7 s), so
+    it is lazy-loaded per site and cached, and the DISCHARGE re-read the
+    action route runs with force=True. --tier=live is a fixed literal for the
+    same reason it is everywhere else in this pane: config.DEMO_SITES names
+    the PUBLIC demo sites."""
+    res = run_pl_cached(config.NWP_ROOT, ["demo", "testers", site, "list", "--json", "--tier=live"],
+                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+    return parsers.parse_testers_json(res["out"] + "\n" + res["err"])
+
+
+def _tester_of(testers: dict, account: str) -> dict | None:
+    for a in testers.get("accounts", []) or []:
+        if a.get("name") == account:
+            return a
+    return None
+
+
 ISSUE_STATES = ("opened", "closed", "all")
 
 
@@ -998,6 +1073,182 @@ def pane_review(request: Request, force: int = 0, sc: Scope = Depends(scoped("vi
     )
 
 
+# -- estate overview gatherers (ops#329) -------------------------------------
+def _gather_estate_raw(force: bool = False, project_id: str | None = None) -> tuple[dict, dict, dict]:
+    """The workstation's estate feed (repo drift, deploys, harvest spool,
+    secrets debt, backup ages) — published with the fleet snapshot, local
+    `pl fleet estate --json` as the labelled fallback."""
+    return _gather_fleet_feed("estate", ["fleet", "estate", "--json"],
+                              parsers.parse_estate, "repos", empty_is_missing=True,
+                              force=force, project_id=project_id)
+
+
+def _gather_estate(sc: Scope, force: bool = False) -> tuple[dict, dict, dict]:
+    """Estate infrastructure (repos, deploy records, the secrets registry) is
+    not per-site data: a scoped project reader gets the same refusal marker the
+    Review pane uses — never a filtered subset that implies 'no drift'."""
+    if not sc.all_sites:
+        return {"ok": False, "scoped_out": True, "reason": ""}, {}, {}
+    return _gather_estate_raw(force=force, project_id=sc.project_id)
+
+
+_gl_branch_cache: dict = {}
+
+
+def _gitlab_main_cached(project: str, force: bool = False) -> dict:
+    """TTL-cached GitLab branch-head read — the 'what is main right now' side
+    of every deployed-vs-main verdict. An unreadable API stays ok:false and the
+    views render UNKNOWN rather than claiming equality from one side."""
+    now = time.time()
+    hit = _gl_branch_cache.get(project)
+    if hit and not force and now - hit["t"] < config.OVERVIEW_GITLAB_TTL:
+        return hit["v"]
+    v = gitlab.get_branch(project, "main")
+    _gl_branch_cache[project] = {"t": now, "v": v}
+    return v
+
+
+_webhook_cache = {"t": 0.0, "v": "unknown"}
+
+
+def _webhook_alive() -> str:
+    """'up' | 'down' | 'unknown'. Any HTTP answer (including 404/405) proves
+    the receiver is serving; connection refused proves it is not; everything
+    else — no URL, timeout, weird failure — is UNKNOWN, never either."""
+    if not config.WEBHOOK_PROBE_URL:
+        return "unknown"
+    now = time.time()
+    if now - _webhook_cache["t"] < 60:
+        return _webhook_cache["v"]
+    import urllib.error
+    import urllib.request
+    state = "unknown"
+    try:
+        urllib.request.urlopen(config.WEBHOOK_PROBE_URL, timeout=2)
+        state = "up"
+    except urllib.error.HTTPError:
+        state = "up"          # it answered — that IS liveness
+    except urllib.error.URLError as e:
+        if isinstance(getattr(e, "reason", None), ConnectionRefusedError):
+            state = "down"
+    except Exception:  # noqa: BLE001 — a probe must never take the slot down
+        state = "unknown"
+    _webhook_cache.update(t=now, v=state)
+    return state
+
+
+def _read_deploy_marker() -> dict | None:
+    """The `.nwp-deployed.json` marker `pl console deploy` writes beside the
+    app. Absent or unreadable both return None — marker_view then renders NOT
+    RECORDED, which is the honest reading of either."""
+    try:
+        data = json.loads(config.DEPLOY_MARKER.read_text())
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _replica_state(site: str) -> dict:
+    """This host's `pl backup replicate` landing dir for one site."""
+    base = config.BACKUP_REPLICA_DIR / site
+    try:
+        if not base.is_dir():
+            return {"site": site, "present": False, "readable": True}
+        files = [p for p in base.iterdir() if p.is_file() and p.suffix != ".tmp"]
+        if not files:
+            return {"site": site, "present": False, "readable": True}
+        newest = max(files, key=lambda p: p.stat().st_mtime)
+        return {"site": site, "present": True, "readable": True,
+                "newest": newest.name,
+                "age_seconds": int(time.time() - newest.stat().st_mtime),
+                "count": len(files)}
+    except OSError:
+        return {"site": site, "present": False, "readable": False}
+
+
+def _slot_local_ctx(sc: Scope, force: bool = False) -> dict:
+    """The console host's own state: checkout drift, deploy marker, services,
+    snapshot age, backup replicas. Every part is best-effort and fails to an
+    explicit unknown — never to a blank."""
+    co_res = run_pl_cached(config.NWP_ROOT, ["fleet", "checkout", "--json"],
+                           ttl=config.PANE_CACHE_TTL, timeout=60, force=force)
+    checkout = parsers.parse_checkout(co_res["out"] + "\n" + co_res["err"])
+    gl_main = _gitlab_main_cached(config.CONSOLE_REPO_PROJECT, force=force)
+    services = {
+        "nwp-console": "up",              # we are serving this response
+        "nwp-webhook": _webhook_alive(),
+        "quokka (local LLM)": "up" if _quokka_alive() else "down",
+    }
+    snap, _scoped = fleet_state.load_for(config.DATA_DIR, sc.project_id,
+                                         config.FLEET_STATE_FILE)
+    snap_age = fleet_state.age_seconds(snap)
+    # Replica rows carry the `site` key on purpose: scope.scrub() drops a
+    # foreign site's row if this slot is ever rendered for a scoped reader.
+    replicas = {r["site"]: r for r in (_replica_state(s) for s in sorted(sc.demo_sites))}
+    return {
+        "checkout": overview.checkout_view(checkout, gl_main),
+        "marker": overview.marker_view(_read_deploy_marker(), gl_main),
+        "services": overview.services_view(services),
+        "loop_paused": _loop_paused(),
+        "snapshot": {
+            "present": snap is not None,
+            "age_human": fleet_state.fmt_age(snap_age) if snap_age is not None else "",
+            "stale": bool(snap_age is not None and snap_age > config.FLEET_MAX_AGE),
+            "host": fleet_state.source_host(snap),
+        },
+        "replicas": overview.replicas_view(replicas),
+    }
+
+
+@app.get("/panes/visuals/slots/{slot}", response_class=HTMLResponse)
+def pane_visuals_slot(request: Request, slot: str, force: int = 0,
+                      sc: Scope = Depends(scoped("viewer"))):
+    """One overview slot, AJAXed into the skeleton. The slot name is user
+    input: anything outside overview.SLOTS is a 404, and each latency class
+    loads independently so the ssh-backed reads never block the fast ones.
+    Refresh (`force=1`) is the discharge rule: re-render from the forced
+    re-read, never from intent."""
+    if slot not in overview.SLOTS:
+        raise HTTPException(status_code=404)
+    force_b = bool(force)
+    if slot in ("local", "estate") and not sc.all_sites:
+        # Estate infrastructure — same refusal the Review pane renders.
+        return _pane(request, f"_ov_slot_{slot}.html",
+                     {"scoped_out": True, "slot": slot}, sc)
+    if slot == "local":
+        ctx = dict(_slot_local_ctx(sc, force=force_b), scoped_out=False, slot=slot)
+        return _pane(request, "_ov_slot_local.html", ctx, sc)
+    if slot == "estate":
+        est, _res, prov = _gather_estate(sc, force=force_b)
+        return _pane(request, "_ov_slot_estate.html",
+                     {"est": overview.estate_view(est), "prov": prov,
+                      "scoped_out": False, "slot": slot}, sc)
+    if slot == "pair":
+        sites = _gather_demo(sc, force=force_b)
+        return _pane(request, "_ov_slot_pair.html",
+                     {"pair_sites": sites, "pending": overview.pair_pending_slots(),
+                      "guild_edges": overview.skeleton_context()["guild_edges"],
+                      "nwc": _gather_nwc(sc, force=force_b),
+                      "slot": slot}, sc)
+    # slot == "ops"
+    q = _gather_review(sc, force=force_b)
+    data = (q.get("data") or {}) if q.get("ok") else {}
+    decisions = data.get("decisions") or []
+    mr_total = sum(len(p.get("items") or [])
+                   for p in (data.get("mrs") or {}).get("projects") or [])
+    try:
+        blocks, api_ok = _gather_ci(sc)
+    except Exception:  # noqa: BLE001
+        blocks, api_ok = [], False
+    rag, _res, rag_prov = _gather_rag(sc, force=force_b)
+    return _pane(request, "_ov_slot_ops.html",
+                 {"q": q, "decisions_n": len(decisions), "mr_total": mr_total,
+                  "ci_blocks": blocks, "ci_api_ok": api_ok,
+                  "ci_running": parsers.ci_running_count(blocks),
+                  "rag": rag, "rag_tab": parsers.fmt_rag_tab(rag),
+                  "rag_prov": rag_prov, "slot": slot}, sc)
+
+
 @app.get("/panes/ci", response_class=HTMLResponse)
 def pane_ci(request: Request, sc: Scope = Depends(scoped("viewer"))):
     blocks, api_ok = _gather_ci(sc)
@@ -1007,23 +1258,38 @@ def pane_ci(request: Request, sc: Scope = Depends(scoped("viewer"))):
 
 
 @app.get("/panes/visuals", response_class=HTMLResponse)
-def pane_visuals(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
-    rag, _res, prov = _gather_rag(sc, force=bool(force))
-    todo = _gather_todo(sc, force=bool(force))[0]
-    # Both of these are best-effort for the same reason pane_fleet treats the
-    # security feed that way: this pane's job is the at-a-glance read, and one
-    # unavailable feed must degrade to one honest "no data" card rather than
-    # taking the whole tab down.
-    sec = {"ok": False, "error": "security data unavailable on this host"}
-    try:
-        sec = _gather_security(sc, force=bool(force))[0]
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        blocks, api_ok = _gather_ci(sc)
-    except Exception:  # noqa: BLE001
-        blocks, api_ok = [], False
-    ctx = visuals.page_context(rag, todo, sec, blocks, api_ok, prov)
+def pane_visuals(request: Request, force: int = 0, sub: str = "",
+                 sc: Scope = Depends(scoped("viewer"))):
+    """The Visuals tab as a subtabbed collection (ops#329): only the ACTIVE
+    subtab's feeds are gathered, so opening the overview costs no rag/todo/
+    security shell-outs at all — its skeleton is static and every value
+    arrives by slot AJAX. Each chart subtab pays only for its own feed."""
+    sub = visuals.norm_subtab(sub)
+    rag = todo = sec = None
+    blocks: list = []
+    api_ok = False
+    prov: dict = {}
+    if sub == "fleet":
+        rag, _res, prov = _gather_rag(sc, force=bool(force))
+    elif sub == "todo":
+        todo, _res, prov = _gather_todo(sc, force=bool(force))
+    elif sub == "security":
+        # Best-effort for the same reason pane_fleet treats this feed that
+        # way: one unavailable feed must degrade to one honest "no data"
+        # card rather than taking the whole tab down.
+        sec = {"ok": False, "error": "security data unavailable on this host"}
+        try:
+            sec, _res, prov = _gather_security(sc, force=bool(force))
+        except Exception:  # noqa: BLE001
+            pass
+    elif sub == "ci":
+        try:
+            blocks, api_ok = _gather_ci(sc)
+        except Exception:  # noqa: BLE001
+            blocks, api_ok = [], False
+    ctx = visuals.page_context(rag, todo, sec, blocks, api_ok, prov, sub=sub)
+    if sub == "overview":
+        ctx["ov"] = overview.skeleton_context()
     return _pane(request, "pane_visuals.html", ctx, sc,
                  tab="visuals", tab_count="", tab_alert=bool(prov.get("stale")))
 
@@ -1217,6 +1483,97 @@ def action_demo_codes(
                  {"label": spec["label"], "site": argv[2], "res": res_view, "error": None,
                   "codes_json": codes_j, "rows": codes_j.get("codes", []) or [],
                   "filter": "all"}, sc, redactable=False)
+
+
+# -- per-tester editor (ops#328 tranche 3) ----------------------------------
+# Roster + detail are viewer-readable fragments (lazy-loaded: the roster is a
+# live drush read over ssh); writes are operator+ and DISCHARGE by re-reading
+# the roster. Consent is deliberately absent from the writable surface — it
+# is the member's own act and is rendered read-only, stated in the UI.
+def _tester_site_or_404(site: str, sc: Scope) -> str:
+    if site not in sc.demo_sites:
+        raise HTTPException(status_code=404, detail="not a demo site in your scope")
+    return site
+
+
+@app.get("/panes/demo/testers", response_class=HTMLResponse)
+def pane_demo_testers(request: Request, site: str = "", force: int = 0,
+                      sc: Scope = Depends(scoped("viewer"))):
+    site = _tester_site_or_404(site, sc)
+    testers = _gather_demo_testers(site, force=bool(force))
+    return _pane(request, "_demo_testers.html", {"site": site, "testers": testers}, sc,
+                 redactable=False)
+
+
+@app.get("/panes/demo/tester", response_class=HTMLResponse)
+def pane_demo_tester(request: Request, site: str = "", account: str = "",
+                     sc: Scope = Depends(scoped("viewer"))):
+    from .actions import TESTER_ACCOUNT_RE
+
+    site = _tester_site_or_404(site, sc)
+    if not TESTER_ACCOUNT_RE.match(account or ""):
+        raise HTTPException(status_code=400, detail="invalid account name")
+    testers = _gather_demo_testers(site)
+    return _pane(request, "_demo_tester_detail.html",
+                 {"site": site, "testers": testers, "account": account,
+                  "acct": _tester_of(testers, account)}, sc, redactable=False)
+
+
+DEMO_TESTER_OPS = {"set-guild": "demo_tester_set_guild", "set-level": "demo_tester_set_level"}
+
+
+@app.post("/actions/demo_tester", response_class=HTMLResponse)
+def action_demo_tester(
+    request: Request,
+    site: str = Form(""),
+    op: str = Form(""),
+    account: str = Form(""),
+    seed_key: str = Form(""),
+    role: str = Form(""),
+    remove: str = Form(""),
+    level: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "account": account, "seed_key": seed_key,
+              "role": role, "remove": remove, "level": level}
+    name = DEMO_TESTER_OPS.get(op)
+    if name is None:
+        audit.append(sc.user, sc.global_role, "action.demo_tester",
+                     {"params": params, "rejected": f"unknown tester op {op!r}"}, False,
+                     project=sc.project_id)
+        return _pane(request, "demo_tester_result.html",
+                     {"label": "tester action", "site": site, "account": account,
+                      "res": None, "action": None, "error": f"unknown tester op {op!r}",
+                      "testers": None, "acct": None}, sc, redactable=False)
+    try:
+        argv, spec = build_action(name, params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, f"action.{name}",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_tester_result.html",
+                     {"label": ACTIONS[name]["label"], "site": site, "account": account,
+                      "res": None, "action": None, "error": str(e),
+                      "testers": None, "acct": None}, sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(
+        sc.user, sc.global_role, f"action.{name}",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    action = parsers.parse_tester_action_json(res["out"] + "\n" + res["err"])
+    # DISCHARGE (ops#327, structural): re-read the roster the action just
+    # touched, cache bypassed, and render THAT state — on success AND on
+    # refusal; "nothing changed" is a result the operator sees, not infers.
+    testers = _gather_demo_testers(argv[2], force=True)
+    res_view = dict(res, out=parsers.strip_ansi(res["out"])[-8000:],
+                    err=parsers.strip_ansi(res["err"])[-2000:])
+    return _pane(request, "demo_tester_result.html",
+                 {"label": spec["label"], "site": argv[2], "account": account,
+                  "res": res_view, "action": action, "error": None,
+                  "testers": testers, "acct": _tester_of(testers, account)},
+                 sc, redactable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1707,12 +2064,20 @@ def issue_close(request: Request, iid: int, sc: Scope = Depends(scoped("operator
 
 
 # -- Review pane writes (operator+, estate-level only) -----------------------
-# Everything here is a NOTE. Approval-of-a-decision is a note because the note
-# IS the instruction the next session acts on; approval-of-an-MR is not here at
-# all — that is the merge click on the MR page (ADR-0032). The [console-review]
-# tag is applied server-side so a session can find operator instructions with
-# one search, whatever the client sent.
+# Approval-of-a-decision is a NOTE (the note IS the instruction the next
+# session acts on) PLUS A DISCHARGE (ops#327): the decision labels come off in
+# the same action, because a note nothing consumes leaves the issue in the
+# queue and the operator re-approves it — #139 was approved four times.
+# Approval-of-an-MR is not here at all — that is the merge click on the MR
+# page (ADR-0032). The [console-review] tag is applied server-side so a
+# session can find operator instructions with one search, whatever the client
+# sent.
 REVIEW_TAG = "**[console-review]**"
+
+# The two labels that put an issue in the decision queue (`pl decisions` red
+# tier + amber tier). Removing both IS the discharge; GitLab takes them as one
+# comma-separated remove_labels value.
+DECISION_LABELS = "needs-decision,decision::wanted"
 
 
 def _require_estate(sc: Scope) -> None:
@@ -1726,12 +2091,41 @@ def review_decision_approve(request: Request, iid: int, sc: Scope = Depends(scop
     _require_estate(sc)
     body = (f"{REVIEW_TAG} APPROVED — proceed with the recommendation as written in the "
             f"`## Decision` block of this issue. (Recorded from the console Review pane "
-            f"by `{sc.user}`; this note is the instruction.)")
+            f"by `{sc.user}`; this note is the instruction, and the decision labels were "
+            f"removed by the same action.)")
     r = gitlab.post_note(config.OPS_PROJECT, _iid_ok(iid), body)
-    audit.append(sc.user, sc.global_role, "review.approve", {"iid": iid, "ok": r.get("ok")},
-                 r.get("ok", False), project=sc.project_id)
-    return _pane(request, "issue_action_result.html",
-                 {"iid": iid, "verb": "approve recommendation", "r": r}, sc, redactable=False)
+    # ops#327: the discharge. Only after the note recorded — no note, no
+    # discharge, because dropping the labels for an approval that was never
+    # written would erase the question without recording the answer.
+    discharged = False
+    discharge_error = ""
+    if r.get("ok"):
+        d = gitlab.remove_label(config.OPS_PROJECT, _iid_ok(iid), DECISION_LABELS)
+        if not d.get("ok"):
+            discharge_error = (f"the label removal failed ({d.get('error')}"
+                               f"{' — ' + d.get('detail') if d.get('detail') else ''})")
+        else:
+            # Render the TRACKER's state, not the PUT's claim: re-read the
+            # issue and believe what it says. An unreadable re-read is CANNOT
+            # VERIFY, which must never look discharged.
+            rr = gitlab.get_issue(config.OPS_PROJECT, _iid_ok(iid))
+            if not rr.get("ok"):
+                discharge_error = (f"the labels were removed but the verifying re-read "
+                                   f"failed ({rr.get('error')})")
+            else:
+                remaining = [l for l in ((rr.get("data") or {}).get("labels") or [])
+                             if l in DECISION_LABELS.split(",")]
+                if remaining:
+                    discharge_error = ("the tracker still shows " + ", ".join(remaining)
+                                       + " after the removal")
+                else:
+                    discharged = True
+    audit.append(sc.user, sc.global_role, "review.approve",
+                 {"iid": iid, "ok": r.get("ok"), "discharged": discharged},
+                 r.get("ok", False) and discharged, project=sc.project_id)
+    return _pane(request, "review_approve_result.html",
+                 {"iid": iid, "r": r, "discharged": discharged,
+                  "discharge_error": discharge_error}, sc, redactable=False)
 
 
 @app.post("/review/decision/{iid}/note", response_class=HTMLResponse)

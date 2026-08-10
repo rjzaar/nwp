@@ -15,7 +15,7 @@
 > **Primary sources:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
 > (paired-site versioning), [ADR-0027](../decisions/0027-unified-course-content-architecture.md)
 > (unified course content), [ADR-0029](../decisions/0029-nwc-authorization-model.md)
-> (nwc authorization), the pair contract [`pairs/ssc.pair-contract.yml`](../../pairs/ssc.pair-contract.yml),
+> (nwc authorization), the pair contract `private/pairs/ssc.pair-contract.yml` (the private overlay repo — ops#326; sample shape: [`pairs/ssd.pair-contract.yml`](../../pairs/ssd.pair-contract.yml)),
 > the guard [`lib/pair.sh`](../../lib/pair.sh), the boundary classifier
 > [`lib/boundary.sh`](../../lib/boundary.sh), and the two runbooks
 > [`ops75-pair-contract-schema.md`](ops75-pair-contract-schema.md) and
@@ -137,14 +137,14 @@ The chosen model (Option 3, ADR-0031 D2/D5, lines 121–129 & 138–205):
 ### A.2 The pair contract — the central artifact
 
 One YAML file per pair, named by the **consumer** key, lives in `pairs/`:
-[`pairs/ssc.pair-contract.yml`](../../pairs/ssc.pair-contract.yml) (nwc↔ssc) and
+`private/pairs/ssc.pair-contract.yml` (the private overlay repo — ops#326; sample shape: [`pairs/ssd.pair-contract.yml`](../../pairs/ssd.pair-contract.yml)) (nwc↔ssc) and
 `pairs/ssd.pair-contract.yml` (nwd↔ssd). It is **committable** — it holds only
 `contract_version`, per-surface minimum versions, per-tier public issuer URLs,
 smoke URLs, and the boundary manifest. **No secrets** (contract header lines 8–9;
 [`pairs/README.md`](../../pairs/README.md) lines 12–13). Deployed-version + RAG
 **state** lives elsewhere, in gitignored `private/pairs/`.
 
-The key fields (`pairs/ssc.pair-contract.yml`):
+The key fields (`private/pairs/ssc.pair-contract.yml`, overlay — ops#326):
 
 | Field | Line(s) | What it declares |
 |---|---|---|
@@ -507,7 +507,7 @@ silently reconciled:
 | You want… | Read |
 |---|---|
 | The full versioning/promotion decision + 5-plane rationale | [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) |
-| The pair contract schema, field-by-field | [ops75-pair-contract-schema.md](ops75-pair-contract-schema.md) + [`pairs/ssc.pair-contract.yml`](../../pairs/ssc.pair-contract.yml) |
+| The pair contract schema, field-by-field | [ops75-pair-contract-schema.md](ops75-pair-contract-schema.md) + `private/pairs/ssc.pair-contract.yml` (the private overlay repo — ops#326; sample shape: [`pairs/ssd.pair-contract.yml`](../../pairs/ssd.pair-contract.yml)) |
 | The Moodle promotion substrate + the F26 SSO runbook | [moodle-promotion-substrate.md](moodle-promotion-substrate.md) |
 | The canonical content model + the two boundaries | [ADR-0027](../decisions/0027-unified-course-content-architecture.md) |
 | The nwc authorization model (acting identity inside a site) | [ADR-0029](../decisions/0029-nwc-authorization-model.md) |

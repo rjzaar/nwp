@@ -45,6 +45,39 @@ usage() {
   exit 64
 }
 
+# ops#326 (engine/site separation): WHICH local Moodle site trees receive
+# merged plugins is ESTATE configuration, not engine code. Sources, in order:
+#   1. NWP_MOODLE_PLUGIN_FANOUT        — whitespace-separated site list (env)
+#   2. NWP_MOODLE_PLUGIN_FANOUT_FILE   — file path override
+#   3. $NWP_ROOT/private/agent-loop/moodle-plugin-fanout — one site per line,
+#      '#'-comment/blank lines skipped; lives in the private overlay repo.
+# Unconfigured ⇒ LOUD no-op: the deploy proceeds, but no plugin rsync happens
+# and the log says exactly why (fail-closed toward "touch nothing").
+moodle_fanout_sites() {
+  if [[ -n "${NWP_MOODLE_PLUGIN_FANOUT:-}" ]]; then
+    # shellcheck disable=SC2086
+    printf '%s\n' ${NWP_MOODLE_PLUGIN_FANOUT}
+    return 0
+  fi
+  local f="${NWP_MOODLE_PLUGIN_FANOUT_FILE:-${NWP_ROOT}/private/agent-loop/moodle-plugin-fanout}"
+  [[ -r "$f" ]] || return 1
+  grep -vE '^[[:space:]]*(#|$)' "$f" || true
+}
+
+_fanout_unconfigured_msg() {
+  echo "NO MOODLE PLUGIN FAN-OUT CONFIGURED (ops#326): set NWP_MOODLE_PLUGIN_FANOUT or ${NWP_ROOT}/private/agent-loop/moodle-plugin-fanout — plugin rsync into local site trees will be skipped."
+}
+
+# Resolve-and-print mode (no git, no site trees touched) — the testable contract.
+if [[ "${1:-}" == "--print-fanout" ]]; then
+  if _fo="$(moodle_fanout_sites)" && [[ -n "$_fo" ]]; then
+    printf '%s\n' "$_fo"
+  else
+    _fanout_unconfigured_msg
+  fi
+  exit 0
+fi
+
 if [[ $# -lt 2 ]]; then usage; fi
 
 REPO="$1"
@@ -114,18 +147,24 @@ fi
 if [[ -n "${PLUGIN_REPO:-}" ]]; then
   GIT_SSH_COMMAND="ssh -i ~/.ssh/nwp -o IdentitiesOnly=yes" \
     git clone "git@git.nwpcode.org:nwp/${REPO}.git" "$PLUGIN_REPO"
-  # Deploy to ssc + ssd if it's a Moodle plugin.
+  # Deploy to the configured fan-out sites if it's a Moodle plugin (ops#326).
   case "$REPO" in
     local-nwc-copyright-sync|auth-nwc-oauth2)
       plugin_name=$(echo "$REPO" | sed -E 's/^(local-|auth-)//' | tr '-' '_')
       plugin_type=$(echo "$REPO" | grep -oE '^(local|auth)')
-      for site in ssc ssd; do
+      # ops#326: fan-out targets come from estate config, never engine code.
+      fanout="$(moodle_fanout_sites || true)"
+      if [[ -z "$fanout" ]]; then
+        log "$(_fanout_unconfigured_msg)"
+      fi
+      while IFS= read -r site; do
+        [[ -n "$site" ]] || continue
         target="${NWP_ROOT}/sites/${site}/dev/${plugin_type}/${plugin_name}"
         if [[ -d "$target" ]]; then
           rsync -a --delete --exclude='.git/' "${PLUGIN_REPO}/" "${target}/"
           log "  rsync plugin → $target"
         fi
-      done
+      done <<< "$fanout"
       ;;
   esac
 fi

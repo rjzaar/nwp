@@ -42,9 +42,11 @@ registry_version: 1
 # The decision procedure. Answer in order; FIRST MATCH WINS. This is a
 # procedure, not a vibe: each branch turns on a fact that can be checked.
 # NOTE on `estate:` below — INFORMATIONAL ONLY, read by no code. A site is
-# classed if and only if a classes/<site>.class.yml ships; these lists record
-# which sites each class is INTENDED for, as ratification work-to-do (ADR-0036
-# §Migration). Only rgs and ssc are actually declared today.
+# classed if and only if a <site>.class.yml exists in the shipped classes/ or
+# the private overlay (private/classes/, ops#326); these lists record which
+# sites each class is INTENDED for, as ratification work-to-do (ADR-0036
+# §Migration). The engine ships only the sample pair's declarations; real
+# instances are declared and reviewed in the overlay repo.
 decision_procedure:
   - q: "Does the site hold, or is it intended to hold, accounts belonging to real
         people who are not operators of the estate?"
@@ -64,7 +66,7 @@ classes:
       Serves real members. Identity AND consent are supplied by a paired
       provider over a declared contract. The provider half of such a pair is
       also member-paired (it is where the member identities actually live).
-    estate: [nwc, ssc]
+    estate: []   # real instances are declared in the overlay repo (private/classes/) — ops#326
     art9:
       posture_required: delegated
       why: >-
@@ -87,7 +89,7 @@ classes:
       and therefore no external consent source. This class exists because rgs
       exists: the gate as built could never be satisfied here, and a gate that
       can never be satisfied is not a gate, it is a ritual (ops#154).
-    estate: [rgs]
+    estate: []   # real instances are declared in the overlay repo (private/classes/) — ops#326
     art9:
       posture_required: [local, none-stored]
       why: >-
@@ -110,7 +112,7 @@ classes:
       Synthetic or seeded data only. Resettable by design. MUST NEVER hold real
       member data — that is the defining assertion, and `pl demo reset` is only
       safe because of it.
-    estate: [nwd, ssd, nwt]
+    estate: [nwd, ssd]   # the shipped sample pair; real demos live in the overlay — ops#326
     art9:
       posture_required: none-stored
       why: >-

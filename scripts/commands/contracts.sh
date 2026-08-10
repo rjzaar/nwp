@@ -122,6 +122,32 @@ NWP_ROOT="$PROJECT_ROOT"
 CONTRACTS_DIR="$PROJECT_ROOT/contracts"
 SUMS_FILE="$CONTRACTS_DIR/SHA256SUMS"
 PAIRS_DIR="${NWP_PAIR_CONTRACT_DIR:-$PROJECT_ROOT/pairs}"
+# ops#326: real pair contracts live in the PRIVATE OVERLAY (its own reviewed
+# repo, remote nwp/private), searched after the shipped pairs/ (the ssd/nwd
+# sample pair). Same order + fail-closed duplicate rule as lib/pair.sh.
+PAIRS_OVERLAY_DIR="${NWP_PAIR_OVERLAY_DIR:-$PROJECT_ROOT/private/pairs}"
+
+# Every *.pair-contract.yml across shipped + overlay (shipped first).
+_pair_contract_glob() {
+    ls "$PAIRS_DIR"/*.pair-contract.yml 2>/dev/null || true
+    if [ "$PAIRS_OVERLAY_DIR" != "$PAIRS_DIR" ]; then
+        ls "$PAIRS_OVERLAY_DIR"/*.pair-contract.yml 2>/dev/null || true
+    fi
+}
+
+# Resolve one pair id -> contract path (shipped first, then overlay). A pair
+# declared in BOTH echoes a path that cannot exist, so every `[ -f ]` caller
+# refuses (fail-closed) with the reason on stderr.
+_pair_contract_path() {
+    local shipped="$PAIRS_DIR/${1}.pair-contract.yml"
+    local overlay="$PAIRS_OVERLAY_DIR/${1}.pair-contract.yml"
+    if [ -f "$shipped" ] && [ -f "$overlay" ] && [ "$shipped" != "$overlay" ]; then
+        _err "pair contract for '${1}' exists in BOTH $PAIRS_DIR and $PAIRS_OVERLAY_DIR — remove one (fail-closed)."
+        echo "${shipped}.DUPLICATE-DECLARATION"
+        return 2
+    fi
+    if [ ! -f "$shipped" ] && [ -f "$overlay" ]; then echo "$overlay"; else echo "$shipped"; fi
+}
 
 # shellcheck source=/dev/null
 [ -f "$NWP_REPO_ROOT/lib/ui.sh" ] && source "$NWP_REPO_ROOT/lib/ui.sh"
@@ -216,7 +242,8 @@ cmd_compat() {
     if [ "$fails" -gt 0 ]; then
         _err "contracts compat: $fails schema(s) have a BREAKING change (expand-and-contract violated)."
         _say "  Fix-forward: keep old fields, add new ones OPTIONAL, and bump contract_version"
-        _say "  in pairs/ssc.pair-contract.yml (the provider promotes first — pair_guard)."
+        _say "  in the pair's contract (pairs/<consumer>.pair-contract.yml, shipped or overlay —"
+    _say "  the provider promotes first; pair_guard)."
         return 1
     fi
     _say "contracts compat: all changed schemas are backward-compatible. ✓"
@@ -452,12 +479,12 @@ cmd_crossref() {
     if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
         want=()
         local f
-        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
-            [ -e "$f" ] || continue
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
             want+=("$(basename "$f" .pair-contract.yml)")
-        done
+        done < <(_pair_contract_glob)
         if [ "${#want[@]}" -eq 0 ]; then
-            _err "contracts crossref: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            _err "contracts crossref: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR or $PAIRS_OVERLAY_DIR."
             return 1
         fi
     fi
@@ -474,7 +501,7 @@ cmd_crossref() {
 
 _crossref_one() {
     local pair="$1" quiet="${2:-false}"
-    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+    local contract; contract="$(_pair_contract_path "$pair" || true)"
     local bad=0
 
     if [ ! -f "$contract" ]; then
@@ -751,12 +778,12 @@ cmd_guards() {
     if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
         want=()
         local f
-        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
-            [ -e "$f" ] || continue
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
             want+=("$(basename "$f" .pair-contract.yml)")
-        done
+        done < <(_pair_contract_glob)
         if [ "${#want[@]}" -eq 0 ]; then
-            _err "contracts guards: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            _err "contracts guards: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR or $PAIRS_OVERLAY_DIR."
             return 1
         fi
     fi
@@ -770,7 +797,7 @@ cmd_guards() {
 
 _guards_one() {
     local pair="$1"
-    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+    local contract; contract="$(_pair_contract_path "$pair" || true)"
 
     if [ ! -f "$contract" ]; then
         _err "[$pair] CANNOT-VERIFY: no contract at $contract"
@@ -958,12 +985,12 @@ cmd_key_rotation() {
     if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
         want=()
         local f
-        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
-            [ -e "$f" ] || continue
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
             want+=("$(basename "$f" .pair-contract.yml)")
-        done
+        done < <(_pair_contract_glob)
         if [ "${#want[@]}" -eq 0 ]; then
-            _err "contracts key-rotation: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            _err "contracts key-rotation: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR or $PAIRS_OVERLAY_DIR."
             return 1
         fi
     fi
@@ -980,7 +1007,7 @@ cmd_key_rotation() {
 
 _keyrot_one() {
     local pair="$1" quiet="${2:-false}"
-    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+    local contract; contract="$(_pair_contract_path "$pair" || true)"
     local bad=0
 
     if [ ! -f "$contract" ]; then
@@ -1187,12 +1214,12 @@ cmd_erasure() {
     if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
         want=()
         local f
-        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
-            [ -e "$f" ] || continue
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
             want+=("$(basename "$f" .pair-contract.yml)")
-        done
+        done < <(_pair_contract_glob)
         if [ "${#want[@]}" -eq 0 ]; then
-            _err "contracts erasure: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            _err "contracts erasure: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR or $PAIRS_OVERLAY_DIR."
             return 1
         fi
     fi
@@ -1236,7 +1263,7 @@ _erasure_find_under() { # <relpath> <root>...
 
 _erasure_one() {
     local pair="$1" strict="$2"
-    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+    local contract; contract="$(_pair_contract_path "$pair" || true)"
 
     if [ ! -f "$contract" ]; then
         _err "[$pair] CANNOT-VERIFY: no contract at $contract"

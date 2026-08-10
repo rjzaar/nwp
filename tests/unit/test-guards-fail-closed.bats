@@ -215,67 +215,13 @@ _canon_corrupt_config() {
 }
 
 ################################################################################
-# 2. lib/sanitizers/mayo.sh — the PII sweep
+# 2. per-site PII sweeps — ops#326: the per-INSTANCE sanitizers (mayo.sh,
+#    ssc.sh) moved to the private overlay repo (private/sanitizers/), so their
+#    fail-closed sweep properties are asserted here against the SHIPPED generic
+#    sanitizers that implement the same sweep (standard.sh below, moodle.sh as
+#    the sibling cross-check). The overlay repo carries the per-instance
+#    copies; the properties proven here are the ones they inherit.
 ################################################################################
-
-MAYO() { bash "${LIB}/sanitizers/mayo.sh" --verify --output "$1"; }
-
-@test "mayo PII sweep: a CORRUPT gzip is refused, not reported clean" {
-  # Step 5 pipes mysqldump THROUGH gzip, so a truncated artifact is what a
-  # mid-dump failure actually leaves behind. Seed it with real PII so a false
-  # PASS would be a genuine leak, not a harmless one.
-  printf "INSERT INTO users VALUES ('victim@realdomain.example');\n" \
-    | gzip > "${TEST_TMP}/corrupt.sql.gz"
-  # truncate to a valid gzip header and nothing else
-  head -c 12 "${TEST_TMP}/corrupt.sql.gz" > "${TEST_TMP}/t" && mv "${TEST_TMP}/t" "${TEST_TMP}/corrupt.sql.gz"
-  run MAYO "${TEST_TMP}/corrupt.sql.gz"
-  [ "$status" -ne 0 ]
-  [[ "$output" != *"PASS: No PII patterns detected"* ]]
-  [[ "$output" == *"fail-closed"* ]]
-}
-
-@test "mayo PII sweep: an EMPTY artifact is refused, not reported clean" {
-  : > "${TEST_TMP}/empty.sql.gz"
-  run MAYO "${TEST_TMP}/empty.sql.gz"
-  [ "$status" -ne 0 ]
-  [[ "$output" != *"PASS: No PII patterns detected"* ]]
-}
-
-@test "mayo PII sweep: a gzip that decompresses to nothing is refused" {
-  printf '' | gzip > "${TEST_TMP}/hollow.sql.gz"
-  run MAYO "${TEST_TMP}/hollow.sql.gz"
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"empty"* ]]
-}
-
-@test "mayo PII sweep: matches its sibling moodle.sh on the same corrupt input" {
-  # One vocabulary, not two — moodle.sh:177 already refused; mayo now does too.
-  printf 'x' | gzip > "${TEST_TMP}/c.sql.gz"
-  head -c 12 "${TEST_TMP}/c.sql.gz" > "${TEST_TMP}/t" && mv "${TEST_TMP}/t" "${TEST_TMP}/c.sql.gz"
-  run bash "${LIB}/sanitizers/moodle.sh" --verify --output "${TEST_TMP}/c.sql.gz"
-  [ "$status" -ne 0 ]
-  run MAYO "${TEST_TMP}/c.sql.gz"
-  [ "$status" -ne 0 ]
-}
-
-# --- NEGATIVE CONTROLS --------------------------------------------------------
-
-@test "mayo (negative control): a well-formed sanitized dump still PASSES" {
-  printf "INSERT INTO users VALUES ('user1@example.com'),('admin@example.com');\n" \
-    | gzip > "${TEST_TMP}/clean.sql.gz"
-  run MAYO "${TEST_TMP}/clean.sql.gz"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS: No PII patterns detected"* ]]
-}
-
-@test "mayo (negative control): a readable dump WITH PII still fails for that reason" {
-  printf "INSERT INTO users VALUES ('victim@realdomain.example');\n" \
-    | gzip > "${TEST_TMP}/dirty.sql.gz"
-  run MAYO "${TEST_TMP}/dirty.sql.gz"
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"PII pattern(s) detected"* ]]
-  [[ "$output" != *"fail-closed"* ]]
-}
 
 ################################################################################
 # 2b. lib/sanitizers/standard.sh — the SAME bug, found by finishing the sweep.
@@ -297,6 +243,23 @@ STD() { bash "${LIB}/sanitizers/standard.sh" --verify --output "$1"; }
   [ "$status" -eq 2 ]
   [[ "$output" != *"PII sweep: clean"* ]]
   [[ "$output" == *"fail-closed"* ]]
+}
+
+@test "standard PII sweep: an EMPTY artifact is refused, not swept clean" {
+  : > "${TEST_TMP}/empty.sql.gz"
+  run STD "${TEST_TMP}/empty.sql.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"PII sweep: clean"* ]]
+}
+
+@test "standard PII sweep: matches its sibling moodle.sh on the same corrupt input" {
+  # One vocabulary, not two — the Drupal and Moodle sweeps refuse identically.
+  printf 'x' | gzip > "${TEST_TMP}/c.sql.gz"
+  head -c 12 "${TEST_TMP}/c.sql.gz" > "${TEST_TMP}/t" && mv "${TEST_TMP}/t" "${TEST_TMP}/c.sql.gz"
+  run bash "${LIB}/sanitizers/moodle.sh" --verify --output "${TEST_TMP}/c.sql.gz"
+  [ "$status" -ne 0 ]
+  run STD "${TEST_TMP}/c.sql.gz"
+  [ "$status" -ne 0 ]
 }
 
 @test "standard PII sweep: an artifact that decompresses to nothing is refused" {

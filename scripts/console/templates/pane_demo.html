@@ -81,6 +81,15 @@
   {% endwith %}
   <div id="demo-codes-{{ d.site }}"></div>
 
+  {# --- per-tester editor (ops#328 t3): lazy — the roster is a live drush
+        read over ssh (~5-7 s), so it loads when revealed, not with the pane #}
+  <h4>Testers</h4>
+  <div id="demo-testers-{{ d.site }}"
+       hx-get="/panes/demo/testers?site={{ d.site }}" hx-trigger="revealed once"
+       hx-swap="innerHTML">
+    <p class="muted">tester roster loads when scrolled into view — it is read live from the site (nwc:tester-list)</p>
+  </div>
+
   {% if can_act %}
   <div class="actions">
     <form hx-post="/actions/invite" hx-target="#demo-result-{{ d.site }}" hx-indicator="#invite-spin-{{ d.site }}">

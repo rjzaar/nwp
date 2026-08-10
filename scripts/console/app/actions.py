@@ -21,6 +21,17 @@ from .scope import SITE_RE
 
 CODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
+# ops#328 t3 — the per-tester editor's slots. The console always addresses
+# accounts by USERNAME (the roster's own `name` field), never mail/uid, so
+# the shape is a username shape. Seed keys are lowercase machine ids
+# (field_group_seed_key); group roles are Group-2.x ids like guild-mentor —
+# the VERB and the drush command validate the real role set, this only pins
+# the shape so no free text reaches an argv.
+TESTER_ACCOUNT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}$")
+TESTER_SEED_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+TESTER_GROUP_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+TESTER_LEVEL_MIN, TESTER_LEVEL_MAX = 1, 12
+
 # Role bundles `pl demo codes issue` accepts (decisions §4.4 — sitemanager never).
 BUNDLES = (
     "tester-member",
@@ -86,6 +97,60 @@ def _valid_code_ids(value) -> list[str]:
     if len(value) > CODE_IDS_MAX:
         raise ActionError(f"too many code ids in one batch (max {CODE_IDS_MAX})")
     return [_valid_code_id(v) for v in value]
+
+
+def _valid_tester_account(value) -> str:
+    if not isinstance(value, str) or not TESTER_ACCOUNT_RE.match(value):
+        raise ActionError("invalid tester account name")
+    return value
+
+
+def _valid_seed_key(value) -> str:
+    if not isinstance(value, str) or not TESTER_SEED_KEY_RE.match(value):
+        raise ActionError("invalid guild seed key (lowercase machine id — guilds are "
+                          "addressed by field_group_seed_key, never by label)")
+    return value
+
+
+def _valid_group_role(value) -> str:
+    """'member' (plain membership) or an id-shaped Group-2.x role. The verb +
+    drush validate against the REAL role set (individual-scope only, no
+    guild-leader); this only guarantees argv hygiene."""
+    if value == "member":
+        return value
+    if not isinstance(value, str) or not TESTER_GROUP_ROLE_RE.match(value):
+        raise ActionError("invalid group role id")
+    return value
+
+
+def _valid_level(value) -> str:
+    try:
+        n = int(str(value), 10)
+    except (TypeError, ValueError):
+        raise ActionError("level must be an integer")
+    if not (TESTER_LEVEL_MIN <= n <= TESTER_LEVEL_MAX):
+        raise ActionError(f"level must be {TESTER_LEVEL_MIN}..{TESTER_LEVEL_MAX}")
+    return str(n)
+
+
+def _build_tester_set_guild(p: dict, ds: list) -> list:
+    """Role and remove are contradictory; --allow-real is UNREPRESENTABLE —
+    no parameter maps to it, deliberately (the @demo.invalid fence is the
+    point of the whole surface)."""
+    site = _valid_site(p.get("site", ""), ds)
+    account = _valid_tester_account(p.get("account", ""))
+    seed_key = _valid_seed_key(p.get("seed_key", ""))
+    role = p.get("role", "") or ""
+    remove = _valid_flag(p.get("remove", ""))
+    if role and remove:
+        raise ActionError("role and remove are contradictory — pass exactly one")
+    argv = ["demo", "testers", site, "set-guild", account, seed_key]
+    if role:
+        argv.append("--group-role=" + _valid_group_role(role))
+    if remove:
+        argv.append("--remove")
+    argv.append("--tier=live")
+    return argv
 
 
 def _valid_flag(value) -> bool:
@@ -161,6 +226,32 @@ ACTIONS: dict = {
             + _valid_code_ids(p.get("code_ids") or p.get("code_id") or "")
             + ["--tier=live"]
         ),
+    },
+    "demo_tester_set_guild": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Set tester guild membership/role",
+        # ops#328 t3: wraps `pl demo testers … set-guild`, which wraps drush
+        # nwc:tester-set-guild. Fences at every layer: this argv can never
+        # carry --allow-real; the verb refuses it by name and requires the
+        # site to report demo_mode=true; the drush command refuses accounts
+        # off the @demo.invalid fence and validates the real role set.
+        "build": _build_tester_set_guild,
+    },
+    "demo_tester_set_level": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Set tester Sojourner level (raise-only, via evidence)",
+        # There is no raw level setter anywhere in the chain: the drush side
+        # records qualifying course completions and recomputes. Demotion is a
+        # typed refusal the console renders verbatim.
+        "build": lambda p, ds: [
+            "demo", "testers", _valid_site(p.get("site", ""), ds), "set-level",
+            _valid_tester_account(p.get("account", "")), _valid_level(p.get("level", "")),
+            "--tier=live",
+        ],
     },
     "demo_code_purge": {
         "min_role": "operator",

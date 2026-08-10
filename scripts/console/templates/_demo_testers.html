@@ -1,0 +1,45 @@
+{# Tester roster for ONE demo site (ops#328 t3).
+   Context: site, testers (parse_testers_json), can_act.
+   Contract with the reader:
+     * the roster is the SITE's own answer (drush nwc:tester-list over the
+       pl wrapper) — counts are the site's, "showing N" declares the table;
+     * an unreadable roster renders CANNOT VERIFY, never an empty table
+       (ops#281); the not-deployed state names its fix;
+     * the ssd-mirror column is a derivation from the SSO contract, never a
+       claim read from ssd's database (no cheap read-only surface exists);
+     * clicking an account loads the per-tester editor below. #}
+{% if testers and testers.ok %}
+<p class="muted">fenced accounts: {{ testers.counts.fenced_active }} active / {{ testers.counts.fenced_blocked }} blocked
+   · real accounts on this site: {{ testers.counts.real_active }} active / {{ testers.counts.real_blocked }} blocked (not editable here)
+   <a class="chip" hx-get="/panes/demo/testers?site={{ site }}&force=1" hx-target="#demo-testers-{{ site }}" role="button">⟳ re-read</a></p>
+<table class="codetable">
+  <tr><th>uid</th><th>account</th><th>kind</th><th>status</th><th>guilds (seed key · roles)</th><th>sojourner</th><th>Art. 9</th><th>mode</th><th>ssd mirror</th></tr>
+  {% for a in testers.accounts %}
+  <tr>
+    <td>{{ a.uid }}</td>
+    <td><a hx-get="/panes/demo/tester?site={{ site }}&account={{ a.name }}"
+           hx-target="#demo-tester-detail-{{ site }}" role="button">{{ a.name }}</a></td>
+    <td>{{ a.fence }}</td>
+    <td>{{ "active" if a.active else "blocked" }}</td>
+    <td>{% for g in a.guilds %}<span class="chip">{{ g.seed_key or g.label }}{% for r in g.roles %}{% if not r.endswith("-member") %} · {{ r }}{% endif %}{% endfor %}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
+    <td>{% if a.sojourner_level is not none %}L{{ a.sojourner_level }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
+    <td>{{ a.consent.art9 }}</td>
+    <td>{{ "TRIALING" if a.consent.trialing else "keeps" }}</td>
+    <td class="muted">{{ a.mirror }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="9" class="muted">no fenced accounts in the roster — after a reset, drush nwc:seed-demo restores the standard set</td></tr>
+  {% endfor %}
+</table>
+<p class="muted">showing {{ testers.accounts|length }} fenced account(s) · read from the live site
+   {% if testers.generated_at %}at {{ testers.generated_at }}{% endif %}
+   · select an account to edit guilds/roles/level — consent is read-only by design</p>
+<div id="demo-tester-detail-{{ site }}"></div>
+{% else %}
+<p class="err">CANNOT VERIFY the tester roster for {{ site }}: {{ testers.reason if testers else "no roster data" }}</p>
+{% if testers and testers.not_deployed %}
+<p class="warnnote">The profile-side commands are not deployed yet — merge the nwp/nwc MR and deploy the profile to live {{ site }}, then re-read this panel.</p>
+{% endif %}
+<p class="muted">an unreadable roster must never look like an empty one — nothing is listed rather than a clean-looking zero</p>
+{% if testers and testers.raw %}<details><summary>raw output</summary><pre>{{ testers.raw }}</pre></details>{% endif %}
+{% endif %}

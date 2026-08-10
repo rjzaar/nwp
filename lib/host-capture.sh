@@ -786,18 +786,62 @@ HOST_LOG_SOURCES=(nginx php-fpm auth systemd watchdog mail)
 ################################################################################
 
 # host_check_server_repos <root>
-# Two overlapping git repos over one path guarantee a divergent second copy of
-# load-bearing scripts. servers/nwpcode/ is a 2-commit repo with NO REMOTE whose
-# tracked set is disjoint from the parent's — and it is the sole home of the
-# fleet backup producer and the CVE-response upgrade script.
-# 0 = clean, 1 = a nested server repo is unbacked.
+# THE per-host state guard since ops#326 Phase 1 tranche 3.
+#
+# Per-host identity — real vhosts with real domains, the operator crontab, mail
+# aliases, ufw rules, authorized keys, host inventories — is no longer tracked by
+# the ENGINE repo, which is publicly mirrored. It is tracked IN PLACE by a
+# private per-server repository (servers/<host>/.git, remote nwp/server-<host>).
+# The files never move, so every verb that reads servers/<host>/… is unaffected;
+# only the repository boundary moves.
+#
+# The 2026-07-25 lesson that put this state under version control at all is
+# unchanged and is what this function now enforces on the overlay side:
+#
+#   * a host directory holding engine-ignored state and NO repo is UNVERSIONED —
+#     the exact failure the allowlist was introduced to end (previously this
+#     function skipped such a directory silently, which is a blind pass);
+#   * no remote  → the history exists on exactly one disk;
+#   * unpushed   → not backed by any remote;
+#   * DIRTY      → uncommitted (or, right after the engine-side split merges,
+#     DELETED) captured state. This is the expected first-pull condition on the
+#     operator clone and the message says exactly how to settle it.
+#
+# 0 = clean, 1 = a per-server repo is unbacked, unversioned or dirty.
 host_check_server_repos() {
     local root="${1:-$HOST_PROJECT_ROOT}"
     local bad=0 d name
     [ -d "$root/servers" ] || return 0
     for d in "$root"/servers/*/; do
-        [ -d "$d/.git" ] || continue
+        [ -d "$d" ] || continue
         name="$(basename "$d")"
+        if [ ! -d "$d/.git" ]; then
+            # Only a complaint if the host actually holds private state: a
+            # directory of purely generic, engine-tracked mechanism needs no
+            # repo of its own.
+            local private_state=0
+            if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                local f
+                while IFS= read -r f; do
+                    [ -n "$f" ] || continue
+                    # Identity files and build junk are not "state worth
+                    # versioning" — flagging them would make the check cry wolf
+                    # on a host directory that holds nothing but a __pycache__.
+                    case "$f" in
+                        */.nwp-server.*) continue ;;   # identity + its local/backup variants
+                        */__pycache__/*|*.pyc|*/backups/*) continue ;;
+                        */.secrets*|*.key|*.pem|*.env) continue ;;
+                    esac
+                    private_state=1; break
+                done < <(cd "$root" && git check-ignore $(find "servers/${name}" -type f 2>/dev/null) 2>/dev/null)
+            fi
+            if [ "$private_state" = "1" ]; then
+                _host_say "servers/${name}: holds per-host state but is NOT a git repo — it is versioned NOWHERE"
+                _host_say "    settle it:  git -C ${root}/servers/${name} init && … && git remote add origin <private remote>"
+                bad=1
+            fi
+            continue
+        fi
         if [ -z "$(git -C "$d" remote 2>/dev/null)" ]; then
             _host_say "servers/${name}: nested git repo has NO remote — its history exists on exactly one disk"
             bad=1
@@ -809,24 +853,58 @@ host_check_server_repos() {
             _host_say "servers/${name}: ${unpushed} unpushed commit(s) — not backed by any remote"
             bad=1
         fi
+        local dirty
+        dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l)"
+        if [ "${dirty:-0}" -gt 0 ]; then
+            _host_say "servers/${name}: ${dirty} uncommitted change(s) in the per-server repo"
+            _host_say "    if they are DELETIONS you did not make, the engine-side ops#326 split just landed —"
+            _host_say "    restore the captured state with:  git -C ${root}/servers/${name} checkout -- ."
+            bad=1
+        fi
     done
     return $bad
 }
 
 # host_check_servers_tracked <root>
-# Captured host state must be VERSIONED, not force-added by whoever remembers.
-# 0 = every captured artifact is tracked/trackable, 1 = something is ignored or
-# uncommitted.
+# The ENGINE side of the ops#326 split: what the engine still ships must stay
+# trackable, and what the split moved out must stay OUT.
+#
+# Before the split this function asked only the first half ("is servers/*/<sub>/
+# trackable?"). Asking only that is now the wrong question: the answer "yes" for
+# a vhost directory would mean real domains had silently come back into the
+# publicly-mirrored engine tree. Both directions are asserted, so a revert in
+# either direction is visible.
+#
+# 0 = the split holds and nothing is uncommitted, 1 = otherwise.
 host_check_servers_tracked() {
     local root="${1:-$HOST_PROJECT_ROOT}"
-    local bad=0 sub probe
+    local bad=0 probe
     [ -d "$root/servers" ] || return 0
     git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
 
-    for sub in nginx demo linode backup email system; do
-        probe="servers/PROBE-HOST/${sub}/PROBE.conf"
+    # (a) generic mechanism the engine still ships — must NOT be ignored.
+    for probe in \
+        "servers/PROBE-HOST/demo/PROBE.conf" \
+        "servers/PROBE-HOST/linode/PROBE.sh" \
+        "servers/PROBE-HOST/email/PROBE.sh" \
+        "servers/PROBE-HOST/nginx/snippets/PROBE.conf" \
+        "servers/PROBE-HOST/nginx/renew-hook.sh"
+    do
         if git -C "$root" check-ignore -q "$probe" 2>/dev/null; then
-            _host_say "servers/*/${sub}/** is git-ignored — captured host state cannot be versioned"
+            _host_say "${probe%/*}/** is git-ignored — generic host mechanism cannot be versioned"
+            bad=1
+        fi
+    done
+
+    # (b) per-host IDENTITY — must be ignored by the engine (ops#326). These
+    #     live in the per-server repo; host_check_server_repos audits them there.
+    for probe in \
+        "servers/PROBE-HOST/nginx/conf.d/PROBE.conf" \
+        "servers/PROBE-HOST/system/PROBE" \
+        "servers/PROBE-HOST/php/conf.d/PROBE.ini"
+    do
+        if ! git -C "$root" check-ignore -q "$probe" 2>/dev/null; then
+            _host_say "${probe%/*}/** is ENGINE-TRACKABLE — per-host identity would land in the public mirror (ops#326)"
             bad=1
         fi
     done

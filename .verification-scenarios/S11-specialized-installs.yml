@@ -2,7 +2,14 @@
 # Part of P51: AI-Powered Deep Verification
 #
 # Verifies specialized installation commands.
-# Tests podcast and AVC Moodle integration commands.
+#
+# 2026-08-10 (ops#326 Phase 1 tranche 3): the four-command integration family
+# this scenario also covered was RETIRED. It was unfinished scaffolding — the
+# Drupal modules and the Moodle auth plugin it claimed to install were never
+# written ("will be enabled once created") — it was superseded by the proven
+# OIDC path (`pl link verify`, scripts/f26/*, lib/moodle-promote.sh), and it was
+# named after a private site instance. `pl pipeline` replaces the other retired
+# verb and is covered here in its place.
 
 scenario:
   id: S11
@@ -15,10 +22,7 @@ scenario:
 
   commands_tested:
     - podcast.sh
-    - avc-moodle-setup.sh
-    - avc-moodle-status.sh
-    - avc-moodle-sync.sh
-    - avc-moodle-test.sh
+    - pipeline.sh
 
   steps:
     - name: Check podcast command exists
@@ -26,23 +30,8 @@ scenario:
       expect_exit: 0
       expect_contains: "exists"
 
-    - name: Check avc-moodle-setup command exists
-      cmd: test -f scripts/commands/avc-moodle-setup.sh && echo "avc-moodle-setup.sh exists"
-      expect_exit: 0
-      expect_contains: "exists"
-
-    - name: Check avc-moodle-status command exists
-      cmd: test -f scripts/commands/avc-moodle-status.sh && echo "avc-moodle-status.sh exists"
-      expect_exit: 0
-      expect_contains: "exists"
-
-    - name: Check avc-moodle-sync command exists
-      cmd: test -f scripts/commands/avc-moodle-sync.sh && echo "avc-moodle-sync.sh exists"
-      expect_exit: 0
-      expect_contains: "exists"
-
-    - name: Check avc-moodle-test command exists
-      cmd: test -f scripts/commands/avc-moodle-test.sh && echo "avc-moodle-test.sh exists"
+    - name: Check pipeline command exists
+      cmd: test -f scripts/commands/pipeline.sh && echo "pipeline.sh exists"
       expect_exit: 0
       expect_contains: "exists"
 
@@ -51,14 +40,20 @@ scenario:
       expect_exit: 0
       timeout: 30
 
-    - name: Run pl avc-moodle-setup help
-      cmd: ./pl avc-moodle-setup --help 2>&1 | head -10 || echo "avc-moodle-setup command checked"
+    - name: Run pl pipeline help
+      cmd: ./pl pipeline --help
       expect_exit: 0
+      expect_contains: "pipeline"
+      timeout: 30
+
+    - name: pl pipeline refuses an unowned flow rather than exiting 0 blind
+      cmd: ./pl pipeline --find=__nwp_no_such_flow__ --dry
+      expect_exit: 1
       timeout: 30
 
     - name: Verify scripts pass syntax check
       cmd: |
-        for script in podcast avc-moodle-setup avc-moodle-status avc-moodle-sync avc-moodle-test; do
+        for script in podcast pipeline; do
           if [[ -f scripts/commands/${script}.sh ]]; then
             bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
           fi
@@ -67,8 +62,3 @@ scenario:
       expect_exit: 0
       expect_contains: "complete"
       timeout: 30
-
-  success_criteria:
-    all_required:
-      - All specialized install commands exist
-      - Scripts pass syntax check

@@ -767,45 +767,32 @@ Complete inventory of all commands in the NWP codebase.
 
 ---
 
-## AVC-Moodle Integration Commands
+## Site Pipeline Command
 
-### avc-moodle-setup.sh
-**Purpose:** Configure SSO integration between AVC and Moodle
+### pipeline.sh
+**Purpose:** Run a site's project-specific data pipeline
 **Key Features:**
-- OAuth2-based authentication
-- Role synchronization
-- Badge display integration
-- Configuration wizard
+- Resolves `sites/<site>/dev/pipeline/` from the site argument — the engine
+  hardcodes no site
+- Prefers a `run-<flow>.sh` wrapper, falls back to `<flow>.sh`
+- `--setup` / `--deploy` dispatch to the sibling `setup-`/`deploy-` scripts
+- `--find=<flow>` resolves the owning site by scanning; refuses on zero or
+  more than one owner rather than guessing
+- `list` reports which checked-out sites ship a pipeline
+
+**Replaces (ops#326, 2026-08-10):** a verb named after one private site's
+scraper that hardcoded that site's directory and had exited 127 since the F23
+layout change. The old verb remains as a deprecation shim that forwards here.
 
 ---
 
-### avc-moodle-status.sh
-**Purpose:** Display integration health dashboard
-**Key Features:**
-- SSO status
-- Synchronization health
-- User mapping status
-- Configuration validation
-
----
-
-### avc-moodle-sync.sh
-**Purpose:** Manually trigger role/cohort synchronization
-**Key Features:**
-- Role sync between AVC and Moodle
-- Cohort management
-- User mapping updates
-- Sync verification
-
----
-
-### avc-moodle-test.sh
-**Purpose:** Test OAuth2 SSO and integration functionality
-**Key Features:**
-- OAuth2 authentication testing
-- Role sync testing
-- Badge display testing
-- Integration validation
+**RETIRED 2026-08-10 (ops#326 Phase 1 tranche 3): the four-command Drupal↔Moodle
+SSO integration family.** It was unfinished scaffolding — the custom Drupal
+modules and the Moodle auth plugin it claimed to install were never written
+("will be enabled once created"), it had no tests and no caller, and the working
+mechanism it was superseded by is `pl link verify` plus
+`scripts/f26/nwc-provider-oidc-setup.sh` and `lib/moodle-promote.sh`. Its name
+also carried a private site instance into a publicly mirrored engine tree.
 
 ---
 
@@ -849,7 +836,7 @@ Complete inventory of all commands in the NWP codebase.
 - Migration: 2 (migration, migrate-secrets)
 - Distributed Contribution: 2 (contribute, upstream)
 - Coder Management: 4 (coders, coder-setup, bootstrap-coder, setup-ssh)
-- AVC-Moodle Integration: 5 (avc-moodle-setup, avc-moodle-status, avc-moodle-sync, avc-moodle-test, mass-times)
+- Site Pipelines: 1 (pipeline; the retired per-site scraper verb survives only as a deprecation shim)
 - Podcast Hosting: 1 (podcast)
 - Distributed Pipeline (ADR-0017): 1 (`pl ai-host` — LLM-host utilities; on-disk filename retained per F34 / role-vocabulary)
 
@@ -917,7 +904,7 @@ Complete inventory of all commands in the NWP codebase.
 - test, testos, verify --run, run-tests
 
 **Integration Patterns:**
-- <system1>-<system2>-<action>: avc-moodle-setup, avc-moodle-status, avc-moodle-sync, avc-moodle-test
+- <system1>-<system2>-<action>: (none — the last such family was retired in ops#326; integration verbs now name the function and take the pair as an argument, e.g. `pl link verify <pair>`)
 
 **Management Patterns:**
 - <resource>-<action>: coder-setup, setup-ssh, migrate-secrets
@@ -982,9 +969,11 @@ A future cleanup should rename the script to a role label so `pl` and this
 inventory can name it directly.
 
 ### mass-times.sh
-**Purpose:** NWP Mass Times scraper command — fetches and normalizes
-mass-time schedules for AVC sites. Site-specific to the AV Commons /
-Catholic parish use case; not a general-purpose command.
+**Purpose:** DEPRECATED shim (ops#326, 2026-08-10). It printed a deprecation
+notice and forwards to `pl pipeline --find=mass-times`, which resolves the
+owning site by scanning `sites/*/dev/pipeline/`. A site's data pipeline is site
+data and lives in that site's own repository; the engine only knows how to find
+and run one. Use `pl pipeline <site>`.
 
 ---
 

@@ -246,8 +246,8 @@ RAW
 }
 
 @test "ops#329 D5: extras JSON — backup entries carry subdir, newest, bytes, mtime and an age" {
-  mt="$(date -u -d '10 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
-  raw="$(_raw_with_extras "2026-08-09T11:07:06Z" "$mt")"
+  mtime="$(date -u -d '10 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
+  raw="$(_raw_with_extras "2026-08-09T11:07:06Z" "$mtime")"
   run _libarg "demo_box_extras_json \"\$1\"" "$raw"
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.backups.reported == true and .backups.state == "ok" and .backups.dir == "/var/backups/nwp-pull"'

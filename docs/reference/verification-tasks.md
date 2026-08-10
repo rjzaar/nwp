@@ -109,11 +109,8 @@ NWP tracks 89 features across these categories:
 - `uninstall` - Complete NWP uninstallation
 - `sync` - Synchronization operations
 
-### AVC-Moodle Integration (4 features)
-- `avc_moodle_setup` - OAuth2 SSO setup between AVC and Moodle
-- `avc_moodle_status` - Integration health dashboard
-- `avc_moodle_sync` - Role and cohort synchronization
-- `avc_moodle_test` - SSO and integration testing
+### Site Pipelines (1 feature)
+- `pipeline` - Run a site's project-specific data pipeline (`pl pipeline`)
 
 ### Utility & Management (11 features)
 - `badges` - GitLab badge management
@@ -174,7 +171,6 @@ NWP tracks 89 features across these categories:
 - `lib_import_tui` - Import TUI
 - `lib_dev2stg_tui` - Dev2stg TUI
 - `lib_terminal` - Terminal utilities
-- `lib_avc_moodle` - AVC-Moodle integration
 - `lib_podcast` - Podcast infrastructure
 - `lib_ssh` - SSH helpers with security controls
 

@@ -25,6 +25,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed — engine/site separation, Phase 1 tranche 3 (2026-08-10, nwp/ops#326)
+- **`servers/` split.** 80 tracked files carrying per-host IDENTITY — nginx
+  vhosts with real domains, the operator crontab, mail aliases, ufw rules,
+  authorized keys, host inventories, php floors, postfix and letsencrypt state —
+  are no longer tracked by the publicly-mirrored engine repo. They are versioned
+  **in place** by a private per-server repository (`servers/<host>/.git`, remote
+  `nwp/server-<host>`); the files never move, so every `pl` verb reads the same
+  paths. The engine keeps generic mechanism only (installers, the certbot renew
+  deploy-hook, the deny-files snippet, the demo-pair tooling, shipped systemd
+  units). See [ADR-0038](docs/decisions/0038-instance-state-in-private-overlay-repos.md).
+  - **After pulling this, run `git -C servers/<host> checkout -- .`** on any clone
+    that holds the real state — the merge removes the files from the engine's
+    tree. `pl doctor` names the host and prints this command.
+  - `host_check_servers_tracked` now asserts BOTH directions (generic mechanism
+    stays trackable, identity stays untrackable); `host_check_server_repos` now
+    flags a host directory that holds state with no repo (previously a silent
+    skip) and a per-server repo that is dirty.
+- **`pl pipeline` replaces the per-site scraper verb.** The retired verb
+  hardcoded one private site's directory and had exited 127 since the F23 layout
+  change. `pl pipeline <site>` resolves `sites/<site>/dev/pipeline/` from its
+  argument; `--find=<flow>` resolves the owning site by scanning. The old verb
+  remains as a deprecation shim that names the new one and still works.
+
+### Removed — engine/site separation, Phase 1 tranche 3 (2026-08-10, nwp/ops#326)
+- **The four-command Drupal↔Moodle SSO verb family and its library are RETIRED**
+  (`lib/`, `scripts/commands/`, `docs/reference/commands/`, 5 `.verification.yml`
+  features, the `S11` scenario entries, `cross_validate_moodle`). It was
+  unfinished scaffolding — the custom Drupal modules and the Moodle auth plugin
+  it claimed to install were never written ("will be enabled once created") — it
+  had zero callers and zero tests, and the mechanism that actually works is
+  `pl link verify` + `scripts/f26/nwc-provider-oidc-setup.sh` +
+  `lib/moodle-promote.sh`. Same precedent as the 2026-07-26 `lib/safe-ops.sh`
+  retirement. Its name also carried a private site instance into a public tree.
+
+
 ### Added — F23: Site Environment Layout (2026-04-09)
 - **Schema v2 migration** — all 9 sites migrated from flat v1 to nested v2 layout (`sites/<name>/dev/` + `sites/<name>/stg/` + `sites/<name>/backups/`). 3 orphaned `-stg` siblings absorbed into parent sites.
 - **`lib/migrations/site/002-env-layout.sh`** — migration script: moves DDEV/code into `dev/`, creates `stg/` for live-enabled sites, absorbs `-stg` siblings, renames DDEV projects to `<name>-dev`/`<name>-stg`.

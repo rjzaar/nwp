@@ -352,16 +352,18 @@ This is more capable than the built-in OAuth2 plugin and supports:
 If you also run an AVC (Drupal) site and want both AVC SSO and Microsoft SSO, Moodle supports multiple OAuth2 issuers. Users will see both login options on the login page:
 
 ```
-[Login with AVC]     [Login with Microsoft]
+[Login with Guild Commons]     [Login with Microsoft]
 ```
 
-Set up AVC SSO using NWP's built-in integration:
+Set up the Guild Commons (Drupal `nwc` profile) OIDC provider half with
+`scripts/f26/nwc-provider-oidc-setup.sh`, then verify the wired pair end to end:
 
 ```bash
-pl avc-moodle-setup avc mysite
+pl link verify <pair> --tier=stg
 ```
 
-See `sites/avc/docs/projects/moodle-sso-nwp.md` for the full AVC integration guide.
+See `docs/guides/ops75-pair-contract-schema.md` for the pair contract, and the
+site's own repository for that instance's SSO notes.
 
 ---
 
@@ -383,7 +385,7 @@ See `sites/avc/docs/projects/moodle-sso-nwp.md` for the full AVC integration gui
 | `pl stg2prod mysite-stg`        | Deploy to production                 |
 | `pl backup mysite`               | Backup the site                      |
 | `pl restore mysite`              | Restore from backup                  |
-| `pl avc-moodle-setup avc mysite` | Set up AVC-Moodle SSO (if using AVC) |
+| `pl link verify <pair> --tier=stg` | Verify the Drupal↔Moodle SSO link |
 
 ### Microsoft Entra ID Endpoints (for reference)
 

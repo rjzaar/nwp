@@ -1,7 +1,0 @@
-# /etc/systemd/system/nwc-cron.service
-[Unit]
-Description=nwc Drupal cron
-[Service]
-Type=oneshot
-User=www-data
-ExecStart=/var/www/nwc/vendor/bin/drush --root=/var/www/nwc/html core:cron

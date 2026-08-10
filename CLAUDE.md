@@ -471,8 +471,10 @@ Rules:
   - Per-site proposals live inside each site's profile repo (e.g. `sites/avc/dev/html/profiles/custom/avc/docs/proposals/`); aggregated by `pl proposals`
 - `servers/` - Per-server infrastructure (F17 Phase 8, formerly F23):
   - `servers/<name>/.nwp-server.yml` - Server identity (gitignored plaintext; SOPS-encrypted version comes with F18)
-  - `servers/<name>/{email,linode,nginx}/` - Service configs and provisioning scripts
-  - Each server is its own local git repo (e.g. `servers/nwpcode/`)
+  - `servers/<name>/{email,linode,nginx,demo}/` - Generic mechanism: installers, hooks, snippets, provisioning scripts. **Engine-tracked.**
+  - `servers/<name>/{nginx/conf.d,system,php,postfix,letsencrypt}/` - Per-host **IDENTITY**: vhosts with real domains, the operator crontab, mail aliases, ufw, authorized keys, inventories. **NOT engine-tracked** (ops#326 / [ADR-0038](docs/decisions/0038-instance-state-in-private-overlay-repos.md)) — the engine repo is publicly mirrored.
+  - **Each server is its own PRIVATE git repo, in place**: `servers/<name>/.git`, remote `nwp/server-<name>`. The files never move, so every `pl` verb reads the same paths; only the repo boundary moves. `pl doctor` (`host_check_server_repos`) fails when a host dir holds state with no repo, has no remote, has unpushed commits, or is dirty — and prints the exact command to settle it.
+  - After a `git pull` that lands an engine-side split, restore the captured state with `git -C servers/<name> checkout -- .`
 - `scripts/commands/` - All executable commands (accessed via `pl` CLI)
   - `pl site list|show|schema|migrate|init` - Per-site config management
   - `pl server list|show|status|sites|schema|migrate` - Per-server config management

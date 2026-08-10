@@ -1,72 +1,63 @@
-#!/bin/bash
-set -euo pipefail
-
+#!/usr/bin/env bash
+set -uo pipefail
 ################################################################################
-# NWP Mass Times Scraper Command
+# scripts/commands/mass-times.sh — DEPRECATED shim for `pl pipeline`.
 #
-# Automated Catholic mass times scraping for the masstimes site (F16).
-# Code-first extraction using regex, CSS selectors, and PDF parsing.
-# LLM used only as a Tier 3 fallback.
+# RETIRED 2026-08-10 (ops#326 Phase 1 tranche 3). This verb was a per-site data
+# pipeline wearing an engine verb's clothes: it hardcoded ONE private site's
+# directory in the publicly-mirrored engine tree —
 #
-# Usage: pl mass-times [OPTIONS]
+#     MT_DIR="$PROJECT_ROOT/<private-site>"
+#     exec "$MT_DIR/mass-times.sh" "$@"
 #
-# Options:
-#   --discover              Run parish discovery
-#   --build [parish]        Build/rebuild extraction template for a parish
-#   --extract               Run extraction cycle
-#   --status                Show system status
-#   --report                Generate summary report
-#   --check                 Dry run (no writes)
-#   --setup                 Run initial setup (install deps, configure cron)
-#   --setup-check           Check setup status
-#   --setup-uninstall       Remove cron jobs
-#   --deploy                Deploy to server
-#   --deploy-conf           Generate conf only (no deploy)
-#   --help, -h              Show this help
+# — and that path had been dead since the F23 layout change, so every
+# invocation exited 127 with a bare "No such file or directory". Nothing
+# asserted on it, so nobody noticed.
 #
-# Examples:
-#   pl mass-times --status           # Check system status
-#   pl mass-times --setup            # Initial setup
-#   pl mass-times --discover         # Discover parishes
-#   pl mass-times --extract          # Run extraction cycle
-#   pl mass-times --build sacred-heart  # Build template for a parish
+# The replacement is `pl pipeline`, which names the FUNCTION (run a site's
+# project-specific data pipeline), takes the site as an argument, and resolves
+# the entrypoint inside that site's own repository.
+#
+#     pl pipeline list                     which checked-out sites have one
+#     pl pipeline <site> [args…]           run it
+#     pl pipeline <site> --setup|--deploy  the sibling setup-/deploy- script
+#
+# This shim keeps the old invocation working — including its old flag spellings
+# — by asking `pl pipeline --find` which checked-out site owns an entrypoint of
+# this name. It therefore names no site itself, which is the whole point.
+#
+# It will be removed once the deprecation window closes; use `pl pipeline`.
 ################################################################################
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
-MT_DIR="$PROJECT_ROOT/mt"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+FLOW="$(basename "${BASH_SOURCE[0]}" .sh)"
 
-# Source required libraries
-source "$PROJECT_ROOT/lib/ui.sh"
+notice() {
+    printf '\n  DEPRECATED: `pl %s` is retired (ops#326).\n' "$FLOW" >&2
+    printf '  Use `pl pipeline <site>` — the generic verb. Try `pl pipeline list`.\n' >&2
+    printf '  Forwarding: pl pipeline --find=%s …\n\n' "$FLOW" >&2
+}
 
-# Check if setup/deploy subcommand
 case "${1:-}" in
-    --setup)
-        shift
-        exec "$MT_DIR/setup-mass-times.sh" "$@"
-        ;;
-    --setup-check)
-        shift
-        exec "$MT_DIR/setup-mass-times.sh" --check "$@"
-        ;;
-    --setup-uninstall)
-        shift
-        exec "$MT_DIR/setup-mass-times.sh" --uninstall "$@"
-        ;;
-    --deploy)
-        shift
-        exec "$MT_DIR/deploy-mass-times.sh" "$@"
-        ;;
-    --deploy-conf)
-        shift
-        exec "$MT_DIR/deploy-mass-times.sh" --conf-only "$@"
+    -h|--help)
+        notice
+        exec "$PROJECT_ROOT/pl" pipeline --help
         ;;
 esac
 
-# Use the wrapper if it exists (has correct Python path)
-if [[ -x "$MT_DIR/run-mass-times.sh" ]]; then
-    exec "$MT_DIR/run-mass-times.sh" "$@"
-fi
+notice
 
-# Fallback to direct execution
-exec "$MT_DIR/mass-times.sh" "$@"
+# Translate the retired flag spellings onto the generic verb. Anything else is
+# forwarded verbatim.
+declare -a fwd=()
+case "${1:-}" in
+    --setup)            shift; fwd=(--setup "$@") ;;
+    --setup-check)      shift; fwd=(--setup --check "$@") ;;
+    --setup-uninstall)  shift; fwd=(--setup --uninstall "$@") ;;
+    --deploy)           shift; fwd=(--deploy "$@") ;;
+    --deploy-conf)      shift; fwd=(--deploy --conf-only "$@") ;;
+    *)                  fwd=("$@") ;;
+esac
+
+exec "$PROJECT_ROOT/pl" pipeline --find="$FLOW" ${fwd[@]+"${fwd[@]}"}

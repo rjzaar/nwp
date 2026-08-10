@@ -20,8 +20,9 @@
 #          The ops#329 D3/D5 research proved this dir had NO off-box
 #          consumer — the dr-pull and stick crons pull only the git box.
 #          met's existing ~/.ssh/nwp-dr-pull key is ALREADY authorized on
-#          the live box (tracked in servers/live/system/authorized-keys,
-#          rrsync -ro jail), so this leg adds zero new credentials.
+#          the live box (captured in servers/live/system/authorized-keys —
+#          versioned in the private per-server repo since ops#326; rrsync -ro
+#          jail), so this leg adds zero new credentials.
 #
 # WHY USER-LEVEL: rob on met has no passwordless sudo, so this route cannot
 # extend /etc/cron.d/nwp-dr-pull or write /srv/nwp-dr. It is a SIBLING of

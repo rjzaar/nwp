@@ -181,7 +181,7 @@ is not here:
 
 Per the ops#75 acceptance and CLAUDE.md, **all auth-touching parts carry human
 sign-off (F26 !49) before merge.** The auth `pair` command (issuer provisioning,
-`avc-moodle-setup` generalisation) named in the ops#75 scope item 2 is **not**
+the generalised Drupal↔Moodle SSO setup) named in the ops#75 scope item 2 is **not**
 built here — it lands on the F26 path. `lib/pair.sh` contains no auth logic; it
 reads versions and public URLs only.
 

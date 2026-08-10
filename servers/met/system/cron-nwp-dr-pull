@@ -1,3 +1,0 @@
-# NWP interim DR: pull the live box backups → restic on met. (dr-pull-setup.sh)
-SHELL=/bin/bash
-0 3 * * * root rsync -a --delete -e "ssh -i /home/<operator>/.ssh/nwp-dr-pull -o StrictHostKeyChecking=accept-new -o BatchMode=yes" gitlab@<public-ip-redacted>: /srv/nwp-dr/staging/ >>/var/log/nwp-dr-pull.log 2>&1 && restic -r /srv/nwp-dr/repo --password-file /root/.nwp-dr-restic-pw backup --tag prod-pull /srv/nwp-dr/staging >>/var/log/nwp-dr-pull.log 2>&1 && restic -r /srv/nwp-dr/repo --password-file /root/.nwp-dr-restic-pw forget --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --prune >>/var/log/nwp-dr-pull.log 2>&1 && restic -r /srv/nwp-dr/repo --password-file /root/.nwp-dr-restic-pw check >>/var/log/nwp-dr-pull.log 2>&1

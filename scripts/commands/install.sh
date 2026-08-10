@@ -387,7 +387,27 @@ main() {
 
     # Check if config file exists
     if [ ! -f "$config_file" ]; then
-        print_error "Configuration file '$config_file' not found"
+        # TWO different absences, two different fixes. "Configuration file
+        # 'nwp.yml' not found" was rendered for both, and for the commoner of
+        # the two it is actively wrong: the operator HAS a config, they are
+        # simply not standing in the estate root — `pl` is on $PATH and this
+        # project's standing rule is to work inside a `pl issue work` worktree,
+        # so $PWD essentially never is. Telling them the file was not found
+        # sends them to create a second one.
+        if [ -f "$PROJECT_ROOT/nwp.yml" ]; then
+            print_error "Not in the estate root — there IS an nwp.yml, at $PROJECT_ROOT/nwp.yml"
+            print_info  "'pl install' reads './$config_file' AND creates './sites/<name>', both"
+            print_info  "relative to where you are standing, so running it here would build the"
+            print_info  "site in the wrong tree. Nothing has been created."
+            print_hint  "run it from the estate root:  cd $PROJECT_ROOT && pl install <recipe> <name>"
+        else
+            print_error "nwp.yml is NOT CREATED YET (looked for './$config_file')"
+            print_info  "It is your own copy of example.nwp.yml — gitignored, per-user, and never"
+            print_info  "shipped, so a fresh clone has none. This is not a corrupt install and"
+            print_info  "there is nothing here to repair."
+            print_hint  "create it:  pl setup   (copies example.nwp.yml -> nwp.yml, among other things)"
+            print_hint  "then see what your install offers:  pl install --list"
+        fi
         exit 1
     fi
 

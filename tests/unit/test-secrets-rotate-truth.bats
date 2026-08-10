@@ -301,3 +301,61 @@ _rotate_hostfile() { # runs rotate against a host=-only entry with the stub arme
   _rotate_hostfile || true
   [ "$(stamped)" = "2026-01-01" ]
 }
+
+# ── 2026-08-10: a host= @file location in the REMOTE USER'S HOME ─────────────
+# The ops#317 writer assumed every remote target was a root-owned system file
+# (`sudo -n install -o root -g root`). That is wrong twice over for a path in
+# the ssh user's own home: on a host where the login user has no passwordless
+# sudo the write simply FAILS (measured on mini, 2026-08-10 — the console's
+# read token could not be delivered), and where sudo DOES work it produces a
+# root-owned 0600 file that the service running as that user cannot read.
+# A `~`-relative path is BY DEFINITION the login user's own file: write it as
+# that user, no sudo, and read it back the same way.
+_rotate_homefile() { # host= @file target under the remote user's home
+  yq e -i '.secrets[0].stored_in = ["host=stubbox:~/.config/nwp-console/gitlab.token:@file"]' \
+    "$NWP_SECRETS_REGISTRY"
+  pty_run 'PLACEHOLDER_canonical_value_A
+2030-01-01
+' "env NWP_ROOT='$NWP_ROOT' HOME='$HOME' PATH='$PATH' \
+        NWP_SECRETS_FILE='$NWP_SECRETS_FILE' NWP_SECRETS_REGISTRY='$NWP_SECRETS_REGISTRY' \
+        NWP_LEAK_SURFACES='$NWP_LEAK_SURFACES' FAKE_CURL_ALIVE='$FAKE_CURL_ALIVE' \
+        SSH_STUB_LOG='$SSH_STUB_LOG' SSH_STUB_CAP='$SSH_STUB_CAP' SSH_STUB_MODE='$SSH_STUB_MODE' \
+        bash '$SECRETS_SH' rotate fixture_token"
+}
+
+@test "home-path: a ~ target is written as the LOGIN USER — no sudo in the command" {
+  _arm_ssh_stub ok
+  _rotate_homefile
+  [ -f "$SSH_STUB_CAP" ]
+  [ "$(head -1 "$SSH_STUB_CAP")" = "PLACEHOLDER_canonical_value_A" ]
+  # the whole point: a home path must not be handed to sudo
+  ! grep -q 'sudo' "$SSH_STUB_LOG"
+  ! grep -q -- '-o root' "$SSH_STUB_LOG"
+}
+
+@test "home-path: the read-back is ALSO unprivileged (a root-only read would lie)" {
+  _arm_ssh_stub ok
+  _rotate_homefile
+  run grep -c 'sha256sum' "$SSH_STUB_LOG"
+  [ "$output" -ge 1 ]
+  ! grep -E 'sudo -n (head|cat)' "$SSH_STUB_LOG"
+}
+
+@test "home-path: a verified home write STAMPS the registry" {
+  _arm_ssh_stub ok
+  _rotate_homefile
+  [ "$(stamped)" = "$(date +%F)" ]
+}
+
+@test "system-path: a NON-home target still uses sudo (no privilege regression)" {
+  _arm_ssh_stub ok
+  _rotate_hostfile
+  grep -q 'sudo -n install' "$SSH_STUB_LOG"
+  grep -q -- '-o root -g root' "$SSH_STUB_LOG"
+}
+
+@test "home-path: a FAILED home write still blocks the stamp" {
+  _arm_ssh_stub writefail
+  _rotate_homefile || true
+  [ "$(stamped)" = "2026-01-01" ]
+}

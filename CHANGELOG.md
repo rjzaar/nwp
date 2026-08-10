@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `nwp/server-<host>`); the files never move, so every `pl` verb reads the same
   paths. The engine keeps generic mechanism only (installers, the certbot renew
   deploy-hook, the deny-files snippet, the demo-pair tooling, shipped systemd
-  units). See [ADR-0038](docs/decisions/0038-instance-state-in-private-overlay-repos.md).
+  units). See [ADR-0039](docs/decisions/0039-instance-state-in-private-overlay-repos.md).
   - **After pulling this, run `git -C servers/<host> checkout -- .`** on any clone
     that holds the real state — the merge removes the files from the engine's
     tree. `pl doctor` names the host and prints this command.

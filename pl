@@ -1129,6 +1129,12 @@ main() {
             run_script "server.sh" "$@"
             ;;
 
+        # Forge box (git.nwpcode.org): named, scoped identities across the Linux
+        # and GitLab-application planes (ops#331, ADR-0038). Read-only default.
+        forge)
+            run_script "forge.sh" "$@"
+            ;;
+
         # DNS enumeration — the one thing the estate could not see (read-only)
         dns)
             run_script "dns.sh" "$@"

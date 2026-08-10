@@ -90,7 +90,23 @@ check_protected_main() {
 cmd_show() {
     local one_site="${1:-}"
     local config; config=$(canonical_config_file)
-    [ -f "$config" ] || { print_error "No nwp.yml found at $config"; return 1; }
+    # ABSENT BY CONTEXT is not BROKEN — and lib/canonical.sh:51-64 already ruled
+    # on it, at length, for this exact file: "`pl` runs from a fresh clone, from
+    # CI, and from ~40 linked worktrees, and in those contexts nwp.yml
+    # legitimately does not exist … THE LINE IS DRAWN AT PARSEABILITY, NOT
+    # PRESENCE". The library returns the dev default there. This command surface
+    # was stricter than the library it wraps, so `pl canonical show` was RED in
+    # every one of those ~40 worktrees for the one condition the doctrine calls
+    # normal — and a red that fires on ordinary work is a red people learn to
+    # ignore. `cmd_check` in this same file never had the check at all.
+    if [ ! -f "$config" ]; then
+        print_info "nwp.yml is NOT CREATED YET at $config"
+        print_info "Normal in a fresh clone, in CI and in a linked worktree — nwp.yml is"
+        print_info "gitignored and per-user. Nothing has been classified here, so every site"
+        print_info "reads as the (dev) default (lib/canonical.sh)."
+        print_hint "create one when you need it:  pl setup   (copies example.nwp.yml -> nwp.yml)"
+        return 0
+    fi
 
     local sites
     if [ -n "$one_site" ]; then
@@ -133,7 +149,17 @@ cmd_set() {
         dev|live|prod) ;;
         *) print_error "Invalid phase '$new_phase' — must be one of: $CANONICAL_PHASES"; return 1 ;;
     esac
-    [ -f "$config" ] || { print_error "No nwp.yml found at $config"; return 1; }
+    # `set` WRITES a phase into nwp.yml, so unlike `show` it genuinely cannot
+    # proceed without one. It still owes the operator the right diagnosis: the
+    # file has never been made, which is a different problem from one that is
+    # present and unreadable, and it has a different fix.
+    if [ ! -f "$config" ]; then
+        print_error "Cannot record a canonical phase: nwp.yml is NOT CREATED YET at $config"
+        print_info "The phase is stored IN that file, so there is nowhere to write it. This is"
+        print_info "not a corrupt or unreadable config — it is one that has never been made."
+        print_hint "create it:  pl setup   (copies example.nwp.yml -> nwp.yml)"
+        return 1
+    fi
     if ! yaml_site_exists "$site" "$config"; then
         print_error "Site '$site' not found in $config"
         return 1

@@ -1,4 +1,4 @@
-# ADR-0038: Instance names and instance state live in private overlay repos; the engine ships only the sample pair
+# ADR-0039: Instance names and instance state live in private overlay repos; the engine ships only the sample pair
 
 **Status:** Accepted
 **Date:** 2026-08-10

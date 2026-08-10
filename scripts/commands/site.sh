@@ -103,12 +103,30 @@ _generate_site_config() {
         return 0
     fi
 
+    # ABSENT BY CONTEXT vs PRESENT BUT UNREADABLE (lib/canonical.sh:51-64).
+    # A fresh clone, CI and a linked worktree all legitimately have no global
+    # nwp.yml, and every read below already carries a `// <default>`. What they
+    # did not have was a file for yq to open, so under `set -euo pipefail` this
+    # verb died on the library's own message — `Error: open …/nwp.yml: no such
+    # file or directory`, exit 1, not one word of NWP's own — for the FIRST-EVER
+    # site, which is precisely when there is nothing to read from anyway. The
+    # `--all` path below already tolerated it (`2>/dev/null || true`); the
+    # single-site path did not. Read from an empty document instead, and say so
+    # ONCE, so nobody mistakes the defaults for values somebody recorded.
+    local gcfg="$PROJECT_ROOT/nwp.yml"
+    if [[ ! -f "$gcfg" ]]; then
+        echo "  · global nwp.yml is NOT CREATED YET at $gcfg"
+        echo "    Normal in a fresh clone, CI or a linked worktree. Writing $site/.nwp.yml"
+        echo "    from DEFAULTS, not from recorded values.  (create one: pl setup)"
+        gcfg=/dev/null
+    fi
+
     # Pull fields from the existing global nwp.yml
     local recipe environment created purpose
-    recipe=$("$YQ" eval ".sites.\"$site\".recipe // \"\"" "$PROJECT_ROOT/nwp.yml")
-    environment=$("$YQ" eval ".sites.\"$site\".environment // \"development\"" "$PROJECT_ROOT/nwp.yml")
-    created=$("$YQ" eval ".sites.\"$site\".created // \"\"" "$PROJECT_ROOT/nwp.yml")
-    purpose=$("$YQ" eval ".sites.\"$site\".purpose // \"indefinite\"" "$PROJECT_ROOT/nwp.yml")
+    recipe=$("$YQ" eval ".sites.\"$site\".recipe // \"\"" "$gcfg")
+    environment=$("$YQ" eval ".sites.\"$site\".environment // \"development\"" "$gcfg")
+    created=$("$YQ" eval ".sites.\"$site\".created // \"\"" "$gcfg")
+    purpose=$("$YQ" eval ".sites.\"$site\".purpose // \"indefinite\"" "$gcfg")
 
     # Timestamp if created is empty
     if [[ -z "$created" || "$created" == "null" ]]; then
@@ -120,12 +138,12 @@ _generate_site_config() {
 
     # live.* subfields
     local live_enabled live_domain live_server_ip live_linode_id live_remote_dir live_type
-    live_enabled=$("$YQ" eval ".sites.\"$site\".live.enabled // false" "$PROJECT_ROOT/nwp.yml")
-    live_domain=$("$YQ" eval ".sites.\"$site\".live.domain // \"\"" "$PROJECT_ROOT/nwp.yml")
-    live_server_ip=$("$YQ" eval ".sites.\"$site\".live.server_ip // \"\"" "$PROJECT_ROOT/nwp.yml")
-    live_linode_id=$("$YQ" eval ".sites.\"$site\".live.linode_id // \"\"" "$PROJECT_ROOT/nwp.yml")
-    live_remote_dir=$("$YQ" eval ".sites.\"$site\".live.remote_dir // \"\"" "$PROJECT_ROOT/nwp.yml")
-    live_type=$("$YQ" eval ".sites.\"$site\".live.type // \"\"" "$PROJECT_ROOT/nwp.yml")
+    live_enabled=$("$YQ" eval ".sites.\"$site\".live.enabled // false" "$gcfg")
+    live_domain=$("$YQ" eval ".sites.\"$site\".live.domain // \"\"" "$gcfg")
+    live_server_ip=$("$YQ" eval ".sites.\"$site\".live.server_ip // \"\"" "$gcfg")
+    live_linode_id=$("$YQ" eval ".sites.\"$site\".live.linode_id // \"\"" "$gcfg")
+    live_remote_dir=$("$YQ" eval ".sites.\"$site\".live.remote_dir // \"\"" "$gcfg")
+    live_type=$("$YQ" eval ".sites.\"$site\".live.type // \"\"" "$gcfg")
 
     # Default remote_path: /var/www/<remote_dir or site>
     local remote_path=""
@@ -220,13 +238,13 @@ EOF
         # Site-specific nested config (e.g., mass_times for MT)
         if [[ "$site" == "mt" ]]; then
             local mt_settings
-            mt_settings=$("$YQ" eval '.settings.mass_times // {}' "$PROJECT_ROOT/nwp.yml")
+            mt_settings=$("$YQ" eval '.settings.mass_times // {}' "$gcfg")
             if [[ -n "$mt_settings" && "$mt_settings" != "{}" ]]; then
                 echo ""
                 echo "# Mass Times scraper settings (was settings.mass_times in nwp.yml)"
                 echo "mass_times:"
                 # Indent each line by two spaces
-                "$YQ" eval '.settings.mass_times' "$PROJECT_ROOT/nwp.yml" \
+                "$YQ" eval '.settings.mass_times' "$gcfg" \
                     | sed 's/^/  /'
             fi
         fi

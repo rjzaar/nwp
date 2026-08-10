@@ -65,7 +65,8 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0034](0034-paired-restore-identity-invariant-enforcement.md) | Paired-restore identity invariant — enforcement | 2026-07-28 | Proposed (nwp/ops#83) — amends 0031 D9: unrecorded counterpart position is CANNOT-VERIFY and refuses; adds the paired-checkpoint "both" branch |
 | [0035](0035-erasure-propagation-op-to-rp.md) | Erasure propagation nwc (OP) → ss/ssc (RP) | 2026-07-28 | **Proposed** — bespoke signed channel over the P74 contract machinery, not OpenID Provider Commands (draft-02); staged path with the operator runbook as the standing fallback (nwp/ops#81) |
 | [0037](0037-review-mode-follows-approvers.md) | Review mode follows `approvers:` — one reviewer today, two when there are two | 2026-08-06 | Accepted (renumbered from a duplicate 0032, 2026-08-09, nwp/ops#319) |
-| [0038](0038-instance-state-in-private-overlay-repos.md) | Instance names and instance state live in private overlay repos; the engine ships only the sample pair | 2026-08-10 | Accepted — amends 0036's "tracked = in the engine repo" premise to "tracked = in *a reviewed* repo, resolved by search path" (nwp/ops#326) |
+| [0038](0038-forge-box-identity-scheme.md) | Forge-box identity scheme — named scoped keys, and a bounded forge-admin credential tier | 2026-08-10 | **Proposed** (nwp/ops#331) — Linux plane implemented & installed (`nwp-forge-ops` full control, `nwp-forge-probe` jailed read-only, root break-glass out-of-band); application plane SPECIFIED, awaiting the operator's PAT mint. Narrowly amends 0004's tier rule for the forge instance ONLY |
+| [0039](0039-instance-state-in-private-overlay-repos.md) | Instance names and instance state live in private overlay repos; the engine ships only the sample pair | 2026-08-10 | Accepted — amends 0036's "tracked = in the engine repo" premise to "tracked = in *a reviewed* repo, resolved by search path" (nwp/ops#326) |
 
 ## Rejected Proposals
 

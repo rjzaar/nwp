@@ -158,6 +158,13 @@ seed_target() {
 # ---------------------------------------------------------------------------
 @test "clean deploy proceeds all the way to the health check" {
   seed_target
+  # A host in the STEADY state has a TLS cert — that is what "clean deploy"
+  # models here, and without one the deploy now stops at 5/5 with NOT YET
+  # SERVING instead of probing (ops#331: a first deploy onto a certless host
+  # used to end RED with "health check failed" even though every step
+  # succeeded). The fixture, not the assertion, was what needed correcting.
+  mkdir -p "$FAKE_REMOTE_HOME/.config/nwp-console/tls"
+  printf 'PLACEHOLDER-CERT\n' > "$FAKE_REMOTE_HOME/.config/nwp-console/tls/fullchain.pem"
   run "$CONSOLE_SH" deploy --no-restart
   [ "$status" -eq 0 ]
   [[ "$output" == *"0/5 checking the target"* ]]

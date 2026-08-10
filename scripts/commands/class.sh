@@ -232,7 +232,18 @@ cmd_evidence() {
     local site="${1:-}"; shift || true
     [ -n "$site" ] || { print_error "Usage: pl class evidence <site>"; return 2; }
     local decl; decl="$(siteclass_decl_file "$site")"
-    [ -f "$decl" ] || { print_error "No declaration at $decl"; return 2; }
+    # Exit 2 in this file means CANNOT VERIFY — "something stopped me looking".
+    # Nothing stopped this look: the site has simply never been declared, which
+    # `cmd_check` above reports properly at exit 1, with the verb that fixes it
+    # and a sentence explaining that undeclared is not a permissive default.
+    # Same missing file, two verdicts in one file, and the worse one was here.
+    if [ ! -f "$decl" ]; then
+        print_error "UNDECLARED — no classes/${site}.class.yml."
+        print_info "This is not 'no evidence recorded'. It is 'nobody has said what this site"
+        print_info "is', so there is no declared probe for evidence to exist against. Declare it:"
+        print_info "  pl class set $site <member-paired|member-standalone|demo|service>"
+        return 1
+    fi
 
     local a
     for a in "$@"; do

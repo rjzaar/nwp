@@ -571,7 +571,7 @@ PHP
 # ops#326: the private overlay — instance declarations resolve from
 # private/classes/ AFTER the shipped classes/; a site declared in BOTH is
 # contradictory and fails closed. Reviewability is preserved because private/
-# is its own reviewed git repo (ADR-0038 shape).
+# is its own reviewed git repo (ADR-0039 shape).
 # =============================================================================
 
 @test "ops#326: a declaration in the private overlay resolves (search path)" {

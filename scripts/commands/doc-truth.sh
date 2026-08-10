@@ -74,6 +74,34 @@
 # unreadable (every CI runner), this exits 2 CANNOT VERIFY — absence of the
 # corpus is not a clean corpus, and an unreadable store never grades green.
 #
+# --projection (ops#319 / F2, Tranche 2): the INJECTED read-first document
+# (`~/central/nwc-internal/OPERATING-MODEL.md`) must not assert, in hand-written
+# prose, anything that disagrees with what the estate actually measures. That
+# document is re-read into context on every ops-related prompt, so a stale
+# sentence in it is not a stale doc — it is a falsehood re-asserted to the AI
+# with the authority of ground truth, every single turn. Measured 2026-08-09:
+# it said the agent-loop was "paused" while the loop was armed and running on
+# the ai-host, and printed an issue map stopping at ops#53 while the queue was
+# past ops#332.
+#
+# Two shapes, both fatal:
+#   * projection-contradiction — a hand-written claim disagrees with a LIVE
+#     measurement (`pl operating-model state`). Conditional on the measurement
+#     by construction: if the loop really is paused, "the loop is paused" is
+#     correct and nothing fires; if the probe is blind, the rule STANDS DOWN
+#     and the blindness is reported as CANNOT VERIFY. A lint that fires on a
+#     literal it never measured is itself the stale literal.
+#   * state-banner — a "⇢ STATE UPDATE … supersedes the claims below" banner.
+#     A banner that has to exist at all is a body that should have been
+#     regenerated: the document's own top carried TWO of them, the later one
+#     partially correcting the earlier. Correction-by-accretion is the disease,
+#     not the treatment.
+# Plus the projection's own gate: no generated block (unprojected-state), a
+# hand-edited block (hand-edited-state), or one past its horizon (stale-state).
+# Host-side only, exactly like --memory: the document lives in the operator's
+# private ~/central tree, which no CI runner can read — and an unreadable
+# corpus exits 2 CANNOT VERIFY, never a silent green.
+#
 # Escape hatch for 3 and 4: put `<!-- doc-truth:retired -->` on the line. A doc
 # must be able to say "./backup.sh was removed, use pl backup" and name the dead
 # thing. The marker is per-LINE, invisible when rendered, and greps in one
@@ -88,6 +116,9 @@
 #   pl doc-truth --json       machine-readable summary to stdout
 #   pl doc-truth --memory[=DIR]  lint the AI auto-memory corpus (host-side);
 #                             exit 2 CANNOT VERIFY where the corpus is unreadable
+#   pl doc-truth --projection[=FILE]  the injected read-first document's
+#                             hand-written claims vs LIVE measurements
+#                             (host-side; exit 2 where it cannot be read)
 #   pl doc-truth -h|--help
 #
 set -euo pipefail
@@ -138,7 +169,7 @@ skip_prescription_checks(){
     return 1
 }
 
-usage(){ sed -n '3,92p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage(){ sed -n '3,123p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # EVERY markdown file the repo owns — not just docs/.
 #
@@ -418,6 +449,61 @@ run_memory_check(){
     exit 0
 }
 
+# ── the injected read-first document (ops#319 / F2) ──────────────────────────
+#
+# THE CORPUS THAT IS RE-ASSERTED EVERY TURN. `--memory` above exists because the
+# auto-memory corpus is injected with the authority of ground truth. The SAME
+# argument applies with more force to the read-first document, which a
+# UserPromptSubmit hook re-reads into context on every prompt naming an ops
+# issue — and which, unlike memory, presents itself as the operating model.
+#
+# WHAT THIS CHECKS IS AGREEMENT WITH A MEASUREMENT, NOT WITH A LITERAL. The
+# rules live in lib/operating-model.sh, where each one is conditioned on a probe
+# that ran in this same invocation. Nothing here has a hard-coded "the loop is
+# armed": if the loop is paused, the paused sentence is correct and the check
+# is silent. Blind probe ⇒ the rule stands down and the blindness is REPORTED.
+#
+# FAIL-CLOSED SPLIT, same as --memory: the document lives in the operator's
+# private ~/central tree. No CI runner can read it, and a check that reported
+# "clean" from a probe that saw nothing would be the exact defect this whole
+# programme was opened to kill. Unreadable ⇒ exit 2 CANNOT VERIFY.
+run_projection_check(){
+    print_header "doc-truth --projection — the injected document may not assert what the estate contradicts"
+    # shellcheck source=/dev/null
+    source "$REPO_ROOT/lib/operating-model.sh"
+    local file="${PROJECTION_FILE:-$OM_DOC}"
+    if [ ! -r "$file" ]; then
+        echo "CANNOT VERIFY: read-first document not readable at: $file" >&2
+        echo "  This check runs where the private ~/central tree lives (the workstation)." >&2
+        echo "  Absence of the document is NOT a clean document — exit 2 (UNCHECKED)." >&2
+        echo "  Point it explicitly with --projection=FILE or NWP_OPERATING_MODEL_FILE." >&2
+        exit 2
+    fi
+    om_collect_sections
+    local out rc=0
+    out="$(om_lint "$file")" || rc=$?
+    local kind where detail nfind=0 nblind=0
+    while IFS='|' read -r kind where detail; do
+        [ -n "$kind" ] || continue
+        case "$kind" in
+            projection-blind) print_warning "[CANNOT VERIFY] $where → $detail"; nblind=$((nblind+1)) ;;
+            *)                print_error   "[$kind] $where → $detail"; nfind=$((nfind+1)) ;;
+        esac
+    done < <(printf '%s\n' "$out")
+    if [ "$nfind" -gt 0 ]; then
+        print_warning "$nfind projection finding(s) in $file."
+        print_warning "A generated block carries state; prose must not restate it. Delete the claim, then:"
+        print_warning "  pl operating-model sync"
+        exit 1
+    fi
+    if [ "$nblind" -gt 0 ]; then
+        print_warning "$nblind measurement(s) unavailable — those rules did not run. UNCHECKED, not clean."
+        exit 2
+    fi
+    print_success "projection clean: $file agrees with everything measured just now"
+    exit 0
+}
+
 main(){
     local mode=report
     case "${1:-}" in
@@ -427,6 +513,8 @@ main(){
         --json)     mode=json ;;
         --memory)   run_memory_check ;;
         --memory=*) MEMORY_DIR="${1#*=}"; run_memory_check ;;
+        --projection)   run_projection_check ;;
+        --projection=*) PROJECTION_FILE="${1#*=}"; run_projection_check ;;
         "")         ;;
         *) print_error "unknown arg: $1"; usage; exit 2 ;;
     esac

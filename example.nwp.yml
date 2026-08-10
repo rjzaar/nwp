@@ -540,6 +540,16 @@ settings:
     # NOSCHEDULE or, worse, asserting GREEN about a schedule it does not own.
     # Read the owner directly with: pl loop --host <role>
     # oversight_host: mini
+    #
+    # Which HOST owns the FIX loop (issue → worktree → MR). This is a SEPARATE
+    # fact from oversight_host: the two halves have been split across machines
+    # before, and reporting one as the other is how "the loop is fine" got
+    # asserted about a loop nobody was running. `pl operating-model` probes THIS
+    # host to answer "is the loop actually running", and compares its checkout
+    # to origin/main to answer "is what is merged actually deployed". Unset =
+    # the state block says CANNOT VERIFY, which is the honest answer — it never
+    # guesses a machine name.
+    # host: mini
   todo:
     thresholds:
       # A site's newest backup older than this many days is flagged stale by

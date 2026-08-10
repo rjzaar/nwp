@@ -1,0 +1,21 @@
+{# The Approve result (ops#327). Three honest states, never a blur:
+     - note failed          => nothing recorded, labels untouched;
+     - approved + discharged => note posted AND the decision labels verified
+                                gone on a re-read of the issue;
+     - approved, NOT discharged => the loud one. A half-success that looked
+       done is exactly how #139 was approved four times, so this state names
+       the failure and the recovery path instead of a green tick. #}
+{% if not r.ok %}
+<p class="err">✗ approve on #{{ iid }} failed: {{ r.error }}{% if r.detail %} — {{ r.detail }}{% endif %}.
+Nothing was recorded and the decision labels were left untouched.</p>
+{% elif discharged %}
+<p class="ok">✓ #{{ iid }} approved and discharged — the approval note is posted and the
+re-read confirms <code>needs-decision</code> / <code>decision::wanted</code> are gone.
+It leaves this queue on the next refresh.</p>
+{% else %}
+<p class="err">⚠ #{{ iid }} APPROVED but NOT DISCHARGED — the approval note was posted, but
+{{ discharge_error }}. The decision labels are (or may still be) on the issue, so it will
+<strong>keep appearing in this queue and may be re-asked</strong>.
+Discharge it with <code>pl decisions sweep-approved --discharge</code>, or remove the labels
+on the issue page.</p>
+{% endif %}

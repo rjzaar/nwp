@@ -1451,7 +1451,33 @@ cmd_lint(){
     id=$(field "$i" id); st=$(field "$i" status)
     [ -z "$id" ] && { print_error "entry $i has no id"; issues=$((issues+1)); continue; }
     key=$("$YQ" e ".secrets[$i].stored_in[]?" "$REGISTRY" 2>/dev/null | grep -oE '^\.secrets\.yml:[A-Za-z0-9_.]+' | head -1 | sed 's/^.secrets.yml://')
-    [ -z "$key" ] && continue
+    if [ -z "$key" ]; then
+      # THE FAIL-OPEN DETECTOR, for credentials that live OUTSIDE .secrets.yml.
+      # This check keyed off a `.secrets.yml:<key>` location and `continue`d
+      # when there wasn't one — so the one shape that most needs it was the one
+      # shape it could not see. Found live 2026-08-10 22:50 while sanity-checking
+      # this branch against the operator's own registry: `gitlab_forge_admin` had
+      # just been minted (the `@file` exists and holds a value) and the entry
+      # still read `status: not-provisioned`, so audit, capabilities, lint,
+      # `rotate --due` and the daily liveness cron were all skipping a credential
+      # that EXISTS — and nothing in the tree could say so. Its location is an
+      # `@file` outside .secrets.yml precisely BECAUSE it is an admin credential
+      # (ADR-0038 keeps it out of the AI-readable tier), so the exclusion and the
+      # danger selected for each other.
+      #
+      # Only the fail-open direction is extended. The mirror ("expected a value
+      # but it is empty") is left keyed to .secrets.yml on purpose: most other
+      # locations are host= or external and unreadable from here, and a finding
+      # raised from a location this host cannot see would be blindness reported
+      # as a fact.
+      if [ "$st" = "not-provisioned" ] && first_issue_value_present "$i"; then
+        print_warning "$id: marked not-provisioned but $(entry_canonical_loc "$i") HOLDS A VALUE"
+        print_hint    "  while that flag stands, audit / capabilities / lint / rotate --due all SKIP it."
+        print_hint    "  record the issuance and clear it:  pl secrets done $id"
+        issues=$((issues+1))
+      fi
+      continue
+    fi
     len=$("$YQ" e "(.$key // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
     if [ "$st" = "not-provisioned" ] && [ "${len:-0}" -gt 0 ]; then
       print_warning "$id: marked not-provisioned but $key has a value"; issues=$((issues+1))

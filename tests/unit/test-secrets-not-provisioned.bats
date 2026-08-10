@@ -265,3 +265,40 @@ rotate_pty() { # value id
   [ "$status" -eq 0 ]
   [[ "$output" == *"not_yet"* ]]
 }
+
+# ── 5. the DETECTOR: lint must be able to see the fail-open state at all ─────
+#
+# Found live while sanity-checking this branch against the operator's own
+# registry, 2026-08-10 22:50: `gitlab_forge_admin` had just been minted — the
+# file `~/.config/nwp/forge-admin.token` exists and holds a value — and the
+# entry still reads `status: not-provisioned`. So audit, capabilities, lint,
+# `rotate --due` and the daily liveness cron all skip a credential that EXISTS,
+# and NOTHING in the tree could say so: lint's own provisioned/empty
+# consistency check keys off a `.secrets.yml:<key>` location and `continue`s
+# when there isn't one. That entry's only location is an `@file` outside
+# .secrets.yml — which is the WHOLE POINT of that credential (ADR-0038 keeps it
+# out of the AI-readable tier), so the one entry that most needed the check was
+# the one shape the check could not see.
+
+@test "lint: a not-provisioned entry whose @file ALREADY HOLDS a value is reported" {
+  mkdir -p "${NWP_ROOT}/private"
+  printf 'PLACEHOLDER_minted_out_of_band\n' > "${NWP_ROOT}/private/forge.token"
+  chmod 600 "${NWP_ROOT}/private/forge.token"
+  yq e -i '.secrets[1].stored_in = ["private/forge.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  run_secrets lint
+  [[ "$output" == *"not_yet"* ]]
+  [[ "$output" == *"marked not-provisioned"* ]]
+}
+
+@test "lint: NEGATIVE CONTROL — a genuinely un-minted @file entry is NOT reported" {
+  yq e -i '.secrets[1].stored_in = ["private/never.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  run_secrets lint
+  [[ "$output" != *"not_yet: marked not-provisioned"* ]]
+}
+
+@test "lint: NEGATIVE CONTROL — the .secrets.yml-keyed case still reports" {
+  yq e -i '.fixture.notyet = "PLACEHOLDER_minted_out_of_band"' "$NWP_SECRETS_FILE"
+  run_secrets lint
+  [[ "$output" == *"not_yet"* ]]
+  [[ "$output" == *"marked not-provisioned"* ]]
+}

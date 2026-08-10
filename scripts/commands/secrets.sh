@@ -1525,6 +1525,16 @@ cmd_lint(){
         bad=$((bad+1)); issues=$((issues+1)); continue
       fi
       { [ "$lkind" = "external" ] || [ -n "$lhost" ]; } && continue
+      # ops#331: an entry explicitly marked `not-provisioned` is DECLARING that
+      # the credential has not been issued yet — a local file that does not
+      # exist is its correct state, not a phantom location. The sibling checks
+      # at "scope must be probeable" and "consumers" already skip this status
+      # for the same reason; this one did not, so a registry entry written
+      # ahead of an operator mint (the ADR-0038 forge-admin PAT, and any future
+      # specified-but-unminted credential) could not be linted clean. The
+      # INVERSE is still caught, one check above: not-provisioned WITH a value
+      # is a warning.
+      if [ "$(field "$i" status)" = "not-provisioned" ]; then continue; fi
       if [ ! -f "$(loc_abspath "$lpath")" ]; then
         print_error "$eid: declared location does not exist — $lpath"
         phantom=$((phantom+1)); issues=$((issues+1))
@@ -2174,7 +2184,18 @@ _probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) �
     pkey=$("$YQ" e ".secrets[$idx].probe[$j].key // \"\"" "$REGISTRY" 2>/dev/null)
     prc=$("$YQ" e ".secrets[$idx].probe[$j].expect_rc // 0" "$REGISTRY" 2>/dev/null)
     pname_s=$("$YQ" e ".secrets[$idx].probe[$j].name // \"probe$j\"" "$REGISTRY" 2>/dev/null)
-    local -a sargs=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes)
+    # ops#331 — `-F /dev/null -o IdentityAgent=none` are LOAD-BEARING, not
+    # tidiness. `IdentitiesOnly=yes` does NOT exclude identity files supplied by
+    # ~/.ssh/config; it only excludes extra AGENT keys. This host's config names
+    # `IdentityFile ~/.ssh/gitlab_linode` for the forge box, so the previous
+    # invocation authenticated with THAT key and returned rc=0 for a probe key
+    # that was not installed anywhere at all (measured 2026-08-10 while building
+    # the ADR-0038 identities). Every ssh probe in this registry — and every
+    # NEGATIVE one, which is the whole point of being able to record a limit —
+    # was therefore answering about the wrong credential.
+    local -a sargs=(-F /dev/null -o IdentityAgent=none
+                    -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes
+                    -o "UserKnownHostsFile=${HOME}/.ssh/known_hosts")
     if [ -n "$pkey" ] && [ "$pkey" != "null" ]; then
       local kf="${pkey/#\~/$HOME}"
       # A probe whose key is not on this host cannot answer the question. Say
@@ -3469,7 +3490,18 @@ cmd_capabilities(){
     "deploy-keys|/api/v4/projects/$proj/deploy_keys"
     "ci-variables|/api/v4/projects/$proj/variables"
     "proj-tokens|/api/v4/projects/$proj/access_tokens"
-    "admin-users|/api/v4/users?per_page=1&without_project_bots=true"
+    # ops#331 / ADR-0038 — THIS ROW USED TO BE A BLIND PROBE.
+    # It was `/api/v4/users?per_page=1&without_project_bots=true`, and
+    # `GET /users` is available to EVERY authenticated user, not just admins.
+    # Measured 2026-08-10, all ten rows printed `admin-users: yes` — including
+    # four bot tokens that answer 404 on every other column, and including a
+    # token proven non-admin by a 403 two columns to the left. A column that
+    # says yes for everything can never say no. It is the ops#214 class, and it
+    # is why the ops#331 SSH-key gap sat unseen while the token linchpin arc was
+    # completing: the instrument that should have shown it was stuck on "yes".
+    # `/application/settings` is admin-only, so a non-admin gets 403 and the
+    # column can finally disagree. Red-proved against gitlab_bot_ops_note.
+    "admin|/api/v4/application/settings"
   )
   print_header "Token x capability (live, read-only probes against $host_default)"
   printf "  %-26s" "ID"; local c; for c in "${CAPS[@]}"; do printf " %-12s" "${c%%|*}"; done; echo

@@ -3,3 +3,4 @@ host: nwpcode
 captured_at: 2026-08-10T12:00:44Z
 kinds:
   - backup
+  - ssh

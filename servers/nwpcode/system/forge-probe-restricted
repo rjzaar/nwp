@@ -1,0 +1,385 @@
+#!/bin/bash
+################################################################################
+# /usr/local/bin/forge-probe-restricted — forced-command READ-ONLY forge probe
+# (ops#331, ADR-0038).
+#
+# Installed on the forge box (git.nwpcode.org) as the SSH forced command for the
+# dedicated `nwp-forge-probe` key:
+#
+#   command="/usr/local/bin/forge-probe-restricted",no-agent-forwarding,
+#   no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 AAAA…
+#
+# WHY THIS EXISTS
+#   The forge box has exactly ONE login account, `gitlab` (uid 1000), and
+#   /etc/sudoers.d/gitlab gives it `(ALL) NOPASSWD: ALL`. So ANY key in
+#   ~gitlab/.ssh/authorized_keys with no forced command is root on the host that
+#   runs GitLab plus five live sites. Until ops#331 there was exactly one such
+#   key and it was called "NWP Backup Key" — a name that says nothing about the
+#   fact that it is root.
+#
+#   Under the 2026-08-10 operator ruling the AI *may* hold a full-control key on
+#   this box. That does not make full control the right credential for a cron
+#   that wants to know how much RAM is free. This wrapper is the least-privilege
+#   half of the pair: everything READ-ONLY that `pl forge` and the monitoring
+#   crons do routinely goes through this key, and that key can do nothing else.
+#
+# GUARANTEES (each enforced below, marked [Gn])
+#   [G1] The client's command line is NEVER executed. $SSH_ORIGINAL_COMMAND is
+#        logged verbatim (scrubbed) and then matched against a fixed literal
+#        allowlist of action words. Anything outside the allowlist is refused
+#        (exit 2). No eval, no `sh -c`, no expansion of client data into any
+#        command position, no client-supplied arguments of any kind — the action
+#        words take none, so there is no path, count or pattern to escape.
+#   [G2] READ-ONLY by construction. Every command this script can run is an
+#        enumerated literal below, and every one of them is a read: stat, df,
+#        free, tail, systemctl is-active, gitlab-ctl status, openssl x509
+#        -enddate, dpkg-query, ssh-keygen -l. There is no write, no restart, no
+#        package operation, no database access and no `pl` invocation. A word
+#        that would mutate the box belongs on the OPS key, not this one.
+#   [G3] NO SHELL. The forced command plus no-pty means `ssh … <anything>` runs
+#        THIS script; there is no interactive path. `ssh -i <probe key> gitlab@…`
+#        with no command sends the empty string, which resolves to `status`, not
+#        a login shell. Proven by tests/unit/test-forge-identities.bats.
+#   [G4] BOUNDED OUTPUT. Log tails are a fixed constant (LOG_TAIL), not a client
+#        number, and every action's output is capped (OUT_CAP lines) so a probe
+#        can never be turned into a bulk read of a log file.
+#   [G5] NOTHING HEAVY. This box has 3.9 GB of RAM and OOM-killed itself for 5–8
+#        minutes on 2026-07-25. `gitlab-rails` and `gitlab-rake` are refused
+#        here by ABSENCE — they are not among the enumerated commands, and there
+#        is no word that could reach them. `du` is likewise absent (a recursive
+#        walk of /var/opt/gitlab is exactly the wrong thing to hand a cron).
+#   [G6] Every invocation, accepted or refused, appends one line to LOG_FILE.
+#   [G7] FAIL-CLOSED READING. A figure this script cannot measure prints
+#        `CANNOT-VERIFY` and the action exits 2 — never a zero, never a blank
+#        that a caller could read as "fine". `pl server health` already works
+#        this way (exit 3 when it cannot measure) and it is the estate rule.
+#
+# NOT GUARANTEED (honest gaps — the same residue the demo wrappers record)
+#   * This script runs AS `gitlab`, which has NOPASSWD sudo, and it uses `sudo -n`
+#     for the four reads that genuinely need root (letsencrypt, auth.log,
+#     gitlab-ctl status, ufw status). The containment is [G1]+[G2] — the holder
+#     of the key can only *invoke* this program and cannot choose what it does —
+#     NOT that the program is itself unprivileged. A dedicated unix account with
+#     a narrow sudoers rule would remove that residue; recorded as follow-up in
+#     ADR-0038 §Consequences. Do not read "restricted key" as "unprivileged
+#     process".
+#   * A read is still an information disclosure. `logs-auth` shows source IPs and
+#     key fingerprints; `keys` shows authorized_keys comments. Both are
+#     deliberate (they are how the identity scheme audits itself) and neither
+#     prints key material or a secret value.
+#
+# Exit codes: 0 ok · 1 failure · 2 refused (bad action word) or CANNOT VERIFY
+################################################################################
+
+set -uo pipefail
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+IFS=$' \t\n'
+umask 022
+
+LOG_FILE="/var/log/nwp-forge/forge-probe.log"
+BACKUP_ROOT="/var/backups/nwp-pull"
+# NWP_FORGE_LE_LIVE exists ONLY so the cannot-measure path is testable on a host
+# that really does have certificates (CLAUDE.md H4: an absent-tool branch with no
+# knob is host-blind, and the alternative — skipping the test where letsencrypt
+# exists — is a test bats scores as `ok` without running it). It is read from the
+# ENVIRONMENT, which a forced-command client cannot set: ssh only forwards what
+# AcceptEnv permits and sshd here permits none, so this widens nothing.
+LE_LIVE="${NWP_FORGE_LE_LIVE:-/etc/letsencrypt/live}"
+LOG_TAIL=200          # [G4] fixed; never client-chosen
+OUT_CAP=400           # [G4] hard ceiling on lines emitted by any one action
+AUTH_KEYS="${HOME:-/home/gitlab}/.ssh/authorized_keys"
+
+################################################################################
+# Logging [G6]
+################################################################################
+
+log() {
+    local event="$1" detail="${2:-}" line rc=0
+    line="$(date -u '+%Y-%m-%dT%H:%M:%SZ')|${event}|${detail}"
+    mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+    { printf '%s\n' "$line" >> "$LOG_FILE"; } 2>/dev/null || rc=1
+    return "$rc"
+}
+
+# Sanitise a client-controlled string for a single log field. The client owns
+# $SSH_ORIGINAL_COMMAND, so it is scrubbed before it is written and is never
+# used for anything else. [G1]
+scrub() {
+    printf '%s' "$1" | tr -d '\000-\037' | tr '|' '/' | cut -c1-200
+}
+
+# Emit at most OUT_CAP lines. [G4]
+capped() { head -n "$OUT_CAP"; }
+
+# [G7] a measurement that failed is said out loud, and the action fails.
+CANNOT=0
+cv() { printf '  %-14s CANNOT-VERIFY (%s)\n' "$1" "$2"; CANNOT=1; }
+
+# `sudo -n` only — this script must never hang waiting for a password prompt on
+# a connection that has no tty.
+sudon() { sudo -n "$@" 2>/dev/null; }
+
+################################################################################
+# [G1] Action word: fixed literal allowlist, never executed as a command
+################################################################################
+
+RAW_CMD="${SSH_ORIGINAL_COMMAND:-}"
+CLIENT="${SSH_CLIENT:-local}"
+
+resolve_action() {
+    # Literal case arms. $RAW_CMD is COMPARED, never expanded into a command
+    # position, and no arm accepts a trailing argument — `health --all`,
+    # `logs-nginx 5000` and `status; id` are all simply not in the list.
+    case "$RAW_CMD" in
+        ""|status)      echo "status" ;;
+        health)         echo "health" ;;
+        services)       echo "services" ;;
+        certs)          echo "certs" ;;
+        backups)        echo "backups" ;;
+        forge-version)  echo "forge-version" ;;
+        disk)           echo "disk" ;;
+        keys)           echo "keys" ;;
+        logs-nginx)     echo "logs-nginx" ;;
+        logs-gitlab)    echo "logs-gitlab" ;;
+        logs-auth)      echo "logs-auth" ;;
+        help)           echo "help" ;;
+        *)              echo "REFUSED" ;;
+    esac
+}
+
+ACTION="$(resolve_action)"
+
+if [[ "$ACTION" == "REFUSED" ]]; then
+    log "rejected-command" "client=${CLIENT%% *} requested=$(scrub "$RAW_CMD")"
+    cat >&2 <<'EOF'
+REFUSED: this key is the READ-ONLY forge probe. It cannot open a shell, run
+sudo, write anything, or run the command you sent. The command was logged and
+NOT executed.
+Allowed action words (no arguments):
+  (empty)|status | health | services | certs | backups | forge-version
+  disk | keys | logs-nginx | logs-gitlab | logs-auth | help
+For anything that writes, use the nwp-forge-ops key via `pl forge`.
+EOF
+    exit 2
+fi
+
+log "invoked" "action=${ACTION} client=${CLIENT%% *} original=$(scrub "$RAW_CMD")"
+
+################################################################################
+# Actions — every command below is an enumerated literal [G2]
+################################################################################
+
+act_health() {
+    # Same three headroom figures `pl server health` grades on, plus swap.
+    local memavail memtotal swapfree load cores diskavail diskpct
+    memavail=$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo 2>/dev/null)
+    memtotal=$(awk '/^MemTotal:/{print int($2/1024)}'     /proc/meminfo 2>/dev/null)
+    swapfree=$(awk '/^SwapFree:/{print int($2/1024)}'     /proc/meminfo 2>/dev/null)
+    load=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+    cores=$(nproc 2>/dev/null)
+    diskavail=$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')
+    diskpct=$(df -P / 2>/dev/null | awk 'NR==2{print $5}')
+
+    [[ -n "$memavail" && -n "$memtotal" ]] && printf '  mem            %s MB available of %s MB\n' "$memavail" "$memtotal" || cv mem /proc/meminfo
+    [[ -n "$swapfree" ]]  && printf '  swap           %s MB free\n' "$swapfree"        || cv swap /proc/meminfo
+    [[ -n "$diskavail" ]] && printf '  disk           %s MB available on / (%s used)\n' "$diskavail" "${diskpct:-?}" || cv disk df
+    [[ -n "$load" && -n "$cores" ]] && printf '  load           %s over %s core(s)\n' "$load" "$cores" || cv load /proc/loadavg
+    printf '  uptime         %s\n' "$(uptime -p 2>/dev/null || echo CANNOT-VERIFY)"
+}
+
+act_services() {
+    local u st
+    for u in postfix fail2ban cron ssh; do
+        st=$(systemctl is-active "$u" 2>/dev/null)
+        printf '  systemd/%-12s %s\n' "$u" "${st:-CANNOT-VERIFY}"
+        [[ -n "$st" ]] || CANNOT=1
+    done
+    # GitLab's services are runit under gitlab-ctl, not systemd. `gitlab-ctl
+    # status` is a runit `sv status` — cheap. `gitlab-rails`/`gitlab-rake` are
+    # deliberately unreachable from here [G5].
+    local out
+    out=$(sudon gitlab-ctl status)
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out" | sed 's/^/  gitlab-ctl  /'
+    else
+        cv gitlab-ctl "sudo -n gitlab-ctl status returned nothing"
+    fi
+    out=$(sudon ufw status | head -1)
+    printf '  ufw            %s\n' "${out:-CANNOT-VERIFY}"
+    [[ -n "$out" ]] || CANNOT=1
+}
+
+act_certs() {
+    local found=0 d name end days now
+    now=$(date +%s)
+    while IFS= read -r d; do
+        [[ -n "$d" ]] || continue
+        found=1
+        name=$(basename "$(dirname "$d")")
+        end=$(sudon openssl x509 -enddate -noout -in "$d" | cut -d= -f2)
+        if [[ -n "$end" ]]; then
+            days=$(( ( $(date -d "$end" +%s 2>/dev/null || echo "$now") - now ) / 86400 ))
+            printf '  %-34s %4s days  (%s)\n' "$name" "$days" "$end"
+        else
+            cv "$name" "openssl could not read the certificate"
+        fi
+    done < <(sudon find "$LE_LIVE" -maxdepth 2 -name cert.pem | sort)
+    [[ $found -eq 1 ]] || cv certs "no readable certificates under ${LE_LIVE}"
+}
+
+act_backups() {
+    # Manifest AGE, which is the thing that actually rots. No du: [G5].
+    local sub newest age n name
+    [[ -d "$BACKUP_ROOT" ]] || { cv backups "${BACKUP_ROOT} absent"; return; }
+    for sub in "$BACKUP_ROOT"/*/; do
+        [[ -d "$sub" ]] || continue
+        name="$(basename "$sub")"
+        n=$(find "$sub" -maxdepth 1 -type f 2>/dev/null | wc -l)
+        newest=$(find "$sub" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
+        if [[ -n "$newest" ]]; then
+            age=$(( ( $(date +%s) - ${newest%%.*} ) / 3600 ))
+            printf '  %-22s %3s file(s), newest %s h old  %s\n' \
+                "$name" "$n" "$age" "$(basename "${newest#* }")"
+        elif [[ "$name" == pre-prune-* ]]; then
+            # A prune staging directory is SUPPOSED to end up empty — that is
+            # what a successful prune looks like. Reported, but it does not set
+            # the verdict, because a check that is permanently red is a check
+            # everybody learns to ignore. This is a NAMED exception with a
+            # stated reason, not a silent one.
+            printf '  %-22s   0 file(s)  (prune staging — empty is the success state)\n' "$name"
+        else
+            # An empty backup directory is a MISSING BACKUP and must be red.
+            # This fired on its very first live run: /var/backups/nwp-pull/db
+            # has been empty since 2026-08-04 because the nightly
+            # nwp-box-backup.sh site-DB leg dies with
+            #   ERROR 2002 … Can't connect to local server through socket
+            #                 '/run/mysqld/mysqld.sock'
+            # and the script logs "done" afterwards regardless — a swallowed
+            # verdict. Do not soften this arm; it is doing its job.
+            cv "$name" "no files — this backup is NOT being produced"
+        fi
+    done
+}
+
+act_forge_version() {
+    local v held keyexp
+    v=$(dpkg-query -W -f='${Version}' gitlab-ce 2>/dev/null)
+    held=$(apt-mark showhold 2>/dev/null | grep -cx 'gitlab-ce')
+    [[ -n "$v" ]] && printf '  gitlab-ce      %s\n' "$v" || cv gitlab-ce "dpkg-query found no package"
+    printf '  held           %s\n' "$([[ "${held:-0}" -gt 0 ]] && echo yes || echo no)"
+    # An EXPIRED apt signing key silently stops security updates — it happened
+    # on this box on 2026-07-11 and nothing noticed.
+    # The keyring FILENAME is not stable — it was refreshed on 2026-07-11 after
+    # the old key expired and stopped security updates silently, and it landed
+    # as gitlab_gitlab-ce-archive-keyring.gpg, not the name a previous session
+    # remembered. Glob both known locations rather than hardcode a guess: a
+    # hardcoded wrong path reads as "no expiry" forever, which is the exact
+    # failure this check exists to catch. (Found by this wrapper's own first
+    # live run — it reported CANNOT-VERIFY rather than a clean pass. [G7].)
+    local kr
+    for kr in /etc/apt/keyrings/gitlab*.gpg /usr/share/keyrings/gitlab*.gpg \
+              /etc/apt/trusted.gpg.d/gitlab*.gpg; do
+        [[ -r "$kr" ]] || continue
+        keyexp=$(gpg --show-keys --with-colons "$kr" 2>/dev/null | awk -F: '/^pub:/{print $7; exit}')
+        [[ -n "$keyexp" ]] && break
+    done
+    if [[ -n "$keyexp" ]]; then
+        printf '  apt key expiry %s\n' "$(date -u -d "@$keyexp" +%F 2>/dev/null || echo "$keyexp")"
+    else
+        cv "apt key" "no expiry read from /etc/apt/keyrings"
+    fi
+}
+
+act_disk() {
+    df -Ph / /var /boot 2>/dev/null | sed 's/^/  /' | capped || cv disk "df failed"
+}
+
+act_keys() {
+    # The identity scheme auditing itself: which keys can reach this account,
+    # what each may run, and its fingerprint. NEVER the key blob itself — the
+    # fingerprint is the identifier, the blob is not needed to answer "who".
+    [[ -r "$AUTH_KEYS" ]] || { cv keys "${AUTH_KEYS} unreadable"; return; }
+    local line fp cmd n=0
+    while IFS= read -r line; do
+        [[ -n "$line" && "${line:0:1}" != "#" ]] || continue
+        n=$((n+1))
+        fp=$(printf '%s\n' "$line" | ssh-keygen -lf - 2>/dev/null | awk '{print $2, $NF}')
+        case "$line" in
+            command=*) cmd="${line#command=\"}"; cmd="${cmd%%\"*}" ;;
+            *)         cmd="(NO forced command — full shell + sudo)" ;;
+        esac
+        printf '  %-2s %-58s %s\n' "$n" "${fp:-CANNOT-VERIFY}" "$cmd"
+        [[ -n "$fp" ]] || CANNOT=1
+    done < "$AUTH_KEYS"
+    printf '  %s key(s) authorised on %s\n' "$n" "$(whoami)@$(hostname -f 2>/dev/null || hostname)"
+}
+
+act_logs() {
+    local what="$1" f
+    case "$what" in
+        nginx)  f=/var/log/gitlab/nginx/gitlab_error.log ;;
+        gitlab) f=/var/log/gitlab/gitlab-rails/production.log ;;
+        auth)   f=/var/log/auth.log ;;
+        *)      cv logs "unknown source"; return ;;   # unreachable: [G1] already filtered
+    esac
+    local out
+    out=$(sudon tail -n "$LOG_TAIL" "$f")
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out" | capped
+    else
+        cv "logs-${what}" "${f} unreadable or empty"
+    fi
+}
+
+act_status() {
+    printf 'forge-probe (READ-ONLY) on %s\n' "$(hostname -f 2>/dev/null || hostname)"
+    printf '  date           %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    act_health
+    printf '  gitlab-ce      %s\n' "$(dpkg-query -W -f='${Version}' gitlab-ce 2>/dev/null || echo CANNOT-VERIFY)"
+    printf '\nMore: health | services | certs | backups | forge-version | disk | keys\n'
+    printf '      logs-nginx | logs-gitlab | logs-auth   (read-only, no arguments)\n'
+}
+
+act_help() {
+    cat <<'EOF'
+forge-probe-restricted — READ-ONLY forge box probe (ops#331, ADR-0038)
+Action words (exact, no arguments):
+  status         default; hostname, date, headroom, gitlab version
+  health         mem / swap / disk / load headroom + uptime
+  services       systemd units + gitlab-ctl status + ufw
+  certs          letsencrypt certificate expiry, days remaining
+  backups        /var/backups/nwp-pull manifest ages (no du — the box is small)
+  forge-version  gitlab-ce version, apt hold, apt signing-key expiry
+  disk           df for / /var /boot
+  keys           authorized_keys fingerprints + forced commands (never key blobs)
+  logs-nginx     last 200 lines of GitLab nginx error log
+  logs-gitlab    last 200 lines of gitlab-rails production log
+  logs-auth      last 200 lines of auth.log
+This key cannot write, restart, install, deploy, or open a shell. For those,
+use the nwp-forge-ops key through `pl forge`.
+EOF
+}
+
+case "$ACTION" in
+    status)        act_status ;;
+    health)        act_health ;;
+    services)      act_services ;;
+    certs)         act_certs ;;
+    backups)       act_backups ;;
+    forge-version) act_forge_version ;;
+    disk)          act_disk ;;
+    keys)          act_keys ;;
+    logs-nginx)    act_logs nginx ;;
+    logs-gitlab)   act_logs gitlab ;;
+    logs-auth)     act_logs auth ;;
+    help)          act_help ;;
+esac
+
+# [G7] A run that could not measure something exits 2 CANNOT VERIFY. Never 0.
+if [[ "$CANNOT" -eq 1 ]]; then
+    log "cannot-verify" "action=${ACTION}"
+    exit 2
+fi
+log "ok" "action=${ACTION}"
+exit 0

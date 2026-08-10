@@ -158,6 +158,15 @@ _run_action() {
     run bash "$REHOMED"
 }
 
+# The OTHER route into this wrapper, and the one no test exercised until
+# ops#329 D6: `sudo /usr/local/bin/nwd-demo-reset-restricted <word>` over the
+# ordinary admin ssh. sudo's env_reset strips SSH_ORIGINAL_COMMAND *and*
+# SSH_CLIENT, so the action word can only arrive as a positional argument.
+_run_action_sudo() {
+    unset SSH_ORIGINAL_COMMAND SSH_CLIENT
+    NWD_TEST_TRACE="$TRACE" run bash "$REHOMED" "$@"
+}
+
 _wiped()      { grep -q 'sql:drop' "$TRACE"; }
 _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upload.txt" ]]; }
 
@@ -219,6 +228,49 @@ _canary_gone() { [[ ! -f "${BOX}/var/www/nwd/html/sites/default/files/tester-upl
     [[ "$output" == *"REFUSED"* ]]
     ! _wiped
     ! _canary_gone
+}
+
+# ---------------------------------------------------------------------------
+# [G1] ops#329 D6 — the SUDO route must carry the action word too
+#
+# The defect was MEASURED on the ssd half on 2026-08-10 (`pl demo status ssd
+# --tier=live` → "UNKNOWN — the box answered but named no 'last reset'"; the box
+# log showed `action=nightly … original=` for what was sent as `status`). This
+# file has the identical construction. nwd escaped it only because the dev
+# workstation happens to hold ~/.ssh/nwd_demo_reset and so never takes the sudo
+# fallback — an accident of key placement, not a property of the wrapper. These
+# cases pin the property on this half so it cannot regress into a live wipe.
+# ---------------------------------------------------------------------------
+
+@test "[G1] ops#329 the action word is honoured on the SUDO route (positional arg)" {
+    _build_box
+    _rehome
+    _run_action_sudo status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"last reset:"* ]]
+    [[ "$output" != *"action=nightly"* ]]
+    ! _wiped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 a BAD positional word is refused — it must not fall through to nightly" {
+    _build_box
+    _rehome
+    _run_action_sudo 'rm -rf /'
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"REFUSED"* ]]
+    ! _wiped
+    ! _canary_gone
+}
+
+@test "[G1] ops#329 the CRON contract survives: no word at all is still nightly" {
+    _build_box
+    _rehome
+    _run_action_sudo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FATE MANIFEST"* ]]
+    _wiped
+    _canary_gone
 }
 
 # ---------------------------------------------------------------------------

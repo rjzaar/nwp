@@ -62,10 +62,24 @@ php_floors:
 
 artifacts:
   # --- the DR / backup leg -------------------------------------------------
-  - id: cron-nwp-box-backup
+  #
+  # Captured by `pl host capture nwpcode --kind=backup` (nwp/ops#332); each
+  # id names the repo file it must equal, so `pl server-state check` fails
+  # on silent box-vs-repo drift.
+  - id: backup/cron
     kind: file
     remote: /etc/cron.d/nwp-box-backup
-    why: "Producer half of the fleet backup chain (gitlab tarball + 16 site DBs + nginx -> /var/backups/nwp-pull). The consumer half is met's nwp-dr-pull."
+    why: "Producer half of the fleet backup chain. Post-split (2026-07-31) this box's nightly is the GitLab tarball + nginx configs; the 16 site DBs moved to `live`, and this box now DECLARES SITE_DB_LEG=none. The consumer half is met's dr-pull."
+  - id: backup/producer.sh
+    kind: file
+    remote: /usr/local/sbin/nwp-box-backup.sh
+    repo_counterpart: servers/nwpcode/backup/nwp-box-backup.sh
+    why: "The DR producer itself - ONE script for the whole fleet. Update it with `pl host apply nwpcode --kind=backup --execute`, which installs, runs it once and reads back the verdict artefact."
+  - id: backup/nwp-box-backup.conf
+    kind: file
+    remote: /etc/nwp-box-backup.conf
+    repo_counterpart: servers/nwpcode/backup/nwp-box-backup.conf
+    why: "THIS box's DECLARED backup legs (ops#332): SITE_DB_LEG=none because the 2026-07-31 split moved every site DB to `live` and no mysqld runs here; GITLAB_LEG=required. If a database ever returns to this box, the producer fails LOUDLY on this declaration instead of skipping it in silence."
 
   # --- scheduling that drives live sites -----------------------------------
   - id: systemd-nwc-cron.timer

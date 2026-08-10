@@ -863,21 +863,68 @@ wrapper() { echo "${REPO_ROOT}/servers/live/demo/nwd-demo-reset-restricted"; }
   ! grep -qE 'SITE=.*\$(1|\{1|SSH_ORIGINAL)' "$(wrapper)"
 }
 
+# _client_input_uses_are_safe <wrapper-file> — the static half of [G1].
+#
+# ops#329 D6 widened WHERE the client's word can come from: $SSH_ORIGINAL_COMMAND
+# on the forced-command route, argv on the sudo route. So ARGV_CMD is now
+# client-supplied too and gets exactly the same scrutiny — a guard that watched
+# only the old variable would have gone green over the new one.
+#
+# The rule is a PROPERTY, not a list of literals: the client's string may appear
+# only as the quoted right-hand side of an assignment, inside a `[[ ]]` test, as
+# the `case` scrutinee, or as a scrub()'d log argument — and never inside a
+# command substitution. A command position, a redirect target or an array
+# expansion fails.
+_client_input_uses_are_safe() {
+  local f="$1" line
+  while IFS= read -r line; do
+    # A COMMENT is prose about the rule, not a use of it. Matched at the start
+    # of the line only: `$RAW_CMD  # run it` is a use, whatever it says after.
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    # The ONE sanctioned command substitution: scrub()'ing the string for the
+    # log. Allowed before the blanket rejection below, never after.
+    [[ "$line" == *'scrub "$RAW_CMD"'* ]] && continue
+    # No other line carrying the client's string may spawn a command.
+    if [[ "$line" == *'$('* || "$line" == *'`'* || "$line" == *'eval'* ]]; then
+      echo "unsafe use of client input (command substitution): $line"; return 1
+    fi
+    [[ "$line" =~ ^[[:space:]]*(RAW_CMD|ARGV_CMD)=\" ]] && continue
+    [[ "$line" == *'[['*']]'* ]]                        && continue
+    [[ "$line" == *'case "$RAW_CMD" in'* ]]             && continue
+    echo "unsafe use of client input: $line"; return 1
+  done < <(grep -E 'RAW_CMD|ARGV_CMD' "$f")
+  return 0
+}
+
 @test "the wrapper never evals or shells out to client input" {
   ! grep -qE '\beval\b' "$(wrapper)"
   ! grep -qE '(sh|bash) +-c +.*SSH_ORIGINAL_COMMAND' "$(wrapper)"
-  # Every use of the client-supplied string must be one of exactly three safe
-  # shapes: the assignment, the `case` scrutinee, or a scrub()'d log argument.
-  # Anything else (a command position, a redirect, an array expansion) fails.
-  local line
-  while IFS= read -r line; do
-    [[ "$line" == *"RAW_CMD=\"\${SSH_ORIGINAL_COMMAND"* ]] && continue
-    [[ "$line" == *"# "* ]] && continue
-    [[ "$line" == *'case "$RAW_CMD" in'* ]] && continue
-    [[ "$line" == *'scrub "$RAW_CMD"'* ]] && continue
-    echo "unsafe use of RAW_CMD: $line"
-    false
-  done < <(grep 'RAW_CMD' "$(wrapper)")
+  _client_input_uses_are_safe "$(wrapper)"
+}
+
+@test "NEGATIVE CONTROL: the client-input guard actually rejects an unsafe use" {
+  # This guard had never been observed red. Prove it can fail before believing
+  # the tick above — the CLAUDE.md standing order, applied to a check that
+  # exists to stop remote code execution.
+  local copy="$BATS_TEST_TMPDIR/wrapper-unsafe"
+  cp "$(wrapper)" "$copy"
+  # The exact shape the guard exists to catch: the client's word in a command
+  # position. Appended, so every other line of the wrapper is unchanged.
+  printf '\n$RAW_CMD\n' >> "$copy"
+  run _client_input_uses_are_safe "$copy"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unsafe use of client input"* ]]
+
+  # …and a command substitution smuggled onto an otherwise innocent-looking line.
+  cp "$(wrapper)" "$copy"
+  printf '\nX="$(echo "$ARGV_CMD")"\n' >> "$copy"
+  run _client_input_uses_are_safe "$copy"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"command substitution"* ]]
+
+  # The unmodified wrapper must still pass, or the guard is just noisy.
+  run _client_input_uses_are_safe "$(wrapper)"
+  [ "$status" -eq 0 ]
 }
 
 @test "the wrapper refuses a non-demo site before anything destructive (static)" {

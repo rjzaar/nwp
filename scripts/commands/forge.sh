@@ -413,7 +413,7 @@ cmd_retire_legacy_key() {
 ################################################################################
 usage() {
     cat <<EOF
-pl forge — work on the forge box (the `gitlab-host` role) through named, scoped identities
+pl forge — work on the forge box (the 'gitlab-host' role) through named, scoped identities
            (ops#331, ADR-0038). Read-only by default.
 
 BOX PLANE (jailed read-only key — nwp-forge-probe):

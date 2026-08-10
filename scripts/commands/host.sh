@@ -25,7 +25,7 @@
 #   pl host capture <target> [--kind=K|--all]   read host state into servers/<h>/system/
 #   pl host diff    <target> [--kind=K|--all]   non-zero on drift / blindness
 #   pl host apply   <target> [--kind=K] [--execute]   dry-run by default;
-#                                                     --kind=php IS executable
+#                                          --kind=php|gitlab|backup ARE executable
 #   pl host schedule <target> <install|remove|list> ...  remote cron, idempotent
 #   pl host -h|--help
 #
@@ -44,6 +44,8 @@ source "$PROJECT_ROOT/lib/server-resolver.sh"
 source "$PROJECT_ROOT/lib/host-capture.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/php-floor.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/backup-producer.sh"
 
 MANIFEST="${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"
 YQ="$(command -v yq || true)"
@@ -84,8 +86,11 @@ ${BOLD}HOST STATE:${NC}
   pl host diff    <target> [--kind=K|--all]   non-zero on drift, blindness or incompleteness
   pl host apply   <target> --kind=php [--execute]  put a DECLARED php setting floor
   pl host apply   <target> --kind=gitlab [--execute]  put DECLARED GitLab tunables
-                                                   in force, reconfigure, re-measure
                                                    in force, then re-measure it
+  pl host apply   <target> --kind=backup [--execute]  install the nightly box-backup
+                                                   producer + this host's DECLARED
+                                                   legs, then RUN it and read back
+                                                   the verdict (nwp/ops#332)
   pl host apply   <target> [--kind=K]         other kinds: dry-run / declare-only
   pl host schedule <target> list|install|remove   remote cron, idempotent, absolute PATH
 
@@ -176,6 +181,9 @@ ${BOLD}KINDS:${NC}
     ssh        authorized_keys POLICY — options and comments, never key material
     firewall   ufw status (numbered)
     headscale  the ACL policy of the estate's VPN control plane
+    gitlab     the MEASURED GitLab tunables (puma/sidekiq/postgres)
+    backup     the installed nightly box-backup producer, its DECLARATION
+               (/etc/nwp-box-backup.conf) and its cron — nwp/ops#332
 
 Capture is READ-ONLY on the HOST and fails CLOSED: if the host cannot read part
 of its own state the tree is left untouched and the exit code is non-zero. An
@@ -252,20 +260,39 @@ cmd_apply() {
     # DECLARED-not-captured, additive, single-purpose and MEASURABLE afterwards,
     # which is the test for whether an apply is safe to automate. The rest stay
     # declare-only.
-    local php_selected=0 gitlab_selected=0 rest=() k
+    #
+    # `backup` joined them on 2026-08-10 (nwp/ops#332) and passes the same test:
+    # the DECLARATION servers/<h>/backup/nwp-box-backup.conf is authored, the
+    # change is one script + one conf + one cron line, and --execute MEASURES by
+    # running the producer and reading back the verdict it wrote. The cost of
+    # leaving it manual is already recorded: the producer's own header
+    # prescribed `sudo cp`, both boxes drifted to a copy the repo could not
+    # diff, and the site-DB leg reported success for six nights while producing
+    # nothing.
+    local php_selected=0 gitlab_selected=0 backup_selected=0 rest=() k
     for k in "${kinds[@]}"; do
         case "$k" in
             php)    php_selected=1 ;;
             gitlab) gitlab_selected=1 ;;
+            backup) backup_selected=1 ;;
             *)      rest+=("$k") ;;
         esac
     done
+
+    local backup_rc=0
+    if [ "$backup_selected" -eq 1 ]; then
+        backup_producer_run "$target" "$@" || backup_rc=$?
+        # An explicit --kind=backup run is the producer run and nothing else.
+        [ "${#rest[@]}" -eq 0 ] && [ "$php_selected" -eq 0 ] && [ "$gitlab_selected" -eq 0 ] \
+            && return "$backup_rc"
+        echo ""
+    fi
 
     local php_rc=0
     if [ "$php_selected" -eq 1 ]; then
         php_floor_run "$target" "$@" || php_rc=$?
         # An explicit --kind=php run is the floor run and nothing else.
-        [ "${#rest[@]}" -eq 0 ] && [ "$gitlab_selected" -eq 0 ] && return "$php_rc"
+        [ "${#rest[@]}" -eq 0 ] && [ "$gitlab_selected" -eq 0 ] && return "$(( php_rc > backup_rc ? php_rc : backup_rc ))"
         echo ""
     fi
 
@@ -276,7 +303,7 @@ cmd_apply() {
             source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/gitlab-tunables.sh"
         fi
         gitlab_tunables_run "$target" "$@" || gitlab_rc=$?
-        [ "${#rest[@]}" -eq 0 ] && return "$(( php_rc > gitlab_rc ? php_rc : gitlab_rc ))"
+        [ "${#rest[@]}" -eq 0 ] && { local m=$(( php_rc > gitlab_rc ? php_rc : gitlab_rc )); return "$(( m > backup_rc ? m : backup_rc ))"; }
         echo ""
     fi
 
@@ -292,7 +319,7 @@ cmd_apply() {
     fi
     if [ "$rc" -eq 0 ]; then
         print_success "nothing to apply — host already matches the repo"
-        return "$php_rc"
+        return "$(( php_rc > backup_rc ? php_rc : backup_rc ))"
     fi
 
     if [ "$execute" -eq 0 ]; then
@@ -303,7 +330,8 @@ cmd_apply() {
         echo ""
         print_hint "On a box that serves live sites, hand this diff to the operator instead."
         print_hint "--kind=php IS executable: pl host apply $name --kind=php --execute"
-        return "$php_rc"
+        print_hint "--kind=backup IS executable: pl host apply $name --kind=backup --execute"
+        return "$(( php_rc > backup_rc ? php_rc : backup_rc ))"
     fi
 
     # --execute: typed confirmation, pre-state snapshot, rollback registry row.
@@ -315,7 +343,8 @@ cmd_apply() {
         return 1
     fi
     print_error "pl host apply --execute is not enabled for kind(s): ${kinds[*]}"
-    print_hint "Only --kind=php is executable (lib/php-floor.sh); the rest are declare-only."
+    print_hint "Only --kind=php (lib/php-floor.sh), --kind=gitlab and --kind=backup"
+    print_hint "(lib/backup-producer.sh) are executable; the rest are declare-only."
     print_hint "The declared state and its diff are above; an operator applies it."
     print_hint "Record the change with: pl rollback register"
     return 1

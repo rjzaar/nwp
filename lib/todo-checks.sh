@@ -1673,12 +1673,27 @@ check_live_backup_freshness() {
     remote_path=$(get_todo_setting "live_backup.path" "/var/backups/nwp-pull")
     warn_days=$(get_todo_setting "thresholds.live_backup_warn_days" "2")
 
-    # One remote round-trip: newest mtime epoch, or MISSING if the dir is gone.
+    # One remote round-trip: newest mtime epoch (or MISSING if the dir is gone),
+    # then — nwp/ops#332 — the producer's OWN verdict on the line after it.
+    #
+    # Freshness alone cannot see a half-done night: on 2026-08-04 the box
+    # nightly's site-DB leg began failing while its gitlab/ and nginx/ legs kept
+    # writing fresh files every night, so "newest file is 4 h old" stayed true
+    # and green for six days over a directory with no databases in it. The
+    # producer now states a verdict; this check reads it rather than inferring
+    # one. A pre-ops#332 producer writes no verdict at all, which is reported
+    # (as VERDICT=none) rather than assumed benign.
     local remote_out rc=0
     remote_out=$(ssh -o BatchMode=yes -o ConnectTimeout=8 -o IdentitiesOnly=yes \
         -i "$key" "$user@$ip" \
-        "if [ -d '$remote_path' ]; then find '$remote_path' -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1; else echo MISSING; fi" \
+        "if [ -d '$remote_path' ]; then find '$remote_path' -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1; else echo MISSING; fi
+         if [ -r '$remote_path/backup-verdict.json' ]; then
+             printf 'VERDICT=%s\n' \"\$(sed -n 's/.*\"verdict\"[[:space:]]*:[[:space:]]*\"\([a-z-]*\)\".*/\1/p' '$remote_path/backup-verdict.json' | head -1)\"
+         else printf 'VERDICT=none\n'; fi" \
         2>/dev/null) || rc=$?
+    local remote_verdict=""
+    remote_verdict=$(printf '%s\n' "$remote_out" | sed -n 's/^VERDICT=//p' | head -1)
+    remote_out=$(printf '%s\n' "$remote_out" | grep -v '^VERDICT=' | head -1)
     if [ "$rc" -ne 0 ]; then
         todo_add_unknown "live_backup" \
             "ssh to $user@$ip ('$server') failed with exit $rc — DR backup freshness was NOT checked. Being off-network looks identical to the producer cron being dead; this item exists so the two are distinguishable." \
@@ -1693,6 +1708,31 @@ check_live_backup_freshness() {
             "" "$(_lbk_action "$server")"
         return 0
     fi
+
+    # BKV: the producer's stated verdict (nwp/ops#332). Graded before freshness,
+    # because a fresh directory with a failed leg is the exact shape that hid
+    # for six days.
+    case "$remote_verdict" in
+        ok) : ;;
+        failed)
+            todo_add_item "BKV" "$server" "high" \
+                "Box nightly backup reported verdict=FAILED on $server" \
+                "Path: $remote_path/backup-verdict.json | A declared leg did not run — read the artefact for which one" \
+                "" "pl host apply $server --kind=backup" ;;
+        cannot-verify)
+            todo_add_item "BKV" "$server" "high" \
+                "Box nightly backup CANNOT VERIFY a leg on $server" \
+                "Path: $remote_path/backup-verdict.json | A leg is undeclared and unmeasurable — declare it" \
+                "" "pl host apply $server --kind=backup" ;;
+        none|"")
+            todo_add_unknown "live_backup" \
+                "the nightly on '$server' writes no backup-verdict.json — it is a pre-ops#332 producer that logs 'done' and exits 0 even when a leg never ran, so its success is NOT evidence" \
+                "" "pl host apply $server --kind=backup --execute" ;;
+        *)
+            todo_add_unknown "live_backup" \
+                "backup-verdict.json on '$server' carries an unreadable verdict ('$remote_verdict') — an unparseable verdict is not a pass" \
+                "" "pl host apply $server --kind=backup" ;;
+    esac
 
     local now_epoch newest_epoch age_days
     now_epoch=$(date +%s)

@@ -246,11 +246,12 @@ host_scrub_stream() {
 ################################################################################
 
 # The order here is the order --all captures in.
-HOST_CAPTURE_KINDS=(cron systemd nginx php ssh firewall headscale gitlab)
+HOST_CAPTURE_KINDS=(cron systemd nginx php ssh firewall headscale gitlab backup)
 
 host_kind_default_file() {
     case "$1" in
         cron)      echo "crontab.root" ;;
+        backup)    echo "producer.sh" ;;
         systemd)   echo "units.list" ;;
         nginx)     echo "nginx.txt" ;;
         php)       echo "php.txt" ;;
@@ -378,6 +379,24 @@ if [ -r "$HOME/.ssh/authorized_keys" ]; then
 else
   printf '==NWPINCOMPLETE== authorized_keys.policy not-readable\n'
 fi
+PROBE
+        ;;
+    # backup — what the nightly box backup producer ACTUALLY is on this host
+    # (nwp/ops#332). The producer and its DECLARATION are captured; the verdict
+    # artefact deliberately is NOT, because it changes every night and a kind
+    # that always drifts is a kind everybody learns to ignore. Use
+    # `pl host apply <h> --kind=backup` to read the verdict.
+    backup) cat <<'PROBE'
+set -u
+printf '==NWPFILE== producer.sh\n'
+if [ -r /usr/local/sbin/nwp-box-backup.sh ]; then cat /usr/local/sbin/nwp-box-backup.sh
+else printf '==NWPINCOMPLETE== producer.sh not-installed\n'; fi
+printf '==NWPFILE== nwp-box-backup.conf\n'
+if [ -r /etc/nwp-box-backup.conf ]; then cat /etc/nwp-box-backup.conf
+else printf '==NWPINCOMPLETE== nwp-box-backup.conf not-declared\n'; fi
+printf '==NWPFILE== cron\n'
+if [ -r /etc/cron.d/nwp-box-backup ]; then cat /etc/cron.d/nwp-box-backup
+else printf '==NWPINCOMPLETE== cron not-scheduled\n'; fi
 PROBE
         ;;
     firewall) cat <<'PROBE'

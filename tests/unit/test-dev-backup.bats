@@ -312,14 +312,68 @@ pull_env() {
     [[ "$output" == *"NOT backed up"* ]]
 }
 
-@test "met-dr-pull live: a good pull snapshots with the live-pull tag" {
-    make_restic_stub; pull_env
-    # local rsync source stands in for the box (rsync accepts local paths)
-    mkdir -p "$TDIR/livebox"; echo "db" > "$TDIR/livebox/site.sql.gz"
+# A stand-in live box whose nightly wrote <verdict> at <age-minutes> ago.
+# nwp/ops#332: the pull side grades the producer's OWN verdict, so every live
+# fixture from here on has to carry one — which is the point.
+fake_livebox() { # <verdict> [minutes-ago]
+    local verdict="$1" mins="${2:-5}"
+    mkdir -p "$TDIR/livebox"
+    echo "db" > "$TDIR/livebox/site.sql.gz"
+    printf '{\n  "schema": 1,\n  "verdict": "%s",\n  "finished_at": "%s",\n  "errors": ["a leg did not run"]\n}\n' \
+        "$verdict" "$(date -u -d "${mins} minutes ago" '+%Y-%m-%dT%H:%M:%SZ')" \
+        > "$TDIR/livebox/backup-verdict.json"
     export NWP_DR_LIVE_SRC="$TDIR/livebox/"
     export NWP_DR_MIN_FILES_LIVE=1 NWP_DR_MIN_BYTES_LIVE=1
+}
+
+@test "met-dr-pull live: a good pull with an OK producer verdict snapshots with the live-pull tag" {
+    make_restic_stub; pull_env; fake_livebox ok
     run bash "$PULL_SH" live
     [ "$status" -eq 0 ]
     grep -q -- "--tag live-pull" "$STUB_LOG"
     [ -f "$TDIR/dr/staging-live/site.sql.gz" ]
+}
+
+@test "met-dr-pull live: a producer verdict of FAILED goes RED even though the files look fine (ops#332)" {
+    make_restic_stub; pull_env; fake_livebox failed
+    run bash "$PULL_SH" live
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"verdict=FAILED"* ]]
+    # …and it must not have snapshotted a half-done night as if it were whole
+    ! grep -q -- "--tag live-pull" "$STUB_LOG"
+}
+
+@test "met-dr-pull live: a producer verdict of CANNOT-VERIFY goes RED, never quietly green" {
+    make_restic_stub; pull_env; fake_livebox cannot-verify
+    run bash "$PULL_SH" live
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"CANNOT-VERIFY"* ]]
+}
+
+@test "met-dr-pull live: NO verdict at all is a failure — a pre-ops#332 producer cannot report a dead leg" {
+    make_restic_stub; pull_env
+    mkdir -p "$TDIR/livebox"; echo "db" > "$TDIR/livebox/site.sql.gz"
+    export NWP_DR_LIVE_SRC="$TDIR/livebox/"
+    export NWP_DR_MIN_FILES_LIVE=1 NWP_DR_MIN_BYTES_LIVE=1
+    run bash "$PULL_SH" live
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"pre-ops#332"* ]]
+}
+
+@test "met-dr-pull live: yesterday's OK verdict is not tonight's — a stale verdict goes RED" {
+    make_restic_stub; pull_env; fake_livebox ok $(( 40 * 60 ))
+    run bash "$PULL_SH" live
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"did not run"* ]]
+}
+
+@test "met-dr-pull live: an unparseable verdict is not a pass" {
+    make_restic_stub; pull_env
+    mkdir -p "$TDIR/livebox"; echo "db" > "$TDIR/livebox/site.sql.gz"
+    echo '{ "schema": 1 }' > "$TDIR/livebox/backup-verdict.json"
+    export NWP_DR_LIVE_SRC="$TDIR/livebox/"
+    export NWP_DR_MIN_FILES_LIVE=1 NWP_DR_MIN_BYTES_LIVE=1
+    run bash "$PULL_SH" live
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no readable verdict"* ]]
 }

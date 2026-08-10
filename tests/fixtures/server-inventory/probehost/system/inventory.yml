@@ -1,0 +1,22 @@
+# Shipped fixture for tests/unit/test-php-floor.bats.
+#
+# WHY THIS EXISTS. The real servers/<host>/system/inventory.yml files moved
+# into the private per-server repos (ops#326 tranche 3), so a CI clone of
+# nwp/nwp has none — and the declared_ini check would pass over ZERO
+# declarations, which its own non-vacuity guard correctly refuses to call a
+# pass. The predicate is engine logic and must keep being exercised, so it runs
+# against this fixture ALWAYS and against the real inventories WHEN PRESENT.
+host: probehost
+php_floors:
+  - service: fixture-web
+    floor: "8.2"
+    declared_ini: php/fixture-web.ini
+  - service: fixture-cli
+    floor: "8.2"
+    declared_ini: php/fixture-cli.ini
+  - service: fixture-worker
+    floor: "8.3"
+    declared_ini: php/fixture-worker.ini
+  - service: fixture-cron
+    floor: "8.3"
+    declared_ini: php/fixture-cron.ini

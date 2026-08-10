@@ -22,8 +22,7 @@
 #   5. pl testos - Docker/PHP environment
 #   6. pl seo-check - SEO configuration
 #   7. pl badges - Coverage metrics
-#   8. pl avc-moodle-status - Moodle integration
-#   9. pl report - Site reports
+#   8. pl report - Site reports
 #
 # Source this file: source "$PROJECT_ROOT/lib/verify-cross-validate.sh"
 #
@@ -1032,100 +1031,6 @@ cross_validate_badges() {
 }
 
 #######################################
-# Cross-validate pl avc-moodle-status output
-# Returns: 0 if all validations pass, 1 if any fail
-#######################################
-cross_validate_moodle() {
-    local failures=0
-
-    echo ""
-    echo "Cross-validating: pl avc-moodle-status"
-    echo "─────────────────────────────────────────"
-
-    # Check if AVC site exists
-    if [[ ! -d "$PROJECT_ROOT/sites/avc" ]]; then
-        echo "  AVC site not found - skipping Moodle validation"
-        return 0
-    fi
-
-    # Get pl avc-moodle-status output
-    local moodle_output
-    moodle_output=$(./pl avc-moodle-status --json 2>/dev/null || ./pl avc-moodle-status 2>&1)
-
-    # 1. Connection status
-    local moodle_conn actual_conn
-    if command -v jq &>/dev/null && [[ "$moodle_output" == "{"* ]]; then
-        moodle_conn=$(echo "$moodle_output" | jq -r '.connection.status // empty')
-    fi
-
-    # Check actual Moodle connection using secrets
-    if [[ -f "$PROJECT_ROOT/.secrets.yml" ]]; then
-        local moodle_url moodle_token
-        moodle_url=$(yq -r '.moodle.url // empty' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null)
-        moodle_token=$(yq -r '.moodle.token // empty' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null)
-
-        if [[ -n "$moodle_url" && -n "$moodle_token" ]]; then
-            local api_status
-            api_status=$(curl -s -o /dev/null -w "%{http_code}" \
-                "${moodle_url}/webservice/rest/server.php?wstoken=${moodle_token}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json" 2>/dev/null)
-            actual_conn=$([[ "$api_status" == "200" ]] && echo "connected" || echo "disconnected")
-        else
-            actual_conn="not_configured"
-        fi
-    else
-        actual_conn="not_configured"
-    fi
-
-    if [[ -n "$moodle_conn" ]]; then
-        if compare_values "$moodle_conn" "$actual_conn"; then
-            log_match "pl avc-moodle-status" "connection" "$actual_conn"
-        else
-            log_mismatch "pl avc-moodle-status" "connection" "$moodle_conn" "$actual_conn" "high"
-            ((failures++))
-        fi
-    fi
-
-    # 2. Users synced count
-    local moodle_users actual_users
-    if command -v jq &>/dev/null && [[ "$moodle_output" == "{"* ]]; then
-        moodle_users=$(echo "$moodle_output" | jq -r '.sync.users_synced // empty')
-    fi
-
-    actual_users=$(cd "$PROJECT_ROOT/sites/avc" 2>/dev/null && \
-        ddev drush sqlq "SELECT COUNT(*) FROM user__field_moodle_id WHERE field_moodle_id_value IS NOT NULL" 2>/dev/null | tr -d '[:space:]')
-
-    if [[ -n "$moodle_users" && -n "$actual_users" ]]; then
-        if compare_values "$moodle_users" "$actual_users" "0"; then
-            log_match "pl avc-moodle-status" "users_synced" "$actual_users"
-        else
-            log_mismatch "pl avc-moodle-status" "users_synced" "$moodle_users" "$actual_users" "high"
-            ((failures++))
-        fi
-    fi
-
-    # 3. Courses synced count
-    local moodle_courses actual_courses
-    if command -v jq &>/dev/null && [[ "$moodle_output" == "{"* ]]; then
-        moodle_courses=$(echo "$moodle_output" | jq -r '.sync.courses_synced // empty')
-    fi
-
-    actual_courses=$(cd "$PROJECT_ROOT/sites/avc" 2>/dev/null && \
-        ddev drush sqlq "SELECT COUNT(*) FROM node_field_data WHERE type='moodle_course'" 2>/dev/null | tr -d '[:space:]')
-
-    if [[ -n "$moodle_courses" && -n "$actual_courses" ]]; then
-        if compare_values "$moodle_courses" "$actual_courses" "0"; then
-            log_match "pl avc-moodle-status" "courses_synced" "$actual_courses"
-        else
-            log_mismatch "pl avc-moodle-status" "courses_synced" "$moodle_courses" "$actual_courses" "high"
-            ((failures++))
-        fi
-    fi
-
-    echo ""
-    [[ $failures -eq 0 ]] && return 0 || return 1
-}
-
-#######################################
 # Cross-validate pl report output
 # Arguments:
 #   $1 - Site name (required)
@@ -1224,7 +1129,6 @@ cross_validate_all() {
     cross_validate_testos "$site" || ((total_failures++))
     cross_validate_seo "$site" || ((total_failures++))
     cross_validate_badges || ((total_failures++))
-    cross_validate_moodle || ((total_failures++))
     cross_validate_report "$site" || ((total_failures++))
 
     echo ""
@@ -1272,7 +1176,6 @@ Cross-Validation Functions:
   cross_validate_testos SITE         Validate pl testos output
   cross_validate_seo SITE            Validate pl seo-check output
   cross_validate_badges              Validate pl badges output
-  cross_validate_moodle              Validate pl avc-moodle-status output
   cross_validate_report SITE         Validate pl report output
   cross_validate_all SITE            Run all validations for a site
 
@@ -1294,5 +1197,5 @@ export -f crossval_init capture_baseline compare_values normalize_boolean
 export -f log_mismatch log_match
 export -f cross_validate_doctor cross_validate_status cross_validate_storage
 export -f cross_validate_security cross_validate_testos cross_validate_seo
-export -f cross_validate_badges cross_validate_moodle cross_validate_report
+export -f cross_validate_badges cross_validate_report
 export -f cross_validate_all crossval_get_findings crossval_help

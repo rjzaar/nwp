@@ -333,25 +333,99 @@ EOF
 ################################################################################
 # (d) servers/ must be versionable — .gitignore:149 `servers/*` made captured
 #     host state invisible unless someone remembered `git add -f`.
+#
+#     ops#326 Phase 1 tranche 3 SPLIT THE QUESTION IN TWO. The 2026-07-25 lesson
+#     ("this state must be versioned") is unchanged; what changed is WHICH repo
+#     versions it. nwp/nwp is the generic engine and is publicly mirrored, so
+#     per-host IDENTITY — vhosts with real domains, the operator crontab, mail
+#     aliases, ufw rules, host inventories — is now versioned by a PRIVATE
+#     per-server repo (servers/<host>/.git → nwp/server-<host>), in place. The
+#     engine keeps only generic mechanism.
+#
+#     So the engine-side check now asserts BOTH directions. Asking only the old
+#     question would score "vhosts with real domains are back in the public
+#     tree" as a pass.
 ################################################################################
 
-@test "no path under servers/*/{nginx,demo,linode,backup,email,system} is git-ignored" {
+@test "generic host mechanism the engine still ships is NOT git-ignored" {
+  # PROBE-HOST, not a real host name: a machine-local .git/info/exclude entry
+  # for one operator's host directory used to make this case red on that box
+  # only (reported as a known machine-local failure in the ops#326 tranche-1 and
+  # tranche-2 notes). The property under test is about the PATTERN, so the probe
+  # must not borrow a real host's name.
   cd "$REPO_ROOT"
   local bad=()
-  for sub in nginx demo linode backup email system; do
-    for probe in "servers/nwpcode/${sub}/PROBE.conf" "servers/nwpcode/${sub}/nested/PROBE.sh"; do
-      if git check-ignore -q "$probe" 2>/dev/null; then bad+=("$probe"); fi
-    done
+  for probe in \
+      "servers/PROBE-HOST/demo/PROBE.conf" \
+      "servers/PROBE-HOST/demo/nested/PROBE.sh" \
+      "servers/PROBE-HOST/linode/PROBE.sh" \
+      "servers/PROBE-HOST/email/PROBE.sh" \
+      "servers/PROBE-HOST/nginx/snippets/PROBE.conf" \
+      "servers/PROBE-HOST/nginx/renew-hook.sh"
+  do
+    if git check-ignore -q --no-index "$probe" 2>/dev/null; then bad+=("$probe"); fi
   done
   printf 'ignored: %s\n' "${bad[@]:-none}"
   [ "${#bad[@]}" -eq 0 ]
 }
 
+@test "per-host IDENTITY state is NOT engine-trackable (ops#326 — it would reach the public mirror)" {
+  cd "$REPO_ROOT"
+  local leaky=()
+  for probe in \
+      "servers/PROBE-HOST/nginx/conf.d/PROBE.conf" \
+      "servers/PROBE-HOST/nginx/retired-20990101/PROBE.conf" \
+      "servers/PROBE-HOST/system/PROBE" \
+      "servers/PROBE-HOST/system/nested/PROBE" \
+      "servers/PROBE-HOST/php/conf.d/PROBE.ini" \
+      "servers/PROBE-HOST/README.md"
+  do
+    if ! git check-ignore -q --no-index "$probe" 2>/dev/null; then leaky+=("$probe"); fi
+  done
+  printf 'engine-trackable: %s\n' "${leaky[@]:-none}"
+  [ "${#leaky[@]}" -eq 0 ]
+}
+
+@test "and no such file is still tracked — the split actually happened" {
+  cd "$REPO_ROOT"
+  run git ls-files 'servers/*/nginx/conf.d/*' 'servers/*/system/*' 'servers/*/php/*' \
+                   'servers/*/postfix/*' 'servers/*/letsencrypt/*'
+  [ "$status" -eq 0 ]
+  # The agent-host session-supervisor units are shipped PRODUCT, deliberately
+  # kept (tests/unit/test-session-supervisor.bats pins them); nothing else.
+  local unexpected
+  unexpected="$(printf '%s\n' "$output" | grep -v 'systemd-nwp-session-supervisor' | grep -v '^$' || true)"
+  printf 'still tracked: %s\n' "${unexpected:-none}"
+  [ -z "$unexpected" ]
+}
+
+@test "the ENGINE-TRACKABLE assertion can FAIL — the pre-split allowlist is caught" {
+  # A check never seen red is a hypothesis. Rebuild the pre-split allowlist in a
+  # throwaway repo and prove host_check_servers_tracked calls it out.
+  local root="${TMP}/presplit"
+  mkdir -p "$root/servers/live/nginx/conf.d"
+  git -C "$root" init -q
+  cat > "$root/.gitignore" <<'EOF'
+!servers/
+servers/*
+!servers/.gitkeep
+!servers/*/
+!servers/*/nginx/**
+!servers/*/system/**
+!servers/*/php/**
+servers/*/.nwp-server.yml
+EOF
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_check_servers_tracked "$root"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ENGINE-TRACKABLE"* ]]
+}
+
 @test "the server IDENTITY file and secrets stay ignored (allowlist must not over-open)" {
   cd "$REPO_ROOT"
-  git check-ignore -q "servers/nwpcode/.nwp-server.yml"
-  git check-ignore -q "servers/nwpcode/.secrets.yml"
-  git check-ignore -q "servers/nwpcode/system/ssh/id_ed25519"
+  git check-ignore -q --no-index "servers/PROBE-HOST/.nwp-server.yml"
+  git check-ignore -q --no-index "servers/PROBE-HOST/.secrets.yml"
+  git check-ignore -q --no-index "servers/PROBE-HOST/system/ssh/id_ed25519"
 }
 
 @test "pl doctor reports drift when servers/ has uncommitted captured state" {
@@ -359,6 +433,40 @@ EOF
   run host_check_servers_tracked "$REPO_ROOT"
   # Must be a real function that can answer; not a stub that always says yes.
   [ "$status" -eq 0 ] || [[ "$output" == *"servers/"* ]]
+}
+
+@test "host_check_server_repos FLAGS a host directory that holds state but is no repo" {
+  # Previously this case was skipped silently (`[ -d .git ] || continue`), so
+  # "versioned nowhere" scored the same as "clean" — a blind pass.
+  local root="${TMP}/unversioned"
+  mkdir -p "$root/servers/ghost/nginx/conf.d"
+  git -C "$root" init -q
+  printf 'servers/*/nginx/conf.d/**\n' > "$root/.gitignore"
+  printf 'server { }\n' > "$root/servers/ghost/nginx/conf.d/site.conf"
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_check_server_repos "$root"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ghost"* ]]
+  [[ "$output" == *"versioned NOWHERE"* ]]
+}
+
+@test "host_check_server_repos FLAGS a per-server repo with uncommitted state, and says how to settle it" {
+  local root="${TMP}/dirtyrepo" bare="${TMP}/bare-dirty.git"
+  mkdir -p "$root/servers/hostx"
+  git init -q --bare "$bare"
+  git -C "$root/servers/hostx" init -q
+  git -C "$root/servers/hostx" remote add origin "$bare"
+  printf 'a\n' > "$root/servers/hostx/file"
+  git -C "$root/servers/hostx" add file
+  git -C "$root/servers/hostx" -c user.email=t@t -c user.name=t commit -q -m seed
+  git -C "$root/servers/hostx" push -q origin HEAD:refs/heads/main
+  git -C "$root/servers/hostx" branch -q --set-upstream-to=origin/main 2>/dev/null || true
+  rm -f "$root/servers/hostx/file"          # exactly the post-merge condition
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_check_server_repos "$root"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"hostx"* ]]
+  [[ "$output" == *"checkout -- ."* ]]
 }
 
 ################################################################################

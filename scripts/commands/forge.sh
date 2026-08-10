@@ -103,7 +103,7 @@ _forge_ssh() { # keyfile  [remote words…]
 _need_key() { # keyfile  name
     [ -r "$1" ] && return 0
     print_error "CANNOT VERIFY: the ${2} key is absent (${1})"
-    print_hint "generate + install:  bash servers/${FORGE_SERVER}/system/install-forge-identities.sh --execute"
+    print_hint "generate + install:  bash servers/${FORGE_SERVER}/forge/install-forge-identities.sh --execute"
     return 2
 }
 

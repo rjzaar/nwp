@@ -24,14 +24,14 @@
 # halves answer different questions and neither substitutes for the other.
 #
 # RED PROOF. Every test in this file was RED before the wrapper existed: the
-# file `servers/nwpcode/system/forge-probe-restricted` was absent, so each
+# file `servers/nwpcode/forge/forge-probe-restricted` was absent, so each
 # `run bash "$WRAPPER"` returned 127. Quoted in the MR description.
 
 setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
   export REPO_ROOT
-  WRAPPER="${REPO_ROOT}/servers/nwpcode/system/forge-probe-restricted"
-  INSTALLER="${REPO_ROOT}/servers/nwpcode/system/install-forge-identities.sh"
+  WRAPPER="${REPO_ROOT}/servers/nwpcode/forge/forge-probe-restricted"
+  INSTALLER="${REPO_ROOT}/servers/nwpcode/forge/install-forge-identities.sh"
   export WRAPPER INSTALLER
   # The wrapper logs to /var/log/nwp-forge on the box; here it must degrade
   # silently rather than fail, which is what log()'s fail-soft return covers.

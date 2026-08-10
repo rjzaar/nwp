@@ -1,7 +1,0 @@
-kbdinteractiveauthentication no
-listenaddress 0.0.0.0:22
-listenaddress [::]:22
-passwordauthentication no
-permitrootlogin no
-port 22
-pubkeyauthentication yes

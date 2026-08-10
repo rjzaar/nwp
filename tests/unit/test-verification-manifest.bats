@@ -67,9 +67,16 @@ setup() {
 }
 
 @test "manifest still parses and keeps its feature count" {
+    # Floor lowered 90 -> 86 on 2026-08-10 (ops#326 Phase 1 tranche 3): five
+    # features were RETIRED WITH THEIR CODE — the four-command Drupal<->Moodle
+    # SSO family and its library, unfinished scaffolding whose modules were
+    # never written and which had zero callers and zero tests — and one feature
+    # (`pipeline`) was added in their place. A deliberate retirement is the only
+    # reason this floor may move; a manifest that shrinks for any other reason
+    # is a truncation and must fail here.
     run yq e '.features | keys | length' "$MANIFEST"
     [ "$status" -eq 0 ]
-    [ "$output" -ge 90 ]
+    [ "$output" -ge 86 ]
 }
 
 @test "item_machine_checks_need_site: {site} checks are detected, others are not" {

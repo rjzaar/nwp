@@ -442,20 +442,43 @@ EOF
 #    mode this whole item is about.
 ################################################################################
 
-@test "every php_floors declared_ini in servers/ actually exists in the repo" {
-  local inv host ini n i found=0
-  for inv in "${REPO_ROOT}"/servers/*/system/inventory.yml; do
+# _inventory_roots — every server tree this machine can see holding an
+# inventory: the shipped fixture ALWAYS, plus the real servers/ captures WHEN
+# PRESENT. The real inventories moved into the private per-server repos
+# (ops#326 tranche 3), so a CI clone has none and this predicate would pass
+# over zero declarations — which the non-vacuity guard below rightly refuses
+# to score as a pass. Same shape as test-nginx-versioning's capture handling.
+_inventory_roots() {
+  printf '%s\n' "${REPO_ROOT}/tests/fixtures/server-inventory"
+  local real="${NWP_SERVERS_DIR:-${REPO_ROOT}/servers}"
+  [ -d "$real" ] && printf '%s\n' "$real"
+  return 0
+}
+
+@test "every php_floors declared_ini actually exists beside its inventory" {
+  local root inv host ini n i found=0
+  while IFS= read -r root; do
+  for inv in "$root"/*/system/inventory.yml; do
     [ -e "$inv" ] || continue
-    host="$(basename "$(dirname "$(dirname "$inv")")")"
+    host="$(dirname "$(dirname "$inv")")"
     n="$(yq e '.php_floors // [] | length' "$inv")"
     for ((i = 0; i < n; i++)); do
       ini="$(i="$i" yq e ".php_floors[strenv(i)|tonumber].declared_ini // \"\"" "$inv")"
       [ -n "$ini" ] || continue
       found=$((found + 1))
-      [ -f "${REPO_ROOT}/servers/${host}/${ini}" ] \
-        || { echo "servers/${host}/${ini} declared by ${host} but missing" >&2; return 1; }
+      [ -f "${host}/${ini}" ] \
+        || { echo "${host}/${ini} declared but missing" >&2; return 1; }
     done
   done
-  # Non-vacuity: a pass over zero declarations is not a pass.
+  done < <(_inventory_roots)
+  # Non-vacuity: a pass over zero declarations is not a pass. The shipped
+  # fixture guarantees four on any checkout, so this can only trip if the
+  # fixture itself is lost — which is the thing worth being told about.
   [ "$found" -ge 4 ]
+}
+
+@test "the shipped inventory fixture exists — the declared_ini check is never vacuous" {
+  [ -f "${REPO_ROOT}/tests/fixtures/server-inventory/probehost/system/inventory.yml" ]
+  run yq e '.php_floors | length' "${REPO_ROOT}/tests/fixtures/server-inventory/probehost/system/inventory.yml"
+  [ "$output" -ge 4 ]
 }

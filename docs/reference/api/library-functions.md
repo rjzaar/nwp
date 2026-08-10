@@ -29,7 +29,6 @@ Complete API reference for all library functions in the NWP (Narrow Way Project)
 - [state.sh](#statesh) - Site state detection
 - [badges.sh](#badgessh) - Status badge generation
 - [podcast.sh](#podcastsh) - Podcast platform (Castopod) operations
-- [avc-moodle.sh](#avc-moodlesh) - AVC-specific Moodle integration
 - [b2.sh](#b2sh) - Backblaze B2 storage operations
 - [developer.sh](#developersh) - Developer workflow tools
 - [live-server-setup.sh](#live-server-setupsh) - Production server provisioning
@@ -3491,14 +3490,6 @@ Status badge generation for README files and dashboards. Creates SVG badges for 
 Podcast platform (Castopod) operations. Manages Castopod installation, configuration, and Backblaze B2 storage integration.
 
 **Note:** Documentation for podcast.sh functions needs to be expanded. This library handles Castopod-specific operations.
-
----
-
-## avc-moodle.sh
-
-AVC-specific Moodle integration. Custom functions for Adult Vacation Camp (AVC) Moodle sites.
-
-**Note:** Documentation for avc-moodle.sh functions needs to be expanded. This is project-specific code.
 
 ---
 

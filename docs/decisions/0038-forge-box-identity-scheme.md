@@ -118,7 +118,7 @@ Three planes, each with its own credential and its own explicitly-stated limit:
 
 Three tiers. Both new keys are `ed25519`, generated **on the machine that will hold the private
 half** (no private key ever crosses a wire), and installed by
-`servers/nwpcode/system/install-forge-identities.sh`, which is dry-run by default.
+`servers/nwpcode/forge/install-forge-identities.sh`, which is dry-run by default.
 
 | Identity | Where the secret lives | authorized_keys shape | CAN | CANNOT |
 |---|---|---|---|---|

@@ -208,8 +208,9 @@ build/*
 # identity, secrets and key material stay ignored. Adding a new service
 # directory is a deliberate one-line change here, which is the point.
 #
-# Guarded by tests/unit/test-host.bats ("no path under servers/*/{...} is
-# git-ignored" and "the server IDENTITY file and secrets stay ignored").
+# Guarded by tests/unit/test-host.bats ("the generic mechanism the engine still
+# ships is not git-ignored", "the server IDENTITY file and secrets stay ignored",
+# and "per-host identity state is NOT engine-tracked" — see the split below).
 !servers/
 servers/*
 !servers/.gitkeep
@@ -227,6 +228,47 @@ servers/*
 # this is the intent we mean to apply, that is the reading of what is running.
 # Keeping them in separate directories is what makes `diff` meaningful.
 !servers/*/php/**
+
+# ---------------------------------------------------------------------------
+# ops#326 Phase 1 tranche 3 — THE SPLIT.
+#
+# The 2026-07-25 lesson above is intact: this state must be VERSIONED. What
+# changed is WHICH repository versions it. nwp/nwp is the generic engine and is
+# publicly mirrored (ops#101), and the state below is instance identity: real
+# vhosts with real domains and real private site names, the operator crontab,
+# mail aliases, ufw rules, authorized keys, host inventories. It is now tracked
+# in a PRIVATE PER-SERVER REPOSITORY, in place — servers/<host>/.git, remote
+# nwp/server-<host>. The files do not move, so every `pl` verb that reads
+# servers/<host>/… keeps reading exactly the same path; only the repo boundary
+# moves, and reviewability moves with it (the overlay repo has its own MRs).
+#
+# The guard changes shape accordingly: tests/unit/test-host.bats no longer asks
+# "is this trackable by the engine?" but "is servers/<host>/ a repo with a
+# remote and nothing unpushed?" (host_check_server_repos, wired into pl doctor).
+#
+# What the ENGINE still ships below is generic mechanism only.
+servers/*/nginx/conf.d/**
+servers/*/nginx/retired-*/**
+servers/*/nginx/README.md
+servers/*/system/**
+servers/*/php/**
+servers/*/postfix/**
+servers/*/letsencrypt/**
+servers/*/README.md
+
+# ...generic mechanism the engine keeps: the GitLab-bundled-nginx renew hook and
+# the deny-files snippet are product code, carry no instance identity, and are
+# pinned by tests/unit/test-nginx-versioning.bats.
+!servers/*/nginx/renew-hook.sh
+!servers/*/nginx/snippets/
+!servers/*/nginx/snippets/**
+# The agent-host session supervisor units are shipped product, pinned by
+# tests/unit/test-session-supervisor.bats.
+!servers/*/system/systemd-nwp-session-supervisor.service
+!servers/*/system/systemd-nwp-session-supervisor.timer
+# DEFERRED, not kept: the fleet backup producer is being changed concurrently
+# under ops#332. It moves to the per-server repo in the next tranche.
+!servers/*/backup/nwp-box-backup.sh
 
 # ...but NEVER the identity file, secrets, or any key/cert material, wherever
 # under servers/ they appear. These re-ignores come last so they win.

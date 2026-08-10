@@ -1,5 +1,0 @@
-8.2/fpm max_input_vars=1000
-8.2/cli max_input_vars=1000
-8.3/fpm max_input_vars=5000
-8.3/cli max_input_vars=5000
-8.4/cli max_input_vars=1000

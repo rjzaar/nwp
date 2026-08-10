@@ -1459,13 +1459,9 @@ get_feature_category() {
         live|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce)
             echo "Deployment" ;;
 
-        # Group 3: Infrastructure (11)
-        podcast|schedule|security|setup_ssh|uninstall|pl_cli|test_nwp|moodle|theme|doctor|bootstrap_coder)
+        # Group 3: Infrastructure (12)
+        podcast|schedule|security|setup_ssh|uninstall|pl_cli|test_nwp|moodle|theme|doctor|bootstrap_coder|pipeline)
             echo "Infrastructure" ;;
-
-        # Group 4: AVC-Moodle Integration (4)
-        avc_moodle_setup|avc_moodle_status|avc_moodle_sync|avc_moodle_test)
-            echo "AVC-Moodle" ;;
 
         # Group 5: Installation Libraries (6)
         lib_install_common|lib_install_drupal|lib_install_gitlab|lib_install_moodle|lib_install_podcast|lib_install_steps)
@@ -1491,8 +1487,8 @@ get_feature_category() {
         lib_yaml_write|lib_import|lib_sanitize|lib_testing)
             echo "Lib: Data" ;;
 
-        # Group 11: Specialized Libraries (4)
-        lib_frontend|lib_avc_moodle|lib_podcast|lib_ssh)
+        # Group 11: Specialized Libraries (3)
+        lib_frontend|lib_podcast|lib_ssh)
             echo "Lib: Specialized" ;;
 
         # Group 12: Services & Config (future features)

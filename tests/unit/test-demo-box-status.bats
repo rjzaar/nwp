@@ -162,3 +162,148 @@ some other shape entirely'"
   run bash -c "printf '%s\n' \"\$1\" | grep -cE 'demo-reset-restricted (nightly|reset|harvest)|\\\$sshcmd (nightly|reset|harvest)' -" _ "$code"
   [ "$output" = "0" ]
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ops#329 D4/D5 — the return leg + the box's nightly pull backups ride the
+# same status word, and `pl demo status` / `pl demo seal-status --json`
+# surface them with three-state honesty (value / not-reported / could-not-look)
+# plus a STALENESS verdict: the leg is hourly, so a newest event older than
+# two cycles is CANNOT VERIFY (stale return leg), never quietly green.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# _libarg <snippet> <arg> — like _lib, but hands the snippet a real $1.
+_libarg() { bash -c "source '$LIB'; $1" _ "$2"; }
+
+# A box status block carrying the ops#329 D4/D5 lines. $1 = the feedback ts.
+_raw_with_extras() {
+  printf '%s\n' \
+"site:        nwd (nwd.example)
+golden dir:  /var/lib/nwp-demo/nwd/golden
+golden:      captured 2026-08-01T17:06:34Z
+last reset:  2026-08-02 1785596453
+last_feedback_status: ${1:-2026-08-09T11:07:06Z}|feedback-status-ok|advanced=2 drafts_captured=1 checked=5
+backups: /var/backups/nwp-pull
+backup: db|newest=ssd-2026-08-09.sql.gz|bytes=2994050|mtime=${2:-2026-08-09T01:30:00Z}
+backup: nginx|newest=nginx-conf-2026-08-09.tgz|bytes=4898|mtime=${2:-2026-08-09T01:30:00Z}
+--- last 15 log lines ---
+2026-08-01T17:00:05Z|reset-ok|took=131s action=nightly"
+}
+
+@test "ops#329 D4: the last_feedback_status record is read out of the status block" {
+  run _lib "demo_box_feedback_status \"\$(cat <<'RAW'
+last_feedback_status: 2026-08-09T11:07:06Z|feedback-status-ok|advanced=0 drafts_captured=0 checked=0
+RAW
+)\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "2026-08-09T11:07:06Z|feedback-status-ok|advanced=0 drafts_captured=0 checked=0" ]
+}
+
+@test "ops#329 D4: an old wrapper without the line yields EMPTY, so callers say NOT REPORTED" {
+  run _libarg "demo_box_feedback_status \"\$1\"" "$RAW"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "ops#329 D4/D5: extras JSON — a fresh ok record parses with counts and stale=false" {
+  ts="$(date -u -d '30 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
+  raw="$(_raw_with_extras "$ts")"
+  run _libarg "demo_box_extras_json \"\$1\"" "$raw"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.feedback_status.reported == true and .feedback_status.result == "ok"'
+  echo "$output" | jq -e '.feedback_status.advanced == 2 and .feedback_status.drafts_captured == 1 and .feedback_status.checked == 5'
+  echo "$output" | jq -e '.feedback_status.stale == false'
+  echo "$output" | jq -e '.feedback_status.age_seconds >= 1700 and .feedback_status.age_seconds <= 1900'
+}
+
+@test "ops#329 D4: extras JSON — a record older than TWO hourly cycles is stale=true" {
+  raw="$(_raw_with_extras "2026-08-01T00:00:00Z")"
+  run _libarg "demo_box_extras_json \"\$1\"" "$raw"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.feedback_status.reported == true and .feedback_status.stale == true'
+}
+
+@test "ops#329 D4: extras JSON — a box that answered WITHOUT the line is reported=false with a reason" {
+  run _libarg "demo_box_extras_json \"\$1\"" "$RAW"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.feedback_status.reported == false and (.feedback_status.reason | test("wrapper"))'
+  echo "$output" | jq -e '.backups.reported == false and (.backups.reason | test("wrapper"))'
+}
+
+@test "ops#329 D4: extras JSON — an EMPTY read (could not look) is reported=false naming the box" {
+  run _lib "demo_box_extras_json ''"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.feedback_status.reported == false and (.feedback_status.reason | test("could not"))'
+  echo "$output" | jq -e '.backups.reported == false'
+}
+
+@test "ops#329 D4: extras JSON — 'none' (leg never ran) and a FAILED leg keep their identities" {
+  raw="last_feedback_status: none"
+  run _libarg "demo_box_extras_json \"\$1\"" "$raw"
+  echo "$output" | jq -e '.feedback_status.reported == true and .feedback_status.result == "none"'
+  raw="last_feedback_status: 2026-08-09T12:07:06Z|feedback-status-failed|rc=3"
+  run _libarg "demo_box_extras_json \"\$1\"" "$raw"
+  echo "$output" | jq -e '.feedback_status.result == "fail" and .feedback_status.summary == "rc=3"'
+}
+
+@test "ops#329 D5: extras JSON — backup entries carry subdir, newest, bytes, mtime and an age" {
+  mt="$(date -u -d '10 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
+  raw="$(_raw_with_extras "2026-08-09T11:07:06Z" "$mt")"
+  run _libarg "demo_box_extras_json \"\$1\"" "$raw"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.backups.reported == true and .backups.state == "ok" and .backups.dir == "/var/backups/nwp-pull"'
+  echo "$output" | jq -e '.backups.entries | length == 2'
+  echo "$output" | jq -e '.backups.entries[0] | .subdir == "db" and .newest == "ssd-2026-08-09.sql.gz" and .bytes == 2994050'
+  echo "$output" | jq -e '.backups.entries[0].age_seconds >= 35000 and .backups.entries[0].age_seconds <= 37000'
+}
+
+@test "ops#329 D5: extras JSON — MISSING / UNREADABLE / empty-subdir keep their identities" {
+  run _lib "demo_box_extras_json 'backups: /var/backups/nwp-pull MISSING'"
+  echo "$output" | jq -e '.backups.reported == true and .backups.state == "missing"'
+  run _lib "demo_box_extras_json 'backups: /var/backups/nwp-pull UNREADABLE'"
+  echo "$output" | jq -e '.backups.state == "unreadable"'
+  run _libarg "demo_box_extras_json \"\$1\"" 'backups: /var/backups/nwp-pull
+backup: db|empty'
+  echo "$output" | jq -e '.backups.state == "ok" and .backups.entries[0].empty == true'
+}
+
+# ── the verb: pl demo status renders the extras with the three states ────────
+
+@test "ops#329: status renders the return leg + backups from a healthy box read" {
+  ts="$(date -u -d '30 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
+  _raw_with_extras "$ts" > "$TEST_TMP/box-status.txt"
+  run env HOME="$TEST_TMP" NWP_DEMO_BOX_STATUS_FILE="$TEST_TMP/box-status.txt" \
+      bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"advanced=2"* ]]
+  [[ "$output" == *"nwp-pull"* ]]
+  [[ "$output" == *"ssd-2026-08-09.sql.gz"* ]]
+  # fresh leg is not flagged stale
+  [[ "$output" != *"stale return leg"* ]]
+}
+
+@test "ops#329: a return leg older than two hourly cycles renders CANNOT VERIFY (stale return leg)" {
+  _raw_with_extras "2026-08-01T00:00:00Z" > "$TEST_TMP/box-status.txt"
+  run env HOME="$TEST_TMP" NWP_DEMO_BOX_STATUS_FILE="$TEST_TMP/box-status.txt" \
+      bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"stale return leg"* ]]
+}
+
+@test "ops#329: a wrapper that does not report the extras renders NOT REPORTED — never silent" {
+  printf '%s\n' "$RAW" > "$TEST_TMP/box-status.txt"
+  run env HOME="$TEST_TMP" NWP_DEMO_BOX_STATUS_FILE="$TEST_TMP/box-status.txt" \
+      bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NOT REPORTED"* ]]
+}
+
+@test "ops#329: seal-status's live path merges the box extras (contract: one renderer, no drift)" {
+  # The live seal-status path cannot run inside bats (it needs a real box for
+  # the manifest read), so pin the CALL: the live branch of cmd_seal_status
+  # must assemble its extras through demo_box_extras_json — the same parser the
+  # status verb uses — and merge them into the JSON document.
+  code="$(awk '/^cmd_seal_status\(\)/,/^}/' "$DEMO_CMD")"
+  [[ "$code" == *"demo_box_extras_json"* ]]
+  [[ "$code" == *"feedback_status"* ]]
+}

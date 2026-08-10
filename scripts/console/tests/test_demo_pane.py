@@ -407,3 +407,123 @@ def test_select_all_absent_for_viewer(mod, monkeypatch):
     _fake_demo(mod, monkeypatch)
     body = _client(mod, "vera").get("/panes/demo").text
     assert 'id="demo-select-all"' not in body
+
+
+# ---------------------------------------------------------------------------
+# ops#329 D4/D5 — return-leg + live-box backup visibility in the seal surface.
+#
+# Red-then-green: every test below was run against the tranche-1 console
+# (parse_seal_status without the two blocks, old sealband template) and
+# observed RED before the implementation.
+# ---------------------------------------------------------------------------
+
+SEAL_EXTRAS = dict(SEAL_JSON, feedback_status={
+    "reported": True, "result": "ok", "ts": "2026-08-09T11:07:06Z",
+    "summary": "advanced=2 drafts_captured=1 checked=5",
+    "advanced": 2, "drafts_captured": 1, "checked": 5,
+    "age_seconds": 1800, "stale": False,
+}, backups={
+    "reported": True, "state": "ok", "dir": "/var/backups/nwp-pull",
+    "entries": [
+        {"subdir": "db", "newest": "ssd-2026-08-09.sql.gz", "bytes": 2994050,
+         "mtime": "2026-08-09T01:30:44Z", "age_seconds": 36000},
+        {"subdir": "nginx", "newest": "nginx-conf-2026-08-09.tgz", "bytes": 4898,
+         "mtime": "2026-08-09T01:30:45Z", "age_seconds": 36000},
+    ],
+})
+
+
+def test_parse_seal_status_carries_return_leg_and_backups():
+    p = parsers.parse_seal_status(json.dumps(SEAL_EXTRAS))
+    assert p["ok"] is True
+    fb = p["feedback_status"]
+    assert fb["reported"] is True and fb["result"] == "ok"
+    assert fb["advanced"] == 2 and fb["checked"] == 5
+    assert fb["stale"] is False and fb["age_human"]
+    b = p["backups"]
+    assert b["reported"] is True and b["state"] == "ok"
+    assert [e["subdir"] for e in b["entries"]] == ["db", "nginx"]
+    assert b["entries"][0]["newest"] == "ssd-2026-08-09.sql.gz"
+    assert b["entries"][0]["age_human"]
+
+
+def test_parse_seal_status_missing_blocks_is_not_silent():
+    """A deployed pl older than ops#329 D4/D5 emits neither block. The parser
+    must surface that as reported:false WITH a reason — never a KeyError and
+    never a quietly-absent key the template can skip."""
+    p = parsers.parse_seal_status(json.dumps(SEAL_JSON))
+    assert p["feedback_status"]["reported"] is False
+    assert p["feedback_status"]["reason"]
+    assert p["backups"]["reported"] is False and p["backups"]["reason"]
+
+
+def test_parse_seal_status_recomputes_staleness_from_age():
+    """The feed's own stale flag is trusted but never REQUIRED: a cached or
+    hand-built document whose age exceeds two hourly cycles is stale here even
+    if the emitter said otherwise."""
+    doc = json.loads(json.dumps(SEAL_EXTRAS))
+    doc["feedback_status"]["age_seconds"] = 4 * 3600
+    doc["feedback_status"]["stale"] = False
+    p = parsers.parse_seal_status(json.dumps(doc))
+    assert p["feedback_status"]["stale"] is True
+
+
+def test_parse_seal_status_by_design_consumer_half():
+    doc = json.loads(json.dumps(SEAL_JSON))
+    doc["feedback_status"] = {"reported": False, "by_design": True,
+                              "reason": "reported by the pair provider's wrapper"}
+    doc["backups"] = {"reported": False, "by_design": True,
+                      "reason": "reported by the pair provider's wrapper"}
+    p = parsers.parse_seal_status(json.dumps(doc))
+    assert p["feedback_status"]["by_design"] is True
+    assert p["backups"]["by_design"] is True
+
+
+def test_pane_renders_return_leg_and_backup_ages(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch, seal=SEAL_EXTRAS)
+    r = _client(mod).get("/panes/demo")
+    assert r.status_code == 200
+    body = r.text
+    assert "Return leg" in body and "advanced=2" in body
+    assert "ssd-2026-08-09.sql.gz" in body and "nginx-conf-2026-08-09.tgz" in body
+    assert "10h" in body                      # backup age rendered human
+    assert "stale return leg" not in body
+
+
+def test_pane_stale_return_leg_is_cannot_verify(mod, monkeypatch):
+    doc = json.loads(json.dumps(SEAL_EXTRAS))
+    doc["feedback_status"]["age_seconds"] = 26 * 3600
+    doc["feedback_status"]["stale"] = True
+    _fake_demo(mod, monkeypatch, seal=doc)
+    body = _client(mod).get("/panes/demo").text
+    assert "CANNOT VERIFY" in body and "stale return leg" in body
+
+
+def test_pane_unreadable_backups_is_cannot_verify_not_blank(mod, monkeypatch):
+    doc = json.loads(json.dumps(SEAL_EXTRAS))
+    doc["backups"] = {"reported": True, "state": "unreadable",
+                      "dir": "/var/backups/nwp-pull"}
+    _fake_demo(mod, monkeypatch, seal=doc)
+    body = _client(mod).get("/panes/demo").text
+    assert "CANNOT VERIFY" in body and "/var/backups/nwp-pull" in body
+
+
+def test_pane_missing_blocks_render_cannot_verify_never_silence(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch, seal=SEAL_JSON)   # pre-D4/D5 document
+    body = _client(mod).get("/panes/demo").text
+    assert "Return leg" in body or "return leg" in body
+    assert "CANNOT VERIFY" in body
+
+
+def test_pane_by_design_consumer_is_muted_not_an_error(mod, monkeypatch):
+    doc = json.loads(json.dumps(SEAL_JSON))
+    doc["feedback_status"] = {"reported": False, "by_design": True,
+                              "reason": "reported by the pair provider's wrapper"}
+    doc["backups"] = {"reported": False, "by_design": True,
+                      "reason": "reported by the pair provider's wrapper"}
+    _fake_demo(mod, monkeypatch, seal=doc)
+    body = _client(mod).get("/panes/demo").text
+    assert "pair provider" in body
+    assert "stale return leg" not in body
+    # a by-design absence is not an alarm
+    assert "CANNOT VERIFY the staged golden" not in body

@@ -311,10 +311,82 @@ def parse_demo_codes_json(stdout: str) -> dict:
             "codes": codes, "counts": counts, "raw": raw}
 
 
+# ops#329 D4: the return leg is hourly; older than TWO cycles = the leg has
+# stopped and the reading is CANNOT VERIFY (stale return leg). Kept in sync
+# with lib/demo-box-status.sh's DEMO_RETURN_LEG_MAX_AGE.
+RETURN_LEG_STALE_SECS = 7200
+
+
+def _to_int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _seal_feedback_status(d) -> dict:
+    """The ops#329 D4 return-leg block of the seal document. An absent or
+    unreported block keeps a REASON (a deployed pl older than D4 must render
+    CANNOT VERIFY, never silence); staleness is recomputed here so a document
+    whose emitter under-claimed still carries the verdict."""
+    if not isinstance(d, dict) or not d.get("reported"):
+        return {"reported": False,
+                "by_design": bool(isinstance(d, dict) and d.get("by_design")),
+                "reason": str((d or {}).get(
+                    "reason",
+                    "the deployed pl does not carry the return leg "
+                    "(pre-ops#329 D4 — redeploy/merge first)"))[:300]}
+    age = _to_int(d.get("age_seconds"))
+    return {"reported": True,
+            "by_design": False,
+            "result": str(d.get("result", "?"))[:16],
+            "ts": str(d.get("ts", ""))[:25],
+            "summary": str(d.get("summary", ""))[:120],
+            "advanced": _to_int(d.get("advanced")),
+            "drafts_captured": _to_int(d.get("drafts_captured")),
+            "checked": _to_int(d.get("checked")),
+            "age_seconds": age,
+            "age_human": fmt_age(age),
+            "stale": bool(d.get("stale"))
+                     or (age is not None and age > RETURN_LEG_STALE_SECS)}
+
+
+def _seal_backups(d) -> dict:
+    """The ops#329 D5 live-box backups block: newest file per subdir of
+    /var/backups/nwp-pull. missing/unreadable keep their identities — an
+    unreadable dir and an empty one never render alike."""
+    if not isinstance(d, dict) or not d.get("reported"):
+        return {"reported": False,
+                "by_design": bool(isinstance(d, dict) and d.get("by_design")),
+                "reason": str((d or {}).get(
+                    "reason",
+                    "the deployed pl does not carry the box backups "
+                    "(pre-ops#329 D5 — redeploy/merge first)"))[:300]}
+    entries = []
+    for e in (d.get("entries") or [])[:12]:
+        if not isinstance(e, dict):
+            continue
+        age = _to_int(e.get("age_seconds"))
+        entries.append({"subdir": str(e.get("subdir", ""))[:40],
+                        "empty": bool(e.get("empty")),
+                        "newest": str(e.get("newest", ""))[:80],
+                        "bytes": _to_int(e.get("bytes")),
+                        "mtime": str(e.get("mtime", ""))[:25],
+                        "age_seconds": age,
+                        "age_human": fmt_age(age)})
+    return {"reported": True,
+            "by_design": False,
+            "state": str(d.get("state", "?"))[:16],
+            "dir": str(d.get("dir", ""))[:120],
+            "entries": entries}
+
+
 def parse_seal_status(stdout: str) -> dict:
     """`pl demo seal-status <site> --json` (ops#328): what tonight's reset
-    restores. ok:false keeps its reason — 'I could not read the staged golden'
-    and 'no golden' lead to different actions and never render alike."""
+    restores — plus, since ops#329 D4/D5, the box's return-leg last run and
+    its nightly pull-backup ages. ok:false keeps its reason — 'I could not
+    read the staged golden' and 'no golden' lead to different actions and
+    never render alike."""
     raw = strip_ansi(stdout or "")[-2000:]
     data = extract_json(stdout)
     if not isinstance(data, dict) or "ok" not in data:
@@ -335,6 +407,8 @@ def parse_seal_status(stdout: str) -> dict:
             "last_reset": str(data.get("last_reset") or "")[:40],
             "source": str(data.get("source", ""))[:120],
             "reset_window": str(data.get("reset_window", ""))[:80],
+            "feedback_status": _seal_feedback_status(data.get("feedback_status")),
+            "backups": _seal_backups(data.get("backups")),
             "raw": raw}
 
 

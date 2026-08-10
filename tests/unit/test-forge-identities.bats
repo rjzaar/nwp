@@ -218,8 +218,11 @@ _as_client() {
   # [G7]. Off the box there is no /etc/letsencrypt, so `certs` cannot measure.
   # The rule under test is the estate rule: fail closed, never substitute a
   # literal for a measurement you failed to take.
-  if [ -d /etc/letsencrypt/live ]; then skip "this host really has letsencrypt"; fi
-  _as_client 'certs'
+  # NOT skipped where letsencrypt happens to exist — a skip scores as `ok`
+  # without running, so the case would silently stop testing on exactly the
+  # hosts that matter. Point the wrapper at a directory that cannot exist and
+  # the cannot-measure branch is exercised on EVERY host (CLAUDE.md H4).
+  NWP_FORGE_LE_LIVE="${TEST_TMP}/no-such-letsencrypt" _as_client 'certs'
   [ "$status" -eq 2 ]
   [[ "$output" == *"CANNOT-VERIFY"* ]]
 }

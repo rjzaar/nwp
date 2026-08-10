@@ -79,7 +79,13 @@ umask 022
 
 LOG_FILE="/var/log/nwp-forge/forge-probe.log"
 BACKUP_ROOT="/var/backups/nwp-pull"
-LE_LIVE="/etc/letsencrypt/live"
+# NWP_FORGE_LE_LIVE exists ONLY so the cannot-measure path is testable on a host
+# that really does have certificates (CLAUDE.md H4: an absent-tool branch with no
+# knob is host-blind, and the alternative — skipping the test where letsencrypt
+# exists — is a test bats scores as `ok` without running it). It is read from the
+# ENVIRONMENT, which a forced-command client cannot set: ssh only forwards what
+# AcceptEnv permits and sshd here permits none, so this widens nothing.
+LE_LIVE="${NWP_FORGE_LE_LIVE:-/etc/letsencrypt/live}"
 LOG_TAIL=200          # [G4] fixed; never client-chosen
 OUT_CAP=400           # [G4] hard ceiling on lines emitted by any one action
 AUTH_KEYS="${HOME:-/home/gitlab}/.ssh/authorized_keys"

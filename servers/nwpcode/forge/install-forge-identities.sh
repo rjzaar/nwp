@@ -1,9 +1,9 @@
 #!/bin/bash
 ################################################################################
-# servers/nwpcode/system/install-forge-identities.sh — install the two NAMED
+# servers/nwpcode/forge/install-forge-identities.sh — install the two NAMED
 # forge-box identities (ops#331, ADR-0038).
 #
-#   bash servers/nwpcode/system/install-forge-identities.sh [--execute]
+#   bash servers/nwpcode/forge/install-forge-identities.sh [--execute]
 #        [--only=ops|probe] [--no-wrapper]
 #
 # WHAT IT INSTALLS

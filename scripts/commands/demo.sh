@@ -3518,6 +3518,24 @@ cmd_status_box() {
     echo "  Box-side (unattended) resets:"
     raw="$(demo_box_reset_status "$site")" || rc=$?
 
+    # rc 4 (ops#329 D6): the box answered a DIFFERENT question. Measured
+    # 2026-08-10 on ssd — the admin route sends the action word positionally,
+    # a pre-D6 wrapper read only $SSH_ORIGINAL_COMMAND, and what came back was
+    # the transcript of a nightly RESET the monitoring probe had just asked for.
+    # "The wrapper format changed?" is far too mild a thing to say about that.
+    if [[ "$rc" -eq 4 ]]; then
+        print_status "FAIL" "CANNOT VERIFY — the box answered, but not a status block (no 'last reset:' line)"
+        echo "    It said:"
+        printf '%s\n' "$raw" | head -3 | sed 's/^/      /'
+        if printf '%s\n' "$raw" | grep -q 'action=nightly'; then
+            echo "    That is a RESET transcript. The deployed wrapper predates ops#329 D6:"
+            echo "    it reads its action word only from \$SSH_ORIGINAL_COMMAND, which sudo"
+            echo "    strips, so this read-only probe resolved to the nightly reset."
+        fi
+        print_hint "  redeploy the wrapper: bash servers/live/demo/install-box.sh $site --no-key"
+        return 0
+    fi
+
     if [[ "$rc" -ne 0 ]]; then
         print_status "WARN" "UNKNOWN — could not read the box (no ${site}_demo_reset key, ssh refused, or timed out)"
         echo "    This is NOT 'no resets'. The box may be resetting perfectly."
@@ -3550,7 +3568,17 @@ cmd_status_box() {
         printf '%s\n' "$tailed" | sed 's/^/      /'
     fi
 
-    demo_box_render_extras "$site" "$raw"
+    # The pair CONSUMER's wrapper reports neither the return leg nor the backup
+    # census, by design (ops#329 D4/D5 — see demo_box_extras_by_design_json).
+    # seal-status has always made that distinction; without the same branch here
+    # the text surface told the operator to redeploy for a block that half will
+    # never emit.
+    if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
+        NWP_DEMO_EXTRAS_PREBUILT="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER")" \
+            demo_box_render_extras "$site" "$raw"
+    else
+        demo_box_render_extras "$site" "$raw"
+    fi
 }
 
 # demo_box_render_extras <site> <raw-status-output> — the ops#329 D4/D5 blocks
@@ -3571,7 +3599,11 @@ demo_box_render_extras() {
     echo "  Return leg (hourly feedback-status, box's own log):"
     local fb_reported fb_result fb_ts fb_summary fb_age fb_stale
     fb_reported="$(jq -r '.feedback_status.reported' <<<"$extras")"
-    if [[ "$fb_reported" != "true" ]]; then
+    if [[ "$fb_reported" != "true" && "$(jq -r '.feedback_status.by_design // false' <<<"$extras")" == "true" ]]; then
+        # DECLARED-ABSENT, not unknown. There is nothing to fix and nothing to
+        # wait for, so this must not carry the redeploy hint.
+        print_status "INFO" "not applicable — $(jq -r '.feedback_status.reason' <<<"$extras")"
+    elif [[ "$fb_reported" != "true" ]]; then
         print_status "WARN" "NOT REPORTED — $(jq -r '.feedback_status.reason' <<<"$extras")"
     else
         fb_result="$(jq -r '.feedback_status.result' <<<"$extras")"
@@ -3597,6 +3629,10 @@ demo_box_render_extras() {
     echo "  Live-box nightly backups (newest per subdir):"
     local bk_reported bk_state bk_dir
     bk_reported="$(jq -r '.backups.reported' <<<"$extras")"
+    if [[ "$bk_reported" != "true" && "$(jq -r '.backups.by_design // false' <<<"$extras")" == "true" ]]; then
+        print_status "INFO" "not applicable — $(jq -r '.backups.reason' <<<"$extras")"
+        return 0
+    fi
     if [[ "$bk_reported" != "true" ]]; then
         print_status "WARN" "NOT REPORTED — $(jq -r '.backups.reason' <<<"$extras")"
         return 0
@@ -3691,7 +3727,7 @@ cmd_seal_status() {
         # box-level facts and the pair provider's wrapper is their one
         # reporter — a by_design absence must never render as an error.
         if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
-            extras='{"feedback_status":{"reported":false,"by_design":true,"reason":"reported by the pair provider'\''s wrapper"},"backups":{"reported":false,"by_design":true,"reason":"reported by the pair provider'\''s wrapper"}}'
+            extras="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER")"
         else
             local box_raw=""
             box_raw="$(demo_box_reset_status "$site" 2>/dev/null)" || box_raw=""

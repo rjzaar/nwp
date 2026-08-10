@@ -155,6 +155,42 @@ pull_live() {
         fail_loud "live-box pull from $LIVE_SRC failed — the live box nightly is NOT backed up off-box tonight"
     fi
     log "live: pulled from $LIVE_SRC"
+    grade_producer_verdict "$BASE/staging-live" live
+}
+
+# --- the PRODUCER's own verdict (nwp/ops#332) -------------------------------
+#
+# Size and age alone cannot see a HALF-DONE night. On 2026-08-04 the box
+# nightly's site-DB leg started failing; the script logged "done" and exited 0,
+# and the pull side would have snapshotted a tree that still contained fresh
+# gitlab/ and nginx/ files — plausible count, plausible bytes, no databases.
+# The producer now writes backup-verdict.json saying which legs actually ran, so
+# this side grades a stated verdict instead of re-deriving one from file counts.
+#
+# ABSENT IS NOT OK. A missing verdict means the box is running a producer older
+# than ops#332, i.e. one that cannot tell success from silence — exactly the
+# thing that must not pass quietly.
+grade_producer_verdict() { # <staging-dir> <label>
+    local dir="$1" label="$2" f="$1/backup-verdict.json" verdict finished age_s
+    if [[ ! -r "$f" ]]; then
+        fail_loud "${label}: no backup-verdict.json in tonight's pull — the box is running a pre-ops#332 producer that cannot report a failed leg. Fix with: pl host apply ${label} --kind=backup --execute"
+    fi
+    verdict="$(sed -n 's/.*"verdict"[[:space:]]*:[[:space:]]*"\([a-z-]*\)".*/\1/p' "$f" | head -1)"
+    finished="$(sed -n 's/.*"finished_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)"
+    case "$verdict" in
+        ok) : ;;
+        failed)
+            fail_loud "${label}: the box producer reported verdict=FAILED — $(tr -d '\n' < "$f" | sed 's/.*"errors"[[:space:]]*:[[:space:]]*\[//; s/\].*//' | cut -c1-400)" ;;
+        cannot-verify)
+            fail_loud "${label}: the box producer reported verdict=CANNOT-VERIFY (a leg is undeclared and unmeasurable) — $(tr -d '\n' < "$f" | sed 's/.*"errors"[[:space:]]*:[[:space:]]*\[//; s/\].*//' | cut -c1-400)" ;;
+        *)
+            fail_loud "${label}: backup-verdict.json carries no readable verdict ('${verdict:-empty}') — an unparseable verdict is not a pass" ;;
+    esac
+    age_s=$(( $(date +%s) - $(date -d "${finished:-1970-01-01}" +%s 2>/dev/null || echo 0) ))
+    if (( age_s > MAX_STAGING_AGE_HOURS * 3600 || age_s < 0 )); then
+        fail_loud "${label}: the box producer's verdict is ${finished:-unreadable} ($((age_s/3600))h old > ${MAX_STAGING_AGE_HOURS}h) — tonight's nightly did not run; yesterday's OK is not tonight's"
+    fi
+    log "${label}: producer verdict OK (finished ${finished}, $((age_s/60)) min ago)"
 }
 
 # --- snapshot + verify ------------------------------------------------------

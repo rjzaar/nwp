@@ -1,0 +1,4 @@
+# managed by `pl host apply <host> --kind=backup` — do not edit on the box
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 1 * * * root /usr/local/sbin/nwp-box-backup.sh

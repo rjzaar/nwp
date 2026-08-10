@@ -216,7 +216,37 @@ scrub() {
 # [G1] Action word: fixed literal allowlist, never executed as a command
 ################################################################################
 
+# The action word arrives by exactly TWO routes, and until ops#329 D6 this read
+# only the first:
+#
+#   1. the FORCED COMMAND route — the restricted key. sshd puts whatever the
+#      client asked for in $SSH_ORIGINAL_COMMAND and runs this script with no
+#      argv. This is how the nightly cron and `pl demo schedule --via-key` call.
+#   2. the SUDO route — `ssh box "sudo /usr/local/bin/nwd-demo-reset-restricted
+#      status"`, which is what `pl demo status --tier=live` and `pl demo harvest
+#      --pull` fall back to on a host that has no restricted key. sudo's
+#      env_reset strips $SSH_ORIGINAL_COMMAND (and $SSH_CLIENT), so here the
+#      word can ONLY arrive in argv.
+#
+# MEASURED 2026-08-10 on the ssd half (this file has the identical defect and
+# is fixed with it): reading route 1 alone meant a route-2 `status` resolved to
+# the EMPTY string, fell into the `""|nightly)` arm, and asked the box to WIPE
+# the site. The read-only monitoring probe was a destructive one. nwd escaped
+# only because the dev workstation happens to hold ~/.ssh/nwd_demo_reset and so
+# never took route 2 — an accident of which key is where, not a guarantee.
+#
+# argv is joined with "$*" on purpose: `status extra` must be ONE unrecognised
+# string that the allowlist REFUSES, not a `status` with something ignored.
 RAW_CMD="${SSH_ORIGINAL_COMMAND:-}"
+ARGV_CMD="$*"
+if [[ -z "$RAW_CMD" ]]; then
+    RAW_CMD="$ARGV_CMD"
+elif [[ -n "$ARGV_CMD" && "$ARGV_CMD" != "$RAW_CMD" ]]; then
+    # Two different words in one invocation. There is no honest way to choose,
+    # and the dangerous reading (fall back to nightly) is the one the old code
+    # would have taken — so this is built to land in the REFUSED arm below.
+    RAW_CMD="ambiguous: ssh='${RAW_CMD}' argv='${ARGV_CMD}'"
+fi
 CLIENT="${SSH_CLIENT:-local}"
 
 resolve_action() {

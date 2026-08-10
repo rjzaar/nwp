@@ -255,14 +255,64 @@ _known_sites() {
 # snapshot, every time. Per-feed override: FLEET_FEED_BUDGET_<name>.
 : "${FLEET_FEED_BUDGET:=90}"
 
+# ops#329 D7 — THE TODO FEED NEEDS ITS OWN, LONGER DEADLINE.
+#
+# `pl fleet publish` on 2026-08-10:
+#   feed todo : BLIND (90.0s, rc=124) — feed exceeded its 90s deadline
+# every run, so the console's todo panel was permanently unknown and the */30
+# cron spent 90s producing nothing.
+#
+# It was not slowness; it was arithmetic. `pl todo check` carries its OWN wall
+# clock (TODO_SWEEP_BUDGET, default 150s in lib/todo-checks.sh) and is built to
+# stop at it and file an explicit `UNK-budget-<check>` item for every check it
+# did not reach — a partial answer that names its own gaps, which is exactly
+# what a 30-minute snapshot wants. A 90s outer deadline over a 150s inner
+# budget means that machinery can never run: the kill always lands first and
+# discards everything gathered so far.
+#
+# Measured cost of the sweep on the publishing workstation, 2026-08-10:
+#   cold cache 98.4s   ·   warm cache 72.6s
+# so 90s was below the cold figure as well.
+#
+# 180s is the deadline; the sweep is told to stop at 160s (below). The usual
+# run therefore COMPLETES, and a pathological one self-truncates and publishes
+# what it has with the gaps named. rc=124 becomes the last resort it was always
+# meant to be instead of the normal path.
+: "${FLEET_FEED_BUDGET_TODO:=180}"
+
+# How much of the todo feed's deadline is reserved for everything that is not
+# the sweep itself: pl start-up, sourcing, and emitting the JSON after the
+# sweep has stopped.
+: "${FLEET_SWEEP_HEADROOM:=20}"
+
 # Budgets for the ship leg. The whole job must fit inside the */30 cron window
-# with room to spare: 3 feeds x 90s + 20 + 60 + 20 = 370s worst case.
+# with room to spare: 90 (rag) + 180 (todo) + 90 (security) + 90 (estate)
+# + 20 + 20 + 60 = 550s worst case, against a 1800s window.
 : "${SSH_STEP_BUDGET:=20}"   # $HOME resolution, size verification
 : "${SSH_SHIP_BUDGET:=60}"   # the snapshot transfer itself
 
 _feed_budget() { # $1 = feed name
     local var="FLEET_FEED_BUDGET_${1^^}"
     printf '%s' "${!var:-$FLEET_FEED_BUDGET}"
+}
+
+# _todo_sweep_budget → the wall clock handed to `pl todo check` as
+# TODO_SWEEP_BUDGET, DERIVED from the feed's deadline rather than written down
+# a second time. Two independent numbers are how the 90-vs-150 mismatch
+# happened in the first place; a derived one cannot drift, and moving the
+# deadline moves this with it.
+#
+# The invariant — inner < outer, always — is enforced here by construction, so
+# it holds for any operator override of FLEET_FEED_BUDGET_TODO, including
+# absurd ones.
+_todo_sweep_budget() {
+    local outer inner
+    outer=$(_feed_budget todo)
+    [[ "$outer" =~ ^[0-9]+$ ]] || outer=180
+    inner=$(( outer - FLEET_SWEEP_HEADROOM ))
+    (( inner < 1 )) && inner=1
+    (( inner >= outer )) && inner=1
+    printf '%s' "$inner"
 }
 
 _capture_feed() { # $1 outdir, $2 name, $3... argv
@@ -478,13 +528,29 @@ if isinstance(items, list):
         and ("backup" in f"{it.get('id','')} {it.get('title','')} {it.get('category','')}".lower()
              or "sweep" in f"{it.get('id','')} {it.get('title','')}".lower())
     )
+    # ops#329 D7. The sweep is now allowed to run out of ITS budget and report
+    # a partial answer (that is the point — see _todo_sweep_budget). A partial
+    # answer that reaches the envelope looking whole is the same defect the
+    # BLIND marker exists to prevent, one level in. `pl todo check` names every
+    # check it did not reach as an UNK-budget-*/UNK-timeout-* item, so count
+    # them here: a consumer reading only the summary can then tell a small
+    # number of findings from a small number of QUESTIONS ASKED.
+    summary["todo_unknown_checks"] = sum(
+        1 for it in items
+        if isinstance(it, dict) and str(it.get("id", "")).startswith("UNK-")
+    )
 
 # A consumer must be able to answer "can I trust this snapshot's zeros?" from
 # the envelope, without walking every feed. `population` is the total fleet the
 # snapshot actually saw; `degraded` says at least one feed is blind.
 pop_feeds = {n: f.get("population") for n, f in feeds.items() if "population" in f}
 summary["population"] = max([p for p in pop_feeds.values() if isinstance(p, int)] or [0])
-summary["degraded"] = any(f.get("blind") or not f.get("ok") for f in feeds.values())
+summary["degraded"] = (any(f.get("blind") or not f.get("ok") for f in feeds.values())
+                       # ops#329 D7: a sweep that answered only part of the
+                       # question degrades the snapshot too. It is not blind —
+                       # the feed carries real findings — but a consumer must
+                       # not read its zeros as clean.
+                       or bool(summary.get("todo_unknown_checks")))
 
 snapshot = {
     "schema": os.environ["NWP_SCHEMA"],
@@ -519,7 +585,12 @@ build_snapshot() { # $1 dest, $2 include_todo, $3 quiet, $4 include_security, $5
     _capture_feed "$tmpdir" rag rag --json --no-todo
     if [ "$include_todo" = true ]; then
         [ "$quiet" = true ] || print_info "Gathering todo + backup freshness (pl todo check --json)…"
-        _capture_feed "$tmpdir" todo todo check --json
+        # ops#329 D7: hand the sweep a budget strictly inside this feed's
+        # deadline, so it self-truncates and reports its gaps as UNK-budget-*
+        # items instead of being killed with everything it had gathered.
+        # Exported in a subshell so the value cannot leak into the other feeds.
+        ( export TODO_SWEEP_BUDGET; TODO_SWEEP_BUDGET="$(_todo_sweep_budget)"
+          _capture_feed "$tmpdir" todo todo check --json )
         feeds="rag todo"
     fi
     if [ "$include_security" = true ]; then
@@ -600,8 +671,12 @@ print(f"  generated_at : {d.get('generated_at','?')}  (by {gb.get('host','?')} a
 print(f"  schema       : {d.get('schema','?')} v{d.get('schema_version','?')}")
 print("  fleet        : {} sites — {} RED / {} AMBER / {} GREEN".format(
     s.get("sites", 0), s.get("RED", 0), s.get("AMBER", 0), s.get("GREEN", 0)))
-print("  todo         : {} items ({} backup-freshness)".format(
-    s.get("todo_items", "-"), s.get("backup_items", "-")))
+_unk = s.get("todo_unknown_checks", 0)
+print("  todo         : {} items ({} backup-freshness){}".format(
+    s.get("todo_items", "-"), s.get("backup_items", "-"),
+    # ops#329 D7 — never let a partial sweep's item count read as a full one.
+    "" if not _unk else
+    f"  [{_unk} check(s) did NOT run — their result is UNKNOWN, not clean]"))
 if "security_advisories" in s:
     print("  security     : {} advisories on {} site(s), worst={} ({} unknown)".format(
         s.get("security_advisories", 0), s.get("security_sites_affected", 0),
@@ -1156,4 +1231,9 @@ main() {
     esac
 }
 
-main "$@"
+# Sourced by tests (bats) to exercise the budget arithmetic without dispatching
+# — the same idiom demo.sh and ver-test.sh already use. `pl` reaches this file
+# through run_script, which EXECUTES it, so the guard never affects dispatch.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

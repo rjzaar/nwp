@@ -393,7 +393,23 @@ write_value_to_location(){ # $1=location; value in env NWP_NEWVAL
   fi
 
   f=$(loc_abspath "$path")
-  [ -f "$f" ] || { print_error "  MISSING  $loc  -> $f"; return 2; }
+  # An @file location IS the credential — the whole file is the value — so a
+  # missing one is something this writer can put right, and on FIRST ISSUE
+  # creating it is precisely the job. Refusing there was a chicken-and-egg the
+  # operator could not break through any verb (found 2026-08-10 minting the
+  # forge-admin token). It is still reported as CREATED, never silently, so a
+  # copy that vanished between rotations is visible rather than papered over.
+  # yaml/env kinds keep the hard failure: you cannot edit a key inside a file
+  # that does not exist, and inventing one would invent its other keys too.
+  if [ ! -f "$f" ]; then
+    if [ "$kind" = "file" ]; then
+      mkdir -p "$(dirname "$f")" 2>/dev/null || { print_error "  FAILED   $loc  (cannot create $(dirname "$f"))"; return 2; }
+      ( umask 077; : > "$f" ) 2>/dev/null || { print_error "  FAILED   $loc  (cannot create $f)"; return 2; }
+      print_info "  CREATED  $loc  -> $f (did not exist; first issue or a vanished copy)"
+    else
+      print_error "  MISSING  $loc  -> $f"; return 2
+    fi
+  fi
 
   case "$kind" in
     yaml)
@@ -3346,6 +3362,47 @@ cmd_steps(){
   [ -n "$scopes" ] && echo "  scopes   : $scopes"
   [ -n "$proj" ]   && echo "  scope to : $proj"
   echo
+  # FIRST ISSUE vs ROTATE are different jobs, and rendering the rotate story for
+  # a credential that has never existed wastes the operator's time concretely:
+  # the token page it links (…/admin/users/<bot>/impersonation_tokens) 404s
+  # until the bot user is created, and step 3 tells them to revoke a token that
+  # never existed. An entry may declare `provision_steps:` — the identity-
+  # creation recipe — and it is rendered here instead.
+  local st; st=$(field "$idx" status)
+  if [ "$st" = "not-provisioned" ]; then
+    print_warning "FIRST ISSUE — this credential does not exist yet."
+    echo "  Nothing to rotate and nothing to revoke: the identity itself has to be"
+    echo "  created first, or the token page below will not exist."
+    echo
+    local n; n=$("$YQ" e ".secrets[$idx].provision_steps // [] | length" "$REGISTRY" 2>/dev/null)
+    if [ "${n:-0}" -gt 0 ]; then
+      echo "  CREATE IT:"
+      local j=1 line
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        printf '    %d) %s\n' "$j" "$line"; j=$((j+1))
+      done < <("$YQ" e ".secrets[$idx].provision_steps[]" "$REGISTRY" 2>/dev/null)
+      # Deliberately NOT printing rotate_url here. For a not-provisioned entry
+      # it points at the credential's page on an identity that does not exist
+      # yet (…/admin/users/<bot>/impersonation_tokens), so it 404s — offering
+      # it as "the page" is the same time-waster this whole branch fixes, one
+      # line lower. The provision_steps carry their own, valid, URLs.
+    else
+      echo "  CREATE IT: no provision_steps recorded in the registry for this entry."
+      echo "       Add them (they are the operator-facing recipe), or work from:"
+      echo "       ${url:-<no rotate_url recorded either — this entry documents nothing>}"
+    fi
+    echo
+    echo "  THEN FEED IT IN — hidden entry, propagates to EVERY stored location,"
+    echo "  stamps expiry and logs the issuance:"
+    echo "       pl secrets rotate $((idx+1))"
+    echo "     …which writes it to:"
+    "$YQ" e ".secrets[$idx].stored_in[]" "$REGISTRY" 2>/dev/null | sed 's/^/         - /'
+    echo
+    echo "  THEN VERIFY:  pl secrets audit --locations   (the entry's probes run here —"
+    echo "                a scope claim nobody checks is folklore)"
+    return 0
+  fi
   echo "  1) Create the new token here (match name/role/scopes above):"
   echo "       ${url:-<no rotate_url recorded — add one to the registry entry>}"
   echo "  2) Feed it in — hidden entry, propagates to EVERY stored location, stamps expiry + logs:"

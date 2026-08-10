@@ -246,8 +246,13 @@ RAW
 }
 
 @test "ops#329 D5: extras JSON — backup entries carry subdir, newest, bytes, mtime and an age" {
-  mtime="$(date -u -d '10 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
-  raw="$(_raw_with_extras "2026-08-09T11:07:06Z" "$mtime")"
+  # Spelled in full rather than abbreviated: the two-letter form collides with
+  # a private site instance's name, which lint:site-names denies anywhere in
+  # the engine tree (ops#326). The old name was a false positive — a local
+  # shell variable, not a site reference — but it made the lint red on main,
+  # and a lint that is red on main is a lint nobody reads.
+  bk_mtime="$(date -u -d '10 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
+  raw="$(_raw_with_extras "2026-08-09T11:07:06Z" "$bk_mtime")"
   run _libarg "demo_box_extras_json \"\$1\"" "$raw"
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.backups.reported == true and .backups.state == "ok" and .backups.dir == "/var/backups/nwp-pull"'
@@ -305,5 +310,142 @@ backup: db|empty'
   # status verb uses — and merge them into the JSON document.
   code="$(awk '/^cmd_seal_status\(\)/,/^}/' "$DEMO_CMD")"
   [[ "$code" == *"demo_box_extras_json"* ]]
-  [[ "$code" == *"feedback_status"* ]]
+  # ops#329 D6: the consumer half's document used to be a hand-written JSON
+  # literal here, which is why this line used to read `*"feedback_status"*`.
+  # It now comes from the shared builder, so assert the BUILDER — a literal
+  # would go stale silently the next time the shape changes.
+  [[ "$code" == *"demo_box_extras_by_design_json"* ]]
+  # and the extras really are merged into the emitted document
+  [[ "$code" == *'--argjson extras "$extras"'* ]]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ops#329 D6 — `pl demo status ssd --tier=live` reported
+#   "[!] UNKNOWN — the box answered but named no 'last reset'"
+# and stopped there: no return-leg block, no backups block, exit 1.
+#
+# THREE separate defects hid behind that one vague line, all measured
+# 2026-08-10 against the real ssd box:
+#
+#   1. WRONG ANSWER. The admin fallback asks the box for `status` as a
+#      POSITIONAL argument (`sudo …-demo-reset-restricted status`), but the
+#      wrapper read its action word only from $SSH_ORIGINAL_COMMAND, which sudo
+#      strips. `status` resolved to "" → the `""|nightly)` arm → the box tried
+#      to WIPE ssd. What came back was a reset transcript:
+#        2026-08-10T12:31:02Z|invoked|action=nightly client=local original=
+#        2026-08-10T12:31:02Z|skip-locked|another ssd reset is already running
+#      rc was 0, so the probe reported "the box answered". It had answered a
+#      different question, destructively. That must be its own state, not
+#      UNKNOWN. (The wrapper half is pinned in test-{,ssd-}demo-reset-
+#      restricted.bats; this file pins that the READER refuses to accept it.)
+#
+#   2. SILENT TRUNCATION. demo_box_log_tail's grep finds nothing in such an
+#      answer and, under demo.sh's `set -euo pipefail`, its rc 1 killed the
+#      verb mid-render. An empty box log is a legitimate reading, not an error.
+#
+#   3. A FALSE INSTRUCTION. ssd is the pair CONSUMER: D4/D5 gave the return leg
+#      and the backup census to nwd's wrapper only, on purpose. Rendering that
+#      as "NOT REPORTED — redeploy the wrapper" tells the operator to fix
+#      something that is working as designed. seal-status already said
+#      by_design here; the text surface did not.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The exact bytes the real ssd box returned on 2026-08-10.
+_reset_transcript() {
+  printf '%s\n' \
+'2026-08-10T12:31:02Z|invoked|action=nightly client=local original=
+2026-08-10T12:31:02Z|skip-locked|another ssd reset is already running
+Another ssd demo reset is already running — nothing to do.'
+}
+
+@test "ops#329 D6: an answer that is NOT a status block is rc 4, never rc 0" {
+  local f="${TEST_TMP}/answer.txt"
+  _reset_transcript > "$f"
+  run _lib "NWP_DEMO_BOX_STATUS_FILE='$f' demo_box_reset_status ssd"
+  # rc 4 = "the box answered a different question". Distinct from rc 3 (could
+  # not look) and from rc 0 (a real reading), because the three lead to three
+  # different actions.
+  [ "$status" -eq 4 ]
+}
+
+@test "ops#329 D6: a REAL status block is still rc 0 (the check is not a blanket refusal)" {
+  local f="${TEST_TMP}/answer.txt"
+  printf '%s\n' "$RAW" > "$f"
+  run _lib "NWP_DEMO_BOX_STATUS_FILE='$f' demo_box_reset_status nwd"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"last reset:  2026-08-02 1785596453"* ]]
+}
+
+@test "ops#329 D6: an EMPTY box log tail is rc 0 with no output, not a failure" {
+  # UNDER PIPEFAIL, which is the only environment this matters in: demo.sh runs
+  # `set -euo pipefail`, so the helper's internal grep returning 1 for "nothing
+  # matched" becomes the helper's rc and terminates the verb mid-render.
+  # Without `set -o pipefail` here the case cannot fail and would be a check
+  # that has never been proven red.
+  run bash -c "set -o pipefail; source '$LIB'; demo_box_log_tail 'site: ssd
+last reset:  none
+--- last 15 log lines ---' 10"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "ops#329 D6: live status renders EVERY block even when the box log tail is empty" {
+  local f="${TEST_TMP}/answer.txt"
+  printf '%s\n' \
+'site:        demo1 (demo1.example)
+last reset:  2026-08-10 1786000000
+--- last 15 log lines ---' > "$f"
+  run env HOME="$TEST_TMP" NWP_DEMO_BOX_STATUS_FILE="$f" \
+      bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"last box reset: 2026-08-10 1786000000"* ]]
+  # The blocks that vanished. Truncation must not be able to look like absence.
+  [[ "$output" == *"Return leg"* ]]
+  [[ "$output" == *"Live-box nightly backups"* ]]
+}
+
+@test "ops#329 D6: a reset transcript is reported AS ONE — never as vague UNKNOWN" {
+  local f="${TEST_TMP}/answer.txt"
+  _reset_transcript > "$f"
+  run env HOME="$TEST_TMP" NWP_DEMO_BOX_STATUS_FILE="$f" \
+      bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  # It must name what actually happened and what to do about it.
+  [[ "$output" == *"not a status block"* ]]
+  [[ "$output" == *"install-box.sh"* ]]
+  # And it must NOT claim the box merely spoke a dialect we don't parse.
+  [[ "$output" != *"wrapper format changed?"* ]]
+}
+
+@test "ops#329 D6: the pair CONSUMER's missing return leg is by design, not a redeploy nag" {
+  # ssd has no feedback-status word at all (pinned negative in
+  # tests/unit/test-ssd-demo-reset-restricted.bats). Telling an operator to
+  # redeploy for it is an instruction that can never come true.
+  run _lib "demo_box_extras_by_design_json nwd"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.feedback_status.by_design' <<<"$output")" = "true" ]
+  [ "$(jq -r '.backups.by_design'         <<<"$output")" = "true" ]
+  [ "$(jq -r '.feedback_status.reported'  <<<"$output")" = "false" ]
+  [[ "$(jq -r '.feedback_status.reason'   <<<"$output")" == *"nwd"* ]]
+}
+
+@test "ops#329 D6: by_design renders as 'not applicable', and never as NOT REPORTED" {
+  local extras; extras="$(_lib "demo_box_extras_by_design_json nwd")"
+  run env HOME="$TEST_TMP" NWP_DEMO_EXTRAS_PREBUILT="$extras" \
+      bash -c "source '$DEMO_CMD'; demo_box_render_extras ssd ''"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not applicable"* ]]
+  [[ "$output" == *"nwd"* ]]
+  [[ "$output" != *"NOT REPORTED"* ]]
+  [[ "$output" != *"install-box.sh"* ]]
+}
+
+@test "ops#329 D6: seal-status and the text surface share ONE by_design builder" {
+  # Two hand-written copies of the same JSON literal is how the two surfaces
+  # drift apart. There must be one producer and both must call it.
+  local seal; seal="$(awk '/^cmd_seal_status\(\)/,/^}/' "$DEMO_CMD")"
+  [[ "$seal" == *"demo_box_extras_by_design_json"* ]]
+  local box; box="$(awk '/^cmd_status_box\(\)/,/^}/' "$DEMO_CMD")"
+  [[ "$box" == *"demo_box_extras_by_design_json"* ]]
 }

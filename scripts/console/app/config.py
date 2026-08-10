@@ -212,6 +212,20 @@ CONSOLE_REPO_PROJECT = _env("NWP_CONSOLE_REPO_PROJECT", "nwp/nwp")
 # skeleton's slots stay snappy.
 OVERVIEW_GITLAB_TTL = int(_env("NWP_CONSOLE_OVERVIEW_GITLAB_TTL", "300"))
 
+# -- ops#329 tranche 2: the nwd↔ssd interconnection slots -------------------
+# The demo pair's queue/guild/user readings come from read-only drush commands
+# in the nwc profile, reached over `pl drush <site> --tier=live` (ssh + remote
+# drush, MEASURED 5-7s per probe). That is snapshot-class latency: the probes
+# are TTL-cached well above the pane cache and only ever run inside the async
+# `pair` slot, so they can never sync-block a fast slot or a page load.
+OVERVIEW_DRUSH_TTL = int(_env("NWP_CONSOLE_OVERVIEW_DRUSH_TTL", "300"))
+# Per-probe subprocess budget. One ssh round trip in the good case; the verb
+# itself gives up long before the pane's 180s action budget would.
+OVERVIEW_DRUSH_TIMEOUT = int(_env("NWP_CONSOLE_OVERVIEW_DRUSH_TIMEOUT", "60"))
+# The site whose profile carries the nwc drush surface (the Drupal half of the
+# demo pair). Scope-checked against sc.demo_sites before any shell-out.
+NWC_DRUSH_SITE = _env("NWP_CONSOLE_NWC_DRUSH_SITE", "nwd")
+
 # The agent-loop webhook receiver on this host, probed for liveness with one
 # local HTTP request (any HTTP answer = the service is up; connection refused
 # = down; anything else = unknown). "" disables the probe (renders unknown).

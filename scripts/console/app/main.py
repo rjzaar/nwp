@@ -27,6 +27,7 @@ import asyncio
 import contextlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -645,6 +646,63 @@ def _gather_demo(sc: Scope, force: bool = False) -> list[dict]:
     return _gather_demo_raw(sorted(sc.demo_sites), force=force)
 
 
+# ops#329 tranche 2 — the nwd↔ssd interconnection readings, from the nwc
+# profile's read-only drush surface over `pl drush <site> --tier=live`.
+# Fixed argv literals, same doctrine as actions.py: nothing here is built
+# from user input, and every command on this list is read-only by contract
+# (each fails closed with exit 2 on the profile side).
+NWC_DRUSH_CMDS = {
+    "signals": ["nwc:signal-counts", "--format=json"],
+    "gaps": ["nwc:editorial:gap-status", "--format=json"],
+    "completion": ["nwc-moodle:completion-status", "--format=json"],
+    "moodle": ["nwc-moodle:status", "--format=json"],
+    "testers": ["nwc:tester-list", "--format=json"],
+}
+
+
+def _nwc_drush_probe(name: str, force: bool = False) -> dict:
+    """One drush-over-ssh probe, through the cached collector. MEASURED 5-7s
+    per probe, so the TTL is snapshot-class (OVERVIEW_DRUSH_TTL) — a second
+    caller inside the window pays nothing, and run_pl_cached's in-flight lock
+    means at most one ssh per command at a time. stderr is included in the
+    parse because drush's `Command "…" is not defined` arrives there."""
+    cmd = NWC_DRUSH_CMDS[name]
+    res = run_pl_cached(
+        config.NWP_ROOT,
+        ["drush", config.NWC_DRUSH_SITE, "--tier=live", "--execute", "--", *cmd],
+        ttl=config.OVERVIEW_DRUSH_TTL, timeout=config.OVERVIEW_DRUSH_TIMEOUT,
+        force=force)
+    parsed = parsers.parse_nwc_drush(res["out"] + "\n" + res["err"], cmd[0])
+    # Per-value age stamp: thread the collector's own bookkeeping into the
+    # view, so a 5-minute-old queue depth never reads like a live one.
+    parsed["cached"] = bool(res.get("cached"))
+    parsed["age"] = res.get("age", 0) if res.get("cached") else 0
+    return parsed
+
+
+def _gather_nwc(sc: Scope, force: bool = False) -> dict | None:
+    """The interconnection block for the pair slot, or None when the nwc site
+    is outside this scope — checked against sc.demo_sites BEFORE any
+    shell-out, like every scoped gatherer. The five probes run concurrently
+    (they are independent ssh round trips; serial would be ~30s cold, parallel
+    is one probe's latency) and each fails closed independently."""
+    if config.NWC_DRUSH_SITE not in sc.demo_sites:
+        return None
+    with ThreadPoolExecutor(max_workers=len(NWC_DRUSH_CMDS)) as ex:
+        futs = {name: ex.submit(_nwc_drush_probe, name, force)
+                for name in NWC_DRUSH_CMDS}
+        got = {name: f.result() for name, f in futs.items()}
+    return {
+        # The `site` key is deliberate: _pane()'s scrub drops this whole block
+        # for a reader scoped away from the nwc site (belt to the check above).
+        "site": config.NWC_DRUSH_SITE,
+        "signals": overview.signals_view(got["signals"]),
+        "gaps": overview.gap_status_view(got["gaps"]),
+        "completion": overview.completion_view(got["completion"], got["moodle"]),
+        "users": overview.users_view(got["testers"]),
+    }
+
+
 ISSUE_STATES = ("opened", "closed", "all")
 
 
@@ -1153,6 +1211,7 @@ def pane_visuals_slot(request: Request, slot: str, force: int = 0,
         return _pane(request, "_ov_slot_pair.html",
                      {"pair_sites": sites, "pending": overview.pair_pending_slots(),
                       "guild_edges": overview.skeleton_context()["guild_edges"],
+                      "nwc": _gather_nwc(sc, force=force_b),
                       "slot": slot}, sc)
     # slot == "ops"
     q = _gather_review(sc, force=force_b)

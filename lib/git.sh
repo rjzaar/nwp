@@ -563,36 +563,197 @@ gitlab_api_delete_project() {
     fi
 }
 
-# List GitLab projects in a group
-# Usage: gitlab_api_list_projects "group"
+# ─────────────────────────────────────────────────────────────────────────────
+# _gitlab_api_get <api-url> <path-with-query>
+#
+# One authenticated GET. The body goes to stdout; the HTTP status is left in
+# GITLAB_API_STATUS. The credential travels ONLY inside a 0600 curl config —
+# never in argv, where `ps -ef` shows it to every account on the box. This is
+# the same pattern lib/gitlab-mr.sh (_mr_api) and lib/gitlab-issues.sh already
+# use; this file was the odd one out.
+#
+# Returns 0 on a 2xx, 1 otherwise (including a dead transport, which sets
+# GITLAB_API_STATUS=000 — deliberately NOT an empty 200).
+# ─────────────────────────────────────────────────────────────────────────────
+GITLAB_API_STATUS=""
+_gitlab_api_get() {
+    local api_url="$1" path="$2"
+    local token cfg raw rc
+    token="$(get_gitlab_token)" || token=""
+    if [ -z "$token" ]; then
+        GITLAB_API_STATUS="000"
+        return 1
+    fi
+
+    cfg="$(mktemp)" || { GITLAB_API_STATUS="000"; return 1; }
+    chmod 600 "$cfg"
+    {
+        printf 'silent\n'
+        printf 'connect-timeout = 8\n'
+        printf 'max-time = 20\n'
+        printf 'header = "PRIVATE-TOKEN: %s"\n' "$token"
+        printf 'write-out = "\\n%%{http_code}"\n'
+        printf 'url = "%s%s"\n' "$api_url" "$path"
+    } > "$cfg"
+    token=""
+
+    raw="$(curl -K "$cfg" 2>/dev/null)"; rc=$?
+    rm -f "$cfg"
+
+    if [ "$rc" -ne 0 ]; then
+        GITLAB_API_STATUS="000"
+        return 1
+    fi
+    GITLAB_API_STATUS="${raw##*$'\n'}"
+    printf '%s' "${raw%$'\n'*}"
+    case "$GITLAB_API_STATUS" in 2*) return 0 ;; *) return 1 ;; esac
+}
+
+# List GitLab projects in a group.
+#
+# Usage: gitlab_api_list_projects [group]
+#
+# Prints one row per project:  <path_with_namespace> <visibility> <default_branch>
+#
+# Exit codes:
+#   0  listed — and a group with no projects SAYS "0 projects", out loud
+#   1  usage: no token configured
+#   2  CANNOT VERIFY — the API could not be read (403, 5xx, dead transport,
+#      unparseable body). NEVER conflated with "the group is empty".
+#
+# WHY THE EXIT CODES MATTER. The previous implementation was
+#   curl … | grep -o '"path":"[^"]*"' | sed … | sort
+# so a 403, a 500, an expired token and an unplugged network all produced a
+# body with no match, an empty stdout and exit 0 — i.e. "that project does not
+# exist" was byte-identical to "I was not allowed to look". This verb is how
+# the estate answers "does this code have a forge home, and is that home
+# public?"; answering it blind is worse than not answering it.
+#
+# It also read EVERY `path` key in the payload, so `namespace.path` and
+# `forked_from_project.path` were reported as projects, and it fetched exactly
+# one page of 100 with no pagination.
 gitlab_api_list_projects() {
     local group="${1:-$(get_gitlab_default_group)}"
 
-    local gitlab_url=$(get_gitlab_url)
-    local token=$(get_gitlab_token)
-
+    local gitlab_url token
+    gitlab_url="$(get_gitlab_url)"
+    if [ -z "$gitlab_url" ]; then
+        print_error "CANNOT VERIFY: no GitLab URL configured (nwp.yml settings.url)"
+        return 2
+    fi
+    token="$(get_gitlab_token)" || token=""
     if [ -z "$token" ]; then
         print_error "API token required"
         return 1
     fi
+    token=""
 
     local api_url="https://${gitlab_url}/api/v4"
 
-    # Get group ID
-    local group_id
-    group_id=$(curl -s --header "PRIVATE-TOKEN: $token" \
-        "${api_url}/groups?search=${group}" | \
-        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
-
+    # ── Resolve the group. A search that cannot be READ is not a search that
+    #    found nothing.
+    local body group_id gid_rc
+    if ! body="$(_gitlab_api_get "$api_url" "/groups?search=${group}&per_page=100")"; then
+        print_error "CANNOT VERIFY: group lookup for '${group}' returned HTTP ${GITLAB_API_STATUS:-000}"
+        return 2
+    fi
+    group_id="$(_gitlab_json_group_id "$group" <<< "$body")"; gid_rc=$?
+    if [ "$gid_rc" -ne 0 ]; then
+        print_error "CANNOT VERIFY: the group lookup body was not the JSON array the API promises"
+        return 2
+    fi
     if [ -z "$group_id" ]; then
+        # A readable 200 that contains no such group is an honest answer.
         print_error "Group not found: $group"
         return 1
     fi
 
-    # List projects
-    curl -s --header "PRIVATE-TOKEN: $token" \
-        "${api_url}/groups/${group_id}/projects?per_page=100" | \
-        grep -o '"path":"[^"]*"' | sed 's/"path":"//g; s/"//g' | sort
+    # ── Page through the projects. include_subgroups so a project parked in a
+    #    subgroup still counts as a home; archived ones count too — an archived
+    #    repo is still a place the code lives.
+    local page=1 rows="" page_rows n total=0
+    while [ "$page" -le 50 ]; do
+        if ! body="$(_gitlab_api_get "$api_url" \
+                "/groups/${group_id}/projects?per_page=100&page=${page}&include_subgroups=true&order_by=path&sort=asc")"; then
+            print_error "CANNOT VERIFY: project listing page ${page} returned HTTP ${GITLAB_API_STATUS:-000}"
+            return 2
+        fi
+        if ! page_rows="$(_gitlab_json_project_rows <<< "$body")"; then
+            print_error "CANNOT VERIFY: project listing page ${page} was not parseable JSON"
+            return 2
+        fi
+        n=$(printf '%s' "$page_rows" | grep -c . || true)
+        [ "$n" -eq 0 ] && break
+        rows="${rows}${page_rows}"$'\n'
+        total=$((total + n))
+        [ "$n" -lt 100 ] && break
+        page=$((page + 1))
+    done
+
+    if [ "$total" -eq 0 ]; then
+        echo "0 projects in group '${group}' (read OK — this is a measurement, not a blind spot)"
+        return 0
+    fi
+
+    printf '%s' "$rows" | grep . | sort
+    echo "${total} project(s) in group '${group}'"
+    return 0
+}
+
+# Parse helpers. jq when present, python3 otherwise; both fail non-zero on a
+# body that is not JSON, so an error page can never be mistaken for an empty
+# array. (grep over JSON is what produced the phantom `namespace.path` rows.)
+#
+# Both return non-zero on a body that is not the JSON ARRAY the API promises,
+# so an error page can never be mistaken for an empty result. An empty array is
+# rc=0 with no output — a real measurement of zero.
+_gitlab_json_group_id() {
+    local want="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -r --arg w "$want" '
+            if type == "array"
+            then ([ .[] | select((.full_path == $w) or (.path == $w)) ] | .[0].id // empty)
+            else error("not an array") end
+        ' 2>/dev/null
+    else
+        python3 -c '
+import json,sys
+want=sys.argv[1]
+d=json.load(sys.stdin)
+if not isinstance(d,list): sys.exit(1)
+for g in d:
+    if g.get("full_path")==want or g.get("path")==want:
+        print(g["id"]); break
+' "$want" 2>/dev/null
+    fi
+}
+
+_gitlab_json_project_rows() {
+    # The parser's exit status is captured BEFORE any pipe: `jq … | awk` would
+    # report awk's success and hide jq's parse failure — the same swallowed
+    # verdict this whole function exists to remove.
+    local tsv rc
+    if command -v jq >/dev/null 2>&1; then
+        tsv="$(jq -r '
+            if type == "array"
+            then (.[] | [ (.path_with_namespace // .path), (.visibility // "?"),
+                          (.default_branch // "-") ] | @tsv)
+            else error("not an array") end
+        ' 2>/dev/null)"; rc=$?
+        [ "$rc" -eq 0 ] || return 1
+        printf '%s' "$tsv" | awk -F'\t' 'NF{printf "  %-34s %-10s %s\n", $1, $2, $3}'
+        return 0
+    else
+        python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+if not isinstance(d,list): sys.exit(1)
+for p in d:
+    print("  %-34s %-10s %s" % (p.get("path_with_namespace") or p.get("path"),
+                                p.get("visibility") or "?",
+                                p.get("default_branch") or "-"))
+' 2>/dev/null
+    fi
 }
 
 # Configure GitLab project settings

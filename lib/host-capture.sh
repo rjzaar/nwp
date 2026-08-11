@@ -804,6 +804,71 @@ HOST_LOG_SOURCES=(nginx php-fpm auth systemd watchdog mail)
 # SECTION 8 — repo-hygiene checks (wired into `pl doctor` and `pl verify`).
 ################################################################################
 
+# _host_holds_private_state <root> <name>
+# True when servers/<name>/ holds ENGINE-IGNORED per-host state — i.e. real
+# captured host configuration, as opposed to a directory of generic mechanism
+# the engine ships to every host. Factored out of host_check_server_repos so
+# that check and host_check_servers_registered ask the SAME question; two
+# functions with two hand-copied predicates is how the two answers drift.
+_host_holds_private_state() {
+    local root="$1" name="$2" f
+    git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        case "$f" in
+            */.nwp-server.*) continue ;;   # identity + its local/backup variants
+            */__pycache__/*|*.pyc|*/backups/*) continue ;;
+            */.secrets*|*.key|*.pem|*.env) continue ;;
+            */.gitignore) continue ;;      # the overlay's own ignore policy
+            */README.md) continue ;;       # prose is not host state
+        esac
+        return 0
+    done < <(cd "$root" && git check-ignore $(find "servers/${name}" -type f -not -path '*/.git/*' 2>/dev/null) 2>/dev/null)
+    return 1
+}
+
+# host_check_servers_registered <root>
+#
+# THE FLEET-CORPUS GUARD. Every fleet verb — `pl server list`, `pl server status
+# --all`, `pl server health --all` — enumerates through discover_servers(),
+# which lists ONLY directories containing a `.nwp-server.yml`. A host with real
+# captured state and no identity file is therefore invisible to all of them, and
+# the fleet preflight reports a clean fleet having never looked at it.
+#
+# Measured 2026-08-11: `servers/met/` held the DR crons, the stick-backup cron,
+# the nightly audit, the cpu-freq unit and the host inventory, and had no
+# `.nwp-server.yml`. `pl server health --all` returned 0 over TWO hosts while
+# met — the CI runner, the backup routes, the demo-nightly cron and the toolkit
+# — went unmeasured and unmentioned. CLAUDE.md makes that health call a REQUIRED
+# PREFLIGHT before anything heavy on a shared box; a preflight whose corpus is
+# silently short is the ops#214 class with the corpus itself as the blind spot.
+#
+# The predicate is deliberately the same one host_check_server_repos uses, so
+# this never fires on a fresh clone (which has generic mechanism and no captured
+# state) and never fires on a host that is merely absent.
+#
+# 0 = every stateful host is registered · 1 = at least one is not.
+host_check_servers_registered() {
+    local root="${1:-$HOST_PROJECT_ROOT}"
+    local bad=0 d name
+    [ -d "$root/servers" ] || return 0
+    for d in "$root"/servers/*/; do
+        [ -d "$d" ] || continue
+        name="$(basename "$d")"
+        [ -f "$d/.nwp-server.yml" ] && continue
+        _host_holds_private_state "$root" "$name" || continue
+        _host_say "servers/${name}: holds captured host state but has NO .nwp-server.yml — it is"
+        _host_say "    NOT in the server registry, so discover_servers() skips it and every fleet"
+        _host_say "    verb (pl server list, pl server status --all, pl server health --all) reports"
+        _host_say "    a fleet that does not include it. The required preflight cannot measure a"
+        _host_say "    host it does not know exists."
+        _host_say "    settle it:  write ${root}/servers/${name}/.nwp-server.yml (schema_version + server.{name,ip,ssh_user,ssh_key})"
+        _host_say "                then:  pl server health ${name}"
+        bad=1
+    done
+    return $bad
+}
+
 # host_check_server_repos <root>
 # THE per-host state guard since ops#326 Phase 1 tranche 3.
 #

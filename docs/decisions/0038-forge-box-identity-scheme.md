@@ -1,6 +1,8 @@
 # ADR-0038: Forge-box identity scheme — named scoped keys, and a bounded forge-admin credential tier
 
-**Status:** Proposed (Linux plane IMPLEMENTED and installed; application plane SPECIFIED, awaiting the operator's mint)
+**Status:** Proposed (Linux plane IMPLEMENTED and installed; application plane MINTED by the operator
+2026-08-10 and its write half — `pl forge keys backup|rehome|restore|verify`, `pl forge user create`,
+`pl forge members add` — IMPLEMENTED 2026-08-11, ops#331. The migration itself is not yet run.)
 **Date:** 2026-08-10
 **Decision Makers:** Robert Karsten Zaar (operator ruling, 2026-08-10), with AI implementation
 **Related Issues:** nwp/ops#331 (AI hosts hold root SSH keys on the forge), ops#330, ops#214
@@ -242,7 +244,12 @@ pl forge logs --source=nginx|gitlab|auth    read-only, clamped, fixed source set
 pl forge version                            gitlab-ce version, apt hold, signing-key expiry
 pl forge whoami                             which credential is in play; IS IT ADMIN (discriminating probe)
 pl forge users list|show <u>                admin API, read
-pl forge keys list [<user>] | add | delete  SSH-key management — the ops#331 remediation itself
+pl forge keys list|backup|verify|rehome|restore|add|delete
+                                            SSH-key management — the ops#331 remediation itself.
+                                            `rehome` is the whole move as ONE verb: backup →
+                                            DELETE from source → ADD to target → VERIFY by
+                                            re-reading → roll back on any failure.
+pl forge user create <u> --name= --email=   the `met` service account ops#331 step 2 needs
 pl forge members list|add <project> <user>  project/group membership
 pl forge ci-var list|set <project>          CI/CD variables
 pl forge deploy-key list|add <project>      deploy keys
@@ -375,9 +382,29 @@ never checked is not a limit.
 2. **Operator:** mint `nwp-forge-admin` + PAT per Plane 2 and drop the value into
    `~/.config/nwp/forge-admin.token` (0600). Nothing else. This retires the pending clicks listed
    in the MR description.
-3. **Then (AI, via `pl forge keys`):** execute ops#331's rehoming — workstation key → `rjzaar`,
-   met → a dedicated `met` service user, the `ai-host` → its own user — and delete them from `root` only after each new home
-   is confirmed.
+3. **Then (AI, via `pl forge keys rehome`):** execute ops#331's rehoming — workstation key →
+   `rjzaar`, met → a dedicated `met` service user (created with `pl forge user create`), the
+   `ai-host` → its own user.
+
+   > ⚠️ **CORRECTION, measured 2026-08-11.** This step used to read *"delete them from `root`
+   > only after each new home is confirmed"*. **That order is not available on this API.** GitLab
+   > enforces SSH-key uniqueness **instance-wide**: POSTing a blob that is still on `root` to any
+   > other user answers `{"message":{"fingerprint_sha256":["has already been taken"]}}`. A rehome
+   > is therefore necessarily **DELETE-then-ADD**, and between the two calls the key authenticates
+   > to no account at all.
+   >
+   > `pl forge keys rehome` is the response: it owns that window rather than leaving it in a
+   > session's shell. It resolves both users, reads both key lists, writes a restorable JSON
+   > snapshot and takes the typed confirm **before** the DELETE; the window is then two adjacent
+   > HTTP calls; and any failure — including an ADD that reports 201 while the key is not actually
+   > on the target — rolls the key back onto the source and re-reads the list to prove it. A
+   > rollback that itself fails prints the snapshot path and the exact
+   > `pl forge keys restore … --execute` command, because that is the one state in which an
+   > operator has no other way back.
+   >
+   > What is **not** at risk during the window, and the verb says so on every run: shell access to
+   > the box. `~/.ssh/gitlab_linode` authenticates to `gitlab@<forge>` through that box's own
+   > `~gitlab/.ssh/authorized_keys` — a different plane, untouched by any GitLab-user key change.
 4. **Then:** `pl forge retire-legacy-key` — swap `pl`'s server config from `~/.ssh/gitlab_linode`
    to `~/.ssh/nwp-forge-ops`, verify, and only then remove the legacy line. **Typed confirm; it is
    the one step that can lock the estate out of the box, so it verifies the replacement works

@@ -115,7 +115,7 @@ statement about *evidence*, and only sorted *within* the band by anything contin
 | Band | Definition (all measurable today) | n | Why it is where it is |
 |---|---|---|---|
 | **0 · DEFAULTED** | window is exactly `0:00–8:00` | **64** | Evidence of *non-selection*, not of low quality. Needs no rubric argument. |
-| **1 · BROKEN** | shorter than the 90 s minimum run (24), or composite < 0 (3), or unresolvable (1) | **26** (overlaps B0) | Structurally unusable whatever the topic. Defects, not preferences. |
+| **1 · BROKEN** | shorter than the 90 s minimum run (24), or composite < 0 (3, disjoint), or unresolvable (1) | **28** distinct, of which 3 also sit in B0 | Structurally unusable whatever the topic. Defects, not preferences. |
 | **2 · CONTESTED** | not in B0; gap to top ≥ 6 or composite < 2 | **34** | Rubric and human disagree loudly. This is where rubric-blindness actually lives (§5). |
 | **3 · CONFIRMABLE** | not in B0; already rank ≤ 8 in its own list | **18** | Seconds each. 3 are already #1; 6 have gap < 1. |
 | **4 · MID** | the remainder | **59** | Lowest value per hour. Defer. |

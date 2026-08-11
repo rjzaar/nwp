@@ -1,0 +1,476 @@
+# =============================================================================
+# scripts/demo/walkthrough-targets.yml — the demo pair's WALKTHROUGH catalogue
+# =============================================================================
+# ops#328 tranche 5. Read by `pl demo walkthrough <site>` (lib/demo-walkthrough.sh)
+# and rendered by the console's Visuals ▸ walkthrough subtab.
+#
+# WHAT THIS FILE IS
+# -----------------
+# One row per place an operator may want to jump straight into, on either half
+# of the demo pair. Each provider row names the Drupal ROUTE it stands for; each
+# consumer row names a Moodle entry-point FILE. Nothing here is a guess: every
+# route name below was read out of the LIVE nwd router on 2026-08-11
+# (`drush route --format=json`, 1194 routes) and every consumer path was
+# measured with an anonymous GET against the live ssd host the same day.
+#
+# WHY THE ROUTE NAME AND NOT ONLY THE PATH
+# ----------------------------------------
+# Because absence is not measurable over HTTP on either stack, and a link that
+# looks live and lands on nothing is worse than no link:
+#
+#   * nwd answers an unknown path with a 55 KB THEMED 404 (measured:
+#     /zzz-nonexistent-path). A 404 there tells you nothing about existence.
+#   * ssd answers /auth/oauth2/login.php — a file that DOES exist, and that the
+#     login page's own SSO button points at — with a Moodle-rendered 404,
+#     because the probe carried no `id` and no `sesskey`. pairs/ssd.pair-
+#     contract.yml records that path as one that "has never existed"; that
+#     conclusion was drawn from exactly this 404 and it is wrong.
+#
+# So the provider half is verified through the ROUTER, which can say "no such
+# route" and mean it, and can also say "that route MOVED" (state `drifted`).
+# The consumer half is verified over HTTP with the only honest discriminator
+# available: a 404 carrying an application-rendered body is `ambiguous`, never
+# `missing`.
+#
+# RULES FOR EDITING
+# -----------------
+#   * NO HOSTNAMES, ever. Paths are site-relative and begin with "/"; the base
+#     URL is resolved at run time from the site's own config (P61 leakage rule,
+#     pinned by tests/unit/test-demo-walkthrough.bats).
+#   * Every provider target carries `route:` OR `kind: alias`. An alias is not
+#     a route (Drupal path aliases live in the alias table), so it is verified
+#     over HTTP and can only ever reach `verified` or `ambiguous` — never a
+#     confident `missing`. Say so rather than pretending.
+#   * `{gid}` is substituted with a REAL group id read from the site; `{uid}`
+#     with the walkthrough account's own uid. A target carrying an
+#     unsubstituted placeholder is dropped and counted, never rendered.
+#   * `admin_only: true` is a HONESTY marker for the pane, not a gate: it means
+#     "a plain member does not see this", so the operator knows which part of
+#     the walkthrough only the all-permissions account can reach.
+# =============================================================================
+version: 1
+
+provider:
+  sections:
+    - key: entry
+      label: Entry points
+      targets:
+        - key: stream
+          label: Stream (front page)
+          path: /stream
+          route: social_core.homepage
+        - key: explore
+          label: Explore stream
+          path: /explore
+          route: view.activity_stream.page_explore
+        - key: about
+          label: About
+          path: /about
+          kind: alias
+          note: a Book-page path alias, not a route — verified over HTTP only
+        - key: join
+          label: Demo join (what a tester lands on)
+          path: /demo/join
+          route: nwc_demo_access.join
+        - key: trial
+          label: Try a course
+          path: /trial
+          route: nwc_privacy.trial
+
+    - key: groups
+      label: Guilds & interest groups
+      targets:
+        - key: all_groups
+          label: All groups
+          path: /all-groups
+          route: view.newest_groups.page_all_groups
+        - key: my_groups
+          label: My groups
+          path: /my-groups
+          route: social_group.my_groups
+        - key: guild_resources
+          label: Guild resources
+          path: /guild-resources
+          route: nwc_guild.resources
+        - key: group_overview
+          label: Group overview (admin)
+          path: /admin/group/overview
+          route: view.groups_overview.all_groups
+          admin_only: true
+        - key: guild_settings
+          label: Guild settings
+          path: /admin/config/nwc/guild
+          route: nwc_guild.settings
+          admin_only: true
+
+    - key: tools
+      label: Guild tools
+      targets:
+        - key: clip_queue
+          label: Clip review queue (Media Guild)
+          path: /admin/review/clips
+          route: nwc_clip_review.queue
+          admin_only: true
+        - key: clip_dashboard
+          label: Clip review dashboard
+          path: /admin/review/clips/dashboard
+          route: nwc_clip_review.dashboard
+          admin_only: true
+        - key: videos
+          label: Video assets (Media Guild)
+          path: /admin/nwc/videos
+          route: nwc_video.overview
+          admin_only: true
+        - key: annotations
+          label: Annotations (Media / Theology)
+          path: /admin/nwc/annotations
+          route: nwc_annotation.admin
+          admin_only: true
+        - key: visual_dam
+          label: Visual DAM (Media Guild)
+          path: /admin/nwc/visual-dam
+          route: nwc_visual_dam.dashboard
+          admin_only: true
+        - key: pedagogy_thresholds
+          label: Pedagogy learning variables
+          path: /admin/nwc/pedagogy/thresholds
+          route: nwc_pedagogy.threshold_editor
+          admin_only: true
+        - key: pedagogy_checkpoints
+          label: Pedagogy checkpoints
+          path: /admin/nwc/pedagogy/checkpoints
+          route: nwc_pedagogy.checkpoint_editor
+          admin_only: true
+        - key: theology_tiles
+          label: Saint-School intent tiles (Theology Guild)
+          path: /admin/nwc/theology/intent-tiles
+          route: nwc_theology.intent_tiles
+          admin_only: true
+        - key: theology_skeleton
+          label: Course / LP skeleton approval (Theology Guild)
+          path: /admin/nwc/theology/skeleton
+          route: nwc_theology.skeleton
+          admin_only: true
+        - key: translations
+          label: Translation projects (Translators IG)
+          path: /admin/nwc/translations
+          route: nwc_translation.overview
+          admin_only: true
+        - key: copyright
+          label: Copyright — canonical legal text
+          path: /admin/nwc/copyright
+          route: nwc_copyright.admin_overview
+          admin_only: true
+        - key: legal_authoring
+          label: Legal documents — authoring (Copyright Guild)
+          path: /admin/nwc/legal
+          route: nwc_copyright.legal_admin
+          admin_only: true
+        - key: trials
+          label: Trials (Tester's Guild)
+          path: /admin/nwc/trials
+          route: nwc_trial.overview
+          admin_only: true
+        - key: governance
+          label: Governance dashboard (Shepherds Guild)
+          path: /admin/nwc/governance
+          route: nwc_governance.dashboard
+          admin_only: true
+        - key: decisions
+          label: Decision log
+          path: /admin/nwc/governance/decisions
+          route: nwc_governance.decisions
+          admin_only: true
+        - key: policies
+          label: Policy browser
+          path: /admin/nwc/governance/policies
+          route: nwc_governance.policy_browser
+          admin_only: true
+        - key: code_sync
+          label: Code sync (Coders Guild)
+          path: /admin/nwc/code-sync
+          route: nwc_code_sync.dashboard
+          admin_only: true
+        - key: scripture
+          label: Scripture
+          path: /admin/nwc/scripture
+          route: nwc_scripture.admin
+          admin_only: true
+
+    - key: queues
+      label: Feedback & triage queues
+      targets:
+        - key: feedback_triage
+          label: Feedback triage
+          path: /admin/nwc/feedback
+          route: nwc_feedback.overview
+          admin_only: true
+        - key: feedback_analytics
+          label: Feedback analytics
+          path: /admin/nwc/feedback/analytics
+          route: nwc_feedback.analytics
+          admin_only: true
+        - key: suggestion_board
+          label: Suggestion board (member-facing)
+          path: /community/suggestions
+          route: nwc_feedback.board
+        - key: my_feedback
+          label: My feedback
+          path: /my/feedback
+          route: nwc_feedback.my
+        - key: feedback_submit
+          label: Submit feedback (the form testers use)
+          path: /feedback/submit
+          route: nwc_feedback.submit
+        - key: report_error
+          label: Report an error
+          path: /report-error
+          route: nwc_error_report.form
+        - key: gap_backlog
+          label: Editorial gap backlog
+          path: /nwc/editorial/gap-backlog
+          route: view.nwc_gap_backlog.guild_backlog
+        - key: gap_available
+          label: Gaps available to claim
+          path: /nwc/editorial/gap-backlog/available
+          route: view.nwc_gap_backlog.available_to_claim
+        - key: editorial_my_work
+          label: My editorial work
+          path: /nwc/editorial/my-work
+          route: nwc_editorial.my_work
+        - key: pipeline_audit
+          label: Pipeline audit queue
+          path: /admin/nwc/editorial/pipeline-audit
+          route: nwc_editorial.pipeline_audit
+          admin_only: true
+        - key: application_review
+          label: Application review
+          path: /admin/nwc/registration/review
+          route: nwc_registration.review
+          admin_only: true
+        - key: notification_queue
+          label: Notification queue
+          path: /admin/config/nwc/notifications/queue
+          route: nwc_notification.queue
+          admin_only: true
+        - key: my_work
+          label: My work
+          path: /my-work
+          route: nwc_work_management.my_work
+        - key: workflow_tasks
+          label: Workflow tasks
+          path: /admin/structure/workflow-task
+          route: entity.workflow_task.collection
+          admin_only: true
+        - key: assets
+          label: Asset management
+          path: /admin/content/assets
+          route: nwc_asset.admin
+          admin_only: true
+        - key: help_topics
+          label: Help topics
+          path: /admin/nwc/help
+          route: nwc_help.admin
+          admin_only: true
+
+    - key: site
+      label: Site administration
+      targets:
+        - key: hub
+          label: NWC site master hub
+          path: /admin/nwc
+          route: nwc_growth.hub
+          admin_only: true
+        - key: health
+          label: Community health
+          path: /admin/nwc/health
+          route: nwc_telemetry.health_dashboard
+          admin_only: true
+        - key: safeguarding
+          label: Safeguarding
+          path: /admin/nwc/safeguarding
+          route: nwc_safeguarding.overview
+          admin_only: true
+        - key: who_runs_what
+          label: Who runs what (delegation)
+          path: /admin/nwc/delegation/who-runs-what
+          route: nwc_delegation.who_runs_what
+          admin_only: true
+        - key: mail_templates
+          label: Email templates
+          path: /admin/nwc/mail-templates
+          route: nwc_mailer.admin
+          admin_only: true
+        - key: moodle_sync
+          label: Moodle sync settings (the pair's wiring)
+          path: /admin/config/services/nwc-moodle/sync
+          route: nwc_moodle_sync.settings
+          admin_only: true
+        - key: content
+          label: Content
+          path: /admin/content
+          route: system.admin_content
+          admin_only: true
+        - key: people
+          label: People
+          path: /admin/people
+          route: view.user_admin_people.page_1
+          admin_only: true
+        - key: dblog
+          label: Recent log messages
+          path: /admin/reports/dblog
+          route: view.watchdog.page
+          admin_only: true
+
+    - key: me
+      label: This account's own surfaces
+      targets:
+        - key: dashboard
+          label: My dashboard
+          path: /user/{uid}/dashboard
+          route: nwc_member.dashboard
+        - key: growth
+          label: My growth path
+          path: /user/{uid}/growth
+          route: nwc_onboarding.progress
+        - key: achievements
+          label: My achievements
+          path: /nwc/achievements
+          route: nwc_guild.my_achievements
+        - key: consent
+          label: My formation-data consent
+          path: /my/formation-consent
+          route: nwc_privacy.consent
+        - key: examen
+          label: The Narrow Way Examen
+          path: /examen
+          route: nwc_examen.page
+
+  # Expanded once per group the SITE reports. `{gid}` is the real group id —
+  # there is no pathauto on this site and no per-group alias pattern, so the
+  # numeric id is the only address a group has (measured 2026-08-11).
+  group_targets:
+    - key: home
+      label: Group home
+      path: /group/{gid}
+      route: social_group.page_redirect
+    - key: about
+      label: About this group
+      path: /group/{gid}/about
+      route: view.group_information.page_group_about
+    - key: members
+      label: Members
+      path: /group/{gid}/members
+      route: view.group_members.page_group_members
+    - key: dashboard
+      label: Guild dashboard
+      path: /group/{gid}/guild-dashboard
+      route: nwc_guild.dashboard
+    - key: leaderboard
+      label: Leaderboard
+      path: /group/{gid}/leaderboard
+      route: nwc_guild.leaderboard
+    - key: my_skills
+      label: My skills here
+      path: /group/{gid}/my-skills
+      route: nwc_guild.my_skills
+    - key: ratification
+      label: Ratification queue
+      path: /group/{gid}/ratification-queue
+      route: nwc_guild.ratification_queue
+    - key: verifications
+      label: Pending verifications
+      path: /group/{gid}/verifications
+      route: nwc_guild.verification_queue
+    - key: skill_admin
+      label: Skill administration
+      path: /group/{gid}/admin/skills
+      route: nwc_guild.skill_admin
+      admin_only: true
+    - key: workflow
+      label: Group workflow
+      path: /group/{gid}/workflow
+      route: nwc_group.workflow
+
+consumer:
+  sections:
+    - key: entry
+      label: Entry points
+      targets:
+        - key: home
+          label: Site home
+          path: /
+        - key: login
+          label: Sign in (the SSO button lives here)
+          path: /login/index.php
+          note: the "Narrow Way Commons" button starts the OIDC round trip
+        - key: dashboard
+          label: Dashboard
+          path: /my/
+        - key: courses
+          label: All courses
+          path: /course/index.php
+
+    - key: tools
+      label: Course & practice tools
+      targets:
+        - key: browse
+          label: Course browse
+          path: /local/browse/index.php
+        - key: practice
+          label: Practice
+          path: /local/practice/index.php
+        - key: practice_plan
+          label: Practice plan
+          path: /local/practice/plan.php
+        - key: feedback
+          label: Feedback (Moodle half)
+          path: /local/feedback/index.php
+
+    - key: me
+      label: This account's own surfaces
+      targets:
+        - key: badges
+          label: My badges
+          path: /badges/mybadges.php
+        - key: grades
+          label: My grades
+          path: /grade/report/overview/index.php
+
+    - key: site
+      label: Site administration
+      targets:
+        - key: cohorts
+          label: Cohorts (where the guild claim lands)
+          path: /cohort/index.php
+          admin_only: true
+          note: >-
+            SSO mints a plain Moodle account. It is NOT a Moodle site admin, so
+            this page is expected to refuse — that refusal IS the finding.
+        - key: users
+          label: Users
+          path: /admin/user.php
+          admin_only: true
+
+# Session controls. Neither site can be signed out FROM the console: Drupal's
+# user.logout route requires _csrf_token and Moodle's logout.php requires a
+# sesskey — both are session-bound tokens the console does not have and must
+# not have. What each of these IS is a one-click confirm page on the site
+# itself. Measured 2026-08-11.
+session:
+  provider:
+    signout:
+      label: Sign out of the community site
+      path: /user/logout/confirm
+      route: user.logout.confirm
+      note: >-
+        Drupal REFUSES a one-time login link while a session exists
+        (user.reset.login requires _user_is_logged_in: FALSE), so this is the
+        step that makes the next jump work.
+  consumer:
+    signout:
+      label: Sign out of the learning site
+      path: /login/logout.php
+      note: >-
+        Shows Moodle's own logout confirmation; harmless when already signed
+        out (it redirects to the front page).

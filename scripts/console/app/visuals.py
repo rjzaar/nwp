@@ -575,7 +575,11 @@ def ci_view(blocks, api_ok: bool) -> dict:
 # overview first. A fixed, reviewable tuple — the route validates against it
 # and an unrecognised value falls back to the default rather than being
 # reflected into the page.
-SUBTABS = ("overview", "fleet", "security", "todo", "ci")
+# `walkthrough` (ops#328 t5) is the one subtab that ACTS: it carries POST
+# buttons that mint a one-time login and 303 the browser into the demo pair.
+# Every other subtab stays a pure read surface, and
+# test_the_chart_subtabs_are_still_form_free fails if an action leaks into one.
+SUBTABS = ("overview", "fleet", "security", "todo", "ci", "walkthrough")
 DEFAULT_SUBTAB = SUBTABS[0]
 
 
@@ -616,6 +620,8 @@ def page_context(rag, todo, sec, ci_blocks, ci_api_ok, prov, sub: str = DEFAULT_
         vz["todo"] = todo_view(todo)
     elif sub == "ci":
         vz["ci"] = ci_view(ci_blocks, ci_api_ok)
+    # `walkthrough`'s view is built by the ROUTE, from a `pl` read this module
+    # must not perform (it is pure). It arrives as ctx["vz"]["walkthrough"].
     # sub == "overview" builds nothing here: the overview's skeleton is static
     # (overview.skeleton_context()) and its VALUES arrive by slot AJAX.
     return {"prov": prov, "vz": vz}

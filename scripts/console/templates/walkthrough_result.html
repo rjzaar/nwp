@@ -1,0 +1,15 @@
+{# A jump that did NOT happen (ops#328 t5).
+
+   This template only ever renders a refusal: the success path is a 303 and
+   never reaches a template at all. That asymmetry is deliberate — there is no
+   branch here that could put a one-time login link on a page.
+
+   Context: site, dest, error, detail. #}
+<div class="wtblocked" style="border:1px solid var(--err);border-radius:8px;padding:9px 11px">
+  <p style="margin:0 0 4px"><strong>Nothing was opened, and nothing was minted.</strong></p>
+  <p style="margin:0">{{ error }}</p>
+  {% if detail %}<p class="muted" style="margin:4px 0 0">{{ detail }}</p>{% endif %}
+  <p class="muted" style="margin:6px 0 0">
+    site <code>{{ site }}</code> · requested <code>{{ dest }}</code>
+  </p>
+</div>

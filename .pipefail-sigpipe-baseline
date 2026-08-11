@@ -1,0 +1,305 @@
+# .pipefail-sigpipe-baseline — status-consuming early-exit pipelines
+# under 'set -o pipefail' (ops#351; the class ops#343 / MR !434 proved).
+#
+# Key = <path>::<function>::<class>::<normalised pipeline>.
+# SHRINK-ONLY: rows are DELETED when a site is fixed, never added by
+# hand. Adding one is a RECORDED DECISION — say in the commit message
+# why that site goes in blind.
+# Regenerate: scripts/ci/lint-pipefail-sigpipe.sh --update-baseline
+# Inspect:    scripts/ci/lint-pipefail-sigpipe.sh --list | --rank | --sensitive
+lib/backup-producer.sh::backup_producer_run::ERREXIT::$(sed -n 's/^[[:space:]]*GITLAB_LEG[[:space:]]*=[[:space:]]*\([A-Za-z-]*\).*/\1/p' "$conf" | head -1)
+lib/backup-producer.sh::backup_producer_run::ERREXIT::$(sed -n 's/^[[:space:]]*SITE_DB_LEG[[:space:]]*=[[:space:]]*\([A-Za-z-]*\).*/\1/p' "$conf" | head -1)
+lib/badges.sh::check_coverage_threshold::ERREXIT::$(grep -oP '<coverage[^>]*line-rate="\K[0-9.]+' "$coverage_file" 2>/dev/null | head -1)
+lib/boundary.sh::boundary_honesty_violations::COND::if printf '%s' "$code" | grep -qE '^[[:space:]]*(#|\*|//|/\*|\*/)'
+lib/boundary.sh::boundary_surface_present::COND::find "${PROJECT_ROOT}/${head}" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.sh' -o -name '*.theme' \) -print -
+lib/cloudflare.sh::cf_create_cache_rule::COND::if echo "$response" | grep -q '"success":true' || echo "$response" | grep -q '"id"'
+lib/cloudflare.sh::cf_create_dns_a::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_create_dns_cname::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_create_dns_ns::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_create_transform_rule::COND::if echo "$response" | grep -q '"success":true' || echo "$response" | grep -q '"id"'
+lib/cloudflare.sh::cf_delete_dns_record::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_delete_ns_delegation::COND::if ! echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_get_dns_record_id::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_list_dns_records::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_list_ns_records::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_purge_cache::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::cf_update_dns_record::COND::if echo "$response" | grep -q '"success":true'
+lib/cloudflare.sh::verify_cloudflare_auth::COND::if echo "$response" | grep -q '"success":true'
+lib/demo-box-status.sh::demo_box_extras_json::ERREXIT::$(printf '%s\n' "$raw" | sed -n 's/^backups: //p' | head -1)
+lib/demo-box-status.sh::demo_box_feedback_status::TAIL::printf '%s\n' "${1:-}" | sed -n 's/^last_feedback_status: //p' | head -1
+lib/demo-box-status.sh::demo_box_is_status_block::TAIL::printf '%s\n' "${1:-}" | grep -q '^[[:space:]]*last reset:'
+lib/demo-box-status.sh::demo_box_last_reset::TAIL::printf '%s\n' "${1:-}" | sed -n 's/^[[:space:]]*last reset:[[:space:]]*//p' | head -1
+lib/demo.sh::demo_code_reveal::COND::$(printf '%s\n' "$index" | awk -v w="$want" '$1 == w {print $2; exit}')
+lib/demo-smoke.sh::smoke_check_absent::COND::if printf '%s' "$body" | grep -qiF -- "$needle"
+lib/demo-smoke.sh::smoke_check_contains::COND::if printf '%s' "$body" | grep -qiF -- "$needle"
+lib/demo-smoke.sh::smoke_check_redirect::COND::if ! printf '%s' ",${expect}," | grep -q ",${code},"
+lib/demo-smoke.sh::smoke_check_status::COND::if printf '%s' ",${expect}," | grep -q ",${code},"
+lib/demo-smoke.sh::smoke_check_title::COND::if [[ -n "$expect" ]] && ! printf '%s' "$title" | grep -qiF -- "$expect"
+lib/demo-smoke.sh::smoke_check_title::COND::if [[ -n "$forbid" ]] && printf '%s' "$title" | grep -qiF -- "$forbid"
+lib/demo-smoke.sh::smoke_check_title_regex::COND::if [[ -n "$expect" ]] && ! printf '%s' "$title" | grep -qiF -- "$expect"
+lib/demo-smoke.sh::smoke_check_title_regex::COND::if [[ -n "$forbid" ]] && printf '%s' "$title" | grep -qiE -- "$forbid"
+lib/deploy-gate.sh::deploy_gate_require::ERREXIT::$(printf '%s' "$manifest" | ssh-keygen -Y find-principals -s "$sig" -f "$signers" 2>/dev/null | head -n1)
+lib/frontend.sh::is_ddev_running::TAIL::cd "$site_dir" && ddev describe -j 2>/dev/null | grep -q '"status":"running"'
+lib/gitlab-issues.sh::_mr_read_key::COND::printf '%s' "$resp" | "$YQ" e -p=json '.id // ""' - 2>/dev/null | grep -qx -- "$pid" || { ok=0; break; }
+lib/gitlab-mr.sh::_mr_apply_hold::COND::if ! printf '%s' "$notes" | grep -q "$MR_HOLD_MARKER"
+lib/gitlab-mr.sh::_mr_note_once::COND::printf '%s' "$notes" | grep -q "$marker" && return 0
+lib/git.sh::gitlab_add_user_ssh_key::COND::if echo "$response" | grep -q '"id":[0-9]*'
+lib/git.sh::gitlab_add_user_to_group::COND::elif echo "$response" | grep -q "already a member"
+lib/git.sh::gitlab_add_user_to_group::COND::if echo "$response" | grep -q '"id":[0-9]*'
+lib/git.sh::gitlab_api_configure_project::COND::if echo "$response" | grep -q "\"id\":[0-9]*"
+lib/git.sh::gitlab_api_create_project::COND::if echo "$response" | grep -q "\"id\":[0-9]*"
+lib/git.sh::gitlab_api_delete_project::COND::if [ -z "$response" ] || echo "$response" | grep -q '"message":"202 Accepted"'
+lib/git.sh::gitlab_composer_check::COND::if echo "$response" | grep -q '"version"'
+lib/git.sh::gitlab_composer_create_deploy_token::COND::if echo "$response" | grep -q '"token"'
+lib/git.sh::gitlab_composer_publish::COND::elif echo "$response" | grep -q '201 Created'
+lib/git.sh::gitlab_composer_publish::COND::elif echo "$response" | grep -q '"message"'
+lib/git.sh::gitlab_composer_publish::COND::if echo "$response" | grep -q '"package_id"'
+lib/git.sh::gitlab_create_user::COND::if echo "$response" | grep -q '"id":[0-9]*'
+lib/git.sh::gitlab_create_user::ERREXIT::$(echo "$response" | grep -o '"error":"[^"]*"' | head -1)
+lib/git.sh::gitlab_create_user::ERREXIT::$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+lib/host-capture.sh::host_check_servers_tracked::ERREXIT::$(git -C "$root" status --porcelain -- servers/ 2>/dev/null | head -20)
+lib/import.sh::import_step_configure_stage_file_proxy::COND::if ddev drush pm:list --format=list 2>/dev/null | grep -q "stage_file_proxy"
+lib/import.sh::import_step_configure_stage_file_proxy::COND::if ! ddev drush pm:list --status=enabled --format=list 2>/dev/null | grep -q "stage_file_proxy"
+lib/import.sh::import_step_verify_site::COND::if echo "$status" | grep -qi "successful"
+lib/install-common.sh::list_recipes::COND::if [[ -f "$site_dir/recipe.yml" ]] && ! echo "$recipes" | grep -qx "$site_name"
+lib/install-common.sh::pre_register_live_dns::COND::if echo "$create_response" | grep -q '"id"'
+lib/install-common.sh::pre_register_live_dns::COND::if ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=3 "gitlab@${gitlab_host}" "hostname -I" 2>/dev/null | awk '{print $1}' | grep -qE '^[0-9]+\.[0-9
+lib/install-common.sh::pre_register_live_dns::ERREXIT::$(dig +short "$gitlab_host" 2>/dev/null | head -1)
+lib/linode.sh::create_linode_instance::COND::if echo "$response" | grep -q '"id"'
+lib/linode.sh::delete_linode_instance::COND::if echo "$response" | grep -q '"errors"'
+lib/linode.sh::get_ssh_key_id::TAIL::echo "$response" | grep -o "\"id\":[0-9]*,\"label\":\"$label\"" | grep -o "[0-9]*" | head -1
+lib/linode.sh::linode_create_dns_ns::COND::if echo "$response" | grep -q '"id"'
+lib/linode.sh::linode_delete_dns_record::COND::if printf '%s' "$response" | grep -q '"errors"'
+lib/linode.sh::linode_get_domain_id::TAIL::echo "$response" | grep -oE "\"id\":[[:space:]]*[0-9]+,[^}]*\"domain\":[[:space:]]*\"$domain\"" | grep -oE "\"id\":[[:space:]]*[0-9]+" | grep -o "[0-9]*" | head
+lib/linode.sh::linode_upsert_dns_a::COND::if echo "$create_response" | grep -qE '"id":[[:space:]]*[0-9]+'
+lib/linode.sh::linode_upsert_dns_a::COND::if echo "$update_response" | grep -qE '"id":[[:space:]]*[0-9]+'
+lib/migrate-schema.sh::_run_migrations::ERREXIT::$(find "$migration_dir" -maxdepth 1 -type f -name "$(printf '%03d' "$to")-*.sh" 2>/dev/null | sort | head -n1)
+lib/moodle-deploy.sh::moodle_core_patch_ids::COND::if [ -z "$ids" ] || printf '%s\n' "$ids" | grep -q '^null$'
+lib/moodle-deploy.sh::moodle_plugin_release_dir::ERREXIT::$(sed -nE "s/.*\\\$plugin->release[[:space:]]*=[[:space:]]*['\"]([^'\"]+)['\"].*/\1/p" "$f" | head -1)
+lib/moodle-deploy.sh::moodle_plugin_source_provenance::ERREXIT::$(git -C "$dir" ls-files -- . 2>/dev/null | head -1)
+lib/moodle-deploy.sh::moodle_plugin_target_version::ERREXIT::${sudo_prefix} sed -n 's/.*\\\$plugin->version[[:space:]]*=[[:space:]]*\\([0-9]\\{6,\\}\\).*/\\1/p' '${root}/${plugin}/version.php' | head -1
+lib/moodle-deploy.sh::moodle_plugin_version_canonical::ERREXIT::$(printf '%s\n' "$blob" | sed -n 's/.*\$plugin->version[[:space:]]*=[[:space:]]*\([0-9]\{6,\}\).*/\1/p' | head -1)
+lib/moodle-promote.sh::moodle_write_config::COND::if [ -n "$live_domain" ] && printf '%s' "$wwwroot" | grep -qF "$live_domain"
+lib/operating-model.sh::om_lint::COND::printf '%s' "$text" | grep -qiE '\*\*accepted\*\*|\(accepted' && claimed=Accepted
+lib/operating-model.sh::om_lint::COND::printf '%s' "$text" | grep -qiE '\*\*proposed\*\*|\(proposed' && claimed=Proposed
+lib/operating-model.sh::om_section_loop::COND::elif [ "$rc" -ne 0 ] && ! printf '%s' "$out" | grep -q 'loop:'
+lib/oversight-freshness.sh::oversight_cron_present::COND::crontab -l 2>/dev/null | grep -qE '^[[:space:]]*[0-9*].*rag-sync\.sh' && return 0
+lib/pair.sh::pair_membership_of::ERREXIT::$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "ok" && $2 == s { print $3; exit }')
+lib/pair.sh::pair_membership_of::ERREXIT::$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "ok" && $3 == s { print $2; exit }')
+lib/pair.sh::pair_provider_of::ERREXIT::$(printf '%s\n' "$rows" | awk -F'\t' -v s="$site" '$1 == "ok" && $2 == s { print $3; exit }')
+lib/pair.sh::pair_reconcile_classify::COND::if printf '%s\n' "$uuids" | grep -qxF "$locked_sub"
+lib/pair.sh::pair_reconcile_classify::ERREXIT::$(printf '%s\n' "$uids" | awk -F'\t' -v k="$locked_sub" '$1==k {print $2; exit}')
+lib/pii-gate.sh::pii_gate_scan_artifact::COND::if ! printf '%s\n' "$entries" | grep -qx 'db.sql.gz'
+lib/pii-gate.sh::pii_gate_scan::COND::if printf '%s' "$stripped" | grep -E -q -- "$union"
+lib/preflight.sh::check_source_site::COND::if ddev drush status --field=bootstrap 2>/dev/null | grep -q "Successful"
+lib/preflight.sh::show_system_info::COND::free -h 2>/dev/null | head -2 || echo " Unable to determine"
+lib/restore-remote.sh::_rr_verify_file::ERREXIT::$(awk '{print $1}' "$sidecar" 2>/dev/null | head -1)
+lib/sanitizers/moodle-full.sh::moodle_sanitize_full::COND::tar -tzf "$output" 2>/dev/null | grep -qx 'dataroot-manifest.txt' || { log_error "post-condition FAIL: bundle missing manifest"; return 1; }
+lib/sanitizers/moodle-full.sh::moodle_sanitize_full::COND::tar -tzf "$output" 2>/dev/null | grep -qx 'db.sql.gz' || { log_error "post-condition FAIL: bundle missing db.sql.gz"; return 1; }
+lib/sanitizers/standard.sh::(toplevel)::ERREXIT::$(sq "SELECT mail FROM users_field_data WHERE uid=1;" | head -1)
+lib/sensitive-paths.sh::nwp_sensitive_filter::COND::if printf '%s\n' "$f" | grep -qE "$p"
+lib/server-backup-host.sh::sbh_dump_databases::COND::if ! zcat "$out/${db}.sql.gz" 2>/dev/null | tail -5 | grep -q 'Dump completed'
+lib/server-backup-resolve.sh::sb_moodle_dataroot::ERREXIT::$(sed -nE 's|^[[:space:]]*-[[:space:]]*"([^"]+):/var/www/moodledata:[^"]*".*$|\1|p' "$dc" | head -1)
+lib/session-bounds.sh::session_guard_mr_sensitive::COND::if [ -z "$changes" ] || printf '%s' "$changes" | grep -q '"message"'
+lib/session.sh::session_section_holds::COND::if [ -z "$json" ] || printf '%s' "$json" | grep -q '"message"[[:space:]]*:[[:space:]]*"40[34]'
+lib/session.sh::session_section_issues::COND::if "$pl" issue ls --help 2>&1 | grep -q -- '--pending'
+lib/session.sh::session_section_mrs::COND::elif printf '%s' "$json" | grep -q '"message"[[:space:]]*:[[:space:]]*"40[34]'
+lib/siteclass.sh::siteclass_art9_check::COND::if ! printf '%s' " $allowed " | grep -q " $posture "
+lib/state.sh::detect_test_suites::COND::if [ -f "$site_path/.eslintrc.json" ] || [ -f "$site_path/.eslintrc.js" ] || find "$site_path" -maxdepth 3 -name ".eslintrc*" -type f 2>/dev/null | grep -q .
+lib/state.sh::detect_test_suites::COND::if [ -f "$site_path/.stylelintrc" ] || [ -f "$site_path/.stylelintrc.json" ] || find "$site_path" -maxdepth 3 -name ".stylelintrc*" -type f 2>/dev/null | grep -
+lib/todo-checks.sh::check_live_backup_freshness::ERREXIT::$(printf '%s\n' "$remote_out" | grep -v '^VERDICT=' | head -1)
+lib/todo-checks.sh::check_live_backup_freshness::ERREXIT::$(printf '%s\n' "$remote_out" | sed -n 's/^VERDICT=//p' | head -1)
+lib/todo-checks.sh::check_missing_backups::COND::if ! find "$backup_dir" -maxdepth 1 -type f \( -name "*.sql.gz" -o -name "*.tar.gz" \) 2>/dev/null | grep -q .
+lib/todo-checks.sh::check_missing_schedules::COND::if ! echo "$crontab_entries" | grep -q "$site"
+lib/todo-checks.sh::check_site_registry_drift::COND::if ! printf '%s\n' "$yaml_list" | grep -qx "$s"
+lib/todo-checks.sh::todo_check_registry_defects::COND::if ! printf '%s\n' "${listed[@]}" | grep -qx -- "$func"
+lib/todo-checks.sh::todo_is_ignored::ERREXIT::$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .expires // \"\"" "$config_file" 2>/dev/null | grep -v '^null$' | head -1)
+scripts/ci/lint-conflict-markers.sh::(toplevel)::COND::if printf '%s\n' "$fenced" | grep -qxF "$ln"
+scripts/ci/lint-gate-redproof.sh::has_red_proof::TAIL::cut -f1 "$proofs_file" | grep -qxF "$1"
+scripts/ci/lint-gate-redproof.sh::job_is_cannot_fail::COND::if printf '%s' "$line" | grep -qE '\|\|[[:space:]]*(true|:|echo([[:space:]]|$))'
+scripts/ci/lint-secrets.sh::(toplevel)::COND::elif ! printf '%s' "$out" | grep -q 'NO-PROBE'
+scripts/ci/lint-site-names.sh::(toplevel)::COND::if ! printf '%s' "$n" | grep -qE '^[a-z0-9][a-z0-9_-]*$'
+scripts/ci/lint-yq-tab-escape.sh::(toplevel)::COND::if printf '%s' "$body" | grep -qE '\+[[:space:]]*"\\t"|"\\t"[[:space:]]*\+'
+scripts/ci/review-marker-gate.sh::(toplevel)::COND::if printf '%s\n%s\n' "$TITLE" "$subjects" | grep -q 'REVIEW:'
+scripts/commands/audit.sh::audit_site::COND::printf '%s' "$audit_txt" | grep -qiE "could not be fully loaded|Invalid credentials|loaded from the local cache" && stale="true"
+scripts/commands/audit.sh::main::COND::printf '%s' "$rows" | grep -q 'INSECURE' && had_sec=1 || true
+scripts/commands/audit.sh::_num_before::TAIL::printf '%s' "$1" | grep -oiE "found [0-9]+ $2" | grep -oE '[0-9]+' | head -1
+scripts/commands/backup.sh::sweep_ddev_state::COND::if echo "$desc" | grep -q '"status": *"running"'
+scripts/commands/canonical.sh::check_protected_main::COND::elif echo "$resp" | grep -q '404'
+scripts/commands/canonical.sh::check_protected_main::COND::if echo "$resp" | grep -q "\"name\":\"${branch}\""
+scripts/commands/config.sh::_require_real_yq::COND::if ! printf '%s' "$yq_verline" | grep -qi 'mikefarah'
+scripts/commands/config.sh::_require_real_yq::ERREXIT::$(yq --version 2>&1 | head -1)
+scripts/commands/console.sh::cmd_addkey::ERREXIT::$(printf '%s\n' "$out" | grep -o "https://[^[:space:]]*enroll?token=[A-Za-z0-9_-]*" | head -1)
+scripts/commands/console.sh::cmd_deploy::COND::if curl -fsS --max-time 8 --resolve "${CONSOLE_FQDN}:${CONSOLE_PORT}:${CONSOLE_TAILNET_IP}" "https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health" | grep -q '"ok"'
+scripts/commands/console.sh::cmd_dns::ERREXIT::$(_linode_curl GET "/domains/$domain_id/records?page_size=500" | jq -r ".data[] | select(.type==\"A\" and .name==\"$sub\") | .id" | head -1)
+scripts/commands/console.sh::_console_health::TAIL::curl -fsS --max-time 8 --resolve "${CONSOLE_FQDN}:${CONSOLE_PORT}:${CONSOLE_TAILNET_IP}" "https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health" 2>/dev/null | grep -q 
+scripts/commands/console.sh::_passkey_count::TAIL::_ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-show '$1' 2>/dev/null" 2>/dev/null | awk '/^passkeys:/ {print $2; exit}'
+scripts/commands/contracts.sh::_crossref_one::COND::if [ "$fn" != "${fn#core_}" ] || printf '%s\n' "$core_ws" | grep -qxF "$fn"
+scripts/commands/contracts.sh::_crossref_one::COND::if printf '%s\n' "$core_paths" | grep -qxF "$rel"
+scripts/commands/contracts.sh::_erasure_one::ERREXIT::$(_crossref_yq "$contract" '.erasure.backup_ceiling' | head -1)
+scripts/commands/contracts.sh::_erasure_one::ERREXIT::$(_crossref_yq "$contract" '.erasure.receiver_path' | head -1)
+scripts/commands/contracts.sh::_erasure_one::ERREXIT::$(_crossref_yq "$contract" '.erasure.semantics_approved' | head -1)
+scripts/commands/contracts.sh::_erasure_one::ERREXIT::$(_crossref_yq "$contract" '.erasure.sender_path' | head -1)
+scripts/commands/contracts.sh::_erasure_one::ERREXIT::$(_crossref_yq "$contract" '.surfaces.erasure.schema' | head -1)
+scripts/commands/contracts.sh::_erasure_one::ERREXIT::$(_crossref_yq "$contract" '.surfaces | has("erasure")' | head -1)
+scripts/commands/contracts.sh::_guards_call_sites::COND::if _guards_strip_comments < "$f" | grep -qE "(->|::)?[[:space:]]*\b${sym}[[:space:]]*\("
+scripts/commands/contracts.sh::_guards_call_sites::COND::if [ -n "$excludes" ] && printf '%s\n' "$excludes" | grep -qxF "$f"
+scripts/commands/contracts.sh::_guards_one::ERREXIT::$(_crossref_yq "$contract" '.guards | length' | head -1)
+scripts/commands/contribute.sh::check_decisions::COND::if git diff --name-only | grep -q "docs/decisions/"
+scripts/commands/contribute.sh::detect_gitlab_cli::COND::if git remote get-url upstream 2>/dev/null | grep -q "gitlab"
+scripts/commands/copy.sh::clear_cache::COND::elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"
+scripts/commands/copy.sh::clear_cache::COND::elif echo "$error_msg" | grep -q "could not find driver\|database"
+scripts/commands/copy.sh::clear_cache::COND::if echo "$error_msg" | grep -q "command not found\|drush: not found"
+scripts/commands/delete.sh::build_impact_report::COND::if crontab -l 2>/dev/null | grep -qw "$sitename"
+scripts/commands/delete.sh::remove_schedule::COND::if ! crontab -l 2>/dev/null | grep -qw "$sitename"
+scripts/commands/demo.sh::cmd_codes::ERREXIT::cmd_status "$site" "$tier" | sed -n '/Invite codes:/,/Recent resets/p' | head -n -1
+scripts/commands/demo.sh::cmd_status_box::COND::if printf '%s\n' "$raw" | grep -q 'action=nightly'
+scripts/commands/demo.sh::cmd_status::COND::if tail -n 3 "$lfile" | grep -q "skip-"
+scripts/commands/demo.sh::cmd_testers_login::COND::$(grep -Eo 'https?://[^[:space:]]+/user/reset/[0-9]+/[0-9]+/[^[:space:]]+' <<<"$out" | head -n1)
+scripts/commands/demo.sh::demo_parity_verdict::ERREXIT::$(printf '%s\n' "$out" | awk '/^TOTAL_CUSTOM /{print $2; exit}')
+scripts/commands/demo.sh::demo_parity_verdict::ERREXIT::$(printf '%s\n' "$out" | awk '/^TOTAL_VENDOR /{print $2; exit}')
+scripts/commands/demo.sh::demo_parity_verdict::ERREXIT::printf '%s\n' "$out" | awk '/^MISSING custom /{printf " %-58s (%s)\n", $3, $4}' | head -40
+scripts/commands/demo.sh::demo_pending_updates_verdict::COND::if ! printf '%s\n' "$out" | grep -qx "$DEMO_PENDING_PROBE_MARKER"
+scripts/commands/deploy-gate.sh::cmd_status::ERREXIT::$(_dg_sk_keys | head -1)
+scripts/commands/doctor.sh::check_prerequisites::COND::if ! printf '%s' "$yq_verline" | grep -qi 'mikefarah'
+scripts/commands/doctor.sh::check_prerequisites::ERREXIT::$(yq --version 2>&1 | head -1)
+scripts/commands/erasure.sh::_validate_command::COND::if ! printf '%s' "$v" | grep -qE '^[a-zA-Z][a-zA-Z0-9+.-]*://[^[:space:]]+$'
+scripts/commands/erasure.sh::_validate_command::COND::if ! printf '%s\n' $enum | grep -qxF "$v"
+scripts/commands/issue.sh::cmd_reconcile::COND::if git -C "$repo" log origin/main -1 --format=%h --extended-regexp --grep="(([Cc]los|[Ff]ix|[Rr]esolv|[Ii]mplement)(e[sd]?|ing)?)[^\n]{0,40}ops#${iid}([^0-9]|\$
+scripts/commands/issue.sh::cmd_reconcile::COND::if git -C "$repo" log origin/main -1 --format=%h --extended-regexp --grep="Merge branch '(ops-${iid}|ops-${iid}-[^']*)'" 2>/dev/null | grep -q .
+scripts/commands/issue.sh::_ref_is_known::COND::if git -C "$repo" for-each-ref --format='%(refname:short)' 'refs/remotes/' 2>/dev/null | sed -E 's|^[^/]+/||' | grep -qxF "$ref"
+scripts/commands/issue.sh::_ref_is_known::COND::if git -C "$repo" log origin/main -1 --format=%h --fixed-strings --grep="Merge branch '$ref'" 2>/dev/null | grep -q .
+scripts/commands/live2prod.sh::get_deploy_webroot::ERREXIT::$(grep '^docroot:' "$dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)
+scripts/commands/live.sh::add_dns_record::COND::elif echo "$response" | grep -q 'already exists'
+scripts/commands/live.sh::add_dns_record::COND::if echo "$response" | grep -q '"id"'
+scripts/commands/live.sh::dns_resolves::ERREXIT::dig +short "@8.8.8.8" "$check_domain" 2>/dev/null | grep -q .
+scripts/commands/live.sh::get_stackscript_id::TAIL::echo "$response" | grep -o "\"id\":[0-9]*,\"username\":\"[^\"]*\",\"label\":\"${script_name}\"" | grep -o '"id":[0-9]*' | cut -d: -f2 | head -1
+scripts/commands/live.sh::verify_ssh_connectivity::COND::if ssh $(nwp_ssh_opts "") -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "${user}@${ip}" "echo SSH_OK" 2>/dev/null | grep -q "SSH_OK"
+scripts/commands/make.sh::clear_cache::COND::elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"
+scripts/commands/make.sh::clear_cache::COND::elif echo "$error_msg" | grep -q "could not find driver\|database"
+scripts/commands/make.sh::clear_cache::COND::if echo "$error_msg" | grep -q "command not found\|drush: not found"
+scripts/commands/make.sh::disable_dev_modules::COND::if ddev drush pm:list --filter="$module" --status=enabled --no-core 2>/dev/null | grep -q "$module"
+scripts/commands/make.sh::enable_dev_modules::COND::elif ddev drush pm:list --filter="$module" --status=enabled --no-core 2>/dev/null | grep -q "$module"
+scripts/commands/make.sh::enable_dev_modules::COND::if ddev drush pm:list --filter="$module" --status=disabled --no-core 2>/dev/null | grep -q "$module"
+scripts/commands/migration.sh::cmd_verify::COND::ddev drush watchdog:show --type=migrate 2>/dev/null | head -20 || echo "No migration logs found"
+scripts/commands/modify.sh::check_installed_status::COND::echo "$enabled_modules" | grep -qw "flood_control" && ((sec_count++)) || true
+scripts/commands/modify.sh::check_installed_status::COND::echo "$enabled_modules" | grep -qw "honeypot" && ((sec_count++)) || true
+scripts/commands/modify.sh::check_installed_status::COND::echo "$enabled_modules" | grep -qw "login_security" && ((sec_count++)) || true
+scripts/commands/modify.sh::check_installed_status::COND::echo "$enabled_modules" | grep -qw "seckit" && ((sec_count++)) || true
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$enabled_modules" | grep -qw "config_split"
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$enabled_modules" | grep -qw "devel"
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$enabled_modules" | grep -qw "redis"
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$enabled_modules" | grep -qw "search_api_solr"
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$enabled_modules" | grep -qw "stage_file_proxy"
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$enabled_modules" | grep -qw "ultimate_cron"
+scripts/commands/modify.sh::check_installed_status::COND::if echo "$xdebug_status" | grep -qi "enabled"
+scripts/commands/monitor.sh::cmd_mail::COND::elif echo "$ptr" | grep -qiE '(linodeusercontent|amazonaws|compute\.internal|ip[0-9-]*\.|[0-9]+-[0-9]+-[0-9]+-[0-9]+\.)'
+scripts/commands/monitor.sh::cmd_mail::COND::if echo "$spf" | grep -qiE '(\ball\b|[~?+-]all|include:|a:?|mx|ip4:|ip6:)'
+scripts/commands/moodle.sh::cmd_cli::COND::if ! _moodle_configured_plugins "$CONFIG_FILE" | grep -qx -- "$plug"
+scripts/commands/moodle.sh::cmd_course_restore::COND::if printf '%s\n' "$existing" | grep -Fxq -- "${shortnames[$i]}"
+scripts/commands/moodle.sh::cmd_privacy::COND::if [ "$rc" -eq 2 ] || ! printf '%s\n' "$out" | grep -q '^PRIVACY-SUMMARY '
+scripts/commands/moodle.sh::_cr_backup_shortname::TAIL::sed -n 's/.*<original_course_shortname>\([^<]*\)<\/original_course_shortname>.*/\1/p' "$1" | head -1
+scripts/commands/notify.sh::_secret::TAIL::yq eval "$1 // \"\"" "$SECRETS_FILE" 2>/dev/null | grep -v '^null$' | head -1
+scripts/commands/operating-model.sh::cmd_sync::COND::if printf '%s' "$findings" | grep -q '^projection-contradiction\|^state-banner'
+scripts/commands/patches.sh::_p_check_local::COND::if [ "$rc" -eq 3 ] || printf '%s' "$decl" | grep -q '^PARSE-ERROR'
+scripts/commands/podcast.sh::check_status::COND::if curl -s -H "Authorization: Bearer $linode_token" "https://api.linode.com/v4/account" | grep -q '"email"'
+scripts/commands/podcast.sh::do_teardown::COND::if echo "$linode_info" | grep -q '"errors"'
+scripts/commands/prod2stg.sh::(toplevel)::COND::if ddev drush pm:list --status=enabled --format=list 2>/dev/null | grep -q "^${module}$"
+scripts/commands/prod2stg.sh::(toplevel)::COND::if echo "$SSH_CONN" | grep -q '\-p'
+scripts/commands/publish.sh::(toplevel)::ERREXIT::$(ls -t "${BACKUPS_DIR}"/${SITE_NAME}-*.tar.gz 2>/dev/null | head -1)
+scripts/commands/restore.sh::clear_cache::COND::elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"
+scripts/commands/restore.sh::clear_cache::COND::elif echo "$error_msg" | grep -q "could not find driver\|database"
+scripts/commands/restore.sh::clear_cache::COND::if echo "$error_msg" | grep -q "command not found\|drush: not found"
+scripts/commands/restore.sh::restore_site::COND::if tar -tzf "$tar_file" | grep -q "^web/" 2>/dev/null
+scripts/commands/rollback.sh::cmd_register::COND::if ! printf '%s' "$off_sha" | grep -qE '^[0-9a-f]{8,}$'
+scripts/commands/rollback.sh::cmd_registry_check::COND::if printf '%s' "$line" | grep -qE 'sha *`?[0-9a-f]{8}'
+scripts/commands/schedule.sh::cmd_schedule_where::ERREXIT::$(printf '%s\n' "$out" | head -n 1)
+scripts/commands/schedule.sh::remove_sweep_schedule::COND::if ! echo "$current_cron" | grep -q "pl backup sweep"
+scripts/commands/secrets.sh::cmd_consumers::COND::printf '%s\n' "$declared_keys" | grep -qxF "$key" && continue
+scripts/commands/secrets.sh::cmd_consumers::COND::printf '%s\n' "$ignored_keys" | grep -qxF "$key" && continue
+scripts/commands/secrets.sh::cmd_cron::COND::if printf '%s\n' "$ct" | grep -qF "$CRON_MARK_BEGIN"
+scripts/commands/secrets.sh::cmd_keys::COND::if printf '%s\n' "$tracked" | grep -qxF "$key"
+scripts/commands/secrets.sh::cmd_lint::COND::printf '%s\n' "$declared" | grep -qxF "$k" && continue
+scripts/commands/secrets.sh::cmd_lint::COND::printf '%s\n' "$ignored" | grep -qxF "$k" && continue
+scripts/commands/secrets.sh::cmd_provision::COND::if entry_locations "$idx" | grep -qxF "$TO"
+scripts/commands/secrets.sh::cmd_provision::COND::if ! printf '%s\n' "${ALLOWED[@]:-}" | grep -qxF "$host"
+scripts/commands/security.sh::check_composer_security::COND::elif echo "$audit_output" | grep -qiE "(found|advisor|CVE|GHSA)"
+scripts/commands/security.sh::check_drupal_security::COND::elif echo "$drush_output" | grep -qE "(SECURITY UPDATE|SA-|advisor)"
+scripts/commands/security.sh::security_audit::COND::if ddev drush pm:list --status=enabled 2>/dev/null | grep -q "$mod"
+scripts/commands/security.sh::security_update::COND::if printf '%s' "$bootstrap" | grep -qi "successful"
+scripts/commands/seo-check.sh::check_index_risk::COND::if echo "$headers" | grep -qi "x-robots-tag.*noindex"
+scripts/commands/seo-check.sh::check_index_risk::COND::if echo "$html" | grep -qi 'meta.*name="robots".*noindex\|meta.*content="noindex'
+scripts/commands/seo-check.sh::check_index_risk::COND::if echo "$robots" | grep -q "^Disallow: /$"
+scripts/commands/seo-check.sh::check_robots_txt::COND::if echo "$robots_content" | grep -q "^Disallow: /$"
+scripts/commands/seo-check.sh::check_robots_txt::COND::if echo "$robots_content" | grep -q "Disallow: /admin/"
+scripts/commands/seo-check.sh::check_robots_txt::COND::if echo "$robots_content" | grep -qi "^Sitemap:"
+scripts/commands/seo-check.sh::check_robots_txt::ERREXIT::echo "$robots_content" | head -20
+scripts/commands/seo-check.sh::check_sitemap::COND::if echo "$content_type" | grep -qi "xml"
+scripts/commands/seo-check.sh::check_sitemap::COND::if echo "$sitemap_content" | grep -q "<sitemapindex"
+scripts/commands/seo-check.sh::check_sitemap::COND::if echo "$sitemap_content" | grep -q "<urlset\|<sitemapindex"
+scripts/commands/seo-check.sh::check_sitemap::ERREXIT::$(curl -sI --max-time "$HTTP_TIMEOUT" "$url/sitemap.xml" 2>/dev/null | grep -i "^content-type:" | head -1 || echo "")
+scripts/commands/seo-check.sh::check_sitemap::ERREXIT::echo "$sitemap_content" | head -20
+scripts/commands/seo-check.sh::check_x_robots_tag::COND::if echo "$x_robots" | grep -qi "nofollow"
+scripts/commands/seo-check.sh::check_x_robots_tag::COND::if echo "$x_robots" | grep -qi "noindex"
+scripts/commands/seo-check.sh::check_x_robots_tag::COND::if [ -n "$x_robots" ] && echo "$x_robots" | grep -qi "noindex"
+scripts/commands/server-apply.sh::(toplevel)::ERREXIT::$(find "$STAGE" -mindepth 1 -maxdepth 1 -type d | head -1)
+scripts/commands/server-backup.sh::main_host::COND::if ! printf '%s\n' ${paths[@]+"${paths[@]}"} | grep -qx /home
+scripts/commands/server.sh::cmd_prune::COND::if [[ -z "$moved_dbs" ]] || ! printf '%s\n' "$moved_dbs" | grep -qx "$db"
+scripts/commands/server-state.sh::_fetch::COND::$("$PROJECT_ROOT/scripts/commands/host.sh" "$role" 2>/dev/null | head -1)
+scripts/commands/snapshot.sh::_manifest_source::TAIL::sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -1
+scripts/commands/stg2live.sh::install_security_modules::COND::if ! ddev drush pm:list --status=enabled --type=module 2>/dev/null | grep -q "^$module "
+scripts/commands/stg2live.sh::resolve_live_hash_salt::ERREXIT::$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "${sudo_prefix} cat ${settings_path}/settings.local.php 2>/dev/null" 2>/dev/null | )
+scripts/commands/stg2live.sh::resolve_site_php_version::ERREXIT::$(grep -E '^php_version:' "$stg_dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)
+scripts/commands/stg2live.sh::resolve_site_php_version::ERREXIT::$(grep -oE '"php"[[:space:]]*:[[:space:]]*"[^"]+"' "$stg_dir/composer.json" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+scripts/commands/tag-hygiene.sh::plugin_release::TAIL::sed -nE "s/.*\\\$plugin->release[[:space:]]*=[[:space:]]*['\"]([^'\"]*)['\"].*/\1/p" "$f" 2>/dev/null | head -1
+scripts/commands/test-ver.sh::do_assert::COND::echo "$out" | grep -q FAIL && fail=1
+scripts/commands/test-ver.sh::do_assert::COND::find / -xdev -name .secrets.yml 2>/dev/null|grep -q . && echo "NO_SECRETS FAIL" || echo "NO_SECRETS PASS"
+scripts/commands/test-ver.sh::do_assert::COND::grep -rIl "glpat-" /root /etc 2>/dev/null|grep -q . && echo "NO_PAT FAIL" || echo "NO_PAT PASS"
+scripts/commands/test-ver.sh::do_assert::COND::ss -ltnp 2>/dev/null | grep -q "10.99.0.2:'"$DEPLOY_PORT"'" && echo "DEPLOY_SSHD_TUNNEL_ONLY PASS" || echo "DEPLOY_SSHD_TUNNEL_ONLY FAIL"
+scripts/commands/todo.sh::install_schedule::COND::if crontab -l 2>/dev/null | grep -qE "pl todo (check|digest)"
+scripts/commands/todo.sh::remove_schedule::COND::if ! crontab -l 2>/dev/null | grep -qE "pl todo (check|digest)"
+scripts/commands/uninstall_nwp.sh::remove_docker_group::COND::if groups | grep -q docker
+scripts/commands/upstream.sh::cmd_status::ERREXIT::git log --oneline $upstream_branch..HEAD | head -5
+scripts/commands/upstream.sh::cmd_status::ERREXIT::git log --oneline HEAD..$upstream_branch | head -5
+scripts/commands/upstream.sh::cmd_sync::COND::if [ "$OPT_DRY_RUN" != "y" ] && git diff --name-only HEAD~1 HEAD | grep -q "CLAUDE.md"
+scripts/commands/upstream.sh::cmd_sync::COND::if [ "$OPT_DRY_RUN" != "y" ] && git diff --name-only HEAD~1 HEAD | grep -q "docs/decisions/"
+scripts/commands/upstream.sh::cmd_sync::ERREXIT::git log --oneline HEAD..$upstream_branch | head -5
+scripts/commands/verify.sh::execute_item_machine_checks::COND::if ! echo "$output" | grep -qE "$expect_output"
+scripts/commands/verify.sh::item_machine_checks_need_site::TAIL::get_item_machine_commands "$1" "$2" "$3" | grep -qF '{site}'
+scripts/commands/verify.sh::prune_fixtures::COND::if is_fixture_sitename "$name" && ! yaml_get_all_sites "$config" 2>/dev/null | grep -qx "$name"
+scripts/commands/verify.sh::run_machine_checks::COND::if ! get_feature_ids | grep -q "^${feature}$"
+scripts/commands/verify.sh::show_details::COND::if ! get_feature_ids | grep -q "^${feature}$"
+scripts/commands/verify.sh::unverify_feature::COND::if ! get_feature_ids | grep -q "^${feature}$"
+scripts/commands/verify.sh::verify_feature::COND::if ! get_feature_ids | grep -q "^${feature}$"
+scripts/commands/ver-test.sh::do_provision_prod::COND::if ! vendor/bin/drush status --field=bootstrap 2>/dev/null | grep -q Successful
+scripts/demo/nwd-issuer-provision.sh::(toplevel)::COND::d pm:list --status=enabled --field=name 2>/dev/null | grep -qx 'simple_oauth' || { print_error "simple_oauth is not enabled on $SITE"; exit 1; }
+scripts/deploy-demo-reset-wrapper.sh::(toplevel)::COND::if printf '%s' "$out" | grep -qiE 'error|refus|abort|fail'
+scripts/deploy-demo-reset-wrapper.sh::(toplevel)::COND::if printf '%s' "$out" | grep -qiE 'fate|manifest'
+scripts/f26/nwc-provider-oidc-setup.sh::(toplevel)::COND::if printf '%s' "$REDIRECT" | grep -qiE '(^|[^a-z])prod([^a-z]|$)' && [ "$FORCE_PROD" != "yes" ]
+scripts/f26/provision-nwc-issuer.sh::(toplevel)::COND::drush pm:list --status=enabled --field=name 2>/dev/null | grep -qx 'simple_oauth' || { echo "FATAL: simple_oauth not enabled"; exit 1; }
+scripts/f26/verify-native-userinfo.sh::(toplevel)::COND::if [[ "$CODE" == "200" ]] && echo "$BODY" | grep -q '"guilds"' && echo "$BODY" | grep -q '"email"'
+scripts/f26/verify-nwc-issuer.sh::(toplevel)::COND::echo "$DISCO" | grep -q "$key" || missing="$missing ${key//\"/}"
+scripts/f26/verify-nwc-issuer.sh::(toplevel)::COND::if [[ "$CODE" != "200" ]] && ! echo "$BODY_ANON" | grep -q '"sub"'
+scripts/f26/verify-nwc-issuer.sh::(toplevel)::COND::if echo "$DISCO" | grep -q '"issuer"' && [ -z "$missing" ]
+scripts/f26/verify-nwc-issuer.sh::(toplevel)::COND::if echo "$INFO" | grep -q 'pkce=1' && echo "$INFO" | grep -q 'conf=1'
+scripts/f26/verify-nwc-issuer.sh::(toplevel)::COND::if echo "$JWKS" | grep -q '"keys"' && echo "$JWKS" | grep -q '"kty"'
+scripts/hooks/userpromptsubmit-om-freshness.sh::(toplevel)::COND::printf '%s' "$prompt" | grep -qiE "$PATTERN" || exit 0
+scripts/install-dev-backup.sh::cron_ensure::COND::if ! printf '%s\n' \"\$cur\" | grep -qF '$marker'
+scripts/install-dev-backup.sh::resolve_live_route::ERREXIT::$(sed -n 's/^[[:space:]]*ip:[[:space:]]*//p' "$CANON_ROOT/servers/live/.nwp-server.yml" 2>/dev/null | head -1)
+scripts/install-dev-backup.sh::resolve_live_route::ERREXIT::$(sed -n 's/^[[:space:]]*ssh_user:[[:space:]]*//p' "$CANON_ROOT/servers/live/.nwp-server.yml" 2>/dev/null | head -1)
+scripts/install-dev-backup.sh::(toplevel)::COND::crontab -l 2>/dev/null | grep -qF "$M_EXPORT" && echo " cron export+push: present" || echo " cron export+push: MISSING"
+scripts/install-dev-backup.sh::(toplevel)::COND::crontab -l 2>/dev/null | grep -qF "$M_REPL" && echo " cron replicate→agent-host: present" || echo " cron replicate→agent-host: MISSING"
+scripts/install-mini-runner.sh::(toplevel)::COND::if gitlab-runner verify --delete 2>&1 | grep -qi "is alive\|Verifying runner"
+scripts/install-private-replica.sh::(toplevel)::COND::crontab -l 2>/dev/null | grep -qF '$CRON_TAG' && echo 'cron: present' || echo 'cron: MISSING'
+scripts/install-private-replica.sh::(toplevel)::COND::git config core.sshCommand 2>/dev/null | grep -q nwp-private-pull && echo 'pull key: wired' || echo 'pull key: NOT wired'
+scripts/install-private-replica.sh::(toplevel)::COND::if ! printf '%s\n' \"\$cur\" | grep -qF '$CRON_TAG'
+scripts/mons-setup.sh::(toplevel)::COND::if printf '%s' "$PATH" | tr ':' '\n' | grep -Fxq "$BIN_DIR"
+scripts/notify-webhook.sh::(toplevel)::ERREXIT::$(echo "$HTTP_RESPONSE" | head -n -1)
+scripts/nwp-daily-audit.sh::adv_probe::COND::if printf '%s' "$parsed" | grep -q '^ADV_PARSE_ERROR'
+scripts/nwp-daily-audit.sh::outdated_probe::COND::if printf '%s' "$parsed" | grep -q '^OUT_PARSE_ERROR'
+scripts/nwp-daily-audit.sh::upstream_probe::COND::if printf '%s' "$parsed" | grep -q '^UPSTREAM_PARSE_ERROR'
+scripts/prod-deploy-runner-setup.sh::verify::COND::if grep -rIl "${pfx}-" /etc/gitlab-runner "$LEDGER" /home 2>/dev/null | grep -q .
+scripts/security-update.sh::check_security_updates::COND::if ddev composer audit 2>&1 | grep -qE "(Found [0-9]+ security vulnerability|security vulnerabilities)"
+scripts/security-update.sh::check_security_updates::COND::if ddev drush pm:security 2>&1 | grep -qE "(SECURITY UPDATE|security update available)"
+scripts/ver-provision/prepare-ver-kit.sh::(toplevel)::ERREXIT::$(find "$WORK/fido2hmac" -type f -name 'age-plugin-fido2-hmac*' ! -name '*.md' ! -name '*.txt' | head -1)
+scripts/ver-provision/ver-seal-keystore.sh::recipient_of::TAIL::grep -oE 'age1[0-9a-z]+' "$IDENTITY" | head -1

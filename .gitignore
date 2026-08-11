@@ -316,6 +316,15 @@ servers/**/*.env
 # .nwp-review-mode nearly fell into (see line ~126).
 !.site-name-baseline
 
+# SIGPIPE-under-pipefail baseline (ops#351). SHRINK-ONLY rows recording every
+# `writer | grep -q`-style pipeline whose STATUS IS CONSUMED under pipefail, so
+# a new one fails lint:pipefail-sigpipe and fixing one forces its row out.
+# Whitelisted explicitly because the root `/*` rule would otherwise swallow it:
+# it would then be present locally and absent in CI, where the lint would read
+# 296 brand-new findings — the same shape that nearly caught .nwp-review-mode
+# (see line ~126), and the reason that trap is worth naming three times.
+!.pipefail-sigpipe-baseline
+
 # bin/ holds operational helper scripts (audit-authors, migrate-* per F33, etc.)
 # tracked alongside lib/ and scripts/
 !bin/

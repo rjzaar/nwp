@@ -295,9 +295,43 @@ _impact_code_lines() {
     grep -vE '^[[:space:]]*(#|\*|//|/\*)' "$1" 2>/dev/null
 }
 
+# ---------------------------------------------------------------------- ops#351
+# NO PIPE DECIDES A VERDICT IN THIS FILE, and that is not style.
+#
+# Until 2026-08-11 the two functions below asked their questions through
+# `writer | grep -q`. Every caller in this file runs under `pl`'s
+# `set -euo pipefail`, and under pipefail `grep -q` leaving on the first match
+# kills the writer with SIGPIPE (141), which pipefail then promotes to the
+# pipeline's verdict. The function answers "no" about a file it just matched.
+#
+# MEASURED ON THE SHIPPED TREE, before this change, 50 calls per file:
+#
+#   scripts/commands/demo.sh      truly destructive   said CLEAN  50/50
+#   scripts/commands/stg2live.sh  truly destructive   said CLEAN  50/50
+#   scripts/commands/verify.sh    truly destructive   said CLEAN   1/50
+#   scripts/commands/secrets.sh   truly clean         correct     50/50
+#
+# demo.sh is 330 KB and stg2live.sh 108 KB — far past the 64 KiB pipe buffer,
+# so the writer is ALWAYS still writing and the answer is ALWAYS wrong. The
+# direction is the bad one: `impact_contract_violations` reads
+# `impact_is_destructive … || continue`, so a file that races is SKIPPED and its
+# missing fate manifest is never reported. The contract gate went green over the
+# two largest destructive command scripts in the repo — a swallowed verdict, not
+# a clean result. verify.sh at 1/50 is the same defect wearing the costume of a
+# flake.
+#
+# The fix is to take the writer OUT of the pipeline. With `< <(…)` and `<<<`
+# there is no pipeline for pipefail to have an opinion about, so the writer
+# cannot contribute an exit status at all. Do NOT "fix" this with `|| true`:
+# that would discard the real verdict along with the race.
+#
+# tests/unit/test-impact-contract.bats holds the red proof (a >64 KiB fixture
+# whose only destructive line is at the top); scripts/ci/lint-pipefail-sigpipe.sh
+# stops the idiom coming back.
+
 # impact_is_destructive <file> — 0 if it performs a destructive op in CODE.
 impact_is_destructive() {
-    _impact_code_lines "$1" | grep -qE "$IMPACT_DESTRUCTIVE_PATTERN"
+    grep -qE "$IMPACT_DESTRUCTIVE_PATTERN" < <(_impact_code_lines "$1")
 }
 
 # impact_contract_adopted <file> — 0 if the file genuinely adopts the contract.
@@ -307,14 +341,14 @@ impact_contract_adopted() {
 
     # (B) box-resident inline manifest.
     if grep -qE '^[[:space:]]*#[[:space:]]*impact-contract:[[:space:]]*inline([[:space:]]|$)' "$f" 2>/dev/null; then
-        printf '%s\n' "$code" | grep -q 'FATE MANIFEST' && return 0
+        grep -q 'FATE MANIFEST' <<< "$code" && return 0
         return 1
     fi
 
     # (A) in-repo adoption: sourced AND rendered AND confirmed.
-    printf '%s\n' "$code" | grep -qE '(^|[[:space:]])(source|\.)[[:space:]]+[^[:space:]]*impact\.sh' || return 1
-    printf '%s\n' "$code" | grep -q 'impact_render'  || return 1
-    printf '%s\n' "$code" | grep -q 'impact_confirm' || return 1
+    grep -qE '(^|[[:space:]])(source|\.)[[:space:]]+[^[:space:]]*impact\.sh' <<< "$code" || return 1
+    grep -q 'impact_render'  <<< "$code" || return 1
+    grep -q 'impact_confirm' <<< "$code" || return 1
     return 0
 }
 
@@ -354,7 +388,11 @@ impact_contract_candidates() {
         while IFS= read -r rel; do
             [ -n "$rel" ] || continue
             [ -f "$root/$rel" ] || continue
-            head -c 2 "$root/$rel" 2>/dev/null | grep -q '#!' && printf '%s\n' "$rel"
+            # Same no-pipe rule (ops#351). `head -c 2` is a two-byte writer so
+            # this one was never going to race in practice — but a file where
+            # one instance of the idiom is "the safe kind" is a file where the
+            # next reader has to re-derive which kind each one is.
+            grep -q '#!' < <(head -c 2 "$root/$rel" 2>/dev/null) && printf '%s\n' "$rel"
         done < <(git -C "$root" ls-files servers 2>/dev/null)
     fi
     return 0

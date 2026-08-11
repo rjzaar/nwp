@@ -217,6 +217,37 @@ lint:yq-first:
   tags:
     - nwp
 
+# SIGPIPE-under-pipefail gate (ops#351; the class ops#343 / MR !434 proved).
+#
+# `writer | grep -q X` under `set -o pipefail` is not a lookup, it is a race:
+# grep leaves on the first match, the writer dies of SIGPIPE with 141, and
+# pipefail promotes 141 to the pipeline's verdict. ops#343 caught one instance
+# in lint-gate-redproof.sh, where it made verify:gates disagree with itself
+# inside a single process. The idiom appears ~380 times across pl/scripts/lib.
+#
+# MOST OF THOSE ARE NOT BUGS, and the gate's whole job is the distinction: only
+# a pipeline whose STATUS IS CONSUMED — an `if`, a trailing `&&`/`||`, the last
+# statement of a function, or a bare statement under `set -e` — can be decided
+# by the race. 298 of the 384 sites qualify; the other 86 throw the status away
+# and are reported but never failed on.
+#
+# The 295 pre-existing consumed sites are in .pipefail-sigpipe-baseline, which
+# is SHRINK-ONLY: a new one fails the job, and a baseline row that no longer
+# matches also fails, so fixing a site forces you to delete its row.
+#
+# Proven red, and proven to fire on production code, in
+# tests/unit/test-pipefail-sigpipe.bats — which also runs the race itself and
+# asserts 141, so the premise is measured rather than assumed.
+lint:pipefail-sigpipe:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-pipefail-sigpipe.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+
 # Conflict-marker gate — refuses a tree with an unresolved merge in it.
 #
 # On 2026-07-26 commit 3c4c631 reached its MR with `<<<<<<< HEAD` / `=======` /

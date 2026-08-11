@@ -359,3 +359,91 @@ _render_demo_manifest() {
     ! grep -qE 'rm -rf "\$directory"|rm -rf "\$site_dir"' "${PROJECT_ROOT}/scripts/commands/status.sh"
     grep -q 'delete.sh' "${PROJECT_ROOT}/scripts/commands/status.sh"
 }
+
+# ---------------------------------------------------------------------------
+# ops#351 — SIZE. Every fixture above is two or three lines long, so none of
+# them could ever have caught what was actually wrong with this gate.
+#
+# `impact_is_destructive` was `_impact_code_lines "$1" | grep -qE "$PATTERN"`.
+# Under `set -o pipefail` — which every caller runs under — `grep -q` leaves on
+# the first match, the writer is killed by SIGPIPE and exits 141, and pipefail
+# makes 141 the verdict. On a file bigger than the 64 KiB pipe buffer the writer
+# is ALWAYS still writing, so the answer is ALWAYS wrong. Measured on the
+# shipped tree, 50 calls each, BEFORE the fix:
+#
+#     scripts/commands/demo.sh      330 KB, destructive -> said CLEAN 50/50
+#     scripts/commands/stg2live.sh  108 KB, destructive -> said CLEAN 50/50
+#     scripts/commands/verify.sh    168 KB, destructive -> said CLEAN  1/50
+#
+# and `impact_contract_violations` reads `impact_is_destructive … || continue`,
+# so those files were SKIPPED — the gate could not have reported a missing fate
+# manifest in the two largest destructive scripts in the repo.
+#
+# These cases fail against the pre-fix lib/impact.sh and pass after it. They are
+# the reason the size of a fixture is now part of what it asserts.
+# ---------------------------------------------------------------------------
+
+# Build a file whose ONLY destructive line is line 2, then pad it past the pipe
+# buffer. The padding is what makes the race deterministic rather than a flake:
+# grep -q matches immediately and leaves while ~200 KB is still queued.
+_big_destructive_probe() {   # $1 = target path
+    { printf '#!/bin/bash\n'
+      printf 'rm -rf "$doomed"\n'
+      awk 'BEGIN { for (i = 0; i < 6000; i++) print "echo padding line " i " ................................" }'
+    } > "$1"
+}
+
+@test "ops#351: a destructive file PAST the pipe buffer is still detected as destructive" {
+    local f="${BATS_TEST_TMPDIR}/big-destructive.sh"
+    _big_destructive_probe "$f"
+    [ "$(wc -c < "$f")" -gt 65536 ]
+
+    # Under pipefail, exactly as every caller runs. 20 repeats: the pre-fix
+    # implementation was wrong on all 20, so one call would have been enough —
+    # but a race deserves repeats or the proof is itself a coin flip.
+    local wrong=0 i
+    for i in $(seq 1 20); do
+        ( set -o pipefail; impact_is_destructive "$f" ) || wrong=$((wrong + 1))
+    done
+    [ "$wrong" -eq 0 ]
+}
+
+@test "ops#351: a large file is still correctly reported as NOT destructive" {
+    # The fix must not achieve its result by answering yes to everything.
+    local f="${BATS_TEST_TMPDIR}/big-clean.sh"
+    { printf '#!/bin/bash\n'
+      awk 'BEGIN { for (i = 0; i < 6000; i++) print "echo padding line " i " ................................" }'
+    } > "$f"
+    [ "$(wc -c < "$f")" -gt 65536 ]
+    ( set -o pipefail; ! impact_is_destructive "$f" )
+}
+
+@test "ops#351: impact_contract_adopted is correct on a file past the pipe buffer" {
+    local f="${BATS_TEST_TMPDIR}/big-adopted.sh"
+    { printf '#!/bin/bash\n'
+      printf 'source "$DIR/lib/impact.sh"\n'
+      printf 'impact_render\n'
+      printf 'impact_confirm\n'
+      awk 'BEGIN { for (i = 0; i < 6000; i++) print "echo padding line " i " ................................" }'
+    } > "$f"
+    [ "$(wc -c < "$f")" -gt 65536 ]
+    local wrong=0 i
+    for i in $(seq 1 20); do
+        ( set -o pipefail; impact_contract_adopted "$f" ) || wrong=$((wrong + 1))
+    done
+    [ "$wrong" -eq 0 ]
+}
+
+@test "ops#351: the REAL destructive command scripts are seen as destructive, every time" {
+    # The shipped files that were being skipped. This is the case that would
+    # have gone red on main, and it names them so a future regression is
+    # legible rather than statistical.
+    local f wrong=0 i
+    for f in scripts/commands/demo.sh scripts/commands/stg2live.sh scripts/commands/verify.sh; do
+        [ -f "${PROJECT_ROOT}/$f" ] || continue
+        for i in $(seq 1 10); do
+            ( set -o pipefail; impact_is_destructive "${PROJECT_ROOT}/$f" ) || wrong=$((wrong + 1))
+        done
+    done
+    [ "$wrong" -eq 0 ]
+}

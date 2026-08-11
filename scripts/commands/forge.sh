@@ -244,6 +244,31 @@ _keys_body() { # uid → the raw JSON array
     _api_body "$r"
 }
 
+# A numeric selector that is NOT among a user's keys may still be a real key —
+# a DEPLOY key. `GET /keys/:id` returns those too, and its `user` field names
+# the account that CREATED it, not an owner. That cost real time on 2026-08-11:
+# key 5 looked like a fourth key on root that `GET /users/1/keys` was hiding,
+# and the natural conclusion — "the listing under-reports, root has a key we
+# cannot see" — was wrong. It is a read-only deploy key on two projects, and
+# the DELETE that follows from the wrong conclusion 404s. Name it instead.
+_explain_if_deploy_key() { # key-id → prints an explanation, rc 0 if it IS one
+    local kid="$1" r code body projs
+    case "$kid" in ''|*[!0-9]*) return 1 ;; esac
+    r="$(_api GET "/deploy_keys")" || return 1
+    code="$(_api_code "$r")"; [ "$code" = "200" ] || return 1
+    body="$(_api_body "$r")"
+    printf '%s' "$body" | jq -e --arg id "$kid" 'any(.[]; .id == ($id|tonumber))' >/dev/null 2>&1 || return 1
+    print_warning "key ${kid} is a DEPLOY KEY, not a user key — it cannot be rehomed to a user."
+    echo "  Deploy keys belong to PROJECTS, not people: 'GET /keys/${kid}' reports a"
+    echo "  \`user\` field, but that is whoever CREATED it. This is why it is absent"
+    echo "  from every user's key list and why deleting it from a user 404s."
+    projs="$(printf '%s' "$body" | jq -r --arg id "$kid" '.[] | select(.id == ($id|tonumber)) | "    " + .title + "  can_push=" + (.can_push|tostring)')"
+    [ -n "$projs" ] && echo "$projs"
+    print_hint "manage it as a deploy key (pl forge deploy-key), or leave it — a read-only"
+    print_hint "deploy key scoped to a project is ALREADY least privilege."
+    return 0
+}
+
 # The API does NOT return a fingerprint on this endpoint, so it is COMPUTED
 # from the blob — the same way ops#331's key→machine mapping had to be. A
 # fingerprint that cannot be computed is never silently blanked: the row
@@ -866,6 +891,10 @@ cmd_keys_rehome() { # <selector> --to=<user> [--from=<user>] [--title=…] [--ex
         _print_key_rows "$dhits"
         print_hint "confirm independently:  pl forge keys verify ${dst_name} ${sel}"
         return 0
+    fi
+    if [ "$n" = "0" ] && _explain_if_deploy_key "$sel"; then
+        print_error "REFUSED: '${sel}' is not a user key — nothing has been touched"
+        return 1
     fi
     if [ "$n" = "0" ]; then
         print_error "REFUSED: no key on ${src_name} matches '${sel}' — nothing has been touched"

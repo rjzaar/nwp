@@ -1186,7 +1186,7 @@ clip a learner sees has no MR location and no review gate.**
 For a harness whose entire job is trustworthy measurement, that is disqualifying, and waiting for
 ops#338 is not necessary. ops#338 also measured *why* the obvious fix is not free: `_runs_v3.json`
 embeds **5,151,351 characters of verbatim transcript ≈ 38% of the DIR corpus** in its `preview`
-fields, against a rights posture of `derivative-cleared-pending` and a dir1 API bound of 0.24% per
+fields, against a rights posture of `derivative-cleared-pending` and the corpus-search API bound of 0.24% per
 request.
 
 **The resolution falls out of what an evaluation record actually is:**

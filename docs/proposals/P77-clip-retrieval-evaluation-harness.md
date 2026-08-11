@@ -12,6 +12,84 @@ metrics, chronicled as it happens"*) · ADR-0027 (unified course content)
 **Related:** [nwp/ops#337](https://git.nwpcode.org/nwp/ops/-/issues/337) (P75) ·
 [nwp/ops#338](https://git.nwpcode.org/nwp/ops/-/issues/338) (`~/dir` has no forge home, no CI)
 
+---
+
+## CORRECTION 1 — 2026-08-11, post-publication. The "112 real human window choices" are machine output, and P1's "two witnesses" are one pen.
+
+> Deliberately at the top, deliberately not a silent edit. §1.3 of this document called the 112
+> non-default catalogue windows *"real human selections"* and built D3, the L3 metric layer, the
+> G0 tranche and the anti-cheat argument on that. **The operator says he did not pick them, and
+> the evidence says he is right.** They are output of an AI authoring pass on **2026-03-08**.
+
+**Evidence, measured (full chain in the correction comment on `nwp/ops#348`):**
+
+1. All **107 distinct** non-default windows appear **verbatim** in
+   `~/dir/courses_v3/reference/predecessors/MOODLE_STANDALONE_COURSES.md` (mtime
+   2026-03-08 14:47) as `**Video:** Ep 645 | 6:56-8:55 (~2 min) — <prose justification>`
+   lines. `extract_learning_points.py:100` is a **regex scrape** of that exact pattern; running
+   it over that document returns **exactly 112 matches** — exactly the 112 blocks. No window has
+   been edited since (one video-field change in the whole git history: a D6→D9 copy).
+2. `~/.claude/prompts.log`, `[2026-03-08T09:07:50]` — the operator commissioning it:
+   *"go through all the episodes … find the best examples of the explanations … the key video
+   snippets where each point is explained the best."*
+3. Start times are read off a transcript and we can say which: against `whisper_large` (the
+   INT8 run that landed **2026-03-08 07:36**, seven hours earlier), **83/112 within ±0.5 s** of a
+   segment start (null 26 %, **z = +11.8**) and **105/112 within ±1.0 s** (null 46 %,
+   **z = +10.1**). End times: **at chance** (26 %, z = −0.2), and **78/112 end on an exact
+   minute**. Against the later re-segmented `whisper_merged` the same test collapses to 50 %,
+   which is why a first pass of this analysis wrongly concluded the windows were not
+   transcript-derived.
+4. Negative control: the 64 `0:00–8:00` blocks align at **1/64 (2 %, z = −4.5)** and their
+   content sits at the **53rd percentile** of same-length windows in the same episode — chance.
+   The 112 sit at the **89th**.
+
+**And P1's second witness is not a second witness.** §1.1 grades 133 labels **P1** on the
+strength of a clip *and* an agreeing inline `Ep N` citation — *"two witnesses that agree"*.
+Measured: **158 of 158** learning points whose prose cites an `Ep N` cite an episode that also
+appears in the same two 2026-03-08 predecessor documents (`MOODLE_STANDALONE_COURSES.md`,
+`MOODLE_COURSE_PROPOSAL.md`, 92 distinct episodes each, 123 in union). **100 %.** The clip line
+and the prose citation were written in the same session, from the same corpus read, by the same
+author. They are one witness recorded twice.
+
+**Claim-by-claim status.**
+
+| claim | status |
+|---|---|
+| §1.3 "112 real human window choices" / "real human selections" | **FALSE** — corrected in place |
+| §1.1 P1 = *"two witnesses that agree"* → *"partly independent"* | **FALSE** — one witness, measured 158/158 |
+| D1 recommendation "primary label set is P1 + P3, n = 152" | **WEAKENED.** P1's independence claim is void, so the honest primary set is **P3 alone (n = 19)** plus the new anchor set below. The n = 152 figure remains useful as a *consistency* baseline only. |
+| D3's `0/112 at IoU ≥ 0.7` and the 21/112 arithmetic ceiling | **Arithmetic correct, interpretation void** — it measures agreement with a 2026-03-08 model, not accuracy. **D3's recommendation (b) survives and is strengthened**: IoU was never the ranker's target, and now the comparator is not human either. |
+| D2 (STRICT vs LENIENT), D4 (where the harness lives) | **Unaffected.** |
+| §2 metric taxonomy, §3.1–3.6 literature, §5 refusals, §6 interface | **Unaffected** — none of them uses the 112 as truth. |
+| §3.4's G1 tranche (human window judgements) | **Now the critical path, not an option.** It was the cheapest way to a real label; it is now the *only* way. |
+
+**One new refusal is owed, and it is the twelfth.** The harness already refuses eleven ways.
+It must also refuse to print an accuracy figure derived from a label whose provenance is the
+system under test. Proposed face code **`LABEL-CIRCULAR`**, emitted next to any number scored
+against the 176 clip-derived attributions — which is **176 of the 195** `provenance` labels in
+`lp_episode_map.json`, i.e. **90 %**. This is the same defect as the `source: provenance`
+injection (P76 §2.2) one layer up: there the candidates were seeded from the recorded episode,
+here the labels are.
+
+**What replaces it in the meantime.** A verbatim-string match between catalogue prose and a
+word-timed transcript is *self-evidencing* — whoever wrote the prose, a 14-word sequence
+occurring in ep 16 at 04:11 is a checkable property of the corpus. Indexing every 6-gram of all
+648 episodes and extending to maximal spans: **22 of 251** learning points have a ≥10-word
+verbatim span resolving to ≤2 episodes (10 reach ≥14 words); the **median** learning point has a
+longest verbatim overlap of **zero words** — the prose is paraphrase, so this cannot be scaled by
+relaxing the threshold. Of the 12 that also carry a clip, the anchor agrees with the recorded
+episode **9 times (75 %, 95 % CI [50 %, 100 %])**. Full construction, plus a two-ranker
+measurement showing the *label set* moves R@1 from 17 % to 50 % while the ranker change moves
+R@8 by under 8 points with overlapping intervals, is in **P76 §2.6**.
+
+**The bottom line for this document, stated as §5 would require it to be stated:** the harness
+is still the right thing to build and every refusal in it is still right. What changed is that
+**it cannot yet be pointed at a target**. Phases 0–3 build the instrument; **G1 is what makes the
+instrument mean anything**, and until G1 lands every ranking comparison this harness emits is a
+*regression detector*, not a quality score.
+
+---
+
 **Evidence base — every number below was computed today (2026-08-11) from these files:**
 
 | file | what was read |
@@ -97,7 +175,7 @@ the `evidence:` prose splits the 251 into six classes:
 
 | class | n | evidence shape | independent of the artefact under test? |
 |---|---|---|---|
-| **P1** | **133** | `recorded clip in depths.standard.video (episode N); inline citation "Ep N" agrees` | **partly** — two witnesses that agree |
+| **P1** | **133** | `recorded clip in depths.standard.video (episode N); inline citation "Ep N" agrees` | ~~**partly** — two witnesses that agree~~ → **NO. CORRECTION 1: one witness recorded twice.** Measured: 158/158 (100 %) of prose `Ep N` citations name an episode that also appears in the same 2026-03-08 predecessor documents that supplied the clip line. |
 | **P2** | **43** | `recorded clip in depths.standard.video (episode N)` | **no** — the label *is* the clip |
 | **P3** | **19** | `author citation in prose: "Ep N"` (no clip exists) | **yes** — written for another purpose |
 | **S** | **10** | `all sibling LPs in course JN source from Ep N; … verify before publishing` | **no** — inferred |
@@ -168,10 +246,20 @@ standard robustness argument for label-convention sensitivity. The *magnitude* i
 
 The catalogue's 176 `video:` blocks are the only window-level signal that exists. **64 of them are
 the byte-identical default `0:00–8:00`** — measured, and P75 §5.1 already argues from the same
-figure that they are evidence of *non-selection*. That leaves **112 real human window choices**.
+figure that they are evidence of *non-selection*. That leaves **112 specific windows**.
+
+> **CORRECTED (see CORRECTION 1).** This sentence originally ended *"That leaves 112 real human
+> window choices"*, and the phrase *"real human"* recurs throughout this section. **Withdrawn.**
+> All 107 distinct windows among the 112 are verbatim regex scrapes of a 2026-03-08 AI-authored
+> markdown document; their start times land on `whisper_large` segment starts 94 % of the time
+> (±1.0 s, null 46 %, z = +10.1) while their ends are at chance and 70 % fall on an exact minute.
+> Read every occurrence of "real human window" below as **"specific (non-default) machine
+> window"**. The *counts*, the *arithmetic* and the *not-nested* argument are all unaffected —
+> only the word "human" is wrong, and it is wrong everywhere it appears.
 
 But an author who defaulted the *window* may still have chosen the *episode* deliberately, and
-31 of the 64 defaults carry an independent prose citation agreeing with the episode (class P1):
+31 of the 64 defaults carry a prose citation agreeing with the episode (class P1) — though
+CORRECTION 1 measures that citation to be the *same* witness, not an independent one:
 
 | label class | real window | default `0:00–8:00` | no window at all | total |
 |---|---|---|---|---|
@@ -357,7 +445,8 @@ The real "before" artefact is the tracked previous revision of the same file
 ### 2.1 The task, stated so a metric can be chosen for it
 
 > One learning point (a title plus ~100 words of prose). One right episode, known for 205 of 251.
-> One right window inside it, **unknown** — 112 human windows exist and are themselves soft.
+> One right window inside it, **unknown** — 112 non-default windows exist, they are machine
+> output (CORRECTION 1), and they are themselves soft.
 > 40 candidates are ranked. **8** are shown to a human, who picks one.
 > There is exactly one slot to fill. There is no "browse more results".
 
@@ -512,7 +601,8 @@ PEGFB scale rather than re-measuring boundaries**, and keep tIoU/IoP/IoG as auto
 figures. It is cheaper for the guild, it is the published choice for this medium, and it survives
 the annotator noise that makes a hard IoU ≥ 0.7 gate unmeasurable.
 
-**What it scores here, measured.** Against the 112 real human windows:
+**What it scores here, measured.** Against the 112 specific (non-default) machine windows
+*(CORRECTION 1: originally "112 real human windows")*:
 
 ```
 R@1,  IoU>=0.3 :   2 of 112 ( 1.8%)     IoU>=0.5 :  0 ( 0.0%)     IoU>=0.7 :  0 ( 0.0%)
@@ -522,7 +612,7 @@ mIoU(top-1) = 0.013        mIoU(best of all 40) = 0.185
 ```
 
 **And the reason is arithmetic, not ranking.** The candidate generator's duration-bucket floor
-puts its **shortest possible candidate at 120 s**, median **263 s**; the human windows have median
+puts its **shortest possible candidate at 120 s**, median **263 s**; the recorded windows have median
 **106 s** and maximum **241 s**. Since IoU ≥ m requires a duration ratio ≥ m, a 263 s candidate
 against a 106 s gold window can reach at most **0.40** even if perfectly nested. Counted:
 
@@ -758,8 +848,8 @@ pair. It is also what [B10] used to show MS MARCO's labels lose their own disput
 
 | tranche | what | volume | purpose | hours |
 |---|---|---|---|---|
-| **G0 — free** | the 205 existing episode labels, graded P1/P2/P3/S; the 112 real windows | **0 new** | the §7 baseline; enough to detect the ≥ +18 items that matter | **0** |
-| **G1 — window gold** | re-audition the **112** existing human windows, grading the jump-in point on the TREC PEGFB scale (§2.3); **30** of them judged twice, independently | 112 items, 30 doubly-judged | a defensible L3 gold, and the **only** way to learn whether an L3 number measures the ranker or the annotators | **9-15 h** (estimate) |
+| **G0 — free** | the 205 existing episode labels, graded P1/P2/P3/S; the 112 non-default windows. **CORRECTION 1: this tranche is not gold — every item in it traces to the 2026-03-08 pass. It is a REGRESSION BASELINE and must be reported under `LABEL-CIRCULAR`.** The only non-circular free labels are P3 (n = 19) and the verbatim-anchor set (n = 22, P76 §2.6) | **0 new** | detects that behaviour changed by ≥ +18 items; **does not establish that it improved** | **0** |
+| **G1 — window gold** *(**CORRECTION 1: promoted to the critical path — it is now the only route to a real label, not an option**)* | re-audition the **112** existing machine windows, grading the jump-in point on the TREC PEGFB scale (§2.3); **30** of them judged twice, independently | 112 items, 30 doubly-judged | a defensible L3 gold, and the **only** way to learn whether an L3 number measures the ranker or the annotators | **9-15 h** (estimate) |
 | **G2 — depth-2 pool, preference form** | the depth-2 union over the two rankers, **all 205 LPs**, asked as *"which of these two is the better clip for this learning point?"* | **607** judgements | breaks the "unjudged = wrong" assumption; wide rather than deep, per [D19] | **4-7 h** (estimate) |
 
 **Total: ~13-22 hours of one person's time**, against P75 §4.4's 11-20 h for the tag pass and a
@@ -1119,6 +1209,18 @@ This list is the design. A harness that will do these things on request will eve
     the pool.** Every judgement is stamped with its artefact pair; scoring a stranger against it
     prints `POOL-NAIVE` on the report. Between-site reusability has been directly tested and
     **rejected** (§3.6), with a worst measured leave-one-out penalty of **23% of MAP**.
+12. **NEW — CORRECTION 1. Refuse to present a number as *accuracy* when its label was produced by
+    an ancestor of the system under test.** Every figure scored against the 176 clip-derived
+    attributions — **176 of the 195 `provenance` labels in `lp_episode_map.json`, 90 %** — carries
+    `LABEL-CIRCULAR` **on the report face, not in a footnote**, and is described in the output as a
+    *regression detector*, never as a score. The harness must know the provenance of its own
+    labels; it may print `S@1 = 22/205` beside `LABEL-CIRCULAR` and it may not print `S@1 = 22/205`
+    alone. The non-circular sets it may score without that stamp are **P3 (n = 19)** and the
+    **verbatim-anchor set (n = 22, P76 §2.6)** — and both are small enough that rule 1 will
+    almost always fire on them, which is the true state of the evidence and must be visible.
+    *Red proof:* feed the harness the existing 205-label file and assert `LABEL-CIRCULAR` appears;
+    feed it a fixture whose labels are all P3 and assert it does not. A stamp nobody has seen fire
+    is the exact class this estate keeps finding.
 
 ### 5.5 Shrink-only baselines
 

@@ -183,7 +183,26 @@ if [[ "$stage_codes" == "true" ]]; then
     payload="$(cd "$NWP_ROOT" && jq -c --argjson now "$(date +%s)" \
         '{version:1, codes:[.codes[] | select(.revoked == false and .expires > $now) | {bundle, hash, expires}]}' \
         "$CODES_SRC")"
-    printf '%s' "$payload" | box "cat > /tmp/codes-payload.json && sudo install -o root -g root -m 0644 /tmp/codes-payload.json '${STATE_DIR}/codes-payload.json' && rm -f /tmp/codes-payload.json && jq -e '.codes|length' '${STATE_DIR}/codes-payload.json'"
+    local_n="$(printf '%s' "$payload" | jq '.codes|length')"
+
+    # This payload IS what the 01:00 reset restores, so a staging that quietly
+    # lands nothing wipes every live invite code overnight with nothing saying
+    # so. The old ending — a remote `jq -e '.codes|length'` — could not catch
+    # that: `jq -e` fails only on null/false, and 0 is neither, so an empty or
+    # truncated payload printed a bare number and exited 0. The count was
+    # measured and then thrown away. Compare it instead.
+    if [[ "$local_n" -eq 0 ]]; then
+        echo "ERROR: refusing to stage 0 codes — tonight's reset would leave the box with no invite codes." >&2
+        echo "       If revoking everything is genuinely intended, do that explicitly rather than staging an empty payload." >&2
+        exit 1
+    fi
+    staged_n="$(printf '%s' "$payload" | box "cat > /tmp/codes-payload.json && sudo install -o root -g root -m 0644 /tmp/codes-payload.json '${STATE_DIR}/codes-payload.json' && rm -f /tmp/codes-payload.json && jq '.codes|length' '${STATE_DIR}/codes-payload.json'" | tr -d '\r\n')"
+    if [[ "$staged_n" != "$local_n" ]]; then
+        echo "ERROR: MISMATCH — sent ${local_n} code(s), the box reports '${staged_n:-<nothing>}'." >&2
+        echo "       The staged payload is what tonight's reset restores; not trusting a partial write." >&2
+        exit 1
+    fi
+    printf '   %s code(s) staged and read back from the box (sent %s)\n' "$staged_n" "$local_n"
 else
     say "4/5  Code payload staging SKIPPED (pass --stage-codes)"
 fi

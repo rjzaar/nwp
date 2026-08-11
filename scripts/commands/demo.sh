@@ -185,7 +185,7 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   plus whether each one still resolves. Feeds
                                   the console's Visuals ▸ walkthrough subtab
                                   (ops#328 t5). Reads are cheap; --verify
-                                  MEASURES (one `drush route` read for the
+                                  MEASURES (one \`drush route\` read for the
                                   provider — the router is the only instrument
                                   that can prove a route is ABSENT, since both
                                   halves theme their own 404s — plus one HTTP

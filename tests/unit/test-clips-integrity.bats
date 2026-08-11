@@ -265,3 +265,34 @@ assert r["cannot_verify"] > 0, r["cannot_verify"]
     CATALOG_OVERRIDE="${WORK}/r8" run clips defective clips verify --json
     [ "$(printf '%s' "$output" | count_of duration-mismatch defect)" -eq 0 ]
 }
+
+# ── 6. the repair path runs on a host that has only PyYAML ────────────────────
+#
+# THE INCIDENT THIS PINS. `run_repair` used to import `ruamel.yaml` for one
+# attribute — `.lc`, the per-key line numbers. ruamel is installed on the
+# operator workstation and is NOT installed on the met CI runner (Ubuntu 24.04,
+# no pip), so all seven `repair:` cases above were green here and red there:
+#
+#     not ok 386 repair: a recoverable truncated summary is completed VERBATIM …
+#     testcases: 4331   failures: 7   skipped: 2   (pipeline 2250, job 19383)
+#
+# Green-on-my-machine is not a verdict. This case reproduces the runner's
+# environment ANYWHERE by shadowing `ruamel` with a module that refuses to
+# import, so the host-dependent half of the suite becomes host-independent.
+@test "repair runs on a host with no ruamel.yaml (the CI runner's environment)" {
+    local shim="${WORK}/no-ruamel"
+    mkdir -p "$shim"
+    printf 'raise ImportError("shim: ruamel.yaml is not installed on this host")\n' \
+        > "${shim}/ruamel.py"
+    # The shim really does break the old import — if it did not, this test
+    # would pass for the wrong reason.
+    run env PYTHONPATH="$shim" python3 -c 'from ruamel.yaml import YAML'
+    [ "$status" -ne 0 ]
+
+    cp -r "${FIX}/defective/catalog" "${WORK}/nr"
+    CATALOG_OVERRIDE="${WORK}/nr" PYTHONPATH="$shim" \
+        run clips defective clips repair --apply --no-linkage
+    [[ "$output" != *"ruamel"* ]]
+    grep -q 'unset: true' "${WORK}/nr/Z1.yaml"
+    grep -q 'truncated: true' "${WORK}/nr/Z1.yaml"
+}

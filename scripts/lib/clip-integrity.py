@@ -174,9 +174,9 @@ def norm_ws(text: str | None) -> str | None:
 def load_catalogue(catalog_dir: Path) -> list[dict[str, Any]]:
     """Every learning point in the catalogue, with its raw depth bodies.
 
-    Uses ruamel.yaml in round-trip mode when available so that `repair` can
-    write back without reflowing a 250-file catalogue; falls back to PyYAML for
-    read-only verification.
+    Read-only, so plain PyYAML.  `repair` needs the source LINE of each key as
+    well, and gets it from `load_line_mapped` below — same parser, no second
+    dependency.
     """
     import yaml
 
@@ -705,13 +705,64 @@ def render(report: dict[str, Any], verbose: bool) -> None:
 
 # ── repair ─────────────────────────────────────────────────────────────────────
 
+class LineMap(dict):
+    """A mapping that remembers the 0-based source line of each of its keys."""
+
+    key_lines: dict
+
+
+def load_line_mapped(text: str):
+    """Parse `text` into plain dicts/lists where every mapping is a LineMap.
+
+    WHY THIS IS NOT ruamel.yaml.  It was.  `run_repair` imported
+    `ruamel.yaml.YAML` purely to read `.lc`, the per-key line numbers that
+    anchor SurgicalEditor's edits — nothing was ever dumped through it.  That
+    made a whole extra dependency load-bearing for one attribute, and
+    ruamel.yaml is NOT installed on the CI runner (met, Ubuntu 24.04, no pip:
+    `python3 -m pip` reports "No module named pip", and PEP 668 makes a
+    root-free install a project of its own).  The result on !435 was seven red
+    unit tests, all of them the `repair:` ones, in pipeline 2250 job 19383:
+
+        not ok 386 repair: a recoverable truncated summary is completed VERBATIM …
+        #   `[ "$output" -eq 2 ]' failed
+        …
+        testcases: 4331   failures: 7   skipped: 2 (allowed: 2)
+
+    …green on the workstation, which happens to have ruamel, and red on every
+    host that does not.  That is the host-blind-branch shape CLAUDE.md names.
+
+    PyYAML is already this module's parser for `verify`, is present on every
+    host in the estate, and records `start_mark.line` on every node — so the
+    line numbers come from the parser that is already here.  `deep=True`
+    throughout because PyYAML's default constructor is a generator: with
+    deep=False a nested mapping can be handed back still empty.
+    """
+    import yaml
+
+    class _LineLoader(yaml.SafeLoader):
+        pass
+
+    def _construct_mapping(loader, node):
+        loader.flatten_mapping(node)
+        data = LineMap()
+        data.key_lines = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node, deep=True)
+            data.key_lines[key] = key_node.start_mark.line
+            data[key] = loader.construct_object(value_node, deep=True)
+        return data
+
+    _LineLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
+    return yaml.load(text, Loader=_LineLoader)
+
+
 def _key_line(node, key) -> int | None:
-    """0-based line of `key` inside a ruamel round-trip mapping, or None."""
-    lc = getattr(node, "lc", None)
-    if lc is None or not getattr(lc, "data", None):
+    """0-based line of `key` inside a line-mapped mapping, or None."""
+    lines = getattr(node, "key_lines", None)
+    if not isinstance(lines, dict):
         return None
-    info = lc.data.get(key)
-    return None if info is None else info[0]
+    return lines.get(key)
 
 
 def _block_extent(lines: list[str], start: int) -> int:
@@ -746,11 +797,11 @@ def _quote(value: str) -> str:
 class SurgicalEditor:
     """Line-anchored edits to a YAML file that leave everything else byte-identical.
 
-    A round-trip dump would be simpler, but ruamel re-emits every scalar in the
-    file: applying it to the real catalogue produced a 41,350-line deletion for
-    ~350 intended changes.  A repair nobody can review is a repair nobody should
-    merge, so edits are applied to the raw text, in reverse line order, anchored
-    on the line numbers ruamel records in `.lc`.
+    A round-trip dump would be simpler, but any YAML emitter re-writes every
+    scalar in the file: applying one to the real catalogue produced a
+    41,350-line deletion for ~350 intended changes.  A repair nobody can review
+    is a repair nobody should merge, so edits are applied to the raw text, in
+    reverse line order, anchored on the line numbers `load_line_mapped` records.
     """
 
     def __init__(self, path: Path):
@@ -784,13 +835,6 @@ def run_repair(args) -> int:
     STAMPED with what was measured so that no author is shown an unproven guess
     presented as fact.
     """
-    try:
-        from ruamel.yaml import YAML
-    except ImportError:
-        print("CANNOT VERIFY: ruamel.yaml is required to locate the edits "
-              "(pip install ruamel.yaml)", file=sys.stderr)
-        return 2
-
     catalog = Path(args.catalog).expanduser()
     transcripts = Path(args.transcripts).expanduser()
     video_transcripts = Path(args.video_transcripts).expanduser()
@@ -803,9 +847,6 @@ def run_repair(args) -> int:
     oracle = LinkageOracle(transcripts, video_transcripts) if args.linkage else None
     linkage_cache: dict[tuple[int, str], Any] = {}
 
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-
     changes: list[dict[str, Any]] = []
     unrepairable: list[dict[str, Any]] = []
     files = sorted(p for p in catalog.glob("*.yaml") if p.stem not in NON_COURSE)
@@ -815,7 +856,11 @@ def run_repair(args) -> int:
 
     for path in files:
         editor = SurgicalEditor(path)
-        doc = yaml_rt.load(editor.text)
+        try:
+            doc = load_line_mapped(editor.text)
+        except Exception as exc:   # a course file we cannot parse is not a pass
+            print(f"CANNOT VERIFY: {path.name}: {exc}", file=sys.stderr)
+            return 2
         course = (doc or {}).get("course") or {}
         for lp in course.get("learning_points") or []:
             depths = lp.get("depths") or {}

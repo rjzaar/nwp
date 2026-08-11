@@ -549,7 +549,22 @@ cmd_create(){
     esac
   done
   [ -n "$title" ] || die "usage: pl issue create --title \"...\" [--desc \"...\"] [--label a,b]"
-  # empty description / labels are harmless no-ops to the GitLab API
+
+  # Read a PIPED description when --desc was not given. `pl issue comment`
+  # reads stdin; `create` used to ignore it — and an ignored pipe is silent.
+  # Measured 2026-08-11: four issues (ops#327, #331, #333, #336) were filed
+  # with empty bodies because the text was piped in, including the operator's
+  # own recorded rulings. Nothing failed and nothing warned; the loss surfaced
+  # days later when an agent read one back. Two sibling verbs disagreeing about
+  # stdin is the defect: accept it, or refuse — never accept and discard.
+  if [ -z "$desc" ] && [ ! -t 0 ]; then
+    desc="$(cat)"
+    [ -n "$desc" ] && print_info "description read from stdin ($(printf '%s' "$desc" | wc -c) bytes)"
+  fi
+  # A title-only issue is legitimate (a stub someone will fill in), so this
+  # warns rather than refuses — but it says so, because an issue that records
+  # nothing is the thing we just spent an evening repairing.
+  [ -n "$desc" ] || print_warning "no description — filing a title-only issue (pass --desc, or pipe the body in)"
   local payload; payload=$(T="$title" D="$desc" L="$labels" "$YQ" -n -o=json \
     '{"title": strenv(T), "description": strenv(D), "labels": strenv(L)}')
   local resp iid; resp=$(_api_send POST "/projects/$PROJECT_ID/issues" "$payload")

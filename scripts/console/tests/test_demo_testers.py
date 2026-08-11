@@ -417,3 +417,147 @@ def test_unknown_op_is_rejected_and_audited(mod, monkeypatch):
                                 "account": "demo_writer", "seed_key": "writers"})
     assert r.status_code == 200
     assert "unknown" in r.text.lower()
+
+
+# ===========================================================================
+# ops#328 t4 — "sign in as this tester"
+#
+# The personas have no passwords, so the editor's only honest answer is a
+# one-time login link. What these pin is the handling of that link, because it
+# IS a credential:
+#   * it comes from the UNCACHED spawner — never parked in the TTL cache;
+#   * it is rendered exactly once and appears in NO audit record;
+#   * the route never renders the verb's raw stdout (where a discarded link
+#     would be), only the parsed document;
+#   * the admin-link trap (a uid-1 link where a persona was asked for) renders
+#     as a refusal with no link in it at all;
+#   * viewers get no button and a 403.
+#
+# Red-then-green: run against main @ f6efcb6 and observed RED (no parser, no
+# action, no route, no button) before the implementation existed.
+# ===========================================================================
+LOGIN_OK = {
+    "ok": True, "account": "demo_writer", "uid": 12, "site": "nwd",
+    "uri": "https://nwd.example.org",
+    "url": "https://nwd.example.org/user/reset/12/1786000000/Ab1Cd2Ef3/login",
+    "shown_once": True, "note": "one-time login link: single use",
+}
+LOGIN_TRAP_REFUSED = {
+    "ok": False, "refused": True,
+    "reason": ("the link drush returned is for uid 1, not 'demo_writer' (uid 12) — it was "
+               "DISCARDED and is NOT shown. user:login's positional argument is a PATH, "
+               "not a username"),
+}
+
+
+def test_parse_tester_login_json_shapes():
+    ok = parsers.parse_tester_login_json(json.dumps(LOGIN_OK))
+    assert ok["ok"] is True and ok["uid"] == 12 and ok["account"] == "demo_writer"
+    assert ok["url"].endswith("/login")
+    ref = parsers.parse_tester_login_json(json.dumps(LOGIN_TRAP_REFUSED))
+    assert ref["ok"] is False and ref["refused"] is True
+    assert "DISCARDED" in ref["reason"] and ref["url"] == ""
+    nd = parsers.parse_tester_login_json(json.dumps(
+        {"ok": False, "not_deployed": True, "reason": "merge + deploy"}))
+    assert nd["not_deployed"] is True
+    bad = parsers.parse_tester_login_json("no json")
+    assert bad["ok"] is False and bad["url"] == "" and bad["reason"]
+
+
+def test_parse_tester_login_json_scrubs_a_link_out_of_a_failure_reason():
+    """Belt to the verb's braces: even if some future emitter leaked a reset
+    URL into a refusal, the parser must not carry it into the page."""
+    p = parsers.parse_tester_login_json(json.dumps(
+        {"ok": False, "refused": True,
+         "reason": "discarded https://x.example/user/reset/1/1786/RootHash/login for you"}))
+    assert "RootHash" not in p["reason"]
+    assert "/user/reset/" not in p["reason"]
+    assert "REDACTED" in p["reason"]
+
+
+def test_login_action_builds_a_fixed_argv():
+    argv, spec = build_action("demo_tester_login",
+                              {"site": "nwd", "account": "demo_writer"}, DEMO)
+    assert argv == ["demo", "testers", "nwd", "login", "demo_writer", "--tier=live", "--json"]
+    assert spec["min_role"] == "operator" and spec["scope"] == "site"
+    for bad in ("", "a b", "x;y", "$(id)", "a" * 61):
+        with pytest.raises(ActionError):
+            build_action("demo_tester_login", {"site": "nwd", "account": bad}, DEMO)
+    with pytest.raises(ActionError):
+        build_action("demo_tester_login", {"site": "ssd", "account": "demo_writer"}, DEMO)
+    # --allow-real stays unrepresentable on this surface too
+    argv2, _ = build_action("demo_tester_login",
+                            {"site": "nwd", "account": "demo_writer",
+                             "allow_real": "1", "allow-real": "1"}, DEMO)
+    assert "--allow-real" not in argv2
+
+
+def test_login_route_uses_the_uncached_spawner_and_shows_the_link_once(mod, monkeypatch):
+    _fake_testers(mod, monkeypatch)
+    seen = []
+
+    def fake_uncached(root, args, **kw):
+        seen.append(list(args))
+        return {"rc": 0, "out": json.dumps(LOGIN_OK), "err": "", "secs": 3.1, "cmd": "x"}
+
+    monkeypatch.setattr(mod, "run_pl", fake_uncached)
+    r = _client(mod).post("/actions/demo_tester_login",
+                          data={"site": "nwd", "account": "demo_writer"})
+    assert r.status_code == 200
+    assert seen == [["demo", "testers", "nwd", "login", "demo_writer", "--tier=live", "--json"]]
+    assert LOGIN_OK["url"] in r.text
+    assert "demo_writer" in r.text
+
+
+def test_login_route_never_audits_the_link(mod, monkeypatch):
+    recorded = []
+    monkeypatch.setattr(mod, "run_pl",
+                        lambda root, args, **kw: {"rc": 0, "out": json.dumps(LOGIN_OK),
+                                                  "err": "", "secs": 3.1, "cmd": "x"})
+    monkeypatch.setattr(mod.audit, "append", lambda *a, **k: recorded.append((a, k)))
+    _client(mod).post("/actions/demo_tester_login",
+                      data={"site": "nwd", "account": "demo_writer"})
+    assert recorded, "the login mint was not audited at all"
+    blob = json.dumps(recorded, default=str)
+    assert "Ab1Cd2Ef3" not in blob and "/user/reset/" not in blob
+    assert "demo_writer" in blob          # WHO was signed in as IS recorded
+
+
+def test_login_route_renders_the_admin_trap_refusal_with_no_link_in_it(mod, monkeypatch):
+    monkeypatch.setattr(
+        mod, "run_pl",
+        lambda root, args, **kw: {
+            "rc": 1, "out": json.dumps(LOGIN_TRAP_REFUSED),
+            # stdout of the verb is clean; stderr carries the human line. If the
+            # route ever rendered raw output, a leaked link would land here.
+            "err": "ERROR: REFUSED: https://x/user/reset/1/1786/RootHash/login",
+            "secs": 2.0, "cmd": "x"})
+    body = _client(mod).post("/actions/demo_tester_login",
+                             data={"site": "nwd", "account": "demo_writer"}).text
+    assert "DISCARDED" in body
+    assert "RootHash" not in body
+    assert "/user/reset/" not in body
+
+
+def test_login_route_renders_not_deployed_as_cannot_verify(mod, monkeypatch):
+    monkeypatch.setattr(
+        mod, "run_pl",
+        lambda root, args, **kw: {"rc": 2, "out": json.dumps(
+            {"ok": False, "not_deployed": True,
+             "reason": "drush command user:login is not on nwd live yet"}),
+            "err": "", "secs": 1.0, "cmd": "x"})
+    body = _client(mod).post("/actions/demo_tester_login",
+                             data={"site": "nwd", "account": "demo_writer"}).text
+    assert "CANNOT VERIFY" in body
+
+
+def test_tester_detail_offers_the_sign_in_button_to_operators_only(mod, monkeypatch):
+    _fake_testers(mod, monkeypatch)
+    body = _client(mod).get("/panes/demo/tester?site=nwd&account=demo_writer").text
+    assert "/actions/demo_tester_login" in body
+    assert "Sign in as this tester" in body
+    vbody = _client(mod, "vera").get("/panes/demo/tester?site=nwd&account=demo_writer").text
+    assert "/actions/demo_tester_login" not in vbody
+    r = _client(mod, "vera").post("/actions/demo_tester_login",
+                                  data={"site": "nwd", "account": "demo_writer"})
+    assert r.status_code == 403

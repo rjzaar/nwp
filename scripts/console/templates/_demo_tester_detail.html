@@ -21,6 +21,26 @@
   <p class="muted">redeemed bundle: {{ acct.redeemed_bundle if acct.redeemed_bundle else "not recorded (ops#328 D4 — undecided)" }}
      · site roles: {{ acct.roles | join(", ") }}</p>
 
+  {# ---- sign in as this tester (ops#328 t4) ------------------------------
+       The personas have no passwords — nwc:seed-demo mints them and nobody
+       ever set one — so a one-time login link is the only honest way to see
+       the site through this account's eyes. The verb refuses uid<=1 and any
+       account off the @demo.invalid fence, and it proves the returned link
+       belongs to THIS uid before showing it; the link is rendered once and
+       stored nowhere. Viewers get no button. #}
+  {% if can_act %}
+  <p>
+    <button type="button" class="primary" hx-post="/actions/demo_tester_login"
+            hx-vals='{"site": "{{ site }}", "account": "{{ acct.name }}"}'
+            hx-target="#demo-tester-login-{{ site }}"
+            hx-indicator="#tester-spin-{{ site }}"
+            hx-confirm="Mint a one-time login link for {{ acct.name }} on live {{ site }}? It is shown once, is single-use, and is stored nowhere. Open it in a private window — in this one it replaces your own session.">
+      Sign in as this tester</button>
+    <span class="muted">one-time link · single use · shown once · never logged</span>
+  </p>
+  <div id="demo-tester-login-{{ site }}"></div>
+  {% endif %}
+
   {# ---- guild × role matrix -------------------------------------------- #}
   {% set catalog_guilds = testers.guild_catalog.guilds if testers.guild_catalog and testers.guild_catalog.guilds else [] %}
   <table class="codetable">

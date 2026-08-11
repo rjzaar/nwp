@@ -1,0 +1,42 @@
+{# Reveal ONE invite code's plaintext (ops#328 t4).
+   Context: site, code_id, action (parse_code_reveal_json), error, secs.
+
+   THE CONTRACT WITH THE READER:
+     * the code below is shown ONCE, in this response body. It is not cached,
+       not audited and not stored — re-reading it means running the verb again,
+       which records another access;
+     * "could not look" and "looked, it is not there" are DIFFERENT outcomes
+       and never render alike (ops#281): found=false is NOT RECOVERABLE, found
+       unknown is CANNOT VERIFY;
+     * the raw command output is deliberately NOT rendered anywhere on this
+       page — the only field that reaches the reader is the parsed one. #}
+{% if error %}
+<p class="err">✗ reveal refused: {{ error }}</p>
+{% elif action and action.ok %}
+<div class="invite-result">
+  <p class="ok">✓ {{ action.id }} — {{ action.bundle }} ({{ action.state }}){% if action.expires_iso %}, expires {{ action.expires_iso }}{% endif %}</p>
+  <p class="codereveal"><code id="reveal-{{ action.id }}">{{ action.code }}</code></p>
+  <button class="primary" onclick="
+    var t = document.getElementById('reveal-{{ action.id }}');
+    navigator.clipboard.writeText(t.textContent).then(
+      () => { this.textContent = 'Copied ✓'; },
+      () => { this.textContent = 'Copy failed — select it by hand'; });
+  ">Copy code</button>
+  <p class="warnnote">⚠ Shown ONCE here. It was recovered by hashing the plaintext in
+    <code>{{ action.pack }}</code> and matching the sha256 the registry already stored —
+    the registry still holds no plaintext. This reveal is recorded in the demo log
+    (id + who, never the value).</p>
+</div>
+{% elif action and action.found is sameas false %}
+<p class="err">✗ NOT RECOVERABLE — {{ action.reason }}</p>
+<p class="muted">This is a real measurement over the {{ action.packs_scanned }} invite pack(s)
+  readable on the registry home, not a failure to look. A code issued without an invitation
+  draft, or whose draft was deleted, has no surviving plaintext anywhere — by design.</p>
+{% elif action %}
+<p class="err">✗ CANNOT VERIFY — {{ action.reason }}</p>
+<p class="muted">"I could not look" is not "it is not there": nothing is being claimed about
+  {{ code_id }}. Fix the reading (usually: run this on the registry home, where the invite
+  packs live) and ask again.</p>
+{% else %}
+<p class="err">✗ CANNOT VERIFY: the reveal verb returned nothing this console could parse.</p>
+{% endif %}

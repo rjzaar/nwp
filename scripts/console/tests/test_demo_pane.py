@@ -395,10 +395,16 @@ def test_bad_site_is_rejected_by_the_allowlist(mod, monkeypatch):
 
 
 def test_select_all_toggle_present_for_operator(mod, monkeypatch):
-    """Header carries a select-all checkbox that toggles every code_ids box."""
+    """A select-all control exists and drives the row checkboxes.
+
+    ops#328 t4 made the id PER SITE (`demo-select-all-<site>`). It had to
+    change: the pane renders one table per demo site, so the old fixed
+    `demo-select-all` produced duplicate DOM ids the moment a second demo site
+    existed — and a `<label for=…>` binds to the first match, which would have
+    wired the second site's label to the first site's checkbox."""
     _fake_demo(mod, monkeypatch)
     body = _client(mod).get("/panes/demo").text
-    assert 'id="demo-select-all"' in body
+    assert 'id="demo-select-all-nwd"' in body
     # it must drive the row checkboxes, not merely exist
     assert "code_ids" in body and "demo-select-all" in body
 
@@ -527,3 +533,247 @@ def test_pane_by_design_consumer_is_muted_not_an_error(mod, monkeypatch):
     assert "stale return leg" not in body
     # a by-design absence is not an alarm
     assert "CANNOT VERIFY the staged golden" not in body
+
+
+# ===========================================================================
+# ops#328 t4 — "show this code again", and a select-all you cannot miss
+#
+# Red-then-green: every test below was run against main @ f6efcb6 and observed
+# RED (parse_code_reveal_json / the demo_code_reveal action / the reveal route
+# absent; the select-all label and its count not in the template) before the
+# implementation existed.
+# ===========================================================================
+CODES_JSON_RECOVERY = dict(
+    CODES_JSON,
+    recovery={"state": "measured", "reason": "hash-matched against the invite packs readable on this host",
+              "packs_dir": "/x/sites/nwd/demo-invites", "packs_scanned": 3,
+              "scope": "invite packs on this host only"},
+    codes=[dict(r, recoverable=(r["id"] == "c1")) for r in CODES_JSON["codes"]],
+)
+
+CODES_JSON_UNKNOWN_RECOVERY = dict(
+    CODES_JSON,
+    recovery={"state": "cannot_verify", "reason": "no invite-pack directory at /x/sites/nwd/demo-invites",
+              "packs_dir": "/x/sites/nwd/demo-invites", "packs_scanned": None,
+              "scope": "invite packs on this host only"},
+    codes=[dict(r, recoverable=None) for r in CODES_JSON["codes"]],
+)
+
+
+def test_parse_codes_json_carries_recoverability_and_never_collapses_unknown():
+    p = parsers.parse_demo_codes_json(json.dumps(CODES_JSON_RECOVERY))
+    assert p["recovery"]["state"] == "measured" and p["recovery"]["packs_scanned"] == 3
+    by_id = {r["id"]: r for r in p["codes"]}
+    assert by_id["c1"]["recoverable"] is True
+    assert by_id["c2"]["recoverable"] is False
+    u = parsers.parse_demo_codes_json(json.dumps(CODES_JSON_UNKNOWN_RECOVERY))
+    assert u["recovery"]["state"] == "cannot_verify"
+    # UNKNOWN must stay None. Rendering it as False would tell the operator
+    # "this code is gone forever" off a directory nobody could open.
+    assert all(r["recoverable"] is None for r in u["codes"])
+
+
+def test_parse_codes_json_without_a_recovery_block_is_unknown_not_false():
+    """A deployed pl older than t4 emits no recovery block at all."""
+    p = parsers.parse_demo_codes_json(json.dumps(CODES_JSON))
+    assert p["recovery"]["state"] == "cannot_verify"
+    assert all(r["recoverable"] is None for r in p["codes"])
+
+
+def test_parse_code_reveal_json_shapes():
+    ok = parsers.parse_code_reveal_json(json.dumps(
+        {"ok": True, "id": "c1", "bundle": "tester-member", "state": "live",
+         "code": "AAAAA-BBBBB-CCCCC-DDDDD", "pack": "invite-20260101-000000.md",
+         "packs_scanned": 3, "expires_iso": "2026-08-20T00:00:00Z"}))
+    assert ok["ok"] is True and ok["code"] == "AAAAA-BBBBB-CCCCC-DDDDD"
+    assert ok["pack"] == "invite-20260101-000000.md"
+    miss = parsers.parse_code_reveal_json(json.dumps(
+        {"ok": False, "found": False, "id": "c9", "packs_scanned": 3,
+         "reason": "NOT RECOVERABLE: none of the 3 readable invite pack(s)"}))
+    assert miss["ok"] is False and miss["found"] is False
+    assert "NOT RECOVERABLE" in miss["reason"] and miss["code"] == ""
+    cv = parsers.parse_code_reveal_json(json.dumps(
+        {"ok": False, "found": None, "id": "c9",
+         "reason": "CANNOT VERIFY: no invite-pack directory"}))
+    assert cv["ok"] is False and cv["found"] is None and "CANNOT VERIFY" in cv["reason"]
+    # "could not look" and "looked, not there" must never render alike
+    assert miss["found"] is not cv["found"]
+    bad = parsers.parse_code_reveal_json("no json at all")
+    assert bad["ok"] is False and bad["found"] is None and bad["reason"]
+
+
+def test_reveal_action_builds_a_fixed_argv():
+    argv, spec = build_action("demo_code_reveal", {"site": "nwd", "code_id": "c1"}, DEMO)
+    assert argv == ["demo", "codes", "nwd", "reveal", "c1", "--json"]
+    assert spec["min_role"] == "operator" and spec["scope"] == "site"
+    for bad in ("", "a b", "x;y", "$(id)", "c" * 41):
+        with pytest.raises(ActionError):
+            build_action("demo_code_reveal", {"site": "nwd", "code_id": bad}, DEMO)
+    with pytest.raises(ActionError):
+        build_action("demo_code_reveal", {"site": "ssd", "code_id": "c1"}, DEMO)
+
+
+def test_reveal_route_shows_the_plaintext_once_and_never_caches_it(mod, monkeypatch):
+    """The plaintext is a CREDENTIAL: it must come from the UNCACHED spawner,
+    so it is never parked in the TTL cache where the next reader of any pane
+    could be served it."""
+    _fake_demo(mod, monkeypatch)
+    seen = []
+
+    def fake_uncached(root, args, **kw):
+        seen.append(list(args))
+        return {"rc": 0, "secs": 0.2, "err": "", "cmd": "pl demo codes reveal",
+                "out": json.dumps({"ok": True, "id": "c1", "bundle": "tester-member",
+                                   "state": "live", "code": "AAAAA-BBBBB-CCCCC-DDDDD",
+                                   "pack": "invite-20260101-000000.md", "packs_scanned": 3})}
+
+    def fake_cached_boom(root, args, **kw):
+        raise AssertionError(f"reveal must not use the CACHED spawner: {args}")
+
+    monkeypatch.setattr(mod, "run_pl", fake_uncached)
+    monkeypatch.setattr(mod, "run_pl_cached", fake_cached_boom)
+    r = _client(mod).post("/actions/demo_code_reveal", data={"site": "nwd", "code_id": "c1"})
+    assert r.status_code == 200
+    assert seen == [["demo", "codes", "nwd", "reveal", "c1", "--json"]]
+    assert "AAAAA-BBBBB-CCCCC-DDDDD" in r.text
+    assert "invite-20260101-000000.md" in r.text
+
+
+def test_reveal_route_never_audits_the_plaintext(mod, monkeypatch):
+    recorded = []
+
+    def fake_uncached(root, args, **kw):
+        return {"rc": 0, "secs": 0.2, "err": "", "cmd": "x",
+                "out": json.dumps({"ok": True, "id": "c1", "bundle": "tester-member",
+                                   "state": "live", "code": "SECRE-TCODE-VALUE-HERE1",
+                                   "pack": "p.md", "packs_scanned": 1})}
+
+    monkeypatch.setattr(mod, "run_pl", fake_uncached)
+    monkeypatch.setattr(mod.audit, "append",
+                        lambda *a, **k: recorded.append((a, k)))
+    _client(mod).post("/actions/demo_code_reveal", data={"site": "nwd", "code_id": "c1"})
+    assert recorded, "the reveal was not audited at all"
+    blob = json.dumps(recorded, default=str)
+    assert "SECRE-TCODE-VALUE-HERE1" not in blob
+    assert "c1" in blob            # the ACCESS is recorded: which id, by whom
+
+
+def test_reveal_route_renders_not_found_and_cannot_verify_differently(mod, monkeypatch):
+    def make(doc, rc):
+        return lambda root, args, **kw: {"rc": rc, "out": json.dumps(doc), "err": "",
+                                         "secs": 0.1, "cmd": "x"}
+
+    monkeypatch.setattr(mod, "run_pl", make(
+        {"ok": False, "found": False, "id": "c9", "packs_scanned": 3,
+         "reason": "NOT RECOVERABLE: none of the 3 readable invite pack(s) holds it"}, 1))
+    body = _client(mod).post("/actions/demo_code_reveal",
+                             data={"site": "nwd", "code_id": "c9"}).text
+    assert "NOT RECOVERABLE" in body and "CANNOT VERIFY" not in body
+
+    monkeypatch.setattr(mod, "run_pl", make(
+        {"ok": False, "found": None, "id": "c9",
+         "reason": "CANNOT VERIFY: no invite-pack directory on this host"}, 2))
+    body2 = _client(mod).post("/actions/demo_code_reveal",
+                              data={"site": "nwd", "code_id": "c9"}).text
+    assert "CANNOT VERIFY" in body2
+    assert "NOT RECOVERABLE" not in body2
+
+
+def test_viewer_gets_no_reveal_button_and_403_on_the_post(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch, codes=CODES_JSON_RECOVERY)
+    body = _client(mod, "vera").get("/panes/demo").text
+    assert "/actions/demo_code_reveal" not in body
+    r = _client(mod, "vera").post("/actions/demo_code_reveal",
+                                  data={"site": "nwd", "code_id": "c1"})
+    assert r.status_code == 403
+
+
+def test_pane_shows_per_row_whether_a_plaintext_is_recoverable(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch, codes=CODES_JSON_RECOVERY)
+    body = _client(mod).get("/panes/demo").text
+    # c1 is recoverable -> it gets a reveal control; the others say so plainly
+    assert "/actions/demo_code_reveal" in body
+    assert "not in a pack" in body
+    _fake_demo(mod, monkeypatch, codes=CODES_JSON_UNKNOWN_RECOVERY)
+    body2 = _client(mod).get("/panes/demo").text
+    # unknown must read as unknown, never as "no"
+    assert "unknown" in body2.lower()
+    assert "not in a pack" not in body2
+
+
+# ---------------------------------------------------------------------------
+# select-all: VISIBLE, COUNTED, and provably scoped to the filtered set
+#
+# The affordance already existed (a bare unlabelled checkbox in a header cell,
+# !398) and the operator reported it missing — which is what an unlabelled
+# control in a table header IS. These pin the fix AND the property the operator
+# suspected was broken but which measurement said was already correct.
+# ---------------------------------------------------------------------------
+def _count_checkboxes(body: str) -> int:
+    return body.count('name="code_ids"')
+
+
+def test_select_all_is_labelled_and_states_how_many_it_will_select(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch)
+    body = _client(mod).get("/panes/demo").text
+    assert "Select all 4 shown" in body
+    # a real label element bound to the control — keyboard + screen-reader
+    assert 'for="demo-select-all-nwd"' in body
+    assert 'id="demo-select-all-nwd"' in body
+
+
+def test_select_all_count_tracks_the_active_filter_and_names_it(mod, monkeypatch):
+    _fake_demo(mod, monkeypatch)
+    body = _client(mod).get("/panes/demo?state=live").text
+    assert "Select all 2 shown" in body
+    assert "live only" in body
+
+
+def test_select_all_count_always_equals_the_rendered_checkboxes(mod, monkeypatch):
+    """THE property, pinned from both ends: whatever the filter, the number the
+    label promises is the number of checkboxes actually on the page. A future
+    change that made select-all reach past the filtered set — or that let the
+    label go stale — fails here."""
+    _fake_demo(mod, monkeypatch)
+    for state, expected in (("all", 4), ("live", 2), ("revoked", 1), ("expired", 1)):
+        body = _client(mod).get(f"/panes/demo?state={state}").text
+        assert _count_checkboxes(body) == expected, state
+        assert f"Select all {expected} shown" in body
+
+
+def test_select_all_handler_cannot_reach_outside_this_site_form(mod, monkeypatch):
+    """Structural: the toggle resolves its checkboxes from its OWN enclosing
+    form. `document.querySelectorAll` would tick every demo site's rows at
+    once AND ignore the filter — the exact reach-beyond the operator feared."""
+    tpl = (Path(__file__).resolve().parent.parent / "templates" / "_demo_codes.html").read_text()
+    assert "closest('form')" in tpl
+    assert "document.querySelectorAll" not in tpl
+    assert "document.getElementById" not in tpl
+
+
+def test_select_all_is_sensible_with_zero_rows(mod, monkeypatch):
+    empty = dict(CODES_JSON, codes=[],
+                 counts={"live": 0, "revoked": 0, "expired": 0, "total": 0})
+    _fake_demo(mod, monkeypatch, codes=empty)
+    body = _client(mod).get("/panes/demo").text
+    assert "nothing to select" in body
+    assert "Select all 0 shown" not in body
+    assert 'id="demo-select-all-nwd"' in body      # still present, just disabled
+    assert "disabled" in body
+
+
+def test_bulk_result_reuses_the_table_with_DIFFERENT_dom_ids(mod, monkeypatch):
+    """The bulk-action result re-includes the code table INSIDE the pane that
+    already contains one, so the two must not share DOM ids: a `<label for=…>`
+    binds to the first match, which would wire the result block's select-all
+    label to the pane's checkbox. Found while adding the label — the old bare
+    `id="demo-select-all"` had the same collision across sites."""
+    _fake_demo(mod, monkeypatch)
+    monkeypatch.setattr(mod, "run_pl",
+                        lambda root, args, **kw: {"rc": 0, "out": "Revoked 1 code(s)",
+                                                  "err": "", "secs": 0.3, "cmd": "x"})
+    body = _client(mod).post("/actions/demo_codes",
+                             data={"site": "nwd", "op": "revoke", "code_ids": ["c1"]}).text
+    assert 'id="demo-select-all-nwd-result"' in body
+    assert 'id="demo-select-all-nwd"' not in body
+    assert 'id="demo-reveal-nwd-result"' in body

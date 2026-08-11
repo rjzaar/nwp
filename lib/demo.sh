@@ -157,6 +157,21 @@ demo_registry_home() {
 
 demo_registry_local_host() { hostname -s 2>/dev/null || hostname 2>/dev/null || echo ""; }
 
+# demo_registry_home_ssh → the home's ssh endpoint (user@addr), declared in
+# the SAME one file as the home itself (ops#328 D1 keeps the home's identity
+# in exactly one place; ops#328 t4 needs to REACH it to relocate stray invite
+# packs). "" when undeclared or malformed — the caller fails closed rather
+# than guessing an address for a host it is about to send plaintext to.
+demo_registry_home_ssh() {
+    local f v
+    f="$(demo_registry_home_file)"
+    [[ -f "$f" ]] || { echo ""; return 0; }
+    v="$(sed -n 's/^registry_home_ssh:[[:space:]]*//p' "$f" 2>/dev/null | head -1 \
+         | sed "s/[\"']//g; s/[[:space:]]*$//")"
+    [[ "$v" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9._:-]+$ ]] || v=""
+    echo "$v"
+}
+
 # demo_registry_home_state → "home|<home>" | "not-home|<home>" | "undeclared|<file>"
 # An unreadable LOCAL hostname is "not-home": a host that cannot prove its
 # identity is not the home, whatever the declaration says.
@@ -235,6 +250,11 @@ demo_harvest_dir() { echo "$(demo_site_dir "$1")/demo-harvest"; }
 # expired rows here so the working registry stays small WITHOUT destroying the
 # audit trail (ops#328). Same 0600 posture as the registry itself.
 demo_purged_file() { echo "$(demo_site_dir "$1")/demo-codes-purged.json"; }
+# Invitation packs — the ONLY place a code's plaintext exists after issue time
+# (0600, gitignored, deliberately excluded from the met backup pull). Operator
+# ruling 2026-08-11: packs live WITH the registry home, so every verb that
+# reads them is home-guarded exactly like a registry write.
+demo_invite_pack_dir() { echo "$(demo_site_dir "$1")/demo-invites"; }
 
 ################################################################################
 # Logging — every reset / skip is a line in sites/<site>/demo-reset.log
@@ -429,30 +449,63 @@ demo_codes_payload() {
 #   * UNREADABLE file  → ok:false, registry:"unreadable", exit 2 — a broken
 #     registry must NEVER render as an empty clean list (ops#281 / !394).
 #   * Hashes ship as a 12-char prefix only; the full sha256 stays at rest.
+#   * ops#328 t4 — each row carries `recoverable`: can this code's PLAINTEXT
+#     still be recovered from an invite pack on this host? true / false /
+#     null, where null means "could not tell" (no readable pack directory).
+#     Never collapse null into false: the operator would read "gone forever"
+#     off a directory nobody could open. The optional third argument is the
+#     pack directory; omit it and the column is honestly null throughout.
 demo_codes_list_json() {
-    local site="$1" file="$2" now
+    local site="$1" file="$2" packdir="${3:-}" now
     now="$(date +%s)"
+    # Pack scan FIRST, so its verdict is available to the row mapper. Its
+    # failure is never fatal to the listing — an unreadable pack corpus must
+    # not take the code table down with it, it must render as "unknown".
+    local rec_state="cannot_verify" rec_reason="no invite-pack directory was named for this listing"
+    local rec_packs="null" hashes_json='[]'
+    if [[ -n "$packdir" ]]; then
+        local _idx _rc=0
+        _idx="$(demo_pack_hash_index "$packdir" 2>&1)" || _rc=$?
+        if (( _rc == 0 )); then
+            rec_state="measured"
+            rec_reason="hash-matched against the invite packs readable on this host"
+            rec_packs="$(demo_pack_count "$packdir")"
+            [[ "$rec_packs" =~ ^[0-9]+$ ]] || rec_packs="null"
+            hashes_json="$(printf '%s\n' "$_idx" | awk 'NF{print $1}' | jq -R . | jq -cs .)" || hashes_json='[]'
+        else
+            rec_reason="$(printf '%s' "$_idx" | tail -n1 | sed 's/^ERROR: //')"
+        fi
+    fi
     if ! demo_require_jq >/dev/null 2>&1; then
         printf '{"ok":false,"site":"%s","registry":"unreadable","reason":"jq missing on this host - CANNOT VERIFY"}\n' "$site"
         return 2
     fi
+    local recovery
+    recovery="$(jq -cn --arg state "$rec_state" --arg reason "$rec_reason" \
+        --arg dir "$packdir" --argjson packs "$rec_packs" \
+        '{state:$state, reason:$reason, packs_dir:$dir, packs_scanned:$packs,
+          scope:"invite packs on this host only - packs live with the registry home and are not replicated"}')"
     if [[ ! -f "$file" ]]; then
-        jq -cn --arg site "$site" --arg file "$file" \
+        jq -cn --arg site "$site" --arg file "$file" --argjson rec "$recovery" \
            '{ok:true, site:$site, registry:"absent", registry_path:$file,
-             codes:[], counts:{live:0, revoked:0, expired:0, total:0}}'
+             codes:[], counts:{live:0, revoked:0, expired:0, total:0}, recovery:$rec}'
         return 0
     fi
     local out=""
-    out="$(jq -c --arg site "$site" --arg file "$file" --argjson now "$now" '
-        {ok:true, site:$site, registry:"present", registry_path:$file,
-         generated_at:($now|todate),
+    out="$(jq -c --arg site "$site" --arg file "$file" --argjson now "$now" \
+        --argjson rec "$recovery" --argjson hashes "$hashes_json" '
+        ($rec.state == "measured") as $measured
+        | ($hashes | map({key:., value:true}) | from_entries) as $have
+        | {ok:true, site:$site, registry:"present", registry_path:$file,
+         generated_at:($now|todate), recovery:$rec,
          codes:[.codes[] | {id, bundle,
              state:(if .revoked then "revoked"
                     elif .expires <= $now then "expired"
                     else "live" end),
              expires, expires_iso:(.expires|todate),
              created:(.created // 0), created_iso:((.created // 0)|todate),
-             hash_prefix:(.hash[0:12])}]}
+             hash_prefix:(.hash[0:12]),
+             recoverable:(if $measured then ($have[.hash] // false) else null end)}]}
         | .counts = {live:([.codes[]|select(.state=="live")]|length),
                      revoked:([.codes[]|select(.state=="revoked")]|length),
                      expired:([.codes[]|select(.state=="expired")]|length),
@@ -464,6 +517,160 @@ demo_codes_list_json() {
         return 2
     fi
     printf '%s\n' "$out"
+}
+
+################################################################################
+# RECOVERING a code's plaintext (ops#328 t4) — without weakening the registry
+#
+# The registry stores sha256 and nothing else, and that does not change here.
+# What makes recovery possible at all is that demo_hash_code is UNSALTED
+# (`printf '%s' "$code" | sha256sum`), so plaintext → hash is computable. The
+# invite packs under sites/<site>/demo-invites/ hold the plaintext of every
+# code that was ever mailed; the hash the registry ALREADY keeps is the join
+# key. Nothing new is written down, no plaintext is ever stored by these
+# functions, and a registry without packs is exactly as opaque as before.
+#
+# The distinctions are the point, and they are the ops#281 shape:
+#   * no pack directory        → CANNOT VERIFY. NOT "no such code".
+#   * a pack that cannot be read → CANNOT VERIFY for the WHOLE scan. A partial
+#     corpus may not report "not found"; the one file it could not open is
+#     exactly the one that might have held the answer.
+#   * scanned N readable packs, no hash match → a NAMED not-found.
+################################################################################
+
+# The issued-code alphabet (demo_generate_code): A-HJ-NP-Z2-9, four groups of
+# five. Matching on the SHAPE rather than on the "Your code:" label means a
+# hand-edited or reformatted pack still yields its codes.
+DEMO_CODE_PLAINTEXT_RE='[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}'
+
+# demo_pack_files <dir> → one readable pack path per line, sorted.
+# exit 2 when the directory is absent or unreadable (CANNOT VERIFY), exit 0
+# with no output when it exists and is simply empty (a real measurement).
+demo_pack_files() {
+    local dir="${1:?pack dir required}"
+    if [[ ! -d "$dir" ]]; then
+        echo "ERROR: no invite-pack directory at ${dir} — CANNOT VERIFY whether a plaintext exists (this is NOT 'no such code')" >&2
+        return 2
+    fi
+    if [[ ! -r "$dir" || ! -x "$dir" ]]; then
+        echo "ERROR: invite-pack directory ${dir} cannot be listed — CANNOT VERIFY" >&2
+        return 2
+    fi
+    find "$dir" -maxdepth 1 -type f -name 'invite-*.md' 2>/dev/null | LC_ALL=C sort
+}
+
+# demo_pack_hash_index <dir> → "<sha256> <pack-basename>" per code found.
+# NEVER prints a plaintext code. Fail-closed: any unreadable pack aborts the
+# whole scan with exit 2, because a partially-read corpus cannot honestly
+# answer "not found".
+demo_pack_hash_index() {
+    local dir="${1:?pack dir required}" f code rc=0 listing=""
+    # Command substitution, NOT `while … < <(demo_pack_files)`: a process
+    # substitution's exit status is unobservable, so the CANNOT VERIFY the
+    # lister returns for an absent/unreadable directory was silently becoming
+    # "zero packs, no match" — the exact collapse this whole surface exists to
+    # prevent. (Proven red: `reveal c1` with no pack dir answered
+    # NOT RECOVERABLE instead of exit 2.)
+    listing="$(demo_pack_files "$dir")" || rc=$?
+    (( rc == 0 )) || return "$rc"
+    local -a files=()
+    while IFS= read -r f; do [[ -n "$f" ]] && files+=("$f"); done <<< "$listing"
+    for f in "${files[@]:-}"; do
+        [[ -n "$f" ]] || continue
+        if [[ ! -r "$f" ]]; then
+            echo "ERROR: invite pack ${f} exists but cannot be read — CANNOT VERIFY (a partial scan must never report 'not found')" >&2
+            return 2
+        fi
+        while IFS= read -r code; do
+            [[ -n "$code" ]] || continue
+            printf '%s %s\n' "$(demo_hash_code "$code")" "$(basename "$f")"
+        done < <(grep -Eo "$DEMO_CODE_PLAINTEXT_RE" "$f" 2>/dev/null | LC_ALL=C sort -u)
+    done
+    return 0
+}
+
+# demo_pack_count <dir> → number of readable packs; "" when it cannot tell.
+# An EMPTY pack dir is 0 (measured); an absent/unreadable one is "" (unknown).
+demo_pack_count() {
+    local dir="$1" out rc=0
+    out="$(demo_pack_files "$dir" 2>/dev/null)" || rc=$?
+    (( rc == 0 )) || { echo ""; return 0; }
+    printf '%s' "$out" | grep -c . || true
+}
+
+# demo_code_reveal <registry> <packdir> <id> → JSON on stdout.
+#   exit 0  {"ok":true,…,"code":"<PLAINTEXT>", "pack":…}   ← the ONE emitter
+#   exit 1  {"ok":false,"refused":true,…}                  unknown id
+#   exit 1  {"ok":false,"found":false,…}                   scanned, no match
+#   exit 2  {"ok":false,"found":null,…}                    CANNOT VERIFY
+# The caller owns the audit record and the human rendering; this is the pure,
+# unit-testable half.
+demo_code_reveal() {
+    local file="$1" packdir="$2" id="$3"
+    demo_require_jq >/dev/null 2>&1 || {
+        printf '%s\n' '{"ok":false,"found":null,"reason":"CANNOT VERIFY: jq missing on this host"}'
+        return 2
+    }
+    if [[ ! -f "$file" ]]; then
+        jq -cn --arg f "$file" '{ok:false, found:null,
+            reason:("CANNOT VERIFY: no code registry at \($f) on this host - the registry has ONE home and this is not it")}'
+        return 2
+    fi
+    local row
+    row="$(jq -c --arg id "$id" '[.codes[] | select(.id == $id)] | .[0] // empty' "$file" 2>/dev/null)" || row=""
+    if [[ -z "$row" ]]; then
+        # Distinguish "registry unreadable" from "id absent" — same lesson.
+        if ! jq -e '.codes | type == "array"' "$file" >/dev/null 2>&1; then
+            jq -cn --arg f "$file" '{ok:false, found:null,
+                reason:("CANNOT VERIFY: the registry at \($f) could not be parsed - this is not an empty registry")}'
+            return 2
+        fi
+        jq -cn --arg id "$id" '{ok:false, refused:true, id:$id,
+            reason:("no code with id " + $id + " in this registry - no pack was even opened")}'
+        return 1
+    fi
+    local want; want="$(printf '%s' "$row" | jq -r '.hash // empty')"
+    if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+        jq -cn --arg id "$id" '{ok:false, found:null, id:$id,
+            reason:"CANNOT VERIFY: the registry row carries no usable sha256"}'
+        return 2
+    fi
+    local index rc=0
+    index="$(demo_pack_hash_index "$packdir" 2>&1)" || rc=$?
+    if (( rc != 0 )); then
+        jq -cn --arg id "$id" --arg r "$(printf '%s' "$index" | tail -n1)" \
+            '{ok:false, found:null, id:$id,
+              reason:("CANNOT VERIFY: " + ($r | sub("^ERROR: ";"")))}'
+        return 2
+    fi
+    local packs; packs="$(demo_pack_count "$packdir")"
+    local hit pack=""
+    hit="$(printf '%s\n' "$index" | awk -v w="$want" '$1 == w {print $2; exit}')" || hit=""
+    pack="$hit"
+    if [[ -z "$pack" ]]; then
+        jq -cn --arg id "$id" --argjson packs "${packs:-0}" --arg dir "$packdir" \
+            '{ok:false, found:false, id:$id, packs_scanned:$packs,
+              reason:("NOT RECOVERABLE: none of the \($packs) readable invite pack(s) in \($dir) contains the plaintext for \($id). Its plaintext was printed once at issue time and only its sha256 was kept - that is by design, not a fault.")}'
+        return 1
+    fi
+    # Re-extract the ONE matching plaintext from the ONE pack that holds it.
+    local code="" c
+    while IFS= read -r c; do
+        [[ -n "$c" ]] || continue
+        if [[ "$(demo_hash_code "$c")" == "$want" ]]; then code="$c"; break; fi
+    done < <(grep -Eo "$DEMO_CODE_PLAINTEXT_RE" "${packdir}/${pack}" 2>/dev/null)
+    if [[ -z "$code" ]]; then
+        jq -cn --arg id "$id" '{ok:false, found:null, id:$id,
+            reason:"CANNOT VERIFY: the pack matched by hash no longer yields that plaintext (it changed under the scan)"}'
+        return 2
+    fi
+    printf '%s' "$row" | jq -c --arg code "$code" --arg pack "$pack" --argjson packs "${packs:-0}" \
+        --argjson now "$(date +%s)" \
+        '{ok:true, id:.id, bundle:.bundle,
+          state:(if .revoked then "revoked" elif .expires <= $now then "expired" else "live" end),
+          expires_iso:(.expires|todate), code:$code, pack:$pack, packs_scanned:$packs,
+          note:"shown once here: recovered by hashing the plaintext in the pack and matching the sha256 the registry already stored. It is written nowhere, logged nowhere, and the registry still holds only the hash."}'
+    return 0
 }
 
 # demo_codes_purge <registry> <archive> <id...> — move rows OUT of the working

@@ -180,8 +180,36 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   (live|revoked|expired) + per-state counts;
                                   an ABSENT registry is ok:true/empty, an
                                   UNREADABLE one is exit 2 ok:false (ops#328).
+                                  Each row also carries \`recoverable\`: can its
+                                  PLAINTEXT still be found in an invite pack on
+                                  this host? true/false/null, and null (no
+                                  readable pack dir) NEVER collapses to false.
     codes <site> issue <bundle> [--expires=14d]
                                   Issue a code; plaintext printed ONCE.
+    codes <site> reveal <id> [--json]
+                                  Show ONE code's plaintext again (ops#328 t4).
+                                  The registry stays hash-only: this hashes the
+                                  plaintext in sites/<site>/demo-invites/ and
+                                  matches the sha256 already stored. Printed
+                                  once; written nowhere. An ACCESS record (id +
+                                  who, never the value) goes to the demo log.
+                                  Home-guarded — the packs live with the
+                                  registry (operator ruling 2026-08-11). No
+                                  pack directory / an unreadable pack is exit 2
+                                  CANNOT VERIFY, never "no such code"; scanned-
+                                  and-absent is a named exit-1 NOT RECOVERABLE.
+    codes <site> packs inventory|relocate [--apply]
+                                  Invite packs belong ON the registry home — a
+                                  pack elsewhere is plaintext codes no verb
+                                  looks after. \`inventory\` lists what is here
+                                  (filenames, code counts, sha256 prefixes —
+                                  no plaintext). \`relocate\` copies strays to
+                                  the home, PROVES the home's copy is byte-
+                                  identical, and only then deletes the local
+                                  one; it refuses to overwrite a home pack of
+                                  the same name with different content. Dry-run
+                                  by default. Endpoint: registry_home_ssh: in
+                                  servers/live/demo/registry-home.yml.
     codes <site> revoke <id>...   Revoke code(s) (kept in registry as audit
                                   rows). Several ids = one batch: any bad id
                                   refuses the WHOLE batch before touching any.
@@ -206,7 +234,9 @@ ${BOLD}SUBCOMMANDS:${NC}
     Registry writes (issue/revoke/rotate/sync/purge/reconcile/invite) run ONLY
     on the registry's declared home — registry_home: in servers/live/demo/
     registry-home.yml (the console/agent host — operator ruling 2026-08-09,
-    ops#328 D1). Reads work anywhere. One-off ledgered escape hatch:
+    ops#328 D1). \`reveal\` joins them: it reads the invite packs, and the packs
+    live with the registry (operator ruling 2026-08-11). Other reads work
+    anywhere. One-off ledgered escape hatch:
     NWP_DEMO_REGISTRY_HOME_OVERRIDE='<why>'.
     codes <site> drift [--tier=live]
                                   Compare the THREE numbers that must agree —
@@ -240,6 +270,21 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   recomputes) — there is no raw setter, and
                                   demotion is a typed refusal. Same guards as
                                   set-guild.
+    testers <site> login <account> --tier=live [--json]
+                                  Mint a ONE-TIME LOGIN LINK for a fenced
+                                  tester (ops#328 t4) — the personas have no
+                                  passwords, so this is the only way to see the
+                                  site as one of them. Always passes --name=
+                                  and --uri= (the positional slot is a PATH,
+                                  not a username: a name there silently returns
+                                  a uid-1 ADMIN link), then proves the returned
+                                  link's uid matches the roster's before
+                                  showing it. Refuses uid<=1 always, refuses
+                                  anything off the @demo.invalid fence, and
+                                  requires demo_mode=true. The link is a
+                                  credential: printed once, never logged, never
+                                  stored — the demo log records only that one
+                                  was minted, and for whom.
     invite <site> [--bundles a,b] [--expiry 14d] [--all]
                                   Issue ONE fresh code per level and render a
                                   copy-ready invitation email (stdout + a 0600
@@ -1595,8 +1640,11 @@ demo_codes_delivery_probe() {
 
 # demo_require_registry_home <site> <label> → 0 ok to write here;
 # 1 REFUSED (not the home); 2 CANNOT VERIFY (no usable declaration).
+# $3 (optional) — what this verb DOES to the home, for the refusal sentence.
+# `reveal` is home-guarded but does not write: telling the operator it "writes
+# the registry" would be a false statement in the one message they read.
 demo_require_registry_home() {
-    local site="$1" label="$2"
+    local site="$1" label="$2" what="${3:-writes the invite-code registry}"
     local state; state="$(demo_registry_home_state)"
     local verdict="${state%%|*}" detail="${state#*|}"
     case "$verdict" in
@@ -1618,7 +1666,7 @@ demo_require_registry_home() {
         print_warning "registry-home override in effect on $(demo_registry_local_host) (home is '${detail}') — LEDGERED to $(demo_log_file "$site")"
         return 0
     fi
-    print_error "REFUSED: '${label}' writes the invite-code registry, and its ONE home is '${detail}' (this host: '$(demo_registry_local_host)')."
+    print_error "REFUSED: '${label}' ${what}, and its ONE home is '${detail}' (this host: '$(demo_registry_local_host)')."
     print_info  "Operator ruling 2026-08-09 (ops#328 D1): the registry lives on '${detail}' so"
     print_info  "everything works without any one laptop. A second writable copy is how the"
     print_info  "live site came to enforce a set NO host's registry matched."
@@ -3870,6 +3918,183 @@ demo_testers_require_demo_mode() {
     demo_testers_refuse "${site} (${tier}) does not report nwc_demo_access demo_mode=true (got '${val:-<unreadable>}') — the testers editor only writes on a demo tier, and an unreadable flag fails toward the fence."
 }
 
+################################################################################
+# login — see the site through a tester's eyes (ops#328 t4)
+#
+# The personas have NO PASSWORDS: nwc:seed-demo mints them and nobody ever set
+# one, so a one-time login link is the only way in. Two traps, both hit for
+# real on nwd live before this verb existed:
+#
+#   1. --uri IS REQUIRED. Without it drush has no base URL and mints
+#      http://default/user/reset/… — a link that goes nowhere, handed to an
+#      operator who has no way to tell from looking at it.
+#   2. THE POSITIONAL ARGUMENT IS A PATH, NOT A USERNAME. `drush user:login
+#      demo_writer` puts "demo_writer" in the `path` slot; with no --name the
+#      command falls through to `User::load(1)` and returns an ADMIN link.
+#      It looks exactly like a persona link and it is a root session.
+#
+# Trap 2 is made UNREACHABLE rather than merely avoided: the verb passes
+# --name=, and then reads the uid back out of the returned
+# /user/reset/<uid>/… and refuses unless it is the uid the roster gave for
+# this account. A link for any other uid — most of all uid 1 — is discarded
+# and never printed, on any path.
+#
+# THE LINK IS A CREDENTIAL. It is rendered once on stdout and that is the only
+# place it ever exists: not in argv (the account name is the argument), not in
+# sites/<site>/demo-reset.log (which records account+uid+outcome), and not in
+# any refusal document or raw-output tail — demo_testers_scrub_links strips
+# any reset URL from anything this path emits on the way out.
+################################################################################
+
+# Strip one-time login links out of any text before it is emitted. Belt to the
+# braces of "never put it there in the first place": the raw-output tail of a
+# CANNOT VERIFY document is assembled from drush's own output, which is
+# exactly where a link that failed its uid check would be.
+demo_testers_scrub_links() {
+    sed -E 's#https?://[^[:space:]]*/user/reset/[^[:space:]]*#<one-time link REDACTED>#g'
+}
+
+# demo_login_uri <site> <tier> → the base URL to hand drush as --uri, or "".
+# live  → https://<live.domain>, the same fact the invitation email resolves.
+# dev|stg → the DDEV project's URL (name from .ddev/config.yaml, else the
+#           documented <site>-<tier> convention).
+demo_login_uri() {
+    local site="$1" tier="$2" base="" proj name=""
+    if demo_is_live "$tier"; then
+        base="$(demo_invite_community_base "$site")"
+    else
+        proj="$(demo_project_dir "$site" "$tier" 2>/dev/null)" || proj=""
+        if [[ -n "$proj" && -f "$proj/.ddev/config.yaml" ]]; then
+            # yq, never awk (ADR-0015 / lint-yq-first). demo_yq resolves the
+            # user-local installs the console host needs.
+            local yqb; yqb="$(demo_yq 2>/dev/null || true)"
+            if [[ -n "$yqb" ]]; then
+                name="$("$yqb" eval '.name // ""' "$proj/.ddev/config.yaml" 2>/dev/null || true)"
+                [[ "$name" == "null" ]] && name=""
+            fi
+        fi
+        [[ -n "$name" ]] || name="${site}-${tier}"
+        base="https://${name}.ddev.site"
+    fi
+    [[ "$base" == https://* ]] || base=""
+    echo "$base"
+}
+
+cmd_testers_login() {
+    local site="$1" tier="$2" acct="$3"; shift 3 || true
+    [[ $# -eq 0 ]] || { demo_testers_refuse "unrecognised argument(s) for login: $*"; return 1; }
+    [[ -n "$acct" ]] || {
+        demo_testers_refuse "Usage: pl demo testers ${site} login <account> --tier=live"
+        return 1
+    }
+    [[ "$acct" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$ ]] || {
+        demo_testers_refuse "account '${acct}' fails the shape check (letters/digits/._@- only)"
+        return 1
+    }
+
+    # 1. The URI, FIRST. drush is never called without one — a link minted
+    #    against http://default is worse than a refusal, because it looks like
+    #    a success.
+    local uri; uri="$(demo_login_uri "$site" "$tier")"
+    [[ -n "$uri" ]] || {
+        demo_testers_refuse "cannot resolve a base URL for ${site} (${tier}) — without --uri drush mints a http://default/ link that goes nowhere. Set live.domain in sites/${site}/.nwp.yml."
+        return 1
+    }
+
+    # 2. The roster decides WHO this is: uid and fence come from the site, not
+    #    from the argument. An unreadable roster is CANNOT VERIFY — it never
+    #    proceeds on an assumption about an identity it could not read.
+    local out rc=0
+    out="$(demo_testers_drush "$site" "$tier" nwc:tester-list --format=json)" || rc=$?
+    if (( rc != 0 )); then
+        demo_testers_emit "$site" "$tier" nwc:tester-list "$rc" "$out"
+        return $?
+    fi
+    local row
+    row="$(jq -c --arg n "$acct" '[.accounts[]? | select(.name == $n)] | .[0] // empty' <<<"$out" 2>/dev/null)" || row=""
+    if [[ -z "$row" ]]; then
+        demo_testers_refuse "'${acct}' is not in ${site}'s fenced tester roster — nothing was minted. The roster lists the @demo.invalid accounts only; a real account is not loggable through this verb by design."
+        return 1
+    fi
+    local uid mail active
+    uid="$(jq -r '.uid // empty' <<<"$row")"
+    mail="$(jq -r '.mail // ""' <<<"$row")"
+    active="$(jq -r 'if .active then "true" else "false" end' <<<"$row")"
+    if [[ ! "$uid" =~ ^[0-9]+$ ]]; then
+        jq -n --arg r "CANNOT VERIFY: ${site}'s roster gave no usable uid for '${acct}' — refusing to mint a session for an identity it could not read" \
+            '{ok:false, reason:$r}'
+        return 2
+    fi
+    # uid<=1 is refused ALWAYS. This is the admin-link trap's destination, and
+    # it is closed here as well as at the link check — a guard at one end only
+    # is a guard you can walk around.
+    if (( uid <= 1 )); then
+        demo_testers_refuse "'${acct}' is uid ${uid} — uid<=1 is the site administrator and is REFUSED always. A console button that hands out a root session while saying 'sign in as this tester' is the whole reason this check exists."
+        return 1
+    fi
+    if [[ "$mail" != *"@demo.invalid" ]]; then
+        demo_testers_refuse "'${acct}' (${mail:-<no mail>}) is not on the @demo.invalid fence — this verb only ever signs in as a synthetic tester. The pl wrapper never forwards --allow-real."
+        return 1
+    fi
+    if [[ "$active" != "true" ]]; then
+        demo_testers_refuse "'${acct}' is blocked on ${site} — drush would refuse the login anyway. Unblock the account first if this is deliberate."
+        return 1
+    fi
+
+    # 3. The pl-layer fence half, same as every other tester write.
+    demo_testers_require_demo_mode "$site" "$tier" || return 1
+
+    # 4. Mint. --name= (never the positional path slot) and --uri=, both.
+    rc=0
+    out="$(demo_testers_drush "$site" "$tier" user:login --name="$acct" --uri="$uri" --no-browser)" || rc=$?
+    if (( rc != 0 )); then
+        # Scrubbed: a failed call may still have printed a link.
+        demo_testers_emit "$site" "$tier" user:login "$rc" "$(printf '%s' "$out" | demo_testers_scrub_links)"
+        local _erc=$?
+        demo_log "$site" tester-login-failed "acct=${acct} uid=${uid} tier=${tier} rc=${rc}"
+        return $_erc
+    fi
+    local link link_uid
+    link="$(grep -Eo 'https?://[^[:space:]]+/user/reset/[0-9]+/[0-9]+/[^[:space:]]+' <<<"$out" | head -n1)" || link=""
+    if [[ -z "$link" ]]; then
+        jq -n --arg r "CANNOT VERIFY: drush user:login returned no one-time link for '${acct}' on ${site} (${tier}) — nothing is being shown, because there is nothing that verified" \
+            '{ok:false, reason:$r}'
+        demo_log "$site" tester-login-failed "acct=${acct} uid=${uid} tier=${tier} no-link"
+        return 2
+    fi
+    link_uid="$(sed -E 's#.*/user/reset/([0-9]+)/.*#\1#' <<<"$link")"
+    if [[ "$link_uid" != "$uid" ]]; then
+        # THE TRAP, caught. The link is dropped on the floor here — it is not
+        # echoed, not put in a reason, not tailed into a raw field.
+        demo_testers_refuse "the link drush returned is for uid ${link_uid}, not '${acct}' (uid ${uid}) — it was DISCARDED and is NOT shown. user:login's positional argument is a PATH, not a username, so a name in that slot silently returns a uid 1 administrator session that looks exactly like a tester link."
+        demo_log "$site" tester-login-refused "acct=${acct} uid=${uid} got_uid=${link_uid} tier=${tier} link-discarded"
+        return 1
+    fi
+    if [[ "$link" != "${uri}/"* ]]; then
+        demo_testers_refuse "the link is not on ${uri} — DISCARDED unprinted. That is the missing-base-URL symptom (drush falls back to http://default/), and such a link cannot log anybody in."
+        demo_log "$site" tester-login-refused "acct=${acct} uid=${uid} tier=${tier} wrong-origin link-discarded"
+        return 1
+    fi
+
+    # The ACCESS is recorded; the CREDENTIAL is not.
+    demo_log "$site" tester-login-minted \
+        "acct=${acct} uid=${uid} tier=${tier} by=${SUDO_USER:-${USER:-unknown}} (one-time link NOT recorded)"
+
+    if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+        jq -n --arg a "$acct" --argjson uid "$uid" --arg url "$link" --arg uri "$uri" --arg site "$site" \
+            '{ok:true, account:$a, uid:$uid, site:$site, uri:$uri, url:$url, shown_once:true,
+              note:"one-time login link: single use, expires with the site login-link window, and grants this tester session. It exists in this output only - it is not stored and not logged."}'
+        return 0
+    fi
+    print_header "One-time login link — ${acct} (uid ${uid}) on ${site} (${tier})"
+    echo ""
+    echo "    ${BOLD}${link}${NC}"
+    echo ""
+    print_status "WARN" "Shown ONCE — single use. It is not stored and not logged; the demo log records only that you minted one."
+    print_info "Open it in a private window so it does not replace your own session."
+    return 0
+}
+
 cmd_testers() {
     local site="$1" tier="$2" remove="$3"; shift 3 || true
     local action="${1:-list}"; shift || true
@@ -3889,14 +4114,16 @@ cmd_testers() {
 
     case "$action" in
         list) ;;
-        set-guild|set-level)
+        set-guild|set-level|login)
             # Writes name their tier — the ops#225/#173 rule, same wording as
-            # every code verb.
+            # every code verb. `login` is not a write to the roster, but it
+            # MINTS A CREDENTIAL against a running site, and minting one for
+            # the wrong site is the same class of accident.
             demo_require_explicit_tier "testers ${action}" \
                 "pl demo testers ${site} ${action} <account> … --tier=live" || return 1
             ;;
         *)
-            print_error "Unknown testers action '${action}' (list|set-guild|set-level)"
+            print_error "Unknown testers action '${action}' (list|set-guild|set-level|login)"
             return 1 ;;
     esac
 
@@ -3981,6 +4208,10 @@ cmd_testers() {
             demo_testers_emit "$site" "$tier" nwc:tester-set-level "$rc" "$out"
             return $?
             ;;
+        login)
+            cmd_testers_login "$site" "$tier" "${1:-}" "${@:2}"
+            return $?
+            ;;
     esac
 }
 
@@ -4009,10 +4240,22 @@ cmd_codes() {
 
     # …then whether this host IS the registry's declared home (ops#328 D1) —
     # identity before transport, and before anything is minted…
+    #
+    # `reveal` is a READ, and reads are otherwise unguarded — but it reads the
+    # INVITE PACKS, and the operator ruled (2026-08-11) that the packs live
+    # with the registry home. A reveal on any other host would answer off
+    # whichever packs happened to be lying around there, which is precisely
+    # the half-working, two-copies state D1 exists to end. `packs` is exempt
+    # because relocating a stray copy is by definition run on the stray host.
     local _rc=0
     case "$action" in
         issue|revoke|rotate|sync|purge|reconcile)
             demo_require_registry_home "$site" "codes ${action}" || { _rc=$?; return $_rc; }
+            ;;
+        reveal)
+            demo_require_registry_home "$site" "codes reveal" \
+                "reads the invite packs, and they live with the invite-code registry" \
+                || { _rc=$?; return $_rc; }
             ;;
     esac
 
@@ -4032,7 +4275,7 @@ cmd_codes() {
             # --json (parsed by main into DEMO_JSON) is the console's contract:
             # structured rows + counts, absent≠unreadable (ops#328).
             if [[ "${DEMO_JSON:-false}" == "true" ]]; then
-                demo_codes_list_json "$site" "$cfile"
+                demo_codes_list_json "$site" "$cfile" "$(demo_invite_pack_dir "$site")"
                 return $?
             fi
             cmd_status "$site" "$tier" | sed -n '/Invite codes:/,/Recent resets/p' | head -n -1
@@ -4132,6 +4375,14 @@ cmd_codes() {
         sync)
             demo_sync_codes_to_site "$site" "$tier"
             ;;
+        reveal)
+            cmd_codes_reveal "$site" "$cfile" "$@"
+            return $?
+            ;;
+        packs)
+            cmd_codes_packs "$site" "$@"
+            return $?
+            ;;
         reconcile)
             cmd_codes_reconcile "$site" "$tier" "$@"
             ;;
@@ -4139,10 +4390,221 @@ cmd_codes() {
             cmd_codes_drift "$site" "$tier"
             ;;
         *)
-            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift|purge|reconcile)"
+            print_error "Unknown codes action '$action' (list|issue|revoke|rotate|sync|drift|purge|reconcile|reveal|packs)"
             return 1
             ;;
     esac
+}
+
+################################################################################
+# reveal — show ONE code's plaintext again, without weakening the registry
+#
+# `pl demo codes <site> reveal <id> [--json]`
+#
+# The registry is still hash-only. This does not undo that: it recomputes the
+# join the estate always had but never used — demo_hash_code is UNSALTED, the
+# invite packs hold the plaintext, and the hash the registry already stored is
+# the key. Nothing is written; the plaintext is printed exactly once, to this
+# process's stdout, and reaches no file, no log and no argv.
+#
+# What IS written is an ACCESS RECORD: who revealed which id, when. A code
+# whose plaintext has been looked at again is a code whose exposure surface
+# grew, and that has to be legible afterwards — the value never is, the access
+# always is.
+################################################################################
+cmd_codes_reveal() {
+    local site="$1" cfile="$2"; shift 2 || true
+    local id="${1:-}"; shift || true
+    if [[ -z "$id" ]]; then
+        print_error "Usage: pl demo codes <site> reveal <id> [--json]"
+        print_hint  "Which ids are recoverable at all: pl demo codes ${site} list --json | jq '.codes[]|select(.recoverable)'"
+        return 1
+    fi
+    [[ $# -eq 0 ]] || { print_error "REFUSED: unrecognised argument(s) for reveal: $*"; return 1; }
+    [[ "$id" =~ ^[A-Za-z0-9_-]{1,40}$ ]] || { print_error "'$id' is not a code id"; return 1; }
+
+    local packdir out rc=0
+    packdir="$(demo_invite_pack_dir "$site")"
+    out="$(demo_code_reveal "$cfile" "$packdir" "$id")" || rc=$?
+
+    # The access record — id, who, where. NEVER the value, on any path.
+    if (( rc == 0 )); then
+        demo_log "$site" code-revealed \
+            "id=${id} by=${SUDO_USER:-${USER:-unknown}}@$(demo_registry_local_host) pack=$(printf '%s' "$out" | jq -r '.pack // "?"')"
+    else
+        demo_log "$site" code-reveal-miss "id=${id} by=${SUDO_USER:-${USER:-unknown}}@$(demo_registry_local_host) rc=${rc}"
+    fi
+
+    if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+        printf '%s\n' "$out"
+        return $rc
+    fi
+    if (( rc == 0 )); then
+        print_header "Invite code ${id} ($(printf '%s' "$out" | jq -r '.bundle'), $(printf '%s' "$out" | jq -r '.state'))"
+        echo ""
+        echo "    ${BOLD}$(printf '%s' "$out" | jq -r '.code')${NC}"
+        echo ""
+        print_status "WARN" "Shown here and nowhere else — recovered from $(printf '%s' "$out" | jq -r '.pack'); the registry still stores only its sha256."
+        print_info "The reveal is recorded in $(demo_log_file "$site") (id + who, never the value)."
+        return 0
+    fi
+    print_error "$(printf '%s' "$out" | jq -r '.reason // "reveal failed"')"
+    return $rc
+}
+
+################################################################################
+# packs — the invite packs belong ON THE REGISTRY HOME (operator ruling
+# 2026-08-11; the home is named in servers/live/demo/registry-home.yml and
+# nowhere else, per the P61 leakage rule that the pre-commit gitleaks hook
+# enforces — it caught exactly this comment on the first commit attempt)
+#
+# `pl demo codes <site> packs inventory`         what is here, no plaintext
+# `pl demo codes <site> packs relocate [--apply]` move strays to the home
+#
+# A pack is the ONLY surviving copy of a code's plaintext. One sitting on a
+# non-home host is plaintext invite codes in a place no verb looks after: not
+# in the home's backup pull, not visible to `reveal`, and duplicated on two
+# machines. relocate copies each pack to the home, PROVES the home's copy is
+# byte-identical, and only then removes the local one. It refuses to overwrite
+# a home pack of the same name whose content differs — that pack's plaintext
+# may exist nowhere else either.
+#
+# The plaintext never touches argv, stdout or the ledger: rsync moves the file
+# as a file, and what is recorded is the filename and a sha256 prefix.
+################################################################################
+cmd_codes_packs() {
+    local site="$1"; shift || true
+    local action="${1:-inventory}"; shift || true
+    local apply="false" a
+    for a in "$@"; do
+        case "$a" in
+            --apply) apply="true" ;;
+            *) print_error "REFUSED: unrecognised argument '$a' for packs ${action}"; return 1 ;;
+        esac
+    done
+    local packdir; packdir="$(demo_invite_pack_dir "$site")"
+
+    case "$action" in
+        inventory)
+            local files rc=0
+            files="$(demo_pack_files "$packdir" 2>&1)" || rc=$?
+            if (( rc != 0 )); then
+                print_error "$(printf '%s' "$files" | tail -n1)"
+                return 2
+            fi
+            print_header "Invite packs on $(demo_registry_local_host) — ${site}"
+            echo "    dir: ${packdir}"
+            local f n total=0
+            while IFS= read -r f; do
+                [[ -n "$f" ]] || continue
+                n="$(grep -Eco "$DEMO_CODE_PLAINTEXT_RE" "$f" 2>/dev/null || echo 0)"
+                printf '    %-34s %s code(s)  sha256:%s…\n' "$(basename "$f")" "$n" \
+                    "$(sha256sum < "$f" | cut -c1-12)"
+                total=$(( total + 1 ))
+            done <<< "$files"
+            [[ "$total" -eq 0 ]] && echo "    (none)"
+            echo ""
+            local hs; hs="$(demo_registry_home_state)"
+            if [[ "${hs%%|*}" == "home" ]]; then
+                print_info "This host IS the registry home — packs belong here."
+            else
+                print_warning "This host is NOT the registry home ('${hs#*|}'). Packs here are strays."
+                print_hint "  pl demo codes ${site} packs relocate --apply"
+            fi
+            return 0
+            ;;
+        relocate) ;;
+        *)
+            print_error "Unknown packs action '${action}' (inventory|relocate)"
+            return 1 ;;
+    esac
+
+    # ---- relocate ----------------------------------------------------------
+    local hs verdict home
+    hs="$(demo_registry_home_state)"; verdict="${hs%%|*}"; home="${hs#*|}"
+    case "$verdict" in
+        home)
+            print_error "REFUSED: this host is already the registry home ('${home}') — there is nothing to relocate."
+            print_info  "Packs belong here. Run this on a host that still holds strays."
+            return 1 ;;
+        undeclared)
+            print_error "CANNOT VERIFY: no registry home is declared (${home}) — refusing to move plaintext codes to a host nobody named."
+            return 2 ;;
+    esac
+
+    local dest_ssh="${NWP_DEMO_PACK_HOME_SSH:-$(demo_registry_home_ssh)}"
+    local dest_dir="${NWP_DEMO_PACK_HOME_DIR:-nwp/sites/${site}/demo-invites}"
+    if [[ -z "$dest_ssh" ]]; then
+        print_error "CANNOT VERIFY: no ssh endpoint is declared for the registry home '${home}'."
+        print_info  "Add   registry_home_ssh: <user>@<addr>   to servers/live/demo/registry-home.yml"
+        print_info  "(the home's address is a declared fact and lives in exactly that one file)."
+        return 2
+    fi
+
+    local files rc=0
+    files="$(demo_pack_files "$packdir" 2>&1)" || rc=$?
+    if (( rc != 0 )); then
+        print_info "No invite packs on this host — nothing to relocate."
+        return 0
+    fi
+    [[ -n "${files//[[:space:]]/}" ]] || { print_info "No invite packs on this host — nothing to relocate."; return 0; }
+
+    local ssh_opts=(-o BatchMode=yes -o ConnectTimeout=20)
+    print_header "Relocate invite packs → registry home '${home}' (${dest_ssh}:${dest_dir})"
+    [[ "$apply" == "true" ]] || print_warning "DRY RUN — nothing is copied or deleted. Re-run with --apply."
+
+    local f base lsum rsum moved=0 skipped=0
+    while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        base="$(basename "$f")"
+        lsum="$(sha256sum < "$f" | awk '{print $1}')"
+        rsum="$(ssh "${ssh_opts[@]}" "$dest_ssh" "sha256sum < '${dest_dir}/${base}' 2>/dev/null | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')" || rsum=""
+        if [[ -n "$rsum" && "$rsum" != "$lsum" ]]; then
+            print_error "REFUSED: the home already has a DIFFERENT ${base} (local ${lsum:0:12}… vs home ${rsum:0:12}…)."
+            print_info  "Neither copy is disposable — a pack is the only surviving plaintext of its codes."
+            print_hint  "Rename one side, then re-run:  mv '${f}' '${f%.md}-from-$(demo_registry_local_host).md'"
+            return 1
+        fi
+        if [[ "$rsum" == "$lsum" ]]; then
+            printf '    %-34s already on the home (identical)\n' "$base"
+            if [[ "$apply" == "true" ]]; then
+                rm -f "$f"
+                demo_log "$site" packs-relocated "file=${base} sha256=${lsum:0:12} verdict=already-present local-copy-removed"
+                moved=$(( moved + 1 ))
+            else
+                skipped=$(( skipped + 1 ))
+            fi
+            continue
+        fi
+        printf '    %-34s → home  (sha256:%s…)\n' "$base" "${lsum:0:12}"
+        if [[ "$apply" != "true" ]]; then skipped=$(( skipped + 1 )); continue; fi
+        ssh "${ssh_opts[@]}" "$dest_ssh" "mkdir -p '${dest_dir}' && chmod 700 '${dest_dir}'" >/dev/null 2>&1 || {
+            print_error "CANNOT VERIFY: could not prepare ${dest_dir} on the home — nothing was moved."
+            return 2
+        }
+        rsync -a --chmod=F600 -e "ssh ${ssh_opts[*]}" "$f" "${dest_ssh}:${dest_dir}/" || {
+            print_error "CANNOT VERIFY: rsync of ${base} to the home FAILED — the local copy is untouched."
+            return 2
+        }
+        rsum="$(ssh "${ssh_opts[@]}" "$dest_ssh" "sha256sum < '${dest_dir}/${base}' 2>/dev/null | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')" || rsum=""
+        if [[ "$rsum" != "$lsum" ]]; then
+            print_error "REFUSED to delete ${base}: the home's copy does not verify (${rsum:-<unreadable>} != ${lsum})."
+            return 2
+        fi
+        rm -f "$f"
+        demo_log "$site" packs-relocated "file=${base} sha256=${lsum:0:12} home=${home} verified local-copy-removed"
+        moved=$(( moved + 1 ))
+    done <<< "$files"
+
+    echo ""
+    if [[ "$apply" == "true" ]]; then
+        print_status "OK" "Relocated ${moved} pack(s) to '${home}'; every one verified byte-identical before the local copy was removed."
+        print_info "Their codes have now lived on two hosts — consider rotating any that are still live:"
+        print_hint "  pl demo codes ${site} list --json   (on '${home}')"
+    else
+        print_status "OK" "DRY RUN: ${skipped} pack(s) would move. Re-run with --apply."
+    fi
+    return 0
 }
 
 ################################################################################

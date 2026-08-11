@@ -3700,3 +3700,222 @@ JSON
   # Provenance still names the ORIGINAL id, so the audit trail survives the re-id.
   echo "$output" | jq -e --arg h "$HASH_2" '.report.rows[] | select(.hash_prefix == $h[0:12]) | .provenance == ["home:c9"]'
 }
+
+################################################################################
+# ops#328 t4 — REVEAL a code's plaintext without weakening the hash-only registry
+#
+# The registry stores sha256 only, and that stays true. What makes a reveal
+# possible at all is that `demo_hash_code` is UNSALTED, so plaintext → hash is
+# computable: the invite packs under sites/<site>/demo-invites/ hold the
+# plaintext, and the hash the registry already keeps is the join key. Nothing
+# new is written down, and nothing about the registry's posture changes.
+#
+# The distinctions these tests exist to pin — all of them the ops#281 shape:
+#   * "no pack directory here" is CANNOT VERIFY (exit 2), NEVER "no such code";
+#   * a pack that exists but cannot be read is CANNOT VERIFY for the WHOLE
+#     scan — a partial corpus may not report "not found";
+#   * "scanned N readable packs, no match" is a NAMED not-found (exit 1);
+#   * reveal is a HOME-HOST operation like every other code verb (operator
+#     ruling 2026-08-11: the packs live with the registry), so it refuses on
+#     any other host rather than half-working off whichever packs are local.
+################################################################################
+
+# A pack fixture: writes <n> real invite packs into the site's pack dir, each
+# carrying the plaintext of the codes named in $@, in the same shape
+# demo_invite_email renders ("Your code:  XXXXX-…").
+_pack_write() {
+  local file="$1"; shift
+  local dir; dir="$(demo_invite_pack_dir demo1)"
+  mkdir -p "$dir"
+  { printf 'Subject: Would you help us test?\n\n'
+    local c
+    for c in "$@"; do printf 'Your code:  %s\n\n' "$c"; done
+  } > "${dir}/${file}"
+  chmod 600 "${dir}/${file}"
+}
+
+@test "ops#328 t4: reveal returns the plaintext for a code whose pack is on this host" {
+  CFILE="$(demo_codes_file demo1)"
+  now=$(date +%s)
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( now + 3600 ))"
+  demo_code_add "$CFILE" c2 tester-member "$(demo_hash_code EEEEE-FFFFF-GGGGG-HHHHH)" "$(( now + 3600 ))"
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  run bash "$DEMO_CMD" codes demo1 reveal c1 --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ok == true and .id == "c1"'
+  echo "$output" | jq -e '.code == "AAAAA-BBBBB-CCCCC-DDDDD"'
+  echo "$output" | jq -e '.pack == "invite-20260101-000000.md"'
+  echo "$output" | jq -e '.packs_scanned == 1'
+  # the ACCESS is recorded (who/when/which id) — the VALUE never is
+  grep -q 'code-revealed' "$(demo_log_file demo1)"
+  grep -q 'id=c1' "$(demo_log_file demo1)"
+  ! grep -q 'AAAAA-BBBBB-CCCCC-DDDDD' "$(demo_log_file demo1)"
+}
+
+@test "ops#328 t4: reveal of a code no pack holds is a NAMED not-found, not a crash" {
+  CFILE="$(demo_codes_file demo1)"
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( $(date +%s) + 3600 ))"
+  _pack_write invite-20260101-000000.md ZZZZZ-YYYYY-XXXXX-WWWWW
+  run bash "$DEMO_CMD" codes demo1 reveal c1 --json
+  [ "$status" -eq 1 ]
+  echo "$output" | jq -e '.ok == false and .found == false and .packs_scanned == 1'
+  echo "$output" | jq -e '.reason | test("NOT RECOVERABLE")'
+  grep -q 'code-reveal-miss' "$(demo_log_file demo1)"
+}
+
+@test "ops#328 t4: NO pack directory is exit 2 CANNOT VERIFY — never 'no such code'" {
+  CFILE="$(demo_codes_file demo1)"
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( $(date +%s) + 3600 ))"
+  run bash "$DEMO_CMD" codes demo1 reveal c1 --json
+  [ "$status" -eq 2 ]
+  echo "$output" | jq -e '.ok == false and .found == null'
+  echo "$output" | jq -e '.reason | test("CANNOT VERIFY")'
+  # and it must NOT claim the code does not exist
+  ! echo "$output" | jq -e '.found == false'
+}
+
+@test "ops#328 t4: an UNREADABLE pack fails the whole scan closed (a partial corpus may not say 'not found')" {
+  CFILE="$(demo_codes_file demo1)"
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( $(date +%s) + 3600 ))"
+  _pack_write invite-20260101-000000.md ZZZZZ-YYYYY-XXXXX-WWWWW
+  _pack_write invite-20260102-000000.md QQQQQ-RRRRR-SSSSS-TTTTT
+  chmod 000 "$(demo_invite_pack_dir demo1)/invite-20260102-000000.md"
+  run bash "$DEMO_CMD" codes demo1 reveal c1 --json
+  chmod 600 "$(demo_invite_pack_dir demo1)/invite-20260102-000000.md"
+  [ "$status" -eq 2 ]
+  echo "$output" | jq -e '.ok == false'
+  echo "$output" | jq -e '.reason | test("CANNOT VERIFY")'
+}
+
+@test "ops#328 t4: reveal of an unknown id is a typed refusal, and no pack is even read" {
+  CFILE="$(demo_codes_file demo1)"
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( $(date +%s) + 3600 ))"
+  run bash "$DEMO_CMD" codes demo1 reveal c99 --json
+  [ "$status" -eq 1 ]
+  echo "$output" | jq -e '.ok == false and .refused == true'
+  echo "$output" | jq -e '.reason | test("c99")'
+}
+
+@test "ops#328 t4: reveal REFUSES on a host that is not the registry home (packs live with the registry)" {
+  CFILE="$(demo_codes_file demo1)"
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( $(date +%s) + 3600 ))"
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  printf 'registry_home: somewhere-else\n' > "$NWP_DEMO_REGISTRY_HOME_FILE"
+  run bash "$DEMO_CMD" codes demo1 reveal c1 --json
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"somewhere-else"* ]]
+  # and it says what it actually does — reveal READS, it does not write, and a
+  # guard that misdescribes the verb is a guard the operator learns to distrust
+  [[ "$output" == *"reads the invite packs"* ]]
+  ! [[ "$output" == *"'codes reveal' writes"* ]]
+  # and the plaintext is NOT printed on the refusal path
+  ! [[ "$output" == *"AAAAA-BBBBB-CCCCC-DDDDD"* ]]
+}
+
+@test "ops#328 t4: codes list --json marks each row RECOVERABLE or not, and null when it cannot tell" {
+  CFILE="$(demo_codes_file demo1)"
+  now=$(date +%s)
+  demo_code_add "$CFILE" c1 tester-member "$(demo_hash_code AAAAA-BBBBB-CCCCC-DDDDD)" "$(( now + 3600 ))"
+  demo_code_add "$CFILE" c2 tester-member "$(demo_hash_code EEEEE-FFFFF-GGGGG-HHHHH)" "$(( now + 3600 ))"
+  # no pack dir at all -> the whole column is UNKNOWN, not "false"
+  run bash "$DEMO_CMD" codes demo1 list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.recovery.state == "cannot_verify"'
+  echo "$output" | jq -e 'all(.codes[]; .recoverable == null)'
+  # with a pack holding c1's plaintext, c1 is recoverable and c2 is not
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  run bash "$DEMO_CMD" codes demo1 list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.recovery.state == "measured" and .recovery.packs_scanned == 1'
+  echo "$output" | jq -e '.codes[] | select(.id == "c1") | .recoverable == true'
+  echo "$output" | jq -e '.codes[] | select(.id == "c2") | .recoverable == false'
+  # and the list NEVER carries a plaintext code
+  ! echo "$output" | grep -q 'AAAAA-BBBBB-CCCCC-DDDDD'
+}
+
+################################################################################
+# ops#328 t4 — RELOCATE stray invite packs to the registry home
+#
+# Operator ruling 2026-08-11: the packs belong on the registry home. A pack on
+# any other host is plaintext invite codes sitting where no verb looks after
+# them — exactly the sprawl the D1 home ruling exists to stop. This moves them,
+# and it will not delete a local pack until the home's copy is proven
+# byte-identical.
+################################################################################
+
+_relocate_fixture() {
+  mkdir -p "${TEST_TMP}/bin" "${TEST_TMP}/home-packs"
+  printf 'registry_home: elsewhere\n' > "$NWP_DEMO_REGISTRY_HOME_FILE"
+  export NWP_DEMO_PACK_HOME_SSH="rob@127.0.0.99"
+  # Stub ssh + rsync: the "home" is a local directory, so the transport is
+  # exercised end to end without a network.
+  cat > "${TEST_TMP}/bin/ssh" <<STUB
+#!/bin/bash
+# args: [-o …]* user@host <remote command>
+while [ \$# -gt 1 ]; do shift; done
+cmd="\$1"
+export HOME_PACKS="${TEST_TMP}/home-packs"
+bash -c "\${cmd//REMOTE_PACKS/${TEST_TMP}/home-packs}"
+STUB
+  cat > "${TEST_TMP}/bin/rsync" <<STUB
+#!/bin/bash
+# last two args are src and dest; dest is user@host:<path>
+src=""; dest=""
+for a in "\$@"; do src="\$dest"; dest="\$a"; done
+cp -p "\$src" "\${dest#*:}"
+STUB
+  chmod +x "${TEST_TMP}/bin/ssh" "${TEST_TMP}/bin/rsync"
+  export PATH="${TEST_TMP}/bin:$PATH"
+  export NWP_DEMO_PACK_HOME_DIR="${TEST_TMP}/home-packs"
+}
+
+@test "ops#328 t4: packs relocate is DRY RUN by default and moves nothing" {
+  _relocate_fixture
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  run bash "$DEMO_CMD" codes demo1 packs relocate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY RUN"* ]]
+  [[ "$output" == *"--apply"* ]]
+  [ -f "$(demo_invite_pack_dir demo1)/invite-20260101-000000.md" ]
+  [ ! -f "${TEST_TMP}/home-packs/invite-20260101-000000.md" ]
+  # a dry run must not leak the plaintext it is about to move
+  ! [[ "$output" == *"AAAAA-BBBBB-CCCCC-DDDDD"* ]]
+}
+
+@test "ops#328 t4: packs relocate --apply copies to the home, VERIFIES sha256, then removes the local copy" {
+  _relocate_fixture
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  before="$(sha256sum < "$(demo_invite_pack_dir demo1)/invite-20260101-000000.md" | awk '{print $1}')"
+  run bash "$DEMO_CMD" codes demo1 packs relocate --apply
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMP}/home-packs/invite-20260101-000000.md" ]
+  after="$(sha256sum < "${TEST_TMP}/home-packs/invite-20260101-000000.md" | awk '{print $1}')"
+  [ "$before" = "$after" ]
+  [ ! -f "$(demo_invite_pack_dir demo1)/invite-20260101-000000.md" ]
+  grep -q 'packs-relocated' "$(demo_log_file demo1)"
+  # the ledger records the file and a hash prefix, NEVER a code
+  ! grep -q 'AAAAA-BBBBB-CCCCC-DDDDD' "$(demo_log_file demo1)"
+  ! [[ "$output" == *"AAAAA-BBBBB-CCCCC-DDDDD"* ]]
+}
+
+@test "ops#328 t4: packs relocate REFUSES to clobber a home pack of the same name with different content" {
+  _relocate_fixture
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  printf 'a different pack entirely\n' > "${TEST_TMP}/home-packs/invite-20260101-000000.md"
+  run bash "$DEMO_CMD" codes demo1 packs relocate --apply
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+  # nothing deleted, nothing overwritten
+  [ -f "$(demo_invite_pack_dir demo1)/invite-20260101-000000.md" ]
+  grep -q 'a different pack entirely' "${TEST_TMP}/home-packs/invite-20260101-000000.md"
+}
+
+@test "ops#328 t4: packs relocate ON the home is a no-op refusal (nothing to relocate)" {
+  _relocate_fixture
+  printf 'registry_home: %s\n' "$(hostname -s)" > "$NWP_DEMO_REGISTRY_HOME_FILE"
+  _pack_write invite-20260101-000000.md AAAAA-BBBBB-CCCCC-DDDDD
+  run bash "$DEMO_CMD" codes demo1 packs relocate --apply
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"already the registry home"* ]]
+  [ -f "$(demo_invite_pack_dir demo1)/invite-20260101-000000.md" ]
+}

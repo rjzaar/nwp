@@ -253,6 +253,38 @@ ACTIONS: dict = {
             "--tier=live",
         ],
     },
+    "demo_code_reveal": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Reveal an invite code (shown once)",
+        # ops#328 t4. Reads ONE row's plaintext back out of the invite packs by
+        # hashing what is in them and matching the sha256 the registry already
+        # stored — the registry stays hash-only. No tier: it touches no running
+        # site. The verb is home-guarded (the packs live with the registry) and
+        # appends an ACCESS record naming the id, never the value.
+        "build": lambda p, ds: [
+            "demo", "codes", _valid_site(p.get("site", ""), ds), "reveal",
+            _valid_code_id(p.get("code_id", "")), "--json",
+        ],
+    },
+    "demo_tester_login": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Sign in as this tester (one-time link)",
+        # ops#328 t4. The personas have no passwords, so a one-time login link
+        # is the only way to see the site as one of them. Fixed argv: the
+        # account is the only variable and it is shape-validated; --allow-real
+        # is unrepresentable here as everywhere else on this surface. The verb
+        # refuses uid<=1 and any account off the @demo.invalid fence, and it
+        # proves the returned link belongs to the expected uid before it is
+        # shown at all.
+        "build": lambda p, ds: [
+            "demo", "testers", _valid_site(p.get("site", ""), ds), "login",
+            _valid_tester_account(p.get("account", "")), "--tier=live", "--json",
+        ],
+    },
     "demo_code_purge": {
         "min_role": "operator",
         "min_project_role": "operator",

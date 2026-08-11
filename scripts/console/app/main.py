@@ -1485,6 +1485,48 @@ def action_demo_codes(
                   "filter": "all"}, sc, redactable=False)
 
 
+# -- reveal ONE code's plaintext (ops#328 t4, operator+) ---------------------
+#
+# WHERE THE PLAINTEXT TRAVELS, and where it deliberately does not:
+#
+#   verb stdout ──▶ this route ──▶ parse_code_reveal_json ──▶ response body
+#
+# and nowhere else. It uses run_pl, NOT run_pl_cached: the TTL cache is
+# process-wide and keyed on argv, so a cached reveal would hand the value to
+# the next caller of the same id — a credential in a shared cache. The audit
+# line records the argv (which names the id) and the rc, never the output;
+# the verb's own ACCESS record lands in sites/<site>/demo-reset.log. The
+# template renders `action.code` alone and never the raw stdout.
+@app.post("/actions/demo_code_reveal", response_class=HTMLResponse)
+def action_demo_code_reveal(
+    request: Request,
+    site: str = Form(""),
+    code_id: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "code_id": code_id}
+    try:
+        argv, spec = build_action("demo_code_reveal", params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, "action.demo_code_reveal",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_code_reveal_result.html",
+                     {"site": site, "code_id": code_id, "action": None,
+                      "error": str(e), "secs": 0}, sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(
+        sc.user, sc.global_role, "action.demo_code_reveal",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    action = parsers.parse_code_reveal_json(res["out"] + "\n" + res["err"])
+    return _pane(request, "demo_code_reveal_result.html",
+                 {"site": argv[2], "code_id": argv[4], "action": action,
+                  "error": None, "secs": res["secs"]}, sc, redactable=False)
+
+
 # -- per-tester editor (ops#328 tranche 3) ----------------------------------
 # Roster + detail are viewer-readable fragments (lazy-loaded: the roster is a
 # live drush read over ssh); writes are operator+ and DISCHARGE by re-reading
@@ -1574,6 +1616,43 @@ def action_demo_tester(
                   "res": res_view, "action": action, "error": None,
                   "testers": testers, "acct": _tester_of(testers, account)},
                  sc, redactable=False)
+
+
+# -- sign in AS a tester (ops#328 t4, operator+) -----------------------------
+#
+# Same credential discipline as the reveal route, for the same reason: the
+# one-time login link exists in the verb's stdout and in this response body,
+# and in no cache, no audit line and no log. It is deliberately NOT a
+# DISCHARGE route — there is no state change to re-read; what the operator
+# needs is the link, once, plus who it is for.
+@app.post("/actions/demo_tester_login", response_class=HTMLResponse)
+def action_demo_tester_login(
+    request: Request,
+    site: str = Form(""),
+    account: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "account": account}
+    try:
+        argv, spec = build_action("demo_tester_login", params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, "action.demo_tester_login",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_tester_login_result.html",
+                     {"site": site, "account": account, "action": None,
+                      "error": str(e), "secs": 0}, sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(
+        sc.user, sc.global_role, "action.demo_tester_login",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    action = parsers.parse_tester_login_json(res["out"] + "\n" + res["err"])
+    return _pane(request, "demo_tester_login_result.html",
+                 {"site": argv[2], "account": argv[4], "action": action,
+                  "error": None, "secs": res["secs"]}, sc, redactable=False)
 
 
 # ---------------------------------------------------------------------------

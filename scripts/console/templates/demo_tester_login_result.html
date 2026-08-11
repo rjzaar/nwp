@@ -1,0 +1,43 @@
+{# "Sign in as this tester" — one-time login link (ops#328 t4).
+   Context: site, account, action (parse_tester_login_json), error, secs.
+
+   THE CONTRACT WITH THE READER:
+     * the link is a CREDENTIAL. It appears in this response body and nowhere
+       else — no cache, no audit entry, no demo-reset.log line (that records
+       only that a link was minted, for whom);
+     * the raw verb output is never rendered here. A link the verb DISCARDED
+       (the admin-link trap) must not reach the page by the back door of a
+       "command output" details block;
+     * a refusal is a result and is rendered verbatim. #}
+{% if error %}
+<p class="err">✗ sign-in refused: {{ error }}</p>
+{% elif action and action.ok %}
+<div class="invite-result">
+  <p class="ok">✓ One-time login link for <strong>{{ action.account }}</strong>
+    (uid {{ action.uid }}) on {{ action.site }} — {{ secs }}s</p>
+  <p><a href="{{ action.url }}" target="_blank" rel="noopener noreferrer">Open as {{ action.account }} ↗</a></p>
+  <textarea class="invite-text" rows="2" readonly>{{ action.url }}</textarea>
+  <button class="primary" onclick="
+    var t = this.previousElementSibling; t.select();
+    navigator.clipboard.writeText(t.value).then(
+      () => { this.textContent = 'Copied ✓'; },
+      () => { document.execCommand('copy'); this.textContent = 'Copied ✓'; });
+  ">Copy link</button>
+  <p class="warnnote">⚠ Single use, shown once. Open it in a PRIVATE window — in this one it
+    replaces your own session. It is stored nowhere: the demo log records only that you minted
+    a link for this account. The verb proved the link belongs to uid {{ action.uid }} before
+    showing it, so it cannot be an administrator session wearing a tester's name.</p>
+</div>
+{% elif action and action.not_deployed %}
+<p class="err">✗ CANNOT VERIFY — {{ action.reason }}</p>
+<p class="warnnote">The site-side command is not deployed yet. Nothing was minted.</p>
+{% elif action and action.refused %}
+<p class="err">✗ REFUSED — {{ action.reason }}</p>
+<p class="muted">No link was shown. If this is the uid check firing, that is the guard working:
+  the link that came back was for a different account than the one asked for, and it was
+  discarded rather than handed over.</p>
+{% elif action %}
+<p class="err">✗ CANNOT VERIFY — {{ action.reason }}</p>
+{% else %}
+<p class="err">✗ CANNOT VERIFY: the login verb returned nothing this console could parse.</p>
+{% endif %}

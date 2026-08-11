@@ -251,8 +251,8 @@ RRF = reciprocal rank fusion, `k = 60`, the constant from
    the predicted result for a sub-1B embedder on paragraph-length queries — BRIGHT measures
    BM25 at nDCG@10 14.5 with BGE 13.7, Instructor-L 14.2, SBERT 14.9, and only
    >1B models (GritLM 21.0, Qwen 22.5) clearing it
-   ([arXiv:2407.12883](https://arxiv.org/abs/2407.12883)). §7.1 says how to test whether a
-   larger embedder changes this here.
+   ([arXiv:2407.12883](https://arxiv.org/abs/2407.12883)). **A 4B embedder was then tested and
+   did not fix it** — §7.2, which is the measurement that most shapes this proposal.
 3. **The dense leg is worth having anyway, because it buys recall the lexical leg cannot.**
    Hybrid R@8 52.2 % vs BM25's 45.9 %; R@40 74.6 % vs 69.3 %; passage-IoU R@8 44.6 % vs
    37.5 %. Fusion beats both legs at every depth except rank 1.
@@ -773,15 +773,43 @@ recorded provenance episode is *the best* source for that LP or merely *a* sourc
 label noise, and the target metric must move to graded relevance over a top-8 shortlist rather
 than top-1 exact match.
 
-### 7.2 M2 — Does a bigger embedder change the dense leg's verdict? *(1 day)*
+### 7.2 M2 — Does a bigger embedder change the dense leg's verdict? — **ANSWERED, and the answer is no**
 
 §3.3 measured bge-m3 (568M) **losing to BM25 at rank 1**, which is what BRIGHT predicts for
-sub-1B models on long queries. The 96 GB VRAM box can run an 8B embedder.
-**Do:** re-run §3.3 with `qwen3-embedding:8b-fp16` (15 GB, Apache-2.0) or `4b-fp16`, with the
-correct `Instruct: …\nQuery:` prefix (**no trailing space**) applied to the query side only.
-**Gate:** if a >1B model does not beat bge-m3 by ≥ 3 points R@8, keep bge-m3 — it is 14×
-cheaper to reindex and its determinism story is the same.
-*(A partial run of this is in flight at the time of writing; §9 records the result.)*
+sub-1B embedders on long queries — BM25 14.5 nDCG@10 against BGE 13.7, Instructor-L 14.2,
+SBERT 14.9, with only >1B models (GritLM 21.0, Qwen 22.5) clearing it. The obvious inference
+is "use a bigger embedder". **This was tested and the inference does not hold here.**
+
+`qwen3-embedding:4b-fp16` (4B, 2560-dim, Apache-2.0), with the correct
+`Instruct: …\nQuery:` prefix applied to the query side only, embedding the frozen top-50 hybrid
+shortlist (4,253 unique passages, ~35 min on the GPU host) and re-ordering it by cosine:
+
+| ordering of the frozen top-50 shortlist | ep R@1 | ep R@3 | ep R@8 | MRR@10 | psg-IoU R@1 |
+|---|---|---|---|---|---|
+| **fusion order (RRF, no rerank)** | **20.0 %** | 34.6 % | 51.7 % | **0.301** | **17.0 %** |
+| bge-m3 (568M) cosine | 17.6 % | 30.2 % | 46.8 % | 0.267 | 16.1 % |
+| **Qwen3-Embedding-4B** (7× larger) | 17.1 % | **35.1 %** | **53.2 %** | 0.281 | 8.9 % |
+
+**A 7× larger embedder does not beat the 568M one at rank 1** (17.1 % vs 17.6 %), and
+**neither dense model can reorder the shortlist better than the fusion order it came from**
+(20.0 %). The 4B model is better deeper in the list (R@8 53.2 %, MRR 0.281) and markedly
+*worse* at picking the right passage span (psg-IoU R@1 8.9 % vs 16.1 %). Every difference at
+R@1 is inside the §3.5 noise floor; the passage-IoU drop is the only one approaching it.
+
+**Verdict: keep bge-m3** (or granite-r2, §4.1). A full-corpus 4B index would cost ~7× the
+embedding time, ~2.5× the storage, and buys nothing measurable at the rank that matters.
+
+**Two honest caveats.** The shortlist being reordered was *selected by* BM25 + bge-m3, which
+mildly favours bge-m3 — a fair test would re-index the whole corpus with the 4B model, which
+is the ~3.5 hour job this experiment was designed to avoid. And 4B is not 8B; the BRIGHT
+crossover may sit higher. Neither caveat changes the operational conclusion, because the
+result that actually matters is that **no dense model beat the fusion order** — which is an
+argument about the *stage*, not the model size.
+
+**What this does to the architecture: it strengthens it.** If a 4B embedder cannot order this
+shortlist, the ordering has to come from something else — and the inspectable rubric is
+already sitting there, unmeasured on a shortlist that contains the answer. That is Phase 3,
+and M2 has just removed its most plausible competitor.
 
 ### 7.3 M3 — Does a reranker help *here*? *(1–2 days)*
 
@@ -888,7 +916,7 @@ the label (§2.2), and never report a passage-list rank as if it were an episode
 | **2** | **Hybrid recall**: bm25s index + bge-m3 flat vectors + RRF, content-addressed embedding cache with the batch-size red proof | **2 d** | ≥ 70 % episode R@40 and ≥ 58 % R@8 (measured: 74.6 % / 63.4 %); build byte-identical twice |
 | **3** | **Inspectable rerank**: refit the CRITERIA composite over the top-40 shortlist; span trimming to ~105 s | **2–3 d** | top-1 ≥ 38 %; passage-IoU R@1 ≥ 28 %; every candidate still carries 16 `q_parts` |
 | **4** | **Reviewer screen**: matched-span highlight, `q_parts` panel, one-line why; the lexically-dissimilar acceptance case from §6.3 item 4 | 2 d | A reviewer can state the reason for the top pick without opening the transcript |
-| **5** | *(gated on M3)* neural or LLM reranker, top-40 only | 2 d | Beats Phase 3 by ≥ 5 points top-1, or is dropped and the null result recorded |
+| **5** | *(gated on M3)* neural or LLM reranker, top-40 only | 2 d | Beats Phase 3 by ≥ 8 points top-1 on a paired test, or is dropped and the null result recorded |
 | **6** | *(deferred)* doc2query corpus expansion; late chunking | 3 d | — |
 
 **Phases 0–3 are the proposal.** 4 is the delivery. 5 and 6 are options that must earn their

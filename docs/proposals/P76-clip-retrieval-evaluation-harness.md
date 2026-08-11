@@ -27,13 +27,19 @@ Reproduction commands for every figure are in Appendix A. **Nothing here is an e
 it says "estimate".** Where the literature is cited, the claim is attributed; where the estate is
 measured, the command is given.
 
-**One honesty note about the research, in the spirit of the document.** Three literature passes
-were run. Two returned with extracted figures and those figures are quoted (Appendix B groups
-**B** and **C**). The third — sample-size design, assessor agreement and adaptive-analysis —
-did not complete in time, so §3.1, §3.5 and §4.5 state its **methods and qualitative findings**,
-which are canonical, and **mark every specific number that was not re-verified rather than quoting
-one** (Appendix B group **D** carries the caveat in full). This affects **no estate measurement**:
-every figure about this corpus was computed here from the files above.
+**One honesty note about the research, in the spirit of the document.** Three literature passes were
+run and all three returned. Where a source could not be obtained or a widely-repeated figure did not
+survive checking, **the figure is not quoted and is listed at the end of Appendix B** with the reason
+— six of them, including two cases where the folklore version of a number is materially wrong (MTC's
+"under three hours" is 15 annotator-hours across six people; statAP's "4% of the pool" appears only in
+an abstract, its experiments reporting 1.7% and 11.5%). Only §4.5's two adaptive-analysis sources
+retain a partial caveat, marked in place.
+
+**And one correction this pass forced on the document itself.** An earlier draft reported the
+minimum detectable effect from a computation that is effectively **50% power**, giving "+10 items at
+S@8"; the properly powered figure is **+18** (§3.2). The smaller number was the flattering one. It is
+recorded rather than quietly replaced, because publishing a resolution more optimistic than the
+instrument's is the exact error §0 describes.
 
 ---
 
@@ -67,10 +73,12 @@ filed as a disappointment because the only metric anyone looked at was the one t
 least able to move.
 
 **Third, `21 → 22` was never readable in the first place.** At n = 205 with the observed
-discordance rates, the smallest improvement an exact McNemar test can resolve at α = 0.05 is
-**+9 to +13 learning points** (§3.2). Asking whether +1 meant anything was asking a question the
-instrument cannot answer — and the failure was not that the answer came back "no", it was that
-nobody knew the instrument's resolution before reading the dial.
+discordance rates, the smallest improvement that could *even reach* α = 0.05 is **+9 to +14
+learning points**, and the smallest **reliably detectable at 80% power is +10 to +18** (§3.2).
+Asking whether +1 meant anything was asking a question the instrument cannot answer — and the
+failure was not that the answer came back "no", it was that nobody knew the instrument's
+resolution before reading the dial. (S@40's +18 clears even the 80%-power bar of +15, which is why
+the recall finding is safe to act on.)
 
 > **This is not a criticism of the ranking work.** The separation fix is well-engineered and
 > red-then-green proven (`~/dir` `c22dfbd` quotes five failing assertions before the fix). The
@@ -328,7 +336,7 @@ live clips are not their learning point's top candidate and **66 overlap no cand
 Arabzadeh et al.'s recommendation for exactly this situation — *maintain the "right answer" by
 ongoing comparative judgements rather than fixing it once at collection time* — is what §3.4's
 G2 tranche is, and their measured cost (**500 queries, mean pool 6.32, $1,022**) is why it is
-affordable.
+affordable at this estate's scale (607 judgements).
 
 ### 1.6 One artefact that looked usable and is not
 
@@ -378,7 +386,7 @@ Four properties of that statement drive everything:
 | **IoP and IoG** (intersection over prediction / over ground truth) [C9] | **IN — always as a pair, never singly** | Precision and recall on the time axis, which tIoU conflates. Each is gameable in a known and opposite direction (IoP by a very short prediction, IoG by a very long one), so the pair is informative and either alone is not. Measured: the constant `0:00–8:00` scores IoG **0.412** by containing the gold window outright 42 times. |
 | **midpoint containment@k** | **IN — the honest window metric today** | §2.3, and empirically the most annotator-stable criterion available: 82.7% of a span's centre survives independent re-annotation vs 72.5% IoU overall [C8]. |
 | **dR@n,IoU@m** (de-biased) [C7] | **OUT for now — revisit if a trimmer ships** | Designed for exactly the over-long-prediction exploit measured in §2.4, and worth adopting the day a Stage B trimmer starts emitting variable-length windows. Today it would penalise the generator's fixed duration buckets, which is a known property, not a finding. |
-| **rank-biased overlap** (RBO) between two rankers | **IN — as the "how much changed" number** | Label-free, so it is available on all 251 including the 46 CANNOT VERIFY, and it answers *"did anything happen"* separately from *"was it good"*. Measured for the §0 pair at p = 0.9 over the top 8, normalised to [0,1] by the attainable maximum `1 − p^k`: **mean 0.545, median 0.561**, with **21 of 251** learning points having an identical ordered top-8 and **9** having disjoint ones. Report the normalisation explicitly — a truncated RBO's raw maximum at k = 8 is 0.570, not 1, and quoting the raw 0.310 as if it were a similarity in [0,1] would understate the agreement by half. |
+| **rank-biased overlap** (RBO) between two rankers | **IN — as the "how much changed" number** | Label-free, so it is available on all 251 including the 46 CANNOT VERIFY, and it answers *"did anything happen"* separately from *"was it good"*. Measured for the §0 pair at p = 0.9 over the top 8, normalised to [0,1] by the attainable maximum `1 − p^k`: **mean 0.545, median 0.561**, with **21 of 251** learning points having an identical ordered top-8 and **9** disjoint. **The short-list trap is real and is named in the source** [D5]: *"if two search engines each only supply 7 results … and p = 0.9, then even if both results lists are identical, the base RBO score will only be 0.767."* Here the truncated maximum at k = 8 is **0.570**, so quoting the raw 0.310 as a [0,1] similarity would understate agreement by nearly half. **The harness should use the paper's own `RBO_EXT` (extrapolated) and report the residual as `RBO_EXT [RBO_MIN – RBO_MAX]`**; the naive normalisation used above is an approximation and is labelled as one. At p = 0.9 the top 10 ranks carry **86%** of the weight — close to this estate's 8-deep review cutoff, which is why p = 0.9 is the right setting here rather than a default. |
 
 ### 2.3 Temporal IoU: the right metric for the wrong stage
 
@@ -590,99 +598,105 @@ mismatch.** Any one of those three numbers on its own supports a different and w
 
 ### 3.1 The literature on how many items, and which test to use
 
-> **A note on evidence quality in this subsection.** The research pass that produced §1.5 and §2.3
-> returned full extracted figures; the pass covering topic-set sizing did not complete in time.
-> What follows therefore states the **methods and qualitative findings**, which are canonical and
-> settled, and **explicitly marks every specific figure that was not re-verified against the
-> source in this pass**. Per the document's own rule, an unverified number is labelled, not
-> guessed. The estate-specific numbers in §3.2–§3.4 are unaffected: they were computed here, from
-> the estate's own files, and are exact.
+**(a) Topic-set size.** Voorhees & Buckley [D1] introduced the **swap-rate / error-rate**
+methodology: repeatedly split the topic set, compare system pairs on each half, and measure how
+often the halves disagree about which system is better, as a function of topic count and observed
+difference. Sakai's *topic set size design* work [D2] turned that into explicit tables — given a
+target detectable difference, a significance level and a power, return the required topic count.
+The guidance converging out of that literature is **~150-170 topics** as a floor for effects worth
+shipping, well above the folk figure of 50.
 
-**(a) Topic-set size.** The canonical treatment is Voorhees & Buckley [D1], which introduced the
-**swap-rate / error-rate** methodology: repeatedly split the topic set, compare system pairs on
-each half, and measure how often the two halves disagree about which system is better, as a
-function of *topic-set size* and *observed difference*. The settled qualitative results are:
-
-- Error rate falls steeply with topic count and steeply with the size of the difference being
-  detected — the two trade against each other, which is exactly the shape §3.2 measures directly.
-- The widely-drawn practical guidance is that TREC-scale comparisons want **~50 topics as a floor**,
-  and that small differences need far more.
-- Sakai's *topic set size design* work [D2] turned this into explicit tables: given a target
-  detectable difference, a significance level and a power, it returns the required topic count.
-
-**The specific cells of Voorhees & Buckley's error-rate table and Sakai's tables were NOT re-verified
-in this pass and are therefore not quoted here.** They are also not needed: §3.2 computes the
-estate's actual minimum detectable effect **exactly**, on the estate's own outcome vectors, by
-running the significance test itself across the space of possible splits. That is a stronger
-answer than a table lookup, because it uses the observed discordance rather than an assumed
-effect-size distribution.
+**The estate is already past that floor at 205**, which is the single most useful thing this
+subsection has to say: §3.3's measured scaling shows more labels buy surprisingly little, and the
+literature agrees. §3.2 does not rely on the published tables at all — it computes the estate's own
+resolution exactly, from the estate's own outcome vectors, which is strictly better than a table
+lookup because it uses the *observed* discordance instead of an assumed effect-size distribution.
 
 **(b) Which test.** Smucker, Allan & Carterette [D3] compared the **randomisation (permutation)
-test**, the **bootstrap**, the **paired Student's t-test**, the **Wilcoxon signed-rank test** and
-the **sign test** on IR evaluation data. Their conclusion, which is the field's settled practice:
-the randomisation test is the appropriate reference, the bootstrap and the paired t-test agree
-with it closely, and **the Wilcoxon signed-rank and sign tests are discouraged** because they
-discard magnitude information and can disagree with the other three.
+test**, the **bootstrap**, the **paired t-test**, the **Wilcoxon signed-rank test** and the
+**sign test** on IR evaluation data. The settled conclusion: randomisation is the appropriate
+reference, bootstrap and paired t agree with it closely, and **Wilcoxon and the sign test are
+discouraged** because they discard magnitude information and can disagree with the other three.
 
-**What this proposal uses, and why it differs.** The estate's per-item outcome at a fixed k is
-**binary**, not a continuous per-topic score, so the t-test/randomisation framing does not apply
-directly. The correct paired test for binary paired outcomes is **McNemar's test** [D4], which
-conditions on the discordant pairs alone — and at the discordant counts actually observed here
-(7/6, 15/14, 20/20, 24/6) the **exact binomial** form is required rather than the χ² approximation,
-which is unreliable below roughly 25 discordant pairs. That is what §0, §3.2 and §7 use.
-**MRR and mIoU are continuous per-item scores**, so for those the harness uses the **paired
-bootstrap**, which is the Smucker et al.-endorsed family and which additionally yields the
-confidence interval that the `21 → 22` report most conspicuously lacked.
+**What this proposal uses, and why it differs.** The estate's per-item outcome at fixed k is
+**binary**, not a continuous per-topic score, so the t/randomisation framing does not apply
+directly. The correct paired test is **McNemar's** [D4], conditioning on the discordant pairs; and
+at the counts actually observed (13, 29, 40, 30) the **exact binomial** form is required rather
+than the chi-squared approximation, which is unreliable below roughly 25 discordant pairs. Sizing
+uses the matched relation **N ≈ (z_{α/2} + z_β)² · π_D / δ²**. **MRR and mIoU are continuous
+per-item scores**, so those use the **paired bootstrap** — the Smucker et al.-endorsed family, and
+the thing that produces the confidence interval the `21 → 22` report most conspicuously lacked.
 
 **(c) The comparison that needs no labels.** **Rank-biased overlap** [D5] gives a top-weighted
-similarity between two ranked lists with no relevance judgements at all, which is why §2.2 includes
-it: it answers *"did anything change"* on all 251 learning points, including the 46 that are
-CANNOT VERIFY, separately from *"was the change good"* on the 205 that are not.
+similarity between two ranked lists with no judgements at all, which is why §2.2 includes it: it
+answers *"did anything change"* across all 251 learning points — including the 46 that are CANNOT
+VERIFY — separately from *"was the change good"* on the 205 that are not.
+
+**One convention worth knowing the provenance of.** The ubiquitous *"τ ≥ 0.9 means two rankings
+agree"* threshold traces to **Voorhees [D6]** — the same paper as §3.5's assessor-agreement result
+— as recorded in Sanderson's survey [D15]: *"Voorhees suggested τ ≥ 0.9 as such a threshold, which
+was adopted by a number of subsequent researchers."* It is a **suggestion that hardened into a
+standard**, and it has been criticised on exactly that basis: Sanderson & Soboroff [D16] show the
+value of τ depends on the score range of the items being ranked, which *"makes use of absolute
+thresholds difficult"*. **Recorded here because it is the same failure mode this document is
+about** — a number quoted as a standard by people who never read where it came from. The harness
+therefore cites the threshold it is judging against rather than asserting one.
 
 ### 3.2 What n = 205 can actually resolve — measured on this data
 
-Exact McNemar on paired binary outcomes, α = 0.05, at the discordance rates actually observed:
+**Two different questions, and the difference matters.** "What is the smallest result that *could*
+be significant?" is not "what is the smallest result I will *reliably* detect?" — the first is a
+~50%-power statement, the second is the one a plan should be built on. Both are computed here on
+the estate's own outcome vectors, exactly (exact McNemar for the first; the standard McNemar
+sizing relation **N ≈ (z_{α/2} + z_β)² · π_D / δ²** with α = 0.05 two-sided and power 0.80 for the
+second, where π_D is the observed discordant proportion):
 
-| discordant pairs (observed at) | smallest detectable split | net items | as a rate |
-|---|---|---|---|
-| 13 (S@1) | 11 – 2 | **+9** | **+4.4 pp** |
-| 20 (S@8) | 15 – 5 | **+10** | **+4.9 pp** |
-| 29 | 21 – 8 | +13 | +6.3 pp |
-| 40 (S@5) | 27 – 13 | +14 | +6.8 pp |
-| 60 | 39 – 21 | +18 | +8.8 pp |
+| | discordant pairs | π_D | could reach *p* < 0.05 | detectable at 80% power | **observed Δ** |
+|---|---|---|---|---|---|
+| S@1 | 13 | 0.063 | +9 items (4.4 pp) | **+10 items (4.9 pp)** | **+1** |
+| S@5 | 29 | 0.141 | +13 items (6.3 pp) | **+15 items (7.4 pp)** | **+1** |
+| S@8 | 40 | 0.195 | +14 items (6.8 pp) | **+18 items (8.6 pp)** | **0** |
+| S@40 | 30 | 0.146 | +12 items (5.9 pp) | **+15 items (7.5 pp)** | **+18** ✓ |
 
-**The instrument's resolution on the existing labels is roughly ±5 percentage points**, and it
-degrades as the two rankers become *more* different (more discordant pairs → more noise to
-overcome). Two consequences, both uncomfortable and both worth stating up front:
+**The instrument's resolution on the existing labels is 5–9 percentage points**, and it degrades as
+the two rankers become *more* different — more discordant pairs means more noise to overcome, which
+is why S@8 (40 discordant) is the least sensitive row despite being the most operationally
+interesting. Three consequences, all worth stating up front:
 
-1. **A change worth less than about +10 learning points is not measurable with what exists**, and
-   the harness must say so rather than print a delta. §5.4.
-2. **The existing labels are enough to run the harness today.** S@40's +18 cleared the bar
-   comfortably (*p* = 0.0014). This is not a proposal that blocks on new labelling — it is a
-   proposal that starts with 205 free labels and adds more only where they buy resolution.
+1. **A change worth less than roughly +10 to +18 learning points (depending on k) is not
+   measurable with what exists**, and the harness must say so rather than print a delta (§5.4).
+2. **The existing labels are enough to run the harness today.** S@40's **+18 clears even the
+   80%-power bar of +15**, and returned *p* = 0.0014. This is not a proposal that blocks on new
+   labelling — it starts with 205 free labels and adds more only where they buy resolution.
+3. **The "could reach" column must never be quoted as the plan's sensitivity.** It is the number
+   that flatters, and this document nearly quoted it: an earlier draft reported "+10 items at S@8"
+   from the 50%-power computation when the properly-powered figure is **+18**. Recorded because the
+   error is exactly the one §0 is about.
 
 ### 3.3 How much new labelling buys how much resolution
 
-Holding the *discordance rate* fixed at the observed S@8 value (20 of 205 = 9.8% of items) and
-re-running the same exact McNemar computation at larger n:
+Holding the discordance rate fixed at the observed S@8 value (40 of 205 = 19.5%) and re-running
+both computations at larger n:
 
-| labelled items | discordant pairs | MDE (net items) | MDE (rate) |
+| labelled items | discordant pairs | could reach *p* < 0.05 | **detectable at 80% power** |
 |---|---|---|---|
-| **205 (today, free)** | 20 | **+10** | **4.9 pp** |
-| 300 | 29 | +13 | 4.3 pp |
-| 400 | 39 | +15 | 3.8 pp |
-| **500** | 49 | +15 | **3.0 pp** |
-| 800 | 78 | +20 | 2.5 pp |
-| 1,000 | 98 | +22 | 2.2 pp |
+| **205 (today, free)** | 40 | +14 (6.8 pp) | **+18 (8.6 pp)** |
+| 300 | 59 | +17 (5.7 pp) | +21 (7.1 pp) |
+| 400 | 78 | +20 (5.0 pp) | +25 (6.2 pp) |
+| **500** | 98 | +22 (4.4 pp) | **+28 (5.5 pp)** |
+| 800 | 156 | +26 (3.2 pp) | +35 (4.4 pp) |
+| 1,000 | 195 | +29 (2.9 pp) | +39 (3.9 pp) |
 
-The MDE figures are exact for the stated discordance; **the assumption that the discordance rate
-stays constant as n grows is an estimate**, and it is the load-bearing one — a larger gold set
-drawn from harder learning points would raise it and erode the gain.
+Both columns are exact for the stated discordance; **the assumption that the discordance rate stays
+constant as n grows is an estimate**, and it is the load-bearing one — a larger gold set drawn from
+harder learning points would raise it and erode the gain.
 
-The shape of the answer is the point: **going from 205 to 500 labelled items — a 2.4× labelling
-programme — buys a drop from 4.9 pp to 3.0 pp.** It never buys the ability to read `+1`.
-Labelling is not the cheap route to sensitivity. Two other routes are cheaper and should be
-exhausted first:
+The shape of the answer is the point: **going from 205 to 500 labelled items — a 2.4x labelling
+programme — moves the properly-powered resolution from 8.6 pp to 5.5 pp.** It never buys the
+ability to read `+1`. This is also roughly where the IR sizing literature lands independently: the
+guidance in that work converges on **~150-170 topics** as the floor for detecting effects worth
+shipping, and the estate is already past it at 205. **More labels are not the estate's
+bottleneck.** Two other routes are cheaper and should be exhausted first:
 
 - **Use the paired structure** (already free — it is why S@40 was significant at +18/205 while an
   unpaired comparison of 72.7% vs 81.5% would have been marginal).
@@ -692,9 +706,22 @@ exhausted first:
 
 ### 3.4 The gold set: what to label, how many, and how long it takes
 
-**The expensive decision is what to label, not how much.** The pooled-judgement result is that
-judgements should be concentrated where the rankers being compared *disagree* — measured on the
-two artefacts in §0:
+**The expensive decision is what to label, not how much**, and the literature is unusually
+concrete about it. Concentrated judging is a **10-35x** saving over exhaustive pooling:
+
+| method | effort | result |
+|---|---|---|
+| Minimal Test Collections [D10] | 2,200 judgements = **11.9%** of a depth-100 pool (15 annotator-hours across 6 people) | **96%** confidence in the final ranking; systems binned correctly after 50 judgements, ranked correctly after 250 |
+| statAP [D11] | **11.5%** of the pool | τ = **0.950** — pooling at the *same* cost gets 0.912 |
+| move-to-front [D12] | **10%** of the budget | ρ = **0.990** with the full-pool benchmark |
+| bandit selection (MM-NS) [D17] | **34** judgements vs DOCID order's **1,181** | τ ≥ 0.9 — a **~35x** reduction |
+| active learning, no system pool [D18] | **20%** of human judgements | τ = 0.9 |
+
+**And the estate's G2 design turns out to be Minimal Test Collections, arrived at independently.**
+MTC's selection weight for a document is the **difference in its reciprocal ranks between the two
+systems**; a document both systems rank identically has weight zero and **is never selected**.
+"Judge where the rankers disagree" is not a heuristic — it is what expected-loss-reduction reduces
+to when the loss is the sign of the difference. Measured on the two artefacts in §0:
 
 ```
 LPs where the two rankers disagree at rank 1     : 105 of 205 (51%)
@@ -703,28 +730,51 @@ top-8 overlap between the two rankers            : mean 4.5 of 8 (median 4)
 identical top-8 on                               :  22 of 205
 ```
 
-Because the lists overlap, **a pooled judgement set is much smaller than judging each ranker
-separately** — measured over the two artefacts across all 205 learning points:
+Because the lists overlap, a **pooled** judgement set is much smaller than judging each ranker
+separately — measured over the two artefacts across all 205 learning points:
 
 | pool depth | judgements in the union | mean per LP | vs judging both lists separately |
 |---|---|---|---|
-| 3 | **913** | 4.5 | 6 |
-| 5 | **1,474** | 7.2 | 10 |
-| **8** | **2,310** | **11.3** | 16 |
-| 10 | 2,865 | 14.0 | 20 |
+| 1 | **310** | 1.5 | 2 |
+| **2** | **607** | **3.0** | 4 |
+| 3 | 913 | 4.5 | 6 |
+| 5 | 1,474 | 7.2 | 10 |
+| 8 | 2,310 | 11.3 | 16 |
+
+**Shallow-and-wide beats deep-and-narrow, measured.** Carterette et al. [D19] costed the trade
+directly: **20 judgements/query x 250 topics = 44 assessor-hours** beats both 10x600 (85 h) and
+40x250 (63 h) for the same τ — and **5 judgements/query never reaches τ = 0.9 at all**. That last
+clause is a live warning here: depth-3 pooling gives a mean of **4.5 judgements per learning
+point**, right at the boundary where the published curve stops working. **So G2 goes wide, not
+deep: depth-2 over all 205 learning points (607 judgements) rather than depth-3 over the 105
+disagreements (538).** Nearly the same cost, more topics, and it does not sit on the cliff edge.
+
+**Prefer preference judgements to relevance grades.** Measured medians: a **preference** judgement
+takes **2.87 s** against **6.33 s** for a graded relevance judgement [D20] — and preferences pair
+naturally with the McNemar sizing in §3.2, since "which of these two is better" *is* a discordant
+pair. It is also what [B10] used to show MS MARCO's labels lose their own disputes.
 
 **Recommended gold-set plan — three tranches, each with a stated purpose and an exit test:**
 
 | tranche | what | volume | purpose | hours |
 |---|---|---|---|---|
-| **G0 — free** | the 205 existing episode labels, graded P1/P2/P3/S; the 112 real windows | **0 new** | the baseline in §7; enough to detect ≥ +10 items | **0** |
-| **G1 — window gold** | re-audition the **112** existing human windows and confirm or correct the boundaries, recording *two* independent trims on a **30-item** subset for agreement | 112 items, 30 doubly-judged | turns soft windows into a defensible L3 gold; measures whether humans even agree on boundaries before anyone is scored against them | **9–15 h** (estimate, §3.5) |
-| **G2 — depth-3 pool** | judge the depth-3 union over the two rankers **restricted to the 105 rank-1 disagreements** | **≈ 470** judgements | breaks the "unjudged = wrong" assumption exactly where it bites; every judgement is on an item the two systems actually dispute | **6–10 h** (estimate) |
+| **G0 — free** | the 205 existing episode labels, graded P1/P2/P3/S; the 112 real windows | **0 new** | the §7 baseline; enough to detect the ≥ +18 items that matter | **0** |
+| **G1 — window gold** | re-audition the **112** existing human windows, grading the jump-in point on the TREC PEGFB scale (§2.3); **30** of them judged twice, independently | 112 items, 30 doubly-judged | a defensible L3 gold, and the **only** way to learn whether an L3 number measures the ranker or the annotators | **9-15 h** (estimate) |
+| **G2 — depth-2 pool, preference form** | the depth-2 union over the two rankers, **all 205 LPs**, asked as *"which of these two is the better clip for this learning point?"* | **607** judgements | breaks the "unjudged = wrong" assumption; wide rather than deep, per [D19] | **4-7 h** (estimate) |
 
-**Total: ~15–25 hours of one person's time**, versus P75 §4.4's 11–20 h for the tag pass, and
-against a queue P75 measured at 1,177 slots. **G1 is the one that must happen first**, and not for
-the reason that seems obvious: it is the only tranche that can tell the estate whether the L3
-metric is measuring the ranker or measuring annotator noise (§3.5).
+**Total: ~13-22 hours of one person's time**, against P75 §4.4's 11-20 h for the tag pass and a
+queue P75 measured at 1,177 slots.
+
+**Where the hour estimates come from, and why they are not the literature's.** The only *measured*
+published throughput figure is ~**13 s** per judgement for expert NIST assessors on web documents
+[D20] — at which rate 607 judgements is 2.2 hours. The estate's items are slower for a structural
+reason: a candidate carries a **110-word median preview** (≈33 s to read at 200 wpm, measured in
+§3.4's inputs) and a judgement that is at all careful involves sampling the audio. So the estimates
+above run **3-5x** the published text rate. **They are estimates and are labelled as such**; the
+published figure is given so the multiplier is visible rather than buried.
+
+**G1 must happen first**, and not for the obvious reason: it is the only tranche that measures the
+noise floor (§3.5), and until that exists every L3 number is uninterpretable.
 
 **Explicitly not recommended: labelling the 46 CANNOT VERIFY learning points.** 29 are
 retreat-sourced — there is no DIR episode to be right about, so a label would be an invention.
@@ -733,83 +783,112 @@ it now would be exactly the error the withholding avoided.
 
 ### 3.5 Agreement: measure it before scoring anyone against it
 
-**The single most important result in this literature is that assessors disagree a lot and system
-rankings survive it anyway.** Voorhees [D6] had TREC topics re-judged by independent assessors and
-measured both the overlap between their relevant sets and the effect on system rankings. The
-overlap between two assessors is **well below half** — assessors routinely disagree about which
-documents are relevant — and yet the **relative ranking of systems was highly stable** across
-qrel sets built by different assessors. *(The exact overlap fractions and Kendall's τ values were
-not re-verified in this pass and are therefore not quoted; the qualitative finding is the canonical
-one and is what the design below rests on.)*
+**The single most important result in this literature is that assessors disagree a great deal and
+system rankings survive it anyway.** Voorhees [D6] had TREC topics re-judged by independent
+assessors: the overlap between assessors' relevant sets was around **Jaccard 0.30** — they agree
+about which documents are relevant less than a third of the time — and yet the **ranking of systems
+was preserved at τ ≈ 0.94**. The identical pattern has since been found outside IR: Recht et al.
+[D21] rebuilt CIFAR-10/ImageNet test sets and saw **11-14% absolute accuracy drops with the model
+ranking almost exactly preserved**.
 
-**Both halves of that finding matter here, and they point in opposite directions:**
+**Both halves matter here, and they point in opposite directions:**
 
-- **The reassuring half.** A *comparison* between two rankers can be trusted even on labels that
-  individual humans would argue about. This is the licence for §3.4's G0 tranche — run the harness
-  today, on 205 imperfect labels, and believe the *deltas*.
+- **The reassuring half.** A *comparison* between two rankers can be trusted on labels individual
+  humans would argue about. That is the licence for G0 — run the harness today, on 205 imperfect
+  labels, and believe the **deltas**.
 - **The disciplining half.** An *absolute* number carries the assessors' idiosyncrasies with it.
-  So "S@8 = 42.4%" is a property of this label set, not of the world, and it must never be quoted
-  as "the ranker is 42% accurate". §5.5's baseline file exists to record it as *what was measured
+  "S@8 = 42.4%" is a property of this label set, not of the world, and must never be quoted as
+  "the ranker is 42% accurate". §5.5's baseline file exists to record it as *what was measured
   when*, not as a score.
 
-That distinction is sharper still at L3, where §2.3's measured boundary-agreement literature
-applies: independent human re-annotations agree with published gold at IoU > 0.5 only **42.8% /
-35.4%** of the time [C6], and human-human boundary IoU is **72.5% / 58.7%** with only **76.1%**
-of re-annotations above IoU 0.5 [C8]. **A hard IoU ≥ 0.7 gate would be scoring the annotators.**
+**The one thing that breaks the reassuring half is systematic assessor error, not honest
+disagreement.** Measured: random judging collapses τ to **0.34**; non-expert judges give
+**0.66-0.73** [D20]. **So the quality control belongs on assessor calibration, not on label
+volume** — which is a direct argument for G1's 30 doubly-judged items over a larger single-judged
+set, and it inverts the intuitive plan.
 
-**Which agreement statistic to use, for which judgement:**
+That distinction is sharper still at L3, where §2.3's boundary-agreement measurements apply:
+independent human re-annotations agree with published gold at IoU > 0.5 only **42.8% / 35.4%** of
+the time [C6], and human-human boundary IoU is **72.5% / 58.7%** with only **76.1%** of
+re-annotations above IoU 0.5 [C8]. **A hard IoU ≥ 0.7 gate would be scoring the annotators.**
+
+**Which agreement statistic, for which judgement:**
 
 | what is judged | statistic | why |
 |---|---|---|
 | binary accept/reject, 2 raters | **Cohen's κ** [D7] | the standard two-rater nominal case |
-| a graded scale (e.g. the PEGFB 5-point scale, §2.3), 2+ raters | **Krippendorff's α**, ordinal | κ treats "Excellent vs Good" as the same error as "Excellent vs Bad"; α with an ordinal difference function does not |
-| variable raters, missing judgements | **Krippendorff's α** [D8] | the only one of the three that handles any number of raters, any measurement level, and missing data — which is the realistic shape of guild judging |
-| **time intervals on a continuum** | **Krippendorff's α_U (unitizing alpha)** [D9] | the case where annotators must both *find* and *delimit* units. This is exactly G1's doubly-judged trims, and it is the statistic that exists for it |
-| fixed number of raters, nominal | Fleiss' κ | applicable but strictly less general than α |
+| a graded scale (the PEGFB 5-point scale, §2.3), 2+ raters | **Krippendorff's α**, ordinal | κ treats "Excellent vs Good" as the same error as "Excellent vs Bad"; ordinal α does not |
+| variable raters, missing judgements | **Krippendorff's α** [D8] | the only one that handles any number of raters, any measurement level, and missing data — the realistic shape of guild judging |
+| **time intervals on a continuum** | **Krippendorff's α_U (unitizing)** [D9] | annotators must both *find* and *delimit* units. This is exactly G1's doubly-judged trims, and it is the statistic that exists for it |
+| fixed number of raters, nominal | Fleiss' κ | applicable, strictly less general than α |
 
-**On interpreting the number.** The Landis & Koch bands [D7] (0.21–0.40 *fair*, 0.41–0.60
-*moderate*, 0.61–0.80 *substantial*, 0.81–1.00 *almost perfect*) are the most-quoted scale in
-existence and were described **by their own authors as arbitrary divisions**. Krippendorff's
-recommendation for content analysis is markedly stricter — **α ≥ 0.800 for firm conclusions, with
-0.667 as the lowest value on which even tentative conclusions should be drawn** [D8]. **The harness
-should report the coefficient and the n, and cite the threshold it is being judged against, rather
-than emitting an adjective.** "Substantial agreement" is a Landis & Koch band being quoted as if it
-were a finding — the same class of error as `21 → 22`.
+**On interpreting the number.** The Landis & Koch bands [D7] (0.21-0.40 *fair*, 0.41-0.60
+*moderate*, 0.61-0.80 *substantial*) are the most-quoted scale in existence and were described **by
+their own authors as arbitrary divisions**. Krippendorff's recommendation is markedly stricter —
+**α ≥ 0.800 for firm conclusions, 0.667 the lowest value supporting even tentative ones** [D8].
+**Report the coefficient and its n and cite the threshold being applied; never emit an adjective.**
+"Substantial agreement" is a Landis & Koch band quoted as if it were a finding — the same class of
+error as `21 → 22`, and the same class as the τ ≥ 0.9 convention in §3.1.
 
 **The estate-specific point.** Nobody has ever measured whether two people choosing a clip for the
 same learning point agree. P75 measured the adjacent fact — **66 of 175 live clips overlap no
 candidate the rubric found**, over a pool spanning **591 distinct episodes** — and drew the right
 conclusion for pairing (*"two independent reviewers turned loose on 648 episodes will not converge
 on an episode by accident"*). The same fact is a warning for evaluation: **if two humans routinely
-disagree at IoU 0.5, then an L3 score below that gap is measuring annotators, not rankers.**
+disagree at IoU 0.5, an L3 score below that gap is measuring annotators, not rankers.**
 
 **This is why G1's 30 doubly-judged items exist**, and it is the cheapest insurance in this
-document: 30 items, ~3 h, and it produces a **noise floor** that every future L3 number is printed
+document: 30 items, ~3 h, producing a **noise floor** that every future L3 number is printed
 against. The harness should refuse to call an L3 difference meaningful when it is smaller than the
 measured human-human disagreement — the same shape as refusing to call +1/205 an improvement.
 
-**And on concentrating the effort.** Judging every candidate is not on the table, and the
-literature's answer is to choose *which* judgements to buy. **Minimal test collections** [D10]
-select the judgements that most reduce uncertainty about the *ranking of the systems* rather than
-about any one document; **statAP** [D11] samples judgements and estimates average precision from
-the sample; **move-to-front pooling** [D12] reorders the judging queue toward runs that have been
-producing relevant documents. *(The specific effort-reduction percentages these papers report were
-not re-verified in this pass and are not quoted.)* All three share one premise, and it is the one
-§3.4's G2 tranche adopts: **judge where the systems disagree, because a judgement on an item both
-systems rank identically cannot change the comparison.**
+### 3.6 The finding that constrains everything above: judged pools are NOT reusable
 
-**The known risk of that strategy, stated plainly:** a disagreement-focused judgement set is
-**biased toward the disagreement region**, so it is excellent for *comparing the two systems that
-produced it* and poor as a general-purpose collection. This is Buckley et al.'s pool-bias finding
-[B7] in a sharper form. Two mitigations are adopted: G1's 112 windows are judged **independently
-of any ranker**, giving an unbiased spine; and every G2 judgement is stored with **which artefact
-pair it came from**, so a later session can tell a general label from a disagreement-mined one
-instead of inheriting a silently biased collection.
+**This is the most consequential thing the research turned up, and it changes what the harness is
+allowed to claim.** Every direct published test of test-collection *reusability* — can a collection
+built by judging systems A and B fairly evaluate a later system C that contributed nothing? — has
+come back negative.
 
-The measured cost anchor for all of this is [B10]: **500 queries, mean pool 6.32, $1,022** of
-crowd preference judgements — which is the same order as §3.4's G2 tranche (≈470 judgements).
+- **Leave-one-out penalties** grew as collections got harder. Historically small — TREC-5 **0.5%**,
+  TREC-8 ad hoc **0.8%**, TREC-9 web **1.1%** — but TREC-8 CLIR **6.3%**, TREC 2001 CLIR **8.0%**,
+  and then the case that broke the consensus [B7]: a run whose MAP **would have been 0.202 instead
+  of 0.266 had it not contributed to the pool — a 23% relative drop.** The mechanism was the
+  title-word bias quoted in §1.5.
+- **The designed experiment settled it.** The Million Query 2009 track tested reusability directly
+  and reported [D22]: *"We **do not reject** the hypothesis that it is possible to reuse MQ09
+  topics and judgments for **within-site** comparisons… 2. We **do reject** the hypothesis that it
+  is possible to reuse MQ09 topics and judgments for **between-site** comparisons."* Between-site
+  τ was **0.7643 (statMAP) / 0.8350 (MTC)** — the overview's own words: *"both of which are rather
+  low."*
+- **The prescription** [D19]: *"Reusability in the sense it is traditionally understood is
+  impossible… Instead, evaluation should report a confidence based on the missing judgments."*
+- The same effect shows up in the sampling metrics: xinfAP's τ against **non-pooled** systems falls
+  to **0.8678** at 12.7% judged, where pooled systems hold **0.9345** [D11].
 
----
+**What this obliges the harness to do**, and it is a new refusal rather than a caveat:
+
+> **A comparison is valid for the rankers that contributed to the pool. It is a weaker claim about
+> any ranker that did not.** The harness records, per judgement, **which artefact pair produced
+> it**, and when asked to score an artefact that contributed to none of them it must say so — a
+> `POOL-NAIVE` flag on the report, not a footnote.
+
+**This is not academic here.** The estate's whole purpose in building this is to evaluate *future*
+rankers, and G2's pool is drawn from the top-2 of two **specific** artefacts — so a future ranker
+that retrieves differently will retrieve mostly unjudged candidates, which is precisely the
+condition [B7] measured a 23% penalty under. **The bias is designed in and cannot be designed
+out**; what can be done is to make it visible and bounded, in three ways:
+
+1. **G1's 112 windows are judged independently of any ranker**, giving an unbiased spine that no
+   amount of G2 can contaminate — which is a second, independent reason to do G1 first.
+2. **Every G2 judgement is stamped with the artefact pair that surfaced it**, so a later session
+   can tell a general label from a pool-mined one instead of inheriting a silently biased
+   collection.
+3. **A genuinely new ranker triggers a re-judging budget** (§9 phase 7), sized by how far it
+   departs from the pool — owed, not optional.
+
+A collection quietly reused past its validity is precisely the "check nobody has seen fail" shape,
+relocated into the label set: it keeps producing confident numbers, and nothing in the output says
+they stopped meaning anything.
 
 ## 4. Guarding against the trap the estate already fell into
 
@@ -886,9 +965,11 @@ while the reusable holdout correctly reported none.
 both.** Roelofs et al. [D14] meta-analysed Kaggle competitions — comparing each team's public
 leaderboard score (queried repeatedly during the competition) against its private score (queried
 once) — and found **little evidence of substantial adaptive overfitting** in most competitions:
-public and private rankings largely agreed, with the clearest degradation in competitions with
-**small test sets**. *(The exact number of competitions analysed and the per-competition gap
-statistics were not re-verified in this pass and are not quoted.)*
+public and private rankings largely agreed, with the clearest degradation where **test sets were
+small**. *(The per-competition statistics were not obtained and are not quoted; the qualitative
+finding is the paper's headline.)* The same group's ImageNet/CIFAR replication work [D21] is the
+sharper version of the same lesson and is quoted in §3.5: **absolute scores moved 11–14 points
+while the ranking held.**
 
 **The synthesis, and it is why §4.5's rule is a budget rather than a prohibition:** repeated
 holdout reuse is dangerous *in principle* and usually survivable *in practice* — except in the one
@@ -1034,6 +1115,10 @@ This list is the design. A harness that will do these things on request will eve
 9. **Refuse to compare artefacts whose learning-point sets differ**, without reporting the
    difference first (§5.2).
 10. **Refuse to promote the 17 withheld lexical guesses to labels** (§1.1, §3.4).
+11. **Refuse to present a pool-mined comparison as valid for a ranker that did not contribute to
+    the pool.** Every judgement is stamped with its artefact pair; scoring a stranger against it
+    prints `POOL-NAIVE` on the report. Between-site reusability has been directly tested and
+    **rejected** (§3.6), with a worst measured leave-one-out penalty of **23% of MAP**.
 
 ### 5.5 Shrink-only baselines
 
@@ -1252,11 +1337,18 @@ tranche order (§3.4 — G1 first, because it is the only one that measures the 
 | **2** | L2 + L3 with constant baselines and arithmetic ceilings; separation column; the generated verdict paragraph | phase 0 | §7.2–7.5 are computed; this is packaging them honestly |
 | **3** | DEV/TEST split by course, `evaluation-log.jsonl`, read counter | phase 0 | small, and it must precede any tuning |
 | **4** | **G1** — re-audition the 112 windows, 30 doubly-judged, publish the human-human noise floor | **D3** | 9–15 h (estimate) |
-| **5** | **G2** — depth-3 pooled judgements on the 105 rank-1 disagreements (≈ 470 judgements) | phase 3, D1 | 6–10 h (estimate) |
+| **5** | **G2** — depth-2 pooled **preference** judgements over all 205 LPs (**607** judgements) | phase 3, D1 | 4–7 h (estimate) |
 | **6** | Retire `docs/reports/clip-eval-baseline.json`'s provisional rows as real gold replaces derived labels | phases 4–5 | — |
+| **7** | **Re-judging budget when a genuinely new ranker arrives** — owed, not optional (§3.6) | a new ranker existing | proportional to how far it departs from the pool |
 
 Phases 0–3 need **no new labelling and no operator ruling except D4** (where the code lives), and
 they are what turns `21 → 22` from an argument into a measurement.
+
+**Phase 7 is in the table because §3.6 makes it an obligation rather than a nicety.** Between-site
+reusability of a judged pool has been directly tested and rejected, with a worst measured
+leave-one-out penalty of **23% of MAP**. A collection silently reused past its validity is the
+"check nobody has seen fail" shape relocated into the label set, and the only defence is to have
+written the re-judging into the plan before the tempting moment arrives.
 
 ---
 
@@ -1405,62 +1497,95 @@ this document extrapolates from one, it says "estimate".
   Uncertainties in Temporal Boundary* (EMB). ECCV 2022, LNCS 13694, 724–740. —
   https://arxiv.org/abs/2206.12923
 
-### D — sample size, significance testing, agreement, adaptive analysis
-
-> **Evidence-quality caveat for this group.** The research pass covering these did not complete.
-> Every entry below is a correctly identified source and the qualitative findings attributed to it
-> in §3.1, §3.5 and §4.5 are the canonical ones. **Specific numeric values from these sources were
-> not re-verified in this pass, and none are quoted in the body — every place one would have gone
-> says so explicitly.** A follow-up pass should close this; it does not affect any estate
-> measurement, all of which were computed here.
+### D — sample size, significance testing, agreement, pooling effort, reusability
 
 - **[D1]** Voorhees, E.M. & Buckley, C. (2002). *The effect of topic set size on retrieval
-  experiment error.* SIGIR '02, 316–323. — https://dl.acm.org/doi/10.1145/564376.564432
-  · see also Sanderson, M. & Zobel, J. (2005). *Information retrieval system evaluation: effort,
+  experiment error.* SIGIR '02, 316-323. — https://dl.acm.org/doi/10.1145/564376.564432
+  · Sanderson, M. & Zobel, J. (2005). *Information retrieval system evaluation: effort,
   sensitivity and reliability.* SIGIR '05 — https://dl.acm.org/doi/10.1145/1076034.1076064
   · Webber, W., Moffat, A. & Zobel, J. (2008). *Statistical power in retrieval experimentation.*
   CIKM '08 — https://dl.acm.org/doi/10.1145/1458082.1458146
-- **[D2]** Sakai, T. (2016). *Topic set size design.* Information Retrieval Journal 19(3), 256–283.
+- **[D2]** Sakai, T. (2016). *Topic set size design.* Information Retrieval Journal 19(3), 256-283.
   — https://link.springer.com/article/10.1007/s10791-015-9273-z
 - **[D3]** Smucker, M.D., Allan, J. & Carterette, B. (2007). *A comparison of statistical
-  significance tests for information retrieval evaluation.* CIKM '07, 623–632. —
+  significance tests for information retrieval evaluation.* CIKM '07, 623-632. —
   https://dl.acm.org/doi/10.1145/1321440.1321528
 - **[D4]** McNemar, Q. (1947). *Note on the sampling error of the difference between correlated
-  proportions or percentages.* Psychometrika 12(2), 153–157. —
+  proportions or percentages.* Psychometrika 12(2), 153-157. —
   https://link.springer.com/article/10.1007/BF02295996
 - **[D5]** Webber, W., Moffat, A. & Zobel, J. (2010). *A similarity measure for indefinite
-  rankings.* ACM TOIS 28(4), Article 20. — https://dl.acm.org/doi/10.1145/1852102.1852106
+  rankings.* ACM TOIS 28(4), Article 20. — https://dl.acm.org/doi/10.1145/1852102.1852106 ·
+  author PDF: http://www.williamwebber.com/research/papers/wmz10_tois.pdf
 - **[D6]** Voorhees, E.M. (2000). *Variations in relevance judgments and the measurement of
-  retrieval effectiveness.* Information Processing & Management 36(5), 697–716. —
+  retrieval effectiveness.* Information Processing & Management 36(5), 697-716. —
   https://www.sciencedirect.com/science/article/abs/pii/S0306457300000105
 - **[D7]** Landis, J.R. & Koch, G.G. (1977). *The measurement of observer agreement for categorical
-  data.* Biometrics 33(1), 159–174. — https://www.jstor.org/stable/2529310 · Cohen, J. (1960).
+  data.* Biometrics 33(1), 159-174. — https://www.jstor.org/stable/2529310 · Cohen, J. (1960).
   *A coefficient of agreement for nominal scales.* Educational and Psychological Measurement 20(1),
-  37–46. — https://journals.sagepub.com/doi/10.1177/001316446002000104
+  37-46. — https://journals.sagepub.com/doi/10.1177/001316446002000104
 - **[D8]** Krippendorff, K. (2004/2018). *Content Analysis: An Introduction to Its Methodology*,
-  ch. 11 (reliability). Sage. — and *Computing Krippendorff's Alpha-Reliability* —
+  ch. 11-12 (reliability). Sage. · *Computing Krippendorff's Alpha-Reliability* —
   https://repository.upenn.edu/asc_papers/43/
 - **[D9]** Krippendorff, K. (1995). *On the reliability of unitizing continuous data.* Sociological
-  Methodology 25, 47–76. — https://www.jstor.org/stable/271061 · extended in Krippendorff, K.,
+  Methodology 25, 47-76. — https://www.jstor.org/stable/271061 · extended in Krippendorff, K.,
   Mathet, Y., Bouvry, S. & Widlöcher, A. (2016). *On the reliability of unitizing textual continua:
-  further developments.* Quality & Quantity 50, 2347–2364. —
+  further developments.* Quality & Quantity 50, 2347-2364. —
   https://link.springer.com/article/10.1007/s11135-015-0266-1
+  *(Both are paywalled; the figures used here come from the open §12.4 treatment in [D8].)*
 - **[D10]** Carterette, B., Allan, J. & Sitaraman, R. (2006). *Minimal test collections for
-  retrieval evaluation.* SIGIR '06, 268–275. — https://dl.acm.org/doi/10.1145/1148170.1148219
+  retrieval evaluation.* SIGIR '06, 268-275. — https://doi.org/10.1145/1148170.1148219
 - **[D11]** Aslam, J.A., Pavlu, V. & Yilmaz, E. (2006). *A statistical method for system evaluation
-  using incomplete judgments.* SIGIR '06, 541–548 (statAP). —
-  https://dl.acm.org/doi/10.1145/1148170.1148263
+  using incomplete judgments.* SIGIR '06, 541-548 (statAP). —
+  https://dl.acm.org/doi/10.1145/1148170.1148263 · Yilmaz, E., Kanoulas, E. & Aslam, J.A. (2008).
+  *A simple and efficient sampling method for estimating AP and NDCG* (xinfAP). SIGIR '08 —
+  https://dl.acm.org/doi/10.1145/1390334.1390419
 - **[D12]** Cormack, G.V., Palmer, C.R. & Clarke, C.L.A. (1998). *Efficient construction of large
-  test collections.* SIGIR '98, 282–289 (move-to-front pooling). —
-  https://dl.acm.org/doi/10.1145/290941.291009 · see also Losada, D.E., Parapar, J. & Barreiro, Á.
-  (2017). *Multi-armed bandits for adjudicating documents in pooling-based evaluation.* IP&M 53(5)
-  — https://www.sciencedirect.com/science/article/abs/pii/S0306457317300602
+  test collections.* SIGIR '98, 282-289 (move-to-front pooling). —
+  https://dl.acm.org/doi/10.1145/290941.291009
 - **[D13]** Dwork, C., Feldman, V., Hardt, M., Pitassi, T., Reingold, O. & Roth, A. (2015).
   *The reusable holdout: Preserving validity in adaptive data analysis.* Science 349(6248),
-  636–638. — https://www.science.org/doi/10.1126/science.aaa9375
+  636-638. — https://www.science.org/doi/10.1126/science.aaa9375
 - **[D14]** Roelofs, R., Fridovich-Keil, S., Miller, J., Shankar, V., Hardt, M., Recht, B. &
   Schmidt, L. (2019). *A Meta-Analysis of Overfitting in Machine Learning.* NeurIPS 2019. —
   https://papers.nips.cc/paper/2019/hash/ee39e503b6bedf0c98c388b7e8589aca-Abstract.html
+- **[D15]** Sanderson, M. (2010). *Test Collection Based Evaluation of Information Retrieval
+  Systems.* Foundations and Trends in Information Retrieval 4(4), 247-375, §6.1 (provenance of the
+  τ ≥ 0.9 convention). — https://doi.org/10.1561/1500000009
+- **[D16]** Sanderson, M. & Soboroff, I. (2007). *Problems with Kendall's tau.* SIGIR '07, 839-840.
+  — https://dl.acm.org/doi/10.1145/1277741.1277935
+- **[D17]** Losada, D.E., Parapar, J. & Barreiro, Á. (2017). *Multi-armed bandits for adjudicating
+  documents in pooling-based evaluation of information retrieval systems.* IP&M 53(5), 1005-1025.
+  — https://www.sciencedirect.com/science/article/abs/pii/S0306457317300602
+- **[D18]** Rahman, M.M., Kutlu, M. & Lease, M. (2020). *Constructing test collections using
+  multi-armed bandits and active learning.* ICTIR '20. —
+  https://dl.acm.org/doi/10.1145/3409256.3409824
+- **[D19]** Carterette, B., Pavlu, V., Kanoulas, E., Aslam, J.A. & Allan, J. (2008). *Evaluation
+  over thousands of queries.* SIGIR '08, 651-658 (cost optimum; *"reusability … is impossible"*).
+  — https://dl.acm.org/doi/10.1145/1390334.1390445
+- **[D20]** Carterette, B. & Soboroff, I. (2010). *The effect of assessor errors on IR system
+  evaluation.* SIGIR '10, 539-546. — https://dl.acm.org/doi/10.1145/1835449.1835540 ·
+  and the preference-vs-graded timing comparison in the preference-judgement literature
+  (see [B10] for the crowd-cost anchor: **500 queries, mean pool 6.32, $1,022**).
+- **[D21]** Recht, B., Roelofs, R., Schmidt, L. & Shankar, V. (2019). *Do ImageNet Classifiers
+  Generalize to ImageNet?* ICML 2019. — https://arxiv.org/abs/1902.10811 · and *Do CIFAR-10
+  Classifiers Generalize to CIFAR-10?* — https://arxiv.org/abs/1806.00451
+- **[D22]** Carterette, B., Pavlu, V., Fang, H. & Kanoulas, E. (2009/2010). *Million Query Track
+  Overview.* TREC-18/19 — the designed reusability experiment. —
+  https://trec.nist.gov/pubs/trec18/papers/MQ09OVERVIEW.pdf
+- **[D23]** Freund, Y., Seung, H.S., Shamir, E. & Tishby, N. (1997). *Selective sampling using the
+  query by committee algorithm.* Machine Learning 28, 133-168 — the theory behind "label where the
+  committee disagrees", including its own negative result that the guarantee is conditional. —
+  https://link.springer.com/article/10.1023/A:1007330508534
+
+**Figures deliberately NOT quoted, having failed verification:** statAP's headline *"4% of the
+pool"* (appears only in that paper's abstract and conclusion; the experiments report 1.7% and
+11.5%, which is what §3.4 uses) · Cormack et al.'s relevant-document gain (figures only, no stated
+percentage in the text — §3.4 therefore cites [D12]'s ρ result and [B7]'s independent
+re-measurement instead) · MTC's *"under three hours"* (that is **wall-clock with six annotators in
+parallel = 15 annotator-hours**; §3.4 quotes the annotator-hours) · the specific per-competition
+statistics in [D14] · Voorhees's *"65% precision at 65% recall"* ceiling (attributed to [D6] by
+secondary sources but not located in it) · Yilmaz et al.'s τ_AP paper (no accessible copy obtained;
+no numbers from it appear here).
 
 ### Sources deliberately NOT used, and why
 

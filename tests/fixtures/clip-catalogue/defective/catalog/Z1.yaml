@@ -1,0 +1,140 @@
+# SYNTHETIC fixture — invented prose, no corpus content. See ../../README.md.
+#
+# ONE learning point per defect class, with the other fields deliberately kept
+# valid, so a check that stops detecting its class fails exactly one assertion
+# and the failure names the class.
+#
+# Fixture facts the assertions depend on:
+#   episode 1        608 s (10:08) of transcript
+#   vidSAME00001     608 s, byte-identical timeline to episode 1
+#   vidLONG00001    1200 s, same recording  (long enough not to trip D2)
+#   vidSHORT0001      20 s, same recording  (short enough to trip D2)
+#   vidOFFSET001     708 s, same recording, timeline shifted +100 s
+#   vidOTHER0001     608 s, a different recording entirely
+#   vidPARTIAL01     608 s, ~8% shared — deliberately between the two bands
+course:
+  code: Z1
+  title: Fixture Course
+  schema_version: 3
+  learning_points:
+  - id: Z1.01
+    title: D1 window ends beyond the episode itself
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '11:00'
+          end: '12:00'
+          duration_min: 1.0
+          youtube_id: vidLONG00001
+  - id: Z1.02
+    title: D2 window ends beyond the linked video
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:10'
+          end: '0:40'
+          duration_min: 0.5
+          youtube_id: vidSHORT0001
+  - id: Z1.03
+    title: D3a the linked video is a different recording
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:10'
+          end: '0:40'
+          duration_min: 0.5
+          youtube_id: vidOTHER0001
+  - id: Z1.04
+    title: D3b the linkage is neither proven nor disproven
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:10'
+          end: '0:40'
+          duration_min: 0.5
+          youtube_id: vidPARTIAL01
+  - id: Z1.05
+    title: D3c same recording, shifted timeline
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:10'
+          end: '0:40'
+          duration_min: 0.5
+          youtube_id: vidOFFSET001
+  - id: Z1.06
+    title: D4 an unfilled slot presented as a choice
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:00'
+          end: '8:00'
+          duration_min: 8.0
+          youtube_id: vidSAME00001
+  - id: Z1.07
+    title: D5 truncated summary, recoverable from standard.text
+    session: 1
+    depths:
+      short:
+        summary: The lantern keeper counted seven amber stones beside the...
+      standard:
+        text: The lantern keeper counted seven amber stones beside the quiet harbour wall. He wrote every number into a folded paper notebook.
+  - id: Z1.08
+    title: D5 truncated summary, NOT recoverable — must never be invented
+    session: 1
+    depths:
+      short:
+        summary: A summary whose source is nowhere in this file at...
+  - id: Z1.09
+    title: D6 a video key with nothing under it
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+  - id: Z1.10
+    title: D7 duration_min disagrees with its own window
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:10'
+          end: '0:40'
+          duration_min: 9.0
+          youtube_id: vidSAME00001

@@ -1,0 +1,276 @@
+{
+ "video_id": "vidOTHER0001",
+ "duration": 608.0,
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 80.0,
+   "text": "a cartographer folded eleven copper maps inside a dented tin",
+   "words": [
+    {
+     "word": "a",
+     "start": 0.0
+    },
+    {
+     "word": "cartographer",
+     "start": 8.0
+    },
+    {
+     "word": "folded",
+     "start": 16.0
+    },
+    {
+     "word": "eleven",
+     "start": 24.0
+    },
+    {
+     "word": "copper",
+     "start": 32.0
+    },
+    {
+     "word": "maps",
+     "start": 40.0
+    },
+    {
+     "word": "inside",
+     "start": 48.0
+    },
+    {
+     "word": "a",
+     "start": 56.0
+    },
+    {
+     "word": "dented",
+     "start": 64.0
+    },
+    {
+     "word": "tin",
+     "start": 72.0
+    }
+   ]
+  },
+  {
+   "start": 80.0,
+   "end": 160.0,
+   "text": "travelling case then measured shadows across the courtyard flagstones until",
+   "words": [
+    {
+     "word": "travelling",
+     "start": 80.0
+    },
+    {
+     "word": "case",
+     "start": 88.0
+    },
+    {
+     "word": "then",
+     "start": 96.0
+    },
+    {
+     "word": "measured",
+     "start": 104.0
+    },
+    {
+     "word": "shadows",
+     "start": 112.0
+    },
+    {
+     "word": "across",
+     "start": 120.0
+    },
+    {
+     "word": "the",
+     "start": 128.0
+    },
+    {
+     "word": "courtyard",
+     "start": 136.0
+    },
+    {
+     "word": "flagstones",
+     "start": 144.0
+    },
+    {
+     "word": "until",
+     "start": 152.0
+    }
+   ]
+  },
+  {
+   "start": 160.0,
+   "end": 240.0,
+   "text": "the sundial agreed with her pocket chronometer for the third",
+   "words": [
+    {
+     "word": "the",
+     "start": 160.0
+    },
+    {
+     "word": "sundial",
+     "start": 168.0
+    },
+    {
+     "word": "agreed",
+     "start": 176.0
+    },
+    {
+     "word": "with",
+     "start": 184.0
+    },
+    {
+     "word": "her",
+     "start": 192.0
+    },
+    {
+     "word": "pocket",
+     "start": 200.0
+    },
+    {
+     "word": "chronometer",
+     "start": 208.0
+    },
+    {
+     "word": "for",
+     "start": 216.0
+    },
+    {
+     "word": "the",
+     "start": 224.0
+    },
+    {
+     "word": "third",
+     "start": 232.0
+    }
+   ]
+  },
+  {
+   "start": 240.0,
+   "end": 320.0,
+   "text": "consecutive afternoon swallows cut low over the well head and",
+   "words": [
+    {
+     "word": "consecutive",
+     "start": 240.0
+    },
+    {
+     "word": "afternoon",
+     "start": 248.0
+    },
+    {
+     "word": "swallows",
+     "start": 256.0
+    },
+    {
+     "word": "cut",
+     "start": 264.0
+    },
+    {
+     "word": "low",
+     "start": 272.0
+    },
+    {
+     "word": "over",
+     "start": 280.0
+    },
+    {
+     "word": "the",
+     "start": 288.0
+    },
+    {
+     "word": "well",
+     "start": 296.0
+    },
+    {
+     "word": "head",
+     "start": 304.0
+    },
+    {
+     "word": "and",
+     "start": 312.0
+    }
+   ]
+  },
+  {
+   "start": 320.0,
+   "end": 400.0,
+   "text": "somebody upstairs practised scales on a badly tuned upright piano",
+   "words": [
+    {
+     "word": "somebody",
+     "start": 320.0
+    },
+    {
+     "word": "upstairs",
+     "start": 328.0
+    },
+    {
+     "word": "practised",
+     "start": 336.0
+    },
+    {
+     "word": "scales",
+     "start": 344.0
+    },
+    {
+     "word": "on",
+     "start": 352.0
+    },
+    {
+     "word": "a",
+     "start": 360.0
+    },
+    {
+     "word": "badly",
+     "start": 368.0
+    },
+    {
+     "word": "tuned",
+     "start": 376.0
+    },
+    {
+     "word": "upright",
+     "start": 384.0
+    },
+    {
+     "word": "piano",
+     "start": 392.0
+    }
+   ]
+  },
+  {
+   "start": 400.0,
+   "end": 456.0,
+   "text": "while dust settled through the window light",
+   "words": [
+    {
+     "word": "while",
+     "start": 400.0
+    },
+    {
+     "word": "dust",
+     "start": 408.0
+    },
+    {
+     "word": "settled",
+     "start": 416.0
+    },
+    {
+     "word": "through",
+     "start": 424.0
+    },
+    {
+     "word": "the",
+     "start": 432.0
+    },
+    {
+     "word": "window",
+     "start": 440.0
+    },
+    {
+     "word": "light",
+     "start": 448.0
+    }
+   ]
+  }
+ ]
+}

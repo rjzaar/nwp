@@ -1,0 +1,32 @@
+[
+ {
+  "id": "vidSAME00001",
+  "title": "same recording",
+  "duration": 608.0
+ },
+ {
+  "id": "vidOFFSET001",
+  "title": "same recording, shifted timeline",
+  "duration": 708.0
+ },
+ {
+  "id": "vidOTHER0001",
+  "title": "a different recording",
+  "duration": 608.0
+ },
+ {
+  "id": "vidPARTIAL01",
+  "title": "partial overlap",
+  "duration": 608.0
+ },
+ {
+  "id": "vidSHORT0001",
+  "title": "a short cut",
+  "duration": 20.0
+ },
+ {
+  "id": "vidLONG00001",
+  "title": "same recording, long upload",
+  "duration": 1200.0
+ }
+]

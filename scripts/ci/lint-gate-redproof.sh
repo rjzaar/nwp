@@ -85,10 +85,26 @@
 #   (tests/unit/test-gate-redproof.bats). A meta-honesty check exempt from its
 #   own rule would be the seventh entry on the list above.
 #
+# ============================================================================
+# DETERMINISM (ops#343)
+# ============================================================================
+#   The verdict is a pure function of (.gitlab-ci.yml, scripts/ci/, tests/**).
+#   It must not depend on timing, and once it did: see the long comment on
+#   has_red_proof. Two rules keep it that way, and both have bats red-proofs:
+#     * NO EARLY-EXIT PIPELINE decides a verdict. `… | grep -q` under
+#       `set -o pipefail` returns 141 when the writer is still writing, which
+#       is a coin flip, not a measurement. The evidence index is an in-memory
+#       associative array.
+#     * THE CORPUS SIZE IS REPORTED ON EVERY RUN, and a corpus below
+#       NWP_GATE_MIN_PROOFS (default 1), or a test root that is not there at
+#       all, is exit 2 — not a page of NO-RED-PROOF rows that look like
+#       findings but are really the scanner describing itself.
+#
 # EXIT
 #   0 — every gate is PROVEN-RED or is an exact, current baseline row
 #   1 — a new unproven gate, or a stale baseline row
-#   2 — CANNOT VERIFY (no yq, unreadable .gitlab-ci.yml, empty corpus)
+#   2 — CANNOT VERIFY (no yq, unreadable .gitlab-ci.yml, empty corpus,
+#       a missing test root, or an evidence corpus below the floor)
 
 set -uo pipefail
 
@@ -99,6 +115,13 @@ CI_FILE="${NWP_GATE_CI_FILE:-$PROJECT_ROOT/.gitlab-ci.yml}"
 CI_DIR="${NWP_GATE_CI_DIR:-$PROJECT_ROOT/scripts/ci}"
 TEST_ROOTS_RAW="${NWP_GATE_TEST_ROOTS:-tests}"
 BASELINE="${NWP_GATE_REDPROOF_BASELINE:-$PROJECT_ROOT/.gate-redproof-baseline}"
+# Smallest evidence corpus this tool will render a verdict over (ops#343). One
+# real proof is the floor: a scan that finds NONE has either lost the corpus or
+# is looking in the wrong place, and in both cases every gate reads
+# NO-RED-PROOF — a swallowed measurement wearing the costume of a finding.
+# Overridable so the tool's own fixtures, which are deliberately corpus-free
+# where they exercise verdict logic rather than corpus integrity, can set 0.
+MIN_PROOFS="${NWP_GATE_MIN_PROOFS:-1}"
 
 MODE=check
 while [ $# -gt 0 ]; do
@@ -111,7 +134,7 @@ while [ $# -gt 0 ]; do
         --ci-dir=*)        CI_DIR="${1#*=}" ;;
         --test-roots=*)    TEST_ROOTS_RAW="${1#*=}" ;;
         --help|-h)
-            sed -n '2,95p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,107p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         -*) echo "unknown option: $1" >&2; exit 2 ;;
         *)  echo "unexpected argument: $1" >&2; exit 2 ;;
@@ -155,16 +178,36 @@ fi
 #     around every case in the file. A script named there is a script the
 #     whole file is about; that is not leakage, it is what the fixture means.
 #   * Two resolution passes, so `_run_gate` → `_load` → path also resolves.
+#
+# CORPUS_BATS is set as a side effect: the number of .bats files actually
+# scanned. It is REPORTED on every run (ops#343). A verdict computed over an
+# evidence corpus of unknown size is not diagnosable — four pipelines had to be
+# cross-referenced by hand before anyone could even ask "did the scan see the
+# same files both times?".
+CORPUS_BATS=0
 collect_red_proofs() {
     local roots=("$@")
     local bats_files=()
     local r f
     for r in "${roots[@]}"; do
-        [ -e "$r" ] || continue
+        # A MISSING TEST ROOT IS NOT AN EMPTY ONE (ops#343). `|| continue` here
+        # meant a root that failed to materialise — an unlinked private/ overlay,
+        # a worktree that shadows a directory, a checkout that did not complete —
+        # silently shrank the evidence corpus, and every gate proved only by the
+        # vanished files reported NO-RED-PROOF as if that were a finding. Same
+        # shape as `lint:site-names` reading a deny-list that is not linked into
+        # worktrees. Fail closed: say which root, and grade it CANNOT VERIFY.
+        if [ ! -d "$r" ]; then
+            echo "lint:gate-redproof: CANNOT VERIFY — test root not readable: $r" >&2
+            echo "  The evidence corpus is scanned from this path; a missing one" >&2
+            echo "  is an unmeasured corpus, never an empty one." >&2
+            return 2
+        fi
         while IFS= read -r -d '' f; do bats_files+=("$f"); done < <(
             find "$r" -type f -name '*.bats' -print0 2>/dev/null
         )
     done
+    CORPUS_BATS=${#bats_files[@]}
     [ ${#bats_files[@]} -eq 0 ] && return 0
 
     # One awk invocation per file: helper definitions are file-local, and
@@ -252,15 +295,65 @@ cd "$PROJECT_ROOT" || exit 2
 proofs_file="$(mktemp)"
 gates_file="$(mktemp)"
 trap 'rm -f "$proofs_file" "$gates_file"' EXIT
-collect_red_proofs "${TEST_ROOTS[@]}" > "$proofs_file"
+collect_red_proofs "${TEST_ROOTS[@]}" > "$proofs_file" || exit 2
+
+# ---------------------------------------------------------------- ops#343
+# THE EVIDENCE INDEX IS BUILT ONCE, IN MEMORY, AND READ WITHOUT A PIPE.
+#
+# This function used to be:
+#
+#     has_red_proof() { cut -f1 "$proofs_file" | grep -qxF "$1"; }
+#
+# and under this script's `set -o pipefail` that is a COIN FLIP, not a lookup.
+# `grep -q` exits the instant it matches. If `cut` has not finished writing by
+# then — and with a 90 KB corpus against a 64 KiB pipe buffer it usually has
+# not — `cut` is killed by SIGPIPE and exits 141. `pipefail` then makes 141 the
+# pipeline's status, so the function answers "NO, this gate has never been
+# proven red" about a gate whose proof it just found. The earlier a script
+# sorts, the likelier the flip, because grep leaves sooner.
+#
+# The damage was exactly what you would expect of a random answer inside a
+# meta-gate: on 2026-08-11 pipelines 2224 and 2225 ran the SAME commit
+# 46082c87 minutes apart and disagreed, and job 18973 contradicted ITSELF —
+# `impl:scripts/ci/run-bats.sh` PROVEN-RED and `job:test:integration` PROVEN-RED
+# via run-bats.sh, while `job:test:unit` reported "no bats case asserts a
+# non-zero exit from run-bats.sh", all in one process, milliseconds apart.
+# Measured on the workstation before the fix: 7 of 400 identical calls for
+# `lint-bash.sh` returned 141; with a 90 KB corpus, 20 of 20.
+#
+# Direction of the error: this race can only turn PROVEN-RED into
+# NO-RED-PROOF, so it manufactures FALSE REDS, never a false green. That is
+# still the bad outcome it looks like — a gate that cries wolf is on its way to
+# being a gate nobody believes, and three of these were answered with a retry.
+#
+# An associative array has no pipe, no subprocess and no ordering, so the
+# answer cannot depend on timing. It is also ~110 fewer forks per run.
+declare -A RED_PROVEN=()
+while IFS=$'\t' read -r _b _f; do
+    [ -n "$_b" ] && RED_PROVEN["$_b"]=1
+done < "$proofs_file"
+CORPUS_PROOFS=$(wc -l < "$proofs_file" | tr -d ' ')
 
 has_red_proof() {   # basename -> 0 if some block proved it red
-    cut -f1 "$proofs_file" | grep -qxF "$1"
+    [ -n "${RED_PROVEN[$1]+x}" ]
 }
 proof_sites() {     # basename -> the test files that proved it
     grep -E "^$(printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g')	" "$proofs_file" \
         | cut -f2 | sed 's#.*/##' | sort -u | paste -sd, -
 }
+
+# ALWAYS SAY HOW BIG THE EVIDENCE WAS (ops#343). Printed to stderr so `--list`
+# stays machine-readable on stdout. Two numbers in the job log turn "why did
+# this gate disagree with itself?" from a four-pipeline cross-reference into a
+# one-line comparison.
+echo "lint:gate-redproof: evidence corpus — $CORPUS_BATS bats file(s) under ${TEST_ROOTS[*]}, $CORPUS_PROOFS red-proof row(s)." >&2
+if [ "$CORPUS_PROOFS" -lt "$MIN_PROOFS" ]; then
+    echo "lint:gate-redproof: CANNOT VERIFY — evidence corpus too small:" >&2
+    echo "  $CORPUS_PROOFS red-proof row(s) from $CORPUS_BATS bats file(s), floor is $MIN_PROOFS." >&2
+    echo "  Every gate would read NO-RED-PROOF, which would be a report about" >&2
+    echo "  the scanner, not about the gates. Refusing to render a verdict." >&2
+    exit 2
+fi
 
 ################################################################################
 # LAYER 1 — read the pipeline definition

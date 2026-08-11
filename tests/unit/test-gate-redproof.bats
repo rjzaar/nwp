@@ -22,11 +22,19 @@ setup() {
 }
 
 # Run the gate against the fixture tree.
+#
+# MIN_PROOFS defaults to 0 here and only here. Most cases in this file drive
+# the gate over a DELIBERATELY corpus-free fixture, because what they exercise
+# is verdict logic (can it see an allow_failure, a swallowed `|| true`, a stale
+# baseline row) and not corpus integrity. The floor that protects the real run
+# is not switched off by that: section 6 sets MIN_PROOFS back and proves the
+# floor both red and green on its own fixtures.
 _run_gate() {
   run env \
     NWP_GATE_CI_FILE="$FIX/.gitlab-ci.yml" \
     NWP_GATE_CI_DIR="$FIX/scripts/ci" \
-    NWP_GATE_TEST_ROOTS="$FIX/tests" \
+    NWP_GATE_TEST_ROOTS="${TEST_ROOTS_OVERRIDE:-$FIX/tests}" \
+    NWP_GATE_MIN_PROOFS="${MIN_PROOFS:-0}" \
     NWP_GATE_REDPROOF_BASELINE="$BASE" \
     bash "$GATE" "$@"
 }
@@ -317,4 +325,168 @@ variables:
   [[ "$output" == *"CANNOT-FAIL"* ]]
   [[ "$output" == *"NO-RED-PROOF"* ]]
   [[ "$output" == *"PROVEN-RED"* ]]
+}
+
+################################################################################
+# 6. DETERMINISM — the same tree must produce the same verdict (ops#343)
+################################################################################
+# On 2026-08-11 pipelines 2224 and 2225 ran the same commit 46082c87 minutes
+# apart and disagreed. Job 18973 contradicted itself in one process:
+# `impl:scripts/ci/run-bats.sh` PROVEN-RED and `job:test:integration`
+# PROVEN-RED via run-bats.sh, while `job:test:unit` reported "no bats case
+# asserts a non-zero exit from run-bats.sh". Three retries were spent on it.
+#
+# The cause was `cut -f1 "$proofs_file" | grep -qxF "$1"` under
+# `set -o pipefail`: grep leaves on the first match, cut is killed by SIGPIPE,
+# and 141 becomes the answer. Whether it fires depends on whether cut still has
+# bytes to write — i.e. on how big the corpus is and how early the script sorts.
+#
+# So the case below makes that condition CERTAIN instead of likely: a corpus
+# comfortably over the 64 KiB pipe buffer, and the script under test sorting
+# first, so grep exits at row 1 with ~90 KB still queued. Against the pre-fix
+# script this failed 20 times out of 20; a probabilistic case would have been a
+# flaky test, which is what we are here to remove.
+
+# Build a fixture whose evidence corpus is far larger than a pipe buffer.
+_mk_big_corpus() {   # rows ≈ 60 files × 60 names ≈ 90 KB of `cut -f1` output
+  local n i f
+  for n in $(seq 1 60); do
+    f="$FIX/tests/unit/test-bulk-$n.bats"
+    { printf '%stest "bulk %s" {\n' '@' "$n"
+      for i in $(seq 1 60); do
+        printf '  run bash zzzzzzzzzzzzzzzz_%02d_%02d.sh\n' "$n" "$i"
+      done
+      printf '  [ "$status" -ne 0 ]\n}\n'
+    } > "$f"
+  done
+}
+
+@test "a red proof is found regardless of corpus size (no SIGPIPE coin flip)" {
+  # aaa.sh sorts before every bulk name, so the lookup for it matches on the
+  # very first row — the worst case for an early-exit pipeline.
+  _ci 'stages: [lint]
+lint:aaa:
+  stage: lint
+  script:
+    - ./scripts/ci/aaa.sh'
+  printf '#!/bin/bash\nexit 0\n' > "$FIX/scripts/ci/aaa.sh"
+  _mk_bats "$FIX/tests/unit/test-aaa.bats" "aaa fails on a known-bad input" \
+      'run bash "$CI_DIR/aaa.sh" --bad' \
+      '[ "$status" -eq 1 ]'
+  _mk_big_corpus
+  : > "$BASE"
+  _run_gate --list
+  [ "$status" -eq 0 ]
+  # The proof exists. Saying otherwise is the bug.
+  [[ "$output" == *"PROVEN-RED"$'\t'"impl:scripts/ci/aaa.sh"* ]]
+  [[ "$output" == *"PROVEN-RED"$'\t'"job:lint:aaa"* ]]
+  [[ "$output" != *"NO-RED-PROOF"$'\t'"impl:scripts/ci/aaa.sh"* ]]
+}
+
+@test "the verdict is byte-identical across repeated runs of one tree" {
+  _ci 'stages: [lint]
+lint:aaa:
+  stage: lint
+  script:
+    - ./scripts/ci/aaa.sh'
+  printf '#!/bin/bash\nexit 0\n' > "$FIX/scripts/ci/aaa.sh"
+  _mk_bats "$FIX/tests/unit/test-aaa.bats" "aaa fails on a known-bad input" \
+      'run bash "$CI_DIR/aaa.sh" --bad' \
+      '[ "$status" -eq 1 ]'
+  _mk_big_corpus
+  : > "$BASE"
+  local first="" this=""
+  local i
+  for i in 1 2 3 4 5; do
+    _run_gate --list
+    [ "$status" -eq 0 ]
+    this="$output"
+    # Stability alone would be satisfied by five identical WRONG answers — and
+    # against the pre-fix script it was, because for this fixture the SIGPIPE
+    # flip is not merely likely but certain. So each run must be both stable
+    # AND correct, which is what makes this case capable of going red.
+    [[ "$this" == *"PROVEN-RED"$'\t'"impl:scripts/ci/aaa.sh"* ]]
+    [ -n "$first" ] || first="$this"
+    [ "$this" = "$first" ]
+  done
+}
+
+@test "a test root that is not there is CANNOT VERIFY, not an empty corpus" {
+  # The class that already bit lint:site-names: a path that exists on the
+  # workstation and not in the worktree/runner. Silently scanning nothing made
+  # every gate report NO-RED-PROOF as though that were a measurement.
+  _ci 'stages: [lint]
+lint:thing:
+  stage: lint
+  script:
+    - ./scripts/ci/thing.sh'
+  printf '#!/bin/bash\nexit 0\n' > "$FIX/scripts/ci/thing.sh"
+  : > "$BASE"
+  TEST_ROOTS_OVERRIDE="$FIX/tests-that-do-not-exist" _run_gate
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"test root not readable"* ]]
+}
+
+@test "an evidence corpus below the floor is CANNOT VERIFY, not 18 findings" {
+  _ci 'stages: [lint]
+lint:thing:
+  stage: lint
+  script:
+    - ./scripts/ci/thing.sh'
+  printf '#!/bin/bash\nexit 0\n' > "$FIX/scripts/ci/thing.sh"
+  : > "$BASE"
+  MIN_PROOFS=1 _run_gate
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" == *"evidence corpus too small"* ]]
+}
+
+@test "a corpus at the floor renders a verdict (the floor is not a wall)" {
+  _ci 'stages: [lint]
+lint:thing:
+  stage: lint
+  script:
+    - ./scripts/ci/thing.sh'
+  printf '#!/bin/bash\nexit 0\n' > "$FIX/scripts/ci/thing.sh"
+  _mk_bats "$FIX/tests/unit/test-thing.bats" "thing fails on a known-bad input" \
+      'run bash "$CI_DIR/thing.sh" --bad' \
+      '[ "$status" -eq 1 ]'
+  : > "$BASE"
+  MIN_PROOFS=1 _run_gate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2 PROVEN-RED"* ]]
+}
+
+@test "every run states how big the evidence corpus was" {
+  # ops#343 took four pipelines to diagnose because no run said what it had
+  # looked at. Two numbers in the log make the next occurrence a one-glance
+  # comparison instead of a cross-reference.
+  _ci 'stages: [lint]
+lint:thing:
+  stage: lint
+  script:
+    - ./scripts/ci/thing.sh'
+  printf '#!/bin/bash\nexit 0\n' > "$FIX/scripts/ci/thing.sh"
+  _mk_bats "$FIX/tests/unit/test-thing.bats" "thing fails on a known-bad input" \
+      'run bash "$CI_DIR/thing.sh" --bad' \
+      '[ "$status" -eq 1 ]'
+  : > "$BASE"
+  _run_gate --list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evidence corpus — 1 bats file(s)"* ]]
+  [[ "$output" == *"red-proof row(s)"* ]]
+}
+
+@test "the real repo reports a plausible evidence corpus, not a handful" {
+  cd "$PROJECT_ROOT"
+  run bash "$GATE" --list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evidence corpus"* ]]
+  # Parse the count back out and assert it is of the right order. A corpus that
+  # collapsed to a dozen files is the ops#343 failure wearing a green tick.
+  local n
+  n=$(printf '%s\n' "$output" | sed -n 's/.*evidence corpus — \([0-9]*\) bats file(s).*/\1/p' | head -1)
+  [ -n "$n" ]
+  [ "$n" -ge 100 ]
 }

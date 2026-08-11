@@ -607,6 +607,68 @@ _mr_state(){    printf '%s' "$1" | _mr_jget state; }
 _mr_detailed_merge_status(){ printf '%s' "$1" | _mr_jget detailed_merge_status; }
 _mr_head_pipeline_id(){ printf '%s' "$1" | _mr_jget 'head_pipeline.id'; }
 
+# _mr_pipeline <pipeline-id> → the pipeline JSON, or rc 1.
+_mr_pipeline(){
+  local pid="$1" proj
+  proj=$(_mr_project) || return 1
+  _mr_api GET "/projects/$proj/pipelines/${pid}"
+}
+
+# _mr_pipeline_ref_iid <pipeline-json> → the MR iid a pipeline belongs to, or
+# nothing.
+#
+# WHY THIS EXISTS. A human reports a NUMBER — "pipeline #2254 failed" — and
+# nothing in the estate could turn that number into a branch. A merge_request
+# pipeline's `ref` is `refs/merge-requests/<iid>/head`, so the mapping is right
+# there in the object; without it the only route was a hand-rolled curl loop,
+# which is the shape the pl-first standing order exists to retire.
+_mr_pipeline_ref_iid(){
+  local ref; ref=$(printf '%s' "$1" | _mr_jget ref)
+  case "$ref" in
+    refs/merge-requests/*/head) ref="${ref#refs/merge-requests/}"; printf '%s' "${ref%/head}" ;;
+    *) return 1 ;;
+  esac
+}
+
+# _mr_pipeline_jobs <pipeline-id> → "<id>\t<status>\t<stage>\t<name>\t<allow_failure>"
+# per job, in the API's order. Unlike _mr_failed_jobs this reports EVERY job:
+# reading a pipeline means seeing the skipped and canceled ones too, because
+# "the whole test stage was skipped" is the answer surprisingly often.
+_mr_pipeline_jobs(){
+  local pid="$1" proj json
+  proj=$(_mr_project) || return 1
+  json=$(_mr_api GET "/projects/$proj/pipelines/${pid}/jobs?per_page=100") || return 1
+  # python3 only, deliberately: yq's -r + string concatenation needs the
+  # strenv(TAB) dance documented below, and this producer has five fields
+  # rather than two. One implementation that behaves identically on every host
+  # beats two that agree until a yq version moves.
+  printf '%s' "$json" | python3 -c 'import json,sys
+try: jobs=json.load(sys.stdin)
+except Exception: sys.exit(1)
+if not isinstance(jobs, list): sys.exit(1)
+for j in jobs:
+    print("\t".join([str(j.get("id","")), str(j.get("status","")),
+                     str(j.get("stage","")), str(j.get("name","")),
+                     "true" if j.get("allow_failure") else "false"]))'
+}
+
+# _mr_job_trace <job-id> [<tail-lines>] → the END of one job log.
+#
+# Clamped like `pl logs` is clamped: a trace can be megabytes, and the answer to
+# "why did this go red" is almost always in the last screenful. ANSI escapes and
+# GitLab's section markers are stripped so the output is readable in a terminal
+# that is not a browser.
+_mr_job_trace(){
+  local jid="$1" tail_n="${2:-40}" proj raw
+  proj=$(_mr_project) || return 1
+  raw=$(_mr_api GET "/projects/$proj/jobs/${jid}/trace") || return 1
+  [ -n "$raw" ] || return 1
+  printf '%s\n' "$raw" \
+    | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/section_\(start\|end\):[0-9]*:[a-z_]*//g' \
+    | grep -v '^[[:space:]]*$' \
+    | tail -n "$tail_n"
+}
+
 # _mr_failed_jobs <pipeline-id> → "<job-id>\t<job-name>" per FAILED job.
 #
 # Only `failed` counts. `canceled`, `skipped` and an allow_failure job that went

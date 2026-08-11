@@ -110,7 +110,22 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     echo "lint:site-names: CANNOT VERIFY — not a git checkout, no tracked corpus" >&2; exit 2; }
 
 # ---------------------------------------------------------------- deny-list --
-[ -n "$DENYLIST" ] || DENYLIST="$PROJECT_ROOT/private/site-names.deny"
+# private/ is its own repo and is NOT linked into git worktrees, so a worktree
+# checkout has no deny-list of its own. Resolving only against PROJECT_ROOT made
+# this exit 2 CANNOT VERIFY in every worktree — which is fail-closed and correct
+# for CI, but as a pre-commit hook it blocked EVERY commit made from a worktree,
+# and worktrees are where this estate does its work (`pl issue work`). So fall
+# back to the MAIN working tree, which is where private/ actually lives. Found
+# by running the hook against a real commit rather than inspecting its config.
+if [ -z "$DENYLIST" ]; then
+    DENYLIST="$PROJECT_ROOT/private/site-names.deny"
+    if [ ! -r "$DENYLIST" ]; then
+        _main_wt="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+        [ -n "$_main_wt" ] && _main_wt="$(dirname "$_main_wt")"
+        [ -n "$_main_wt" ] && [ -r "$_main_wt/private/site-names.deny" ] \
+            && DENYLIST="$_main_wt/private/site-names.deny"
+    fi
+fi
 if [ ! -r "$DENYLIST" ]; then
     echo "lint:site-names: CANNOT VERIFY — no readable deny-list." >&2
     echo "  Sources tried: \$NWP_SITE_NAME_DENYLIST (CI file variable), then" >&2

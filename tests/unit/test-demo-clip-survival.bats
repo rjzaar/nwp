@@ -255,3 +255,69 @@ YAML
     [ "$status" -eq 1 ]
     [[ "$output" == *"AT RISK"* ]]
 }
+
+# ── The two shapes the awk parser this file used to carry got WRONG ──────────
+#
+# lint:yq-first flagged that parser on !436 (pipeline 2252, job 19405) as an
+# ADR-0015 violation. These two cases are why it was also a defect, not only a
+# style breach — both were RED against the awk version and are the reason the
+# rewrite is a fix rather than a reformat.
+
+# awk's block reset was `/^[a-z_]+:/`, which never fires on an INDENTED key, so
+# once `demo:` had been seen every later `enabled: true` at any depth counted.
+# A pair that explicitly opted OUT was therefore dragged onto the reset path by
+# an unrelated nested block.
+@test "a nested enabled:true under a DISABLED demo block does not arm the guard" {
+    mk_plain_site prov
+    mk_plain_site cons
+    add_clip_review prov
+    cat > "$PROJECT_ROOT/pairs/x.pair-contract.yml" <<YAML
+provider: prov
+consumer: cons
+demo:
+  enabled: false
+  smoke:
+    enabled: true
+YAML
+    run demo_clip_survival_report prov
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"not on the nightly reset path"* ]]
+}
+
+# A trailing comment is legal YAML and common in this estate's contracts
+# (pairs/ssd.pair-contract.yml is full of them). `awk '{print $2}'` took the
+# value only because it happened to be field 2.
+@test "provider: is read as a YAML value, not as awk field 2" {
+    mk_plain_site prov
+    mk_plain_site cons
+    add_clip_review prov
+    cat > "$PROJECT_ROOT/pairs/x.pair-contract.yml" <<YAML
+provider: "prov"   # the identity origin (ADR-0031 D5)
+consumer: cons
+demo:
+  enabled: true
+YAML
+    run demo_clip_survival_report prov
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"AT RISK"* ]]
+}
+
+# Host-blind branch, closed. Without the yq check the predicate answers "not on
+# the reset path" on a host with no yq — the reassuring sentence over a reading
+# that was never taken.
+@test "contracts present but yq absent is CANNOT VERIFY, never a clean bill" {
+    mk_plain_site prov
+    mk_plain_site cons
+    add_clip_review prov
+    cat > "$PROJECT_ROOT/pairs/x.pair-contract.yml" <<YAML
+provider: prov
+consumer: cons
+demo:
+  enabled: true
+YAML
+    NWP_DEMO_CLIP_NO_YQ=1 run demo_clip_survival_report prov
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CANNOT VERIFY"* ]]
+    # …and specifically NOT the reassuring sentence.
+    [[ "$output" != *"not on the nightly reset path"* ]]
+}

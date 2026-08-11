@@ -67,7 +67,61 @@ demo_clip_leg_wired() {
     [[ "$wrapper_ok" == true && "$orchestrator_ok" == true ]]
 }
 
+# Is yq usable here? The NWP_DEMO_CLIP_NO_YQ knob exists because CLAUDE.md
+# requires the absent-tool path to be TESTABLE ("either fail closed, or add an
+# NWP_* knob so the absent-tool path is testable") — an emptied $PATH would
+# also take away basename/grep/find and prove nothing about yq.
+_demo_clip_have_yq() {
+    [[ -n "${NWP_DEMO_CLIP_NO_YQ:-}" ]] && return 1
+    command -v yq >/dev/null 2>&1
+}
+
+# _demo_clip_pair_get <contract> <yq-path> [default]
+#
+# One scalar out of a pair contract, read with yq.
+#
+# WHY NOT awk. The first cut of this function parsed the contract with
+#     awk '/^demo:/{d=1} d && /^[[:space:]]+enabled:[[:space:]]*true/{found=1} …'
+# and `awk -v k="^provider:" '$0 ~ k {print $2; exit}'`, which lint:yq-first
+# caught on !436 (pipeline 2252, job 19405):
+#
+#     NEW AWK YAML PARSER: lib/demo-clip-survival.sh::demo_site_on_reset_path
+#     ERROR: 1 AWK YAML parser(s) introduced. Use yq instead (ADR-0015).
+#
+# The lint was right about more than style. That awk read `provider: nwd  # note`
+# as the value `nwd` only by luck of field splitting, would have taken a quoted
+# or flow-mapping value verbatim, and — the one that matters here — matched
+# `enabled: true` under ANY nested block once `demo:` had been seen, because its
+# reset pattern (`/^[a-z_]+:/`) does not fire on an indented key. A contract with
+#     demo:
+#       enabled: false
+#       smoke:
+#         enabled: true
+# would have read as demo-enabled and dragged both halves onto the reset path.
+#
+# Deliberately a local helper and not lib/demo-pair.sh's `demo_pair_get`: this
+# file is sourced on its own by tests/unit/test-demo-clip-survival.bats, and it
+# must also read the PRIVATE overlay dir, which demo_pair_dir does not cover.
+# Same yq idiom, same fail-soft-on-absent-key contract.
+_demo_clip_pair_get() {
+    local file="$1" path="$2" default="${3:-}" val=""
+    if [[ -f "$file" ]]; then
+        val="$(yq e "${path} // \"\"" "$file" 2>/dev/null || true)"
+        [[ "$val" == "null" ]] && val=""
+    fi
+    printf '%s\n' "${val:-$default}"
+}
+
 # Is this site destroyed by a nightly reset? Read from declared config only.
+#
+# TRI-STATE, and the third state is the point:
+#   0  on the reset path
+#   1  not on it
+#   2  CANNOT VERIFY — the contracts exist but yq does not, so "not on it"
+#      would be a verdict about the toolchain wearing a verdict about the
+#      estate. Fail-closed is the estate rule (CLAUDE.md), and this is the
+#      host-blind-branch shape it names: without this branch a runner with no
+#      yq would report every site safe.
 demo_site_on_reset_path() {
     local site="$1"
     local root="${PROJECT_ROOT:?PROJECT_ROOT not set}"
@@ -81,12 +135,15 @@ demo_site_on_reset_path() {
     local pc
     for pc in "${root}"/pairs/*.pair-contract.yml "${root}"/private/pairs/*.pair-contract.yml; do
         [[ -f "$pc" ]] || continue
+        # Checked HERE, not at the top: a corpus with no contracts at all needs
+        # no yq, and refusing there would make the check unrunnable on a tree
+        # that has nothing to read.
+        _demo_clip_have_yq || return 2
         # Only a contract that opts in (`demo:` block with enabled: true).
-        awk '/^demo:/{d=1} d && /^[[:space:]]+enabled:[[:space:]]*true/{found=1} /^[a-z_]+:/ && !/^demo:/{d=0} END{exit !found}' "$pc" || continue
-        local half
+        [[ "$(_demo_clip_pair_get "$pc" '.demo.enabled' 'false')" == "true" ]] || continue
+        local half name
         for half in provider consumer; do
-            local name
-            name="$(awk -v k="^${half}:" '$0 ~ k {print $2; exit}' "$pc")"
+            name="$(_demo_clip_pair_get "$pc" ".${half}")"
             [[ "$name" == "$site" ]] && return 0
         done
     done
@@ -170,7 +227,15 @@ demo_clip_survival_report() {
         [[ -d "${root}/sites/${site}" ]] || continue
         examined=$(( examined + 1 ))
 
-        if ! demo_site_on_reset_path "$site"; then
+        local path_rc=0
+        demo_site_on_reset_path "$site" || path_rc=$?
+        if [[ "$path_rc" -eq 2 ]]; then
+            # Never collapse "I could not read the contracts" into "safe".
+            printf '  %-12s CANNOT VERIFY  pair contracts exist but yq is absent — reset-path membership unknown\n' "$site"
+            worst=2
+            continue
+        fi
+        if [[ "$path_rc" -ne 0 ]]; then
             printf '  %-12s OK        not on the nightly reset path\n' "$site"
             continue
         fi
@@ -184,7 +249,10 @@ demo_clip_survival_report() {
         fi
         printf '  %-12s AT RISK   nightly reset destroys clip choices — no pre-wipe leg\n' "$site"
         at_risk=$(( at_risk + 1 ))
-        worst=1
+        # exit 2 DOMINATES exit 1 (CLAUDE.md): a run that could not evaluate
+        # every site must not read as a complete verdict just because a later
+        # site was decidable.
+        [[ "$worst" -eq 2 ]] || worst=1
     done
 
     if [[ "$examined" -eq 0 ]]; then

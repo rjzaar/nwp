@@ -1780,9 +1780,13 @@ cmd_lint(){
 ################################################################################
 cmd_adopt(){
   need_yq; need_registry
-  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>|<path>:<ref>|host=<role>:<path>:<ref> [--as <id>]"
-  local AS=""; shift || true
-  while [ $# -gt 0 ]; do case "$1" in --as) AS="${2:-}"; shift 2;; *) shift;; esac; done
+  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>|<path>:<ref>|host=<role>:<path>:<ref> [--as <id>] [--not-provisioned]"
+  local AS="" NOTPROV=0; shift || true
+  while [ $# -gt 0 ]; do case "$1" in
+    --as) AS="${2:-}"; shift 2;;
+    --not-provisioned) NOTPROV=1; shift;;
+    *) shift;;
+  esac; done
 
   # A credential that lives ONLY on another host was previously unadoptable: this
   # verb spoke .secrets.yml and nothing else, so the one live api-scoped token in
@@ -1871,6 +1875,55 @@ cmd_adopt(){
   fi
 
   local len; len=$("$YQ" e "(.$key // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
+
+  # ── Declaring a credential that DOES NOT EXIST YET (ops#336) ──────────────
+  # `adopt` was built for a credential already in hand, so a credential the
+  # estate is BLOCKED ON could not be recorded at all. ops#336 is the case:
+  # /api/clip-review/slots/sync and /api/clip-review/signal 401 on nwd live and
+  # nwc live because nwc_feedback.cross_site:bearer_token is '' — never minted —
+  # so learner_signal is 0 and can only be 0. The source of record had no way to
+  # say "this is owed", which is the one thing everyone needed it to say.
+  #
+  # `status: not-provisioned` already exists and is already honoured in eleven
+  # places (audit skips it, lint does not demand a probe of it, rotate --due
+  # does not schedule it). What was missing was any way to CREATE an entry in
+  # that state. This is it, and it is DELIBERATE rather than inferred from
+  # emptiness — an accidentally-empty key is a fault, not a declaration.
+  if [ "$NOTPROV" = 1 ]; then
+    [ -n "$AS" ] || die "declaring an unminted credential needs an id:  pl secrets adopt '$key' --as <id> --not-provisioned"
+    # FAIL CLOSED the other way too: never let this flag mark a LIVE credential
+    # as non-existent, or eleven code paths would start skipping something real.
+    [ "${len:-0}" -gt 0 ] && die "$key already has a value — it is provisioned; adopt it without --not-provisioned"
+    if [ "$( { "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null || true; } | grep -cxF ".secrets.yml:$key" || true)" -gt 0 ]; then
+      die "$key is already declared by a registry entry"
+    fi
+    if [ "$( { "$YQ" e '.secrets[].id' "$REGISTRY" 2>/dev/null || true; } | grep -cxF "$AS" || true)" -gt 0 ]; then
+      die "registry entry '$AS' already exists — see: pl secrets status"
+    fi
+    ID="$AS" KEY="$key" "$YQ" e -i '.secrets += [{
+        "id": strenv(ID),
+        "provider": "nwp-internal",
+        "type": "TODO — describe what this credential is for",
+        "scopes": [],
+        "stored_in": [],
+        "rotate_via": "manual",
+        "rotate_url": "",
+        "cadence_days": 365,
+        "expires": "not-provisioned",
+        "last_rotated": "",
+        "owner": "operator",
+        "status": "not-provisioned",
+        "notes": "DECLARED BUT NOT MINTED (pl secrets adopt --not-provisioned). Nothing reads a value here yet because there is no value. Mint it with pl secrets set + the key in stored_in, then propagate with pl secrets inject / sync, then add a probe: so the capability is checkable."
+      }]' "$REGISTRY" || die "failed to write registry"
+    local nlast; nlast=$(( $("$YQ" e '.secrets | length' "$REGISTRY") - 1 ))
+    KEY="$key" "$YQ" e -i ".secrets[$nlast].stored_in = [\".secrets.yml:\" + strenv(KEY)]" "$REGISTRY"
+    print_success "declared '$AS' as NOT PROVISIONED — waiting on .secrets.yml:$key"
+    print_warning "nothing authenticates until this is minted. It is an OPERATOR action."
+    print_hint "mint it (hidden entry, never echoed):  pl secrets set $key"
+    print_hint "then:  pl secrets inject <site> --tier=<t> --apply   ·   pl secrets probe-scaffold $AS"
+    return 0
+  fi
+
   [ "${len:-0}" -eq 0 ] && die "$key is empty or missing in $SECRETS_FILE — nothing to adopt"
   # NOT `yq | grep -q && die`: with `set -o pipefail` (line 2), grep -q exits at
   # the FIRST match, the still-writing yq takes SIGPIPE, the pipeline reports 141
@@ -2210,18 +2263,73 @@ _probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) �
   # every probe on this entry was an ssh probe — no HTTP work to do
   [ "$nssh" -eq "$np" ] && { printf '%s' "$out"; return 0; }
 
+  # The DEFAULT header for the providers whose auth scheme this file knows.
+  # Anything else may still be probed — it just has to SAY how its credential is
+  # presented, with `header:` on the probe.
   case "$prov" in
     gitlab) hdr="PRIVATE-TOKEN:" ;;
     github|linode) hdr="Authorization: Bearer" ;;
-    *) printf '%s' "$out"; return 0 ;;
+    *) hdr="" ;;
   esac
   for ((j=0;j<np;j++)); do
+    # Skip the ssh probes already handled above.
+    local pssh2; pssh2=$("$YQ" e ".secrets[$idx].probe[$j].ssh // \"\"" "$REGISTRY" 2>/dev/null)
+    { [ -n "$pssh2" ] && [ "$pssh2" != "null" ]; } && continue
     url=$(expand_placeholders "$("$YQ" e ".secrets[$idx].probe[$j].url // \"\"" "$REGISTRY" 2>/dev/null)")
     want=$("$YQ" e ".secrets[$idx].probe[$j].expect // \"\"" "$REGISTRY" 2>/dev/null)
     local pname; pname=$("$YQ" e ".secrets[$idx].probe[$j].name // \"probe$j\"" "$REGISTRY" 2>/dev/null)
     [ -z "$url" ] || [ -z "$want" ] && continue
     local pmeth; pmeth=$("$YQ" e ".secrets[$idx].probe[$j].method // \"GET\"" "$REGISTRY" 2>/dev/null)
-    got=$(_audit_code "$url" "$hdr" "$val" "$pmeth")
+    # ops#336: a per-probe header lets a credential on ANY provider state how it
+    # authenticates — e.g. the cross-site bearer's `X-Cross-Site-Token:`. Before
+    # this, `_probe_scopes` returned at the provider gate and every HTTP probe
+    # on a provider outside {gitlab,github,linode} was skipped IN SILENCE, so
+    # the audit printed a clean row for a capability nobody had checked. A probe
+    # that cannot fail is not a probe (CLAUDE.md / ops#214).
+    local phdr; phdr=$("$YQ" e ".secrets[$idx].probe[$j].header // \"\"" "$REGISTRY" 2>/dev/null)
+    [ "$phdr" = "null" ] && phdr=""
+    local usehdr="${phdr:-$hdr}"
+
+    # A credential may be presented in the URL instead of a header — Moodle's
+    # web-service API takes `wstoken=`, not an Authorization header. `{TOKEN}`
+    # in the url is that presentation, and it was never substituted: the two
+    # ssd_nwd_completion_ws probes have been sitting in this registry with a
+    # LITERAL `wstoken={TOKEN}` in them, unrun and unrunnable.
+    local inurl=0
+    case "$url" in *'{TOKEN}'*) url="${url//\{TOKEN\}/$val}"; inurl=1 ;; esac
+
+    if [ -z "$usehdr" ] && [ "$inurl" -eq 0 ]; then
+      # FAIL CLOSED. "I could not present this credential, so I did not ask"
+      # must never render as "the recorded scope holds".
+      out="${out}PROBE-UNSUPPORTED($pname provider=$prov: no default auth header — add header: to the probe, or {TOKEN} to the url) "
+      continue
+    fi
+    # When the credential rides in the URL there is no header to send; a
+    # harmless Accept keeps the transport helper's signature satisfied without
+    # inventing an authorization scheme.
+    [ -z "$usehdr" ] && usehdr="Accept:"
+
+    # `expect_body_contains` is what makes a NEGATIVE probe mean anything for an
+    # API that answers 200 and puts the refusal in the body — Moodle returns
+    # HTTP 200 with {"exception":"...accessexception..."} when a token may not
+    # call a function. Ignoring it would let "must NOT be able to write" go
+    # green on a token that CAN write, which is the exact inversion the
+    # negative probe exists to prevent.
+    local pbody; pbody=$("$YQ" e ".secrets[$idx].probe[$j].expect_body_contains // \"\"" "$REGISTRY" 2>/dev/null)
+    [ "$pbody" = "null" ] && pbody=""
+    if [ -n "$pbody" ]; then
+      local sb; sb=$(_audit_status_body "$url" "${usehdr% *}" "$val")
+      got="${sb%%$'\n'*}"
+      local body="${sb#*$'\n'}"
+      [ "$got" = "$want" ] || out="${out}SCOPE-DRIFT($pname want=$want got=$got) "
+      case "$body" in
+        *"$pbody"*) : ;;
+        *) out="${out}SCOPE-DRIFT($pname body lacks '$pbody') " ;;
+      esac
+      continue
+    fi
+
+    got=$(_audit_code "$url" "$usehdr" "$val" "$pmeth")
     [ "$got" = "$want" ] || out="${out}SCOPE-DRIFT($pname want=$want got=$got) "
   done
   printf '%s' "$out"

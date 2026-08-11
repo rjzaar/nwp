@@ -55,6 +55,7 @@ source "$REPO_ROOT/lib/demo-smoke.sh"
 source "$REPO_ROOT/lib/impact.sh"        # ops#47 impact contract (fate manifest)
 source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"     # paired golden/reset (ops#133 Phase 2)
+source "$REPO_ROOT/lib/demo-clip-survival.sh"  # ops#338 clip-choice survival check
 source "$REPO_ROOT/lib/demo-live-moodle.sh"  # Moodle half of the LIVE tier (ops#170)
 source "$REPO_ROOT/lib/demo-box-status.sh"   # the BOX's own reset record (ops#198)
 source "$REPO_ROOT/lib/demo-walkthrough.sh"  # walkthrough target catalogue (ops#328 t5)
@@ -5736,10 +5737,73 @@ cmd_walkthrough() {
 ################################################################################
 
 main() {
+# ── pl demo clip-survival ───────────────────────────────────────────────────
+#
+# ops#338. "Would an author's clip choices survive tonight's reset?"
+#
+# The nightly reset drops the whole database and reimports the golden, with no
+# allowlist. It has pre-wipe legs for watchdog (`harvest`) and tester feedback
+# (`feedback-sync`) — each added AFTER a loss was noticed — and none for clip
+# choices.
+#
+# Today the authoring site is off the reset path and the demo site is on it.
+# That is the entire safety argument, and until this verb existed it rested on
+# nothing but convention: a site is on the reset path because it happens to
+# carry `class: demo`, and the authoring site happens not to. This verb makes
+# that convention MEASURABLE, and makes it go red the moment it stops holding.
+#
+# It keys off DECLARED CONFIG, never off a site's name (CLAUDE.md: "key off the
+# per-site canonical phase … never off a site's name") — "refuse nwd" would be
+# wrong the moment a second demo site exists.
+#
+# Exit: 0 nothing at risk · 1 something IS at risk · 2 CANNOT VERIFY.
+cmd_clip_survival() {
+    local -a targets=()
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --all) ;;                        # the default; accepted for clarity
+            -*) print_error "unknown option: $arg"; return 2 ;;
+            *) targets+=("$arg") ;;
+        esac
+    done
+
+    print_header "clip-choice survival — the nightly reset"
+    echo "  A demo-tier reset is a full sql:drop + golden reimport. A site on that"
+    echo "  path loses every clip_choice, decision, suggestion and off-list snippet"
+    echo "  unless a pre-wipe export leg carries them out first."
+    echo
+
+    local rc=0
+    demo_clip_survival_report "${targets[@]}" || rc=$?
+
+    echo
+    case "$rc" in
+        0) print_success "No site is about to lose an author's clip choices." ;;
+        1) print_warning "AT RISK above. Author on a site that is NOT on the reset path, or wire the"
+           print_warning "pre-wipe leg (${DEMO_CLIP_EXPORT_COMMAND}) into BOTH the box wrapper and"
+           print_warning "the pl orchestrator — one without the other is a leg that never runs."
+           print_info    "After any deliberate change to the demo image, re-bless it with:"
+           print_info    "    pl demo golden <provider> --tier=live --with-pair" ;;
+        *) print_error   "CANNOT VERIFY — this is not a pass. Grade it AMBER." ;;
+    esac
+    return "$rc"
+}
+
+
     local sub="${1:-}"; shift || true
     case "$sub" in
         -h|--help|"") show_help; return 0 ;;
     esac
+
+    # ops#338 — takes an OPTIONAL site, so it is dispatched before the
+    # site-required guard below. With no site it examines every site under
+    # sites/, which is the form the answer is actually wanted in: "is anything
+    # on this estate about to lose an author's work tonight?"
+    if [[ "$sub" == "clip-survival" ]]; then
+        cmd_clip_survival "$@"
+        return $?
+    fi
 
     local site="${1:-}"; shift || true
     [[ -n "$site" ]] || { print_error "Site name required."; show_help; return 1; }

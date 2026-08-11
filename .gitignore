@@ -412,3 +412,9 @@ private/.gitignore
 # operational record (commands may embed hostnames), never committed; the
 # private/ allowlist above must not be widened to sweep it in.
 private/raw-remote-overrides.log
+
+# A per-server PRIVATE repo keeps its own .gitignore (ops#326 tranche 3): that
+# file is the nested repo's business, not the engine's, and tracking it here
+# would put two owners on one path — the exact double-tracking that let a
+# 'git checkout -- .' in the nested repo overwrite engine-owned files.
+servers/*/.gitignore

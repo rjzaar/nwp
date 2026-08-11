@@ -13,6 +13,86 @@ to them). They are independent: P75 ships without P76 and vice versa.
 
 ---
 
+## CORRECTION 1 — 2026-08-11, post-publication. The "112 hand-chosen spans" were not hand-chosen.
+
+> This block is deliberately at the top and deliberately not a silent edit. The first
+> version of this document called the 112 non-default catalogue `video:` windows a
+> **passage-level human gold set** and built §2.3, §2.4, §7's L3 target and part of the
+> §9 sequencing on that. **The operator says he did not pick them, and the evidence says
+> he is right.** They are output of an AI authoring pass on **2026-03-08**. Grading a
+> ranker against them measures the 2026-03-08 algorithm against itself — the same
+> self-grading defect this document already identified once, in §2.2, for the
+> `source: provenance` injection.
+
+**How they were made — measured, not inferred.** Full evidence chain in the correction
+comment on `nwp/ops#349`; the four load-bearing facts:
+
+1. **All 107 distinct non-default windows appear *verbatim* in a predecessor prose
+   document**, `~/dir/courses_v3/reference/predecessors/MOODLE_STANDALONE_COURSES.md`
+   (mtime **2026-03-08 14:47**), as lines of the form
+   `**Video:** Ep 645 | 6:56-8:55 (~2 min) — Dan Burke names the Universal Call … Embedded MCQ at 7:30: …`.
+   `extract_learning_points.py:100` is a **regex scrape** of exactly that pattern — no
+   scoring, no matching, no boundary logic — and running that regex over that document
+   yields **exactly 112 matches**, exactly the 112 blocks. Nothing in the catalogue is
+   absent from the document; no window has ever been edited since
+   (`git log` on `courses_v3/catalog/` shows one video-field change ever, a D6→D9 copy).
+
+2. **The operator commissioned the pass, in writing.** `~/.claude/prompts.log`,
+   `[2026-03-08T09:07:50]`: *"Now go through all the episodes … Then find the best examples
+   of the explanations within all the episodes … The second which has the explanation plus
+   the key video snippets where each point is explained the best."* And
+   `[2026-03-08T11:19:08]`: *"… Videos can be up to 7 minutes but ideally about 2-4 minutes."*
+
+3. **The start times are machine-read off a transcript, and we can tell which one.** Against
+   `transcripts/whisper_large/` — the INT8 Whisper run that landed at **2026-03-08 07:36**,
+   seven hours before the document was written — **83 of 112 start times (74 %) fall within
+   ±0.5 s of a transcript segment start** and **105 of 112 (94 %) within ±1.0 s**, against
+   measured nulls of 26 % and 46 % (**z = +11.8** and **z = +10.1**). Against the *later*
+   transcript generations (`whisper_large_fp16` 2026-03-24, `whisper_merged` 2026-04-15,
+   both re-segmented) the same test collapses to 48 % and 50 % — which is why an earlier
+   pass of this analysis, run only against `whisper_merged`, wrongly concluded the windows
+   were *not* transcript-derived. **End** times show no alignment at all (26 %, z = −0.2);
+   **78 of 112 (70 %) end on an exact minute.** A listener cannot hear an ASR segment
+   boundary. The signature is: *start copied from a transcript line, end rounded off.*
+
+4. **The negative control behaves.** The 64 default `0:00–8:00` blocks show start alignment
+   of **1/64 (2 %, z = −4.5)** — no alignment — and their content relevance to their own
+   learning point sits at the **53rd percentile** of same-length windows in the same episode,
+   i.e. chance. The 112 sit at the **89th percentile median**. So the pass *did* read the
+   corpus for the 112 and *did not* for the 64.
+
+**What this invalidates in this document.**
+
+| claim | status |
+|---|---|
+| "112 are genuinely hand-chosen spans" (§2.3) | **FALSE** — corrected in place below |
+| "the author's own picks are **median 1:45**" (§2.3, and repeated in the ops#349 summary) | **FALSE as stated.** 1:45 is the *AI pass's* output distribution. The **author's** recorded target is *"up to 7 minutes but ideally about 2-4 minutes"* — the opposite end. |
+| "the retrieval unit is **3.7× too long**" (§2.4) | **NOT ESTABLISHED, and possibly backwards.** The 3.7× is measured against the AI pass's own median. Against the operator's recorded 2–4 min ideal, today's 394 s top-1 median is ≈1.6–3.3× the ideal band and *inside* his 7-minute maximum. |
+| "a *passage-level* gold set … the most valuable asset in this problem" (§2.3) | **FALSE.** It is a machine artefact of the same family as the system under test. |
+| every IoU / coverage / mIoU number computed against the 112 | **Arithmetic still correct; the *interpretation* is void.** They describe agreement with a 2026-03-08 model, not accuracy. |
+| §2.1 (injection), §2.5 (corpus), §3 (pilot), §4 (literature), §5 (determinism), §6 (inspectability) | **Unaffected** — none of them uses the 112 as truth. |
+
+**What survives, and it is the useful part.** §2.4's *diagnosis* does not depend on the 112:
+`bucket_center` demonstrably rewards the midpoint of the `xxl` bucket and puts 19 of 251 top
+picks over 15 minutes. That is a defect against the **operator's** stated ≤7-minute ceiling,
+which is a real human instruction on the record. The unit is still wrong; the *target* is
+2–4 minutes, not 105 seconds.
+
+**Two integrity defects found while establishing the above, both new and both fixable without
+any relevance judgement:**
+
+- **61 of the 176 blocks specify an end time beyond the length of the YouTube video their own
+  `youtube_id` names.** All 176 `youtube_id`s are a `difflib` **fuzzy title match** from
+  `dir_sd_map.json` at `threshold: 0.4` (median score 0.613; 62 of 108 episodes below 0.7).
+  **15 YouTube IDs are claimed by more than one episode** — `BpBHuteO4iM` by eight
+  (285, 286, 287, 289, 290, 295, 298, 300). Ep 9's block says `1:37–5:00`; the video it
+  points at is **36 seconds long**. The timestamps are on the *podcast* timeline; the link
+  is to a *different recording*.
+- **Two windows do not exist at all**: `B2.yaml` ep 600 `31:25–32:55` in an episode 28:51
+  long, and `C1.yaml` ep 398 `26:23–28:00` in an episode 27:16 long.
+
+---
+
 ## 0. How to read this document
 
 Every number below is either **MEASURED** (the command that produced it is given, and it was
@@ -29,8 +109,19 @@ which the rights position (`derivative-cleared-pending`, password-gated) require
 ## 1. The problem, and why the previous fix was right but insufficient
 
 251 curriculum learning points must each be matched to the best short passage in a 648-episode
-podcast corpus. The courses were **authored from this corpus**, so a good passage provably
-exists for nearly every point. This is retrieval with a known-good answer.
+podcast corpus. The courses were **authored from this corpus**, so a good passage very likely
+exists for most points.
+
+> **CORRECTED (see CORRECTION 1).** The original sentence read *"so a good passage **provably**
+> exists for nearly every point. This is retrieval with a known-good answer."* That is not
+> proven and the measurement goes the other way. The learning-point prose is **paraphrase, not
+> quotation**: indexing every word-timed 6-gram of all 648 episodes and matching it against
+> each learning point's `title` + `short.summary` + `standard.text`, the **median learning
+> point has a longest verbatim overlap with the corpus of ZERO words**. Only **22 of 251** have
+> a maximal verbatim span of ≥10 words that resolves to one or two episodes; only 10 reach 14
+> words. So for 229 of 251 points there is no *provable* answer — only a plausible one. This is
+> retrieval **without** a known-good answer, which is the whole difficulty and is why §7's
+> harness matters more than any single ranker in §4.
 
 `scripts/lp_taxonomy.py` + `scripts/extract_courses_v3.py` build a per-LP term list, count
 occurrences, detect "runs", and score each run with a 16-part hand-weighted composite
@@ -101,33 +192,59 @@ itself. Nothing here was done in bad faith; the pools are documented. But **ever
 in this proposal is against the corpus-wide number**, and any future eval harness must
 exclude `source != corpus` candidates or it will grade itself.
 
-### 2.3 NEW — there is a passage-level gold set, and it has never been scored against
+### 2.3 CORRECTED — the passage-level "gold set" is a 2026-03-08 machine artefact
+
+> **This section originally read "NEW — there is a passage-level gold set, and it has never
+> been scored against", and called the 112 windows "genuinely hand-chosen spans … the most
+> valuable asset in this problem". Both claims are withdrawn.** See CORRECTION 1 at the top
+> for the evidence. What follows is the corrected version; the counts are unchanged because
+> the counts were never the error.
 
 The provenance map records only an episode. The catalogue records more. Across the 56 course
 files:
 
 - **176 learning points carry a `depths.standard.video` block with an exact
   `episode` + `start` + `end`.**
-- **64 of those are placeholders** — `start: 0`, duration exactly `08:00`. They are a
-  first-eight-minutes default, not a choice.
-- **112 are genuinely hand-chosen spans.** Median **105.5 s**, mean 118 s, range 32–241 s.
+- **64 of those are placeholders** — `start: 0`, duration exactly `08:00`. Measured: their
+  content relevance to their own learning point is at the **53rd percentile** of same-length
+  windows in the same episode, i.e. indistinguishable from chance, and `CRITERIA.md`'s own
+  `intro_position` rule scores them negative because they land in the show intro.
+- **112 carry a specific window.** Median **105.5 s**, mean 118 s, range 32–241 s. These are
+  **AI output from 2026-03-08**, regex-scraped verbatim out of
+  `MOODLE_STANDALONE_COURSES.md` by `extract_learning_points.py:100`. Their start times sit
+  on `whisper_large` segment boundaries 94 % of the time (±1.0 s, null 46 %, **z = +10.1**);
+  their end times are at chance and 70 % land on an exact minute.
 
-That is a *passage-level* labelled set: not "which episode" but "which 105 seconds". It is the
-most valuable asset in this problem and nothing has ever been measured against it.
+**They are a `silver` label set of the worst kind for this purpose: produced by the ancestor
+of the system under test.** They can be used as a *consistency* baseline — "did this change
+alter behaviour a lot?" — and must never be used as an *accuracy* score.
 
-**It also corrects the brief.** The target unit is widely described as "2–4 minutes". The
-author's own picks are **median 1 : 45**, and only 6 of 112 exceed 4 minutes. Design for
-~90–180 s, not 2–4 min.
+**They did NOT correct the brief; the original correction was itself the error.** The target
+unit is widely described as "2–4 minutes" and **that description is right, because it is the
+operator's own recorded instruction** (`~/.claude/prompts.log`, `[2026-03-08T11:19:08]`:
+*"Videos can be up to 7 minutes but ideally about 2-4 minutes"*). The 105 s median is the
+2026-03-08 model **undershooting** that instruction — only 1 of 112 windows exceeds 4 minutes
+and none reaches 7. Design for the operator's **2–4 min ideal with a 7 min ceiling**, not for
+~90–180 s.
 
 Scoring the current pool against those 112 spans (a hit = same episode, and the candidate
-covers ≥ 50 % of the gold span):
+covers ≥ 50 % of the span) — **read as agreement with the 2026-03-08 pass, not as accuracy**:
 
 | metric | value |
 |---|---|
-| top-1 covers the gold span | **7 / 112 = 6.2 %** |
+| top-1 covers the recorded span | **7 / 112 = 6.2 %** |
 | any of the 40 candidates covers it | 61 / 112 = 54.5 % |
 
-### 2.4 NEW — the retrieval unit is 3.7× too long
+### 2.4 CORRECTED — the retrieval unit is too long, but not by "3.7×"
+
+> **The heading originally read "the retrieval unit is 3.7× too long".** The 3.7× was measured
+> against the 112 machine windows, so it is a ratio to another algorithm's preference, not to a
+> requirement. **Withdrawn as a factor.** The *defect* is unaffected and is measured against a
+> real human instruction: the operator's recorded target is **2–4 minutes ideal, 7 minutes
+> maximum**; today's top-1 median is **394 s = 6 min 34 s**, at the very top of his ceiling and
+> well outside his ideal band, and **19 of 251 top picks exceed 15 minutes**, i.e. more than
+> double the stated maximum. Read the `gold span duration` row below as *"what the 2026-03-08
+> pass emitted"*, not as a target.
 
 | | value |
 |---|---|
@@ -149,6 +266,97 @@ reviewer has to find the 105 seconds inside a 6-minute clip by hand.
 **2,987,435 words**, 295.6 hours, mean episode 27.4 min. **291,542 of 291,599 segments carry
 word-level timings** (99.98 %) — so any boundary this proposal proposes can be expressed as an
 exact timestamp.
+
+### 2.6 NEW (CORRECTION 1 follow-up) — the best correlation obtainable with no trustworthy labels
+
+The operator's instruction on being told the gold set was machine-made:
+
+> *"You need to work out the best correlation for now until we get humans into the loop and
+> that's part of phase 2. So do the best you can for now."*
+
+**Step 1 — inventory what is left after the circularity is subtracted.** Measured from
+`~/dir/courses_v3/build/lp_episode_map.json` (n = 251) by its own `evidence` strings:
+
+| label source | n | independent of the 2026-03-08 clip pass? |
+|---|---|---|
+| `provenance` — *"recorded clip in `depths.standard.video`"* | **176** | **NO — it *is* the 2026-03-08 pass** |
+| `provenance` — *"author citation in prose"* (e.g. `Ep 156`) | **19** | partly — same authoring programme, but written to cite a source, not to pick a clip; attests the **episode** only, never the window |
+| `sibling-inference` (self-flagged *"verify before publishing"*) | 10 | no |
+| `none` | 46 | n/a |
+
+Zero entries carry both a clip and a prose citation in the same evidence string, so
+**176 of the 195 `provenance` labels — 90 % — are the artefact under test.** This is the same
+defect as §2.2's injected candidates, one layer up: there the *candidates* were seeded from the
+recorded episode; here the *labels* are.
+
+**Step 2 — build a label set that cannot be circular.** A verbatim string match between the
+catalogue prose and a word-timed transcript is *self-evidencing*: whoever wrote the prose, the
+fact that a 14-word sequence occurs in ep 16 at 04:11 is a property of the corpus, checkable
+deterministically by anyone, and independent of anybody's judgement. Indexing every 6-gram of
+all 648 episodes with word-level timings and extending each seed to its maximal verbatim span:
+
+| | n of 251 |
+|---|---|
+| longest verbatim span with the corpus, **median across all LPs** | **0 words** |
+| ≥1 maximal verbatim span of ≥10 words resolving to ≤2 episodes | **22** |
+| …of ≥14 words | 10 |
+| of the 22, also carrying a recorded `video:` block | 12 |
+| — anchor's episode **agrees** with the recorded episode | **9 of 12 (75 %)** |
+
+Two things follow, and they point in opposite directions. **The 2026-03-08 pass got the
+*episode* mostly right** where we can check it independently — 75 %, though on n = 12, whose 95 %
+CI is [50 %, 100 %] and therefore excludes almost nothing. And **the prose is paraphrase, not
+quotation** — the median learning point shares no six consecutive words with the corpus at all,
+so this method cannot be scaled to the full 251 by relaxing thresholds. It yields 22, not 205.
+
+**Step 3 — the measurement that answers the operator's question.** Two rankers, identical code
+path, differing only in the retrieval unit, scored on **both** label sets. Local, CPU, BM25
+only, no dense component, no GPU, no corpus leaving the estate
+(`k1=0.9, b=0.4`, query = `title + short.summary + standard.text`, MaxP aggregation to episode):
+
+| ranker | label set | R@1 | R@8 | R@40 |
+|---|---|---|---|---|
+| **A** whole-episode BM25 (648 units) | CIRCULAR, n=176 | 18.8 % [13–25] | 43.8 % [36–51] | 61.9 % [55–69] |
+| **B** 150 s windows, stride 75 s, MaxP (14,303 units) | CIRCULAR, n=176 | 17.0 % [11–23] | **51.7 %** [44–59] | 65.3 % [58–72] |
+| **A** whole-episode BM25 | INDEPENDENT, n=22 | 45.5 % [25–66] | 72.7 % [54–91] | 81.8 % [66–98] |
+| **B** 150 s windows, MaxP | INDEPENDENT, n=22 | **50.0 %** [29–71] | **77.3 %** [60–95] | **86.4 %** [72–100] |
+
+*(95 % normal-approximation intervals. This is an independent local replication, not the §3
+pilot; the denominators and query construction differ, so the absolute numbers are not
+comparable to §3.1's and are not offered as such.)*
+
+**Read the table down the columns, not across the rows.** Chunking moves R@8 by +7.9 points on
+one label set and +4.6 on the other, and every interval overlaps. **Changing which label set you
+believe moves R@1 from 17 % to 50 % — nearly three-fold, and far more than any ranker change in
+this document.** That is the honest state of the art here: *the measurement instrument is the
+dominant term.*
+
+**Step 4 — what may therefore be claimed in phase 1.**
+
+- **CLAIMABLE.** Referential and arithmetic defects, which need no relevance judgement at all:
+  two windows that lie outside their episode; 61 blocks whose end exceeds the length of their
+  own linked video; 15 `youtube_id`s claimed by 2–8 episodes; 64 windows measured at the 53rd
+  percentile of chance. Every one of these is verifiable by construction and every fix is a
+  guaranteed improvement.
+- **CLAIMABLE.** Recall, at large *k*, as a *containment* property — "the right material is
+  somewhere in the pool" — because that direction is robust to a noisy label: a label that is
+  merely *plausible* still tells you the pool missed something when it misses.
+- **NOT CLAIMABLE, and this is the answer to the operator's question.** *Which of two rankers
+  orders better.* At n = 22 independent labels the minimum detectable effect exceeds the entire
+  range of any change proposed in this document; at n = 176 the labels are the ancestor of the
+  system being scored. **We can improve retrieval. We cannot yet prove which of two rankers is
+  better.**
+- **BEST AVAILABLE PROXY, and how far to trust it.** Report every ranking number **twice** —
+  once against the CIRCULAR set, marked `CIRCULAR`, and once against the INDEPENDENT anchor set,
+  marked `n=22`. Treat a change as *promising* only when both move the same way, and never
+  quote either alone. Treat the CIRCULAR number strictly as a **regression detector**: a large
+  move means behaviour changed a lot, never that it improved. This is the same discipline
+  §7 already applies to `POOL-NAIVE`, extended to the labels themselves.
+- **THE CHEAPEST WAY OUT is not more ranker work.** It is the G1 tranche in P77 §3.4: human
+  window judgements. The anchor method above is also a *gold generator*, not only an evaluator —
+  it identifies, with proof, the 22 learning points whose prose demonstrably came from a
+  specific moment, which is the correct seed set to hand a human reviewer first because their
+  answers can be checked.
 
 ---
 
@@ -914,7 +1122,7 @@ the label (§2.2), and never report a passage-list rank as if it were an episode
 | **0b** | M1 double-annotation (§7.1) + M5 proper-noun spelling count (§7.6) | 0.5 d | ≥ 75 % agreement, else re-target the metric |
 | **1** | **Passage build**: ad/boilerplate mask, sentence-snapped 150 s/75 s windows, citation-aware tokeniser (§3.7), `k1=0.9 b=0.4`, MaxP/sum-top-3 aggregation, hashed artefact | **2 d** | ≥ 22 % corpus-wide episode R@1 with BM25 alone (measured: 27.3 %) |
 | **2** | **Hybrid recall**: bm25s index + bge-m3 flat vectors + RRF, content-addressed embedding cache with the batch-size red proof | **2 d** | ≥ 70 % episode R@40 and ≥ 58 % R@8 (measured: 74.6 % / 63.4 %); build byte-identical twice |
-| **3** | **Inspectable rerank**: refit the CRITERIA composite over the top-40 shortlist; span trimming to ~105 s | **2–3 d** | top-1 ≥ 38 %; passage-IoU R@1 ≥ 28 %; every candidate still carries 16 `q_parts` |
+| **3** | **Inspectable rerank**: refit the CRITERIA composite over the top-40 shortlist; span trimming into the operator's **2–4 min band** *(was "to ~105 s" — CORRECTION 1: 105 s was the 2026-03-08 model's median, not a target)* | **2–3 d** | top-1 ≥ 38 %; passage-IoU R@1 ≥ 28 % **against the CIRCULAR set — a regression detector only, not a quality gate (§2.6)**; every candidate still carries 16 `q_parts` |
 | **4** | **Reviewer screen**: matched-span highlight, `q_parts` panel, one-line why; the lexically-dissimilar acceptance case from §6.3 item 4 | 2 d | A reviewer can state the reason for the top pick without opening the transcript |
 | **5** | *(gated on M3)* neural or LLM reranker, top-40 only | 2 d | Beats Phase 3 by ≥ 8 points top-1 on a paired test, or is dropped and the null result recorded |
 | **6** | *(deferred)* doc2query corpus expansion; late chunking | 3 d | — |
@@ -944,7 +1152,16 @@ number from §2.2 — not the 10.7 % that has been quoted.
 | passage IoU≥0.3 R@8 | — | 37.5 % ✅ | **44.6 %** ✅ | ≥ 52 % |
 
 ¹ the §2.3 coverage figure; the current pipeline's IoU figure is lower still, because its
-candidates are 3.7× too long.
+candidates are far longer than the windows it is being compared to.
+
+> **CORRECTION 1 applies to the last two rows of this table.** Every `passage IoU (n=112)` row
+> is scored against the 2026-03-08 machine windows. **They are not a quality gate and the
+> ≥28 % / ≥52 % targets are withdrawn as such** — they remain valid as *regression detectors*
+> (§2.6 step 4). The `episode R@k` rows are scored against the same 176-block-derived
+> attribution and carry the same caveat; the R@40 row is the most robust of them because
+> recall-at-large-*k* degrades gracefully under a noisy label, and the corpus-wide 4.4 %
+> baseline of §2.2 is unaffected because it is a *within-label-set* comparison. The original
+> footnote said the candidates are "3.7× too long"; that factor is withdrawn (§2.4).
 
 **Phases 1 and 2 are already measured**, not projected — that is what §3 is, and it is the
 main claim of this document: *the gains attributed here to chunking, query construction,
@@ -969,12 +1186,26 @@ reported rather than retried until it passes.
    (always show something from the known episode) and wrong for evaluation. Recommendation:
    keep it, label it loudly on the candidate, and exclude it from every metric.
 2. **The 64 placeholder `video:` blocks** (`start: 0`, 8 minutes) are recorded as if they were
-   choices. Should they be marked as unset so they stop diluting both the gold set and the
-   reviewer's sense of what is decided?
+   choices. Should they be marked as unset so they stop diluting both the label set and the
+   reviewer's sense of what is decided? *(CORRECTION 1 strengthens this: they measure at the
+   53rd percentile — chance — and land in the show intro, which `CRITERIA.md`'s own
+   `intro_position` rule scores negative.)*
 3. **The 46 LPs with `method: none`** have no provenance at all. They are the strongest
    argument for this work — nobody knows where they came from — and they can never be scored.
 4. **Which host owns the embedding build?** The estate's GPU agent host is proposed — it is
    where the VRAM is, and it never touches prod.
+5. **NEW (CORRECTION 1). Should the *other* 112 `video:` blocks also be marked unset — or
+   marked `provenance: machine-2026-03-08`?** They are AI output, not selections; 61 of the 176
+   link to a YouTube video shorter than their own end time and 2 lie outside their episode
+   entirely. Recommendation: **do not delete them** (they encode a real and mostly-correct
+   *episode* attribution — 75 % agreement on the 12 independently checkable cases) but **stamp
+   every one with its provenance** so no future session can mistake them for judgements again.
+   This is the specific instance of the standing order that a check nobody has seen fail is not
+   a check: an unlabelled artefact was read as a gold set by two proposals and one issue.
+6. **NEW. Do you want the referential-integrity repairs done in phase 1, ahead of any ranker
+   work?** They are the only clip-quality work that is provably positive without a human
+   judgement (§2.6 step 4): the 2 impossible windows, the 61 over-length links, the 15
+   many-to-one `youtube_id`s. Recommendation: yes, and as their own MR against `~/dir`.
 
 ---
 

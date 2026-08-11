@@ -39,7 +39,8 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from . import (advisories, config, fleet_state, help, library, notify, overview,
-               parsers, quokka, scope as scope_mod, visuals, voice, webauthn_flow)
+               parsers, quokka, scope as scope_mod, visuals, voice, walkthrough,
+               webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -713,6 +714,33 @@ def _gather_demo_testers(site: str, force: bool = False) -> dict:
     return parsers.parse_testers_json(res["out"] + "\n" + res["err"])
 
 
+def _gather_walkthrough(site: str, force: bool = False) -> dict:
+    """`pl demo walkthrough <site> --json --tier=live` (ops#328 t5).
+
+    A READ: the catalogue, the site's own group ids and the walkthrough
+    account's state, plus whatever the pl host last MEASURED. It never probes
+    anything itself — `--verify` is the explicit, operator-run measurement, and
+    deliberately not something a pane render can trigger 40 HTTP requests
+    with. Cached like every other live drush read; the credential path is a
+    separate, uncached route."""
+    res = run_pl_cached(config.NWP_ROOT,
+                        ["demo", "walkthrough", site, "--json", "--tier=live"],
+                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+    return parsers.parse_walkthrough_json(res["out"] + "\n" + res["err"])
+
+
+def _walkthrough_site(sc: Scope) -> str:
+    """The demo site the walkthrough addresses, narrowed by the caller's SCOPE.
+
+    The pair is one system, so naming the PROVIDER names both halves — the verb
+    resolves the consumer from the pair contract. An empty scope yields "",
+    and the pane then renders its explicit no-data state rather than reaching
+    for config.DEMO_SITES (which would re-open exactly the boundary the Scope
+    exists to close)."""
+    sites = sorted(sc.demo_sites)
+    return sites[0] if sites else ""
+
+
 def _tester_of(testers: dict, account: str) -> dict | None:
     for a in testers.get("accounts", []) or []:
         if a.get("name") == account:
@@ -1290,6 +1318,14 @@ def pane_visuals(request: Request, force: int = 0, sub: str = "",
     ctx = visuals.page_context(rag, todo, sec, blocks, api_ok, prov, sub=sub)
     if sub == "overview":
         ctx["ov"] = overview.skeleton_context()
+    elif sub == "walkthrough":
+        wsite = _walkthrough_site(sc)
+        ctx["vz"]["walkthrough"] = walkthrough.page_view(
+            _gather_walkthrough(wsite, force=bool(force)) if wsite
+            else {"ok": False,
+                  "reason": "no demo site is in your scope, so there is nothing "
+                            "to walk through — this is a scope result, not an "
+                            "empty demo tier"})
     return _pane(request, "pane_visuals.html", ctx, sc,
                  tab="visuals", tab_count="", tab_alert=bool(prov.get("stale")))
 
@@ -1653,6 +1689,103 @@ def action_demo_tester_login(
     return _pane(request, "demo_tester_login_result.html",
                  {"site": argv[2], "account": argv[4], "action": action,
                   "error": None, "secs": res["secs"]}, sc, redactable=False)
+
+
+# -- walkthrough: mint on CLICK, then land ON the page (ops#328 t5) ---------
+#
+# The operator asked for "an auto login sequence onto both sites as part of its
+# initial render". This is that convenience without that mechanism, and the
+# difference is the point:
+#
+#   * A one-time login link is a single-use credential with a 24 h life. Minting
+#     one per RENDER would burn a token on every repaint, write a
+#     tester-login-minted line to the demo log each time, and leave a live
+#     credential in the HTML of a page nobody had asked to use.
+#   * So the pane carries no link at all. This route mints at click time, then
+#     303s the browser straight onto the target with `?destination=<path>` —
+#     Drupal's RedirectResponseSubscriber lets `destination` override where the
+#     one-time link lands and REFUSES an external one, which is what makes the
+#     single click end on the requested page.
+#
+# `dest` is an ALLOWLIST lookup against the verb's own target list for that side
+# of the pair, not a parameter: a redirector taking free text is an open
+# redirect, and this one arrives carrying a session.
+#
+# The credential's whole journey is: verb stdout -> this function's local ->
+# the Location header. It is NOT put in the audit line (argv + rc only), NOT
+# rendered into any template, and NOT cached — `run_pl`, never `run_pl_cached`,
+# because that cache is process-wide and keyed on argv, so a cached mint would
+# be served to the next caller.
+@app.post("/actions/walkthrough_go")
+def action_walkthrough_go(
+    request: Request,
+    site: str = Form(""),
+    side: str = Form("provider"),
+    dest: str = Form(""),
+    signout: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+
+    def _refuse(reason: str, detail: str = ""):
+        audit.append(sc.user, sc.global_role, "action.walkthrough_go",
+                     {"site": site, "side": side, "dest": dest[:200],
+                      "rejected": reason}, False, project=sc.project_id)
+        return _pane(request, "walkthrough_result.html",
+                     {"site": site, "dest": dest[:200], "error": reason,
+                      "detail": detail}, sc, redactable=False)
+
+    if side not in ("provider", "consumer"):
+        return _refuse("unknown side")
+    doc = _gather_walkthrough(site) if site in sc.demo_sites else {"ok": False}
+    if not doc.get("ok"):
+        return _refuse("the walkthrough could not be read for this site — "
+                       "refusing to mint a login against a site whose target "
+                       "list is unknown", str(doc.get("reason", "")))
+    if not doc.get("jump_in_allowed"):
+        return _refuse(f"'{site}' is canonical: {doc.get('phase')} — jump-in is refused")
+    try:
+        dest = walkthrough.resolve_destination(doc, side, dest)
+    except walkthrough.DestinationError as e:
+        return _refuse(str(e))
+
+    # The consumer half has no local identity: ssd accounts are SSO-minted, so
+    # there is no link to mint there and no honest way to fake one. Send the
+    # operator to the consumer's own login page, which is where the SSO button
+    # lives, and say exactly why it is two clicks and not one.
+    if side == "consumer":
+        base = (doc.get("consumer") or {}).get("base") or ""
+        if not base:
+            return _refuse("no base URL is configured for the consumer half")
+        audit.append(sc.user, sc.global_role, "action.walkthrough_go",
+                     {"site": site, "side": side, "dest": dest, "minted": False},
+                     True, project=sc.project_id)
+        return RedirectResponse(base + dest, status_code=303)
+
+    account = (doc.get("account") or {}).get("name", "")
+    try:
+        argv, spec = build_action("demo_tester_login",
+                                  {"site": site, "account": account},
+                                  sorted(sc.demo_sites))
+    except ActionError as e:
+        return _refuse(str(e))
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(sc.user, sc.global_role, "action.walkthrough_go",
+                 {"argv": argv, "rc": res["rc"], "secs": res["secs"],
+                  "side": side, "dest": dest}, res["rc"] == 0, project=sc.project_id)
+    minted = parsers.parse_tester_login_json(res["out"] + "\n" + res["err"])
+    if not minted.get("ok") or not minted.get("url"):
+        return _refuse("no one-time login link was minted — nothing was opened",
+                       minted.get("reason", ""))
+
+    base = (doc.get("provider") or {}).get("base") or ""
+    sess = (((doc.get("session") or {}).get("provider") or {}).get("signout") or {})
+    if signout == "1" and base and sess.get("path"):
+        target = walkthrough.signout_then(base, str(sess["path"]), minted["url"], dest)
+    else:
+        target = walkthrough.jump_url(minted["url"], dest)
+    return RedirectResponse(target, status_code=303)
 
 
 # ---------------------------------------------------------------------------

@@ -2,10 +2,17 @@
   The Visuals pane — a SUBTABBED collection (ops#329): the estate overview
   first, then the four charts, one per subtab.
 
-  READ-ONLY. There is no form and no action anywhere in this pane or its
-  partials (the overview's per-slot ⟳ is a GET with force=1 — a re-read, not
-  an action); the charts render from the same scoped gatherers the Fleet/
-  Todo/CI tabs already use, so they can never disagree with them.
+  READ-ONLY, WITH ONE NAMED EXCEPTION. The overview and the four charts carry
+  no form and no POST anywhere (the overview's per-slot ⟳ is a GET with
+  force=1 — a re-read, not an action); they render from the same scoped
+  gatherers the Fleet/Todo/CI tabs already use, so they can never disagree
+  with them.
+
+  The exception is the `walkthrough` subtab (ops#328 t5), which exists to ACT:
+  each of its buttons POSTs to /actions/walkthrough_go, which mints a one-time
+  login for the demo pair and redirects. That subtab is the ONLY place in this
+  pane an action may appear, and `test_the_chart_subtabs_are_still_form_free`
+  fails if one leaks into any of the others.
 
   Everything is SERVER-RENDERED SVG/HTML. No chart library, no CDN, no new
   dependency — geometry is computed in app/visuals.py, overview verdicts in
@@ -144,12 +151,16 @@
   {% include "_visual_todo.html" %}
 {% elif vz.sub == 'ci' %}
   {% include "_visual_ci.html" %}
+{% elif vz.sub == 'walkthrough' %}
+  {% include "_visual_walkthrough.html" %}
 {% endif %}
 
+{% if vz.sub != 'walkthrough' %}
 <p class="muted footnote">Read-only. Rendered on the console host from the published
   fleet snapshot plus this host's own reads (and, for CI/MRs, live from GitLab); no
   chart library and no external request is involved. Every chart carries a table view
   with the same numbers.</p>
+{% endif %}
 
 {#- Self-refresh, matching the tab bar's own 90 s count poll. The poller lives
     INSIDE the pane, so switching tabs replaces #pane-body and it stops by
@@ -157,4 +168,10 @@
     looking at. It preserves the active SUBTAB, so a reader parked on the CI
     chart is not yanked back to the overview. htmx swaps atomically, so there
     is no skeleton flash. -#}
+{% if vz.sub != 'walkthrough' %}
 <div hx-get="/panes/visuals?sub={{ vz.sub }}" hx-target="#pane-body" hx-trigger="every 120s" hx-swap="innerHTML"></div>
+{% endif %}
+{#- The walkthrough subtab deliberately does NOT self-refresh. Its data comes
+    from a ~7 s live drush read, and repainting under the operator's cursor
+    while they are choosing where to jump is worse than a slightly older list;
+    the ⟳ on the subtab bar re-reads on demand. -#}

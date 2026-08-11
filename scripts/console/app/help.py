@@ -277,6 +277,19 @@ SECTIONS: tuple = (
                 ("Invitation email draft", "Renders a copy-ready invite email. The plaintext "
                                            "codes exist in that response only — the audit log "
                                            "records the sizes, never the draft."),
+                ("Jump in (Visuals \u25b8 walkthrough)", "Mints a ONE-TIME login for the demo "
+                                                     "pair's walkthrough account and redirects "
+                                                     "you straight onto the page you clicked. "
+                                                     "The credential is minted on the CLICK, "
+                                                     "never on the render, so the page you were "
+                                                     "looking at never contained one; it "
+                                                     "travels from the verb's output into the "
+                                                     "Location header and nowhere else — not "
+                                                     "the audit line, not the cache. The "
+                                                     "destination must be one of the targets "
+                                                     "the verb itself listed for that site, and "
+                                                     "a site whose canonical phase is prod is "
+                                                     "refused outright."),
             ),
             _t("Issue actions (note, label, close) and the CI pipeline retry are the other "
                "writes. An issue is writable only if it carries one of your project's labels, "

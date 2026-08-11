@@ -1,0 +1,176 @@
+{#
+  Visuals ▸ walkthrough (ops#328 t5) — one click into any part of the demo
+  pair, already signed in as the all-permissions walkthrough account.
+
+  THIS IS THE ONE SUBTAB OF VISUALS THAT ACTS. Every other subtab is a pure
+  read surface and test_the_chart_subtabs_are_still_form_free keeps it that
+  way; the narrowing of that property is deliberate and lives here alone.
+
+  WHAT IS NOT HERE, AND WHY
+    * NO LINK TO EITHER SITE. Every jump is a POST to /actions/walkthrough_go,
+      which mints a one-time login server-side at CLICK time and 303s the
+      browser onto the target page. A rendered credential would sit in the
+      page cache and in every screenshot, and a pane that minted on render
+      would burn a token on each 120 s repaint.
+    * NO SILENT SIGN-OUT. Drupal's user.logout needs a CSRF token and Moodle's
+      logout.php needs a sesskey — both session-bound, neither available to
+      this console, and neither should be. So each column offers the site's
+      own one-click confirm page instead, and says that is what it is.
+
+  Context: vz.walkthrough (app/walkthrough.page_view), can_act.
+#}
+<style>
+.wtcols { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.wtcol  { flex: 1 1 380px; min-width: 320px; }
+.wtsec  { margin: 10px 0 0; }
+.wtsec > h4 { margin: 0 0 4px; font-size: 13px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; }
+.wtlist { list-style: none; margin: 0; padding: 0; }
+.wtlist li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0;
+  border-bottom: 1px solid var(--line); }
+.wtlist li:last-child { border-bottom: 0; }
+.wtjump { flex: 1 1 auto; text-align: left; }
+.wtstate { font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.wtv-ok    { color: var(--ok); border-color: var(--ok); }
+.wtv-warn  { color: var(--warn); border-color: var(--warn); }
+.wtv-crit  { color: var(--err); border-color: var(--err); }
+.wtv-muted { color: var(--muted); }
+.wtpath { color: var(--muted); font-size: 11.5px; font-family: ui-monospace, monospace; }
+.wtadmin { color: var(--muted); font-size: 10.5px; }
+.wtguild > summary { cursor: pointer; min-height: 30px; display: flex;
+  align-items: center; font-size: 13px; }
+.wtcaveat { border: 1px solid var(--warn); border-radius: 8px; padding: 8px 11px;
+  margin: 8px 0; font-size: 12.5px; }
+.wtblocked { border: 1px solid var(--err); border-radius: 8px; padding: 8px 11px;
+  margin: 8px 0; font-size: 13px; color: var(--err); }
+.wtform { display: inline; }
+.wtbtn { background: none; border: 0; color: var(--fg); cursor: pointer;
+  padding: 0; font: inherit; text-align: left; text-decoration: underline;
+  text-decoration-style: dotted; }
+.wtbtn:disabled { color: var(--muted); cursor: not-allowed; text-decoration: none; }
+.wtsignout { font-size: 12px; }
+</style>
+
+{% set wt = vz.walkthrough %}
+
+{% if not wt or not wt.ok %}
+  {% with nd = {"state": "missing", "reason": wt.reason if wt else "no walkthrough data",
+                "hint": wt.hint if wt else ""}, nd_what = "Walkthrough" %}
+    {% include "_visual_nodata.html" %}
+  {% endwith %}
+{% else %}
+
+<div class="vzcard">
+  <div class="vzhead">
+    <h3>Walkthrough — {{ wt.site }}</h3>
+    {% if wt.verification.warn %}
+      <span class="vzstale">{{ "NEVER MEASURED" if wt.verification.state == "never" else "UNVERIFIED" }}</span>
+    {% else %}
+      <span class="vzlive">measured {{ wt.verification.at }}</span>
+    {% endif %}
+  </div>
+
+  {# The counts come from the rows themselves, so the header can never claim a
+     coverage the list does not have. #}
+  <p class="vzsub">
+    {{ wt.counts.rendered }} target(s) ·
+    <b>{{ wt.counts.verified }}</b> verified ·
+    {{ wt.counts.unknown }} unknown ·
+    {{ wt.counts.missing }} missing ·
+    {{ wt.counts.drifted }} drifted ·
+    {{ wt.counts.ambiguous }} ambiguous
+    {%- if wt.counts.dropped %} · {{ wt.counts.dropped }} not addressable{% endif %}
+    · groups from <b>{{ wt.groups.source }}</b> ({{ wt.groups.count }})
+  </p>
+
+  {% if wt.verification.state == 'never' %}
+  <p class="vzwarn"><strong>⚠ Nothing below has been measured on this host.</strong>
+    Every target reads <em>unknown</em> — that is not the same as broken and not
+    the same as fine. Measure it where the sites live:
+    <code>pl demo walkthrough {{ wt.site }} --verify --tier=live</code></p>
+  {% endif %}
+
+  {# The account, and the thing it structurally cannot tell you. Rendered from
+     the VIEW (walkthrough.CAVEAT), not written into this markup, so a template
+     edit cannot quietly drop it. #}
+  <div class="wtcaveat">
+    <p style="margin:0 0 4px">
+      {% if wt.account.present %}
+        Signed in as <b>{{ wt.account.name }}</b> (uid {{ wt.account.uid }},
+        {{ "administrator" if wt.account.admin else "no admin role" }},
+        {{ wt.account.guilds }} group(s)).
+      {% else %}
+        <b>No walkthrough account on this site.</b>
+      {% endif %}
+    </p>
+    <p style="margin:0">{{ wt.caveat }}</p>
+  </div>
+
+  {% if not wt.can_jump %}
+  <div class="wtblocked">
+    <strong>Jump-in is off.</strong> {{ wt.blocked_reason }}
+    <br><span class="muted">The links below still tell you what exists; nothing here will mint a session.</span>
+  </div>
+  {% endif %}
+
+  {% if wt.dropped %}
+  <details class="vztable">
+    <summary>{{ wt.dropped | length }} target(s) could not be addressed</summary>
+    <ul class="wtlist">
+      {% for d in wt.dropped %}
+      <li><span class="wtpath">{{ d.path_template }}</span>
+          <span class="muted">{{ d.label }} — {{ d.reason }}</span></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <div class="wtcols">
+    {% for col in wt.columns %}
+    <div class="wtcol">
+      <h3 style="margin:6px 0 2px;font-size:14px">
+        {{ col.site or col.side }} <span class="muted">({{ col.side }}, {{ col.count }} target(s))</span>
+      </h3>
+
+      {% if col.signout.path and col.base %}
+      <p class="wtsignout">
+        <a href="{{ col.base }}{{ col.signout.path }}" target="_blank" rel="noopener">
+          {{ col.signout.label }} ↗</a>
+        <span class="muted">— the site's own confirm page. This console cannot sign you
+          out for you: Drupal needs a CSRF token and Moodle a sesskey, both bound to
+          your session there.{% if col.signout.note %} {{ col.signout.note }}{% endif %}</span>
+      </p>
+      {% endif %}
+
+      {% for sec in col.sections %}
+      <div class="wtsec">
+        <h4>{{ sec.label }}</h4>
+
+        {% if sec.targets %}
+        <ul class="wtlist">
+          {% for t in sec.targets %}
+          {% include "_wt_row.html" %}
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% for g in sec.groups %}
+        <details class="wtguild">
+          <summary>{{ g.group }} <span class="muted">— {{ g.targets | length }} link(s)</span></summary>
+          <ul class="wtlist">
+            {% for t in g.targets %}
+            {% include "_wt_row.html" %}
+            {% endfor %}
+          </ul>
+        </details>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="wt-result"></div>
+</div>
+{% endif %}

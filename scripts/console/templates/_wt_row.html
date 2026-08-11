@@ -1,0 +1,34 @@
+{#
+  One walkthrough target. Context: t (a row from walkthrough.page_view), col,
+  wt, can_act.
+
+  TWO SUBMIT BUTTONS, ONE FORM. "Jump in" mints and lands. "↺" signs you out of
+  that site FIRST and then lands — because Drupal refuses a one-time login link
+  while a session exists (user.reset.login carries `_user_is_logged_in: FALSE`,
+  read out of the deployed router), so the second jump of a session otherwise
+  answers Access denied. Two buttons in one form is how the operator gets both
+  without a checkbox that no adjacent form could read.
+
+  The state word is always rendered. Colour alone is never the signal here for
+  the same measured reason the charts give: green vs amber on this surface is
+  CVD dE 4.5.
+#}
+<li>
+  <span class="wtstate wtv-{{ t.role }}">{{ t.verify.state }}</span>
+  {% if can_act and wt.can_jump and t.clickable %}
+  <form class="wtform wtjump" method="post" action="/actions/walkthrough_go" target="_blank">
+    <input type="hidden" name="site" value="{{ wt.site }}">
+    <input type="hidden" name="side" value="{{ col.side }}">
+    <input type="hidden" name="dest" value="{{ t.path }}">
+    <button class="wtbtn" type="submit" name="signout" value=""
+            title="{{ t.verify.detail }}">{{ t.label }}</button>
+    <button class="wtbtn" type="submit" name="signout" value="1"
+            title="sign out of {{ col.site }} first, then land here">↺</button>
+  </form>
+  {% else %}
+  <span class="wtjump">{{ t.label }}</span>
+  {% endif %}
+  <span class="wtpath">{{ t.path }}</span>
+  {% if t.admin_only %}<span class="wtadmin" title="a plain member does not see this">admin</span>{% endif %}
+  {% if t.note %}<span class="muted" style="font-size:11.5px">{{ t.note }}</span>{% endif %}
+</li>

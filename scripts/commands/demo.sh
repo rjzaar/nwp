@@ -57,6 +57,8 @@ source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/demo-pair.sh"     # paired golden/reset (ops#133 Phase 2)
 source "$REPO_ROOT/lib/demo-live-moodle.sh"  # Moodle half of the LIVE tier (ops#170)
 source "$REPO_ROOT/lib/demo-box-status.sh"   # the BOX's own reset record (ops#198)
+source "$REPO_ROOT/lib/demo-walkthrough.sh"  # walkthrough target catalogue (ops#328 t5)
+source "$REPO_ROOT/lib/canonical.sh"     # canonical_get_phase — the PROD-PHASE guard
 source "$REPO_ROOT/lib/deploy-gate.sh"   # deploy_gate_require (live tier only)
 
 # Names of the golden artifacts inside sites/<site>/demo-golden/.
@@ -175,6 +177,23 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   unreachable box / unreadable manifest is exit
                                   2 CANNOT VERIFY, never "no golden". Feeds the
                                   console demo tab's seal banner (ops#328).
+    walkthrough <site> [--verify] [--json] [--tier=live]
+                                  Every place the operator can jump into on
+                                  this demo pair — guilds (with the site's OWN
+                                  group ids), stream, about, the guild tools,
+                                  every feedback/triage queue — on BOTH halves,
+                                  plus whether each one still resolves. Feeds
+                                  the console's Visuals ▸ walkthrough subtab
+                                  (ops#328 t5). Reads are cheap; --verify
+                                  MEASURES (one `drush route` read for the
+                                  provider — the router is the only instrument
+                                  that can prove a route is ABSENT, since both
+                                  halves theme their own 404s — plus one HTTP
+                                  probe per distinct consumer path) and records
+                                  the verdict under private/demo-walkthrough/.
+                                  A target nobody measured is UNKNOWN, never
+                                  verified. --verify is refused on a site whose
+                                  canonical phase is prod.
     codes <site> list [--json]    List codes (hashes only — never plaintext).
                                   --json: structured rows with computed state
                                   (live|revoked|expired) + per-state counts;
@@ -3862,6 +3881,59 @@ demo_testers_drush() {
     fi
 }
 
+################################################################################
+# THE PROD-PHASE GUARD (CLAUDE.md standing order · ops#33 · ops#214)
+#
+# Every demo action that MINTS A CREDENTIAL for a live identity, WRITES a
+# member's guild/level, or PROBES a running host is refused when the target
+# site's CANONICAL PHASE is `prod`.
+#
+# It keys off the phase, never off a site's name. "Refuse nwd" would be wrong
+# today (nwd is the demo tier and this whole surface exists for it) and wrong
+# later (it would miss whatever new site becomes prod). "Refuse a site whose
+# canonical phase is prod" is INERT today — `pl canonical` reports no prod site
+# anywhere on the estate — and correct forever; it arms itself the moment
+# `pl canonical set <site> prod` runs.
+#
+# An inert guard nobody has seen fire is the check-that-cannot-fail class, so
+# tests/unit/test-demo-walkthrough.bats drives it against a fixture nwp.yml that
+# declares `canonical: prod` and asserts the refusal TEXT — and a sibling case
+# asserts it stays silent at dev and live, so "refuses everything" cannot pass
+# for "refuses prod".
+#
+# FAIL CLOSED: an unreadable or invalid phase is exit 2 CANNOT VERIFY, not a
+# pass. "I could not read the policy" must never look like a decision.
+#
+#   rc 0 — allowed        rc 1 — REFUSED (prod)        rc 2 — CANNOT VERIFY
+################################################################################
+demo_refuse_prod_phase() {
+    local site="$1" label="${2:-this action}" phase
+    phase="$(canonical_get_phase "$site" 2>/dev/null || echo "")"
+    case "$phase" in
+        prod)
+            print_error "REFUSED: '${site}' is canonical: prod — ${label} is a demo-tier action." >&2
+            print_info  "The demo tier mints one-time logins, rewrites guild membership and probes URLs." >&2
+            print_info  "None of that belongs on a site holding real members' data. Check: pl canonical show ${site}" >&2
+            jq -n --arg s "$site" --arg l "$label" \
+                '{ok: false, refused: true, phase: "prod",
+                  reason: ("REFUSED: " + $s + " is canonical: prod — " + $l + " is a demo-tier action and never runs against prod")}'
+            return 1 ;;
+        dev|live)
+            return 0 ;;
+        "")
+            print_error "CANNOT VERIFY the canonical phase of '${site}' — refusing ${label}." >&2
+            jq -n --arg s "$site" --arg l "$label" \
+                '{ok: false, reason: ("CANNOT VERIFY: the canonical phase of " + $s + " could not be read, so " + $l + " is refused. This is not a clean result.")}'
+            return 2 ;;
+        *)
+            # cannot-verify:<why> and invalid:<raw> both land here.
+            print_error "CANNOT VERIFY the canonical phase of '${site}' (${phase}) — refusing ${label}." >&2
+            jq -n --arg s "$site" --arg l "$label" --arg p "$phase" \
+                '{ok: false, reason: ("CANNOT VERIFY: " + $s + " reports canonical phase " + $p + ", so " + $l + " is refused. This is not a clean result.")}'
+            return 2 ;;
+    esac
+}
+
 # One JSON refusal shape for wrapper-level refusals, so the console parses
 # every outcome the same way. Human summary goes to stderr.
 demo_testers_refuse() {
@@ -4121,6 +4193,9 @@ cmd_testers() {
             # the wrong site is the same class of accident.
             demo_require_explicit_tier "testers ${action}" \
                 "pl demo testers ${site} ${action} <account> … --tier=live" || return 1
+            # …and the phase, not the name. A prod site never has its members
+            # edited or a login link minted for it from here. Inert today.
+            demo_refuse_prod_phase "$site" "pl demo testers ${action}" || return $?
             ;;
         *)
             print_error "Unknown testers action '${action}' (list|set-guild|set-level|login)"
@@ -5505,6 +5580,158 @@ ${minutes} 1-3 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=live --via-k
 }
 
 ################################################################################
+# Subcommand: walkthrough <site> [--verify] [--json] [--tier=…]
+#
+# "Jump straight into any part of the demo pair, already signed in."
+#
+# This verb answers the DATA half of that: which places exist, on which half,
+# under which guild, and whether each one still resolves. The credential half
+# stays where it already lives — `pl demo testers <site> login` (ops#328 t4),
+# which mints a one-time link, reads the uid back out of it and refuses unless
+# it matches the roster. Nothing here mints anything.
+#
+# Read (no --verify) is CHEAP and SAFE: catalogue + one roster read, plus
+# whatever this host last measured. Verify is EXPLICIT because it costs one
+# router read and ~30 HTTP probes against the live pair, and because probing a
+# running host is exactly the class of action the prod-phase guard covers.
+################################################################################
+cmd_walkthrough() {
+    local site="$1" tier="${2:-dev}" do_verify="${3:-false}"
+    demo_require_jq || return 1
+
+    local catalog rc=0
+    catalog="$(demo_walkthrough_catalog_json)" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        jq -n --arg s "$site" \
+            '{ok: false, site: $s, reason: "CANNOT VERIFY: the walkthrough target catalogue could not be read — this is not an empty walkthrough. Expected scripts/demo/walkthrough-targets.yml (or $NWP_WALKTHROUGH_CATALOG)."}'
+        return 2
+    fi
+
+    # The pair: the provider is the site named, the consumer comes from the
+    # pair contract that already binds these two. Never guessed.
+    local contract="" consumer="" yqb
+    yqb="$(demo_yq 2>/dev/null || true)"
+    contract="$(demo_invite_pair_contract "$site" 2>/dev/null || true)"
+    if [[ -n "$contract" && -n "$yqb" ]]; then
+        consumer="$("$yqb" eval '.consumer // ""' "$contract" 2>/dev/null || true)"
+        [[ "$consumer" == "null" ]] && consumer=""
+    fi
+    local pbase cbase
+    pbase="$(demo_invite_community_base "$site")"
+    cbase=""
+    [[ -n "$consumer" ]] && cbase="$(demo_invite_community_base "$consumer")"
+
+    # The roster is the site's own answer about itself: which groups exist and
+    # whether the walkthrough account is there. Unreadable → exit 2, never an
+    # empty walkthrough (that would render as "nothing to jump into", which is
+    # the exact lie ops#281 is about).
+    local roster out
+    rc=0; out="$(demo_testers_drush "$site" "$tier" nwc:tester-list --format=json)" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        demo_testers_emit "$site" "$tier" nwc:tester-list "$rc" "$out"
+        return 2
+    fi
+    if ! jq -e '.accounts' <<<"$out" >/dev/null 2>&1; then
+        jq -n --arg s "$site" --arg raw "$(tail -c 800 <<<"$out")" \
+            '{ok: false, site: $s, raw: $raw,
+              reason: "CANNOT VERIFY: the roster read returned something that is not a tester roster — refusing to render a walkthrough over an unreadable site."}'
+        return 2
+    fi
+    roster="$out"
+
+    local groups account targets
+    groups="$(demo_walkthrough_groups_json "$roster")"
+    account="$(demo_walkthrough_account_json "$roster")"
+    targets="$(demo_walkthrough_targets_json "$catalog" "$groups" "$account")"
+    local dropped; dropped="$(demo_walkthrough_dropped_json "$catalog" "$groups" "$account")"
+
+    local phase; phase="$(canonical_get_phase "$site" 2>/dev/null || echo "")"
+    local jump_ok="true"; [[ "$phase" == "prod" ]] && jump_ok="false"
+
+    local verification
+    if [[ "$do_verify" == "true" ]]; then
+        # Probing a running host is an action, so it is phase-guarded.
+        demo_refuse_prod_phase "$site" "pl demo walkthrough --verify" || return $?
+
+        # The provider is verified through the ROUTER, not over HTTP — see
+        # lib/demo-walkthrough.sh's header for the measurement that forced it.
+        local routes="" rrc=0 rout
+        rout="$(demo_testers_drush "$site" "$tier" route --format=json)" || rrc=$?
+        if [[ $rrc -eq 0 ]] && jq -e 'type == "object"' <<<"$rout" >/dev/null 2>&1; then
+            routes="$rout"
+        fi
+
+        local verified
+        rc=0; verified="$(demo_walkthrough_verify_json "$targets" "$routes" "$pbase" "$cbase")" || rc=$?
+        if [[ $rc -ne 0 ]]; then
+            jq -n --arg s "$site" \
+                '{ok: false, site: $s, reason: "CANNOT VERIFY: nothing could be measured (curl unusable, or every probe failed) — no verdict was recorded."}'
+            return 2
+        fi
+        targets="$verified"
+        local now; now="$(date -u +%FT%TZ)"
+        mkdir -p "$(demo_walkthrough_record_dir)"
+        jq -n --arg at "$now" --arg site "$site" --argjson t "$targets" \
+            '{site: $site, at: $at, source: ((if ($t | map(select(.verify.state != "unknown")) | length) > 0 then "measured" else "empty" end)),
+              targets: ($t | map({key: .id, value: .verify}) | from_entries)}' \
+            > "$(demo_walkthrough_record_file "$site")"
+        verification="$(jq -n --arg at "$now" '{state: "measured", at: $at, age_seconds: 0, source: "this host"}')"
+        demo_log "$site" walkthrough-verified "tier=${tier} targets=$(jq 'length' <<<"$targets")"
+    else
+        local rec; rec="$(demo_walkthrough_record_file "$site")"
+        if [[ -f "$rec" ]] && jq -e '.targets' "$rec" >/dev/null 2>&1; then
+            targets="$(jq -c --slurpfile r "$rec" \
+                'map(. as $t | .verify = ($r[0].targets[$t.id] // $t.verify))' <<<"$targets")"
+            local at age
+            at="$(jq -r '.at // ""' "$rec")"
+            age="$(( $(date -u +%s) - $(date -u -d "$at" +%s 2>/dev/null || echo "$(date -u +%s)") ))"
+            verification="$(jq -n --arg at "$at" --argjson age "$age" \
+                '{state: "measured", at: $at, age_seconds: $age, source: "this host"}')"
+        else
+            verification="$(jq -n '{state: "never", at: null, age_seconds: null,
+                                    source: null,
+                                    note: "no target on this host has ever been measured — every link below is UNKNOWN, not verified. Measure: pl demo walkthrough <site> --verify --tier=live"}')"
+        fi
+    fi
+
+    local counts; counts="$(demo_walkthrough_counts "$targets")"
+
+    if [[ "${DEMO_JSON:-false}" == "true" ]]; then
+        jq -n --arg site "$site" --arg tier "$tier" --arg phase "${phase:-unknown}" \
+              --argjson jump "$jump_ok" \
+              --arg consumer "$consumer" --arg pbase "$pbase" --arg cbase "$cbase" \
+              --argjson groups "$groups" --argjson account "$account" \
+              --argjson targets "$targets" --argjson counts "$counts" \
+              --argjson verification "$verification" --argjson session "$(jq -c '.session // {}' <<<"$catalog")" \
+              --argjson dropped "$dropped" \
+            '{ok: true, site: $site, tier: $tier, phase: $phase, jump_in_allowed: $jump,
+              provider: {site: $site, base: $pbase},
+              consumer: {site: (if $consumer == "" then null else $consumer end), base: $cbase},
+              account: $account, groups: $groups, session: $session, dropped: $dropped,
+              counts: ($counts + {total: ($targets | length), dropped: ($dropped | length)}),
+              verification: $verification, targets: $targets}'
+        return 0
+    fi
+
+    print_header "Demo walkthrough: $site ($tier)"
+    jq -r --argjson c "$counts" --argjson a "$account" --argjson g "$groups" --argjson v "$verification" '
+      "  account   : " + (if $a.present then ($a.name + " (uid " + ($a.uid|tostring) + ", " +
+          (if $a.admin then "administrator" else "no admin role" end) + ", " + ($a.guilds|tostring) + " group(s))")
+          else ("MISSING — " + $a.reason) end),
+      "  groups    : " + ($g.count|tostring) + " (source: " + $g.source + ")",
+      "  targets   : " + (length|tostring) + "  verified=" + ($c.verified|tostring) +
+          " unknown=" + ($c.unknown|tostring) + " missing=" + ($c.missing|tostring) +
+          " drifted=" + ($c.drifted|tostring) + " ambiguous=" + ($c.ambiguous|tostring),
+      "  measured  : " + ($v.state) + (if $v.at then " at " + $v.at else "" end)' <<<"$targets"
+    echo
+    jq -r 'group_by(.side)[] | (.[0].side | ascii_upcase) + ":",
+           (.[] | "    [" + (.verify.state|.[0:9]) + "] " + .path +
+                  (if .group then "   (" + .group + ")" else "" end) + "  — " + .label)' <<<"$targets"
+    [[ "$jump_ok" == "false" ]] && print_warning "canonical: prod — jump-in is REFUSED for this site."
+    return 0
+}
+
+################################################################################
 # main
 ################################################################################
 
@@ -5538,6 +5765,7 @@ main() {
     # hook the pinning test uses: it prints the ssh command `nightly --via-key`
     # would execute and runs nothing.
     local raw_ssh="false" print_transport="false"
+    local do_verify="false"
     local with_pair="auto"
     # ops#219: schedule's hourly return-leg flavour.
     local fb_status="false"
@@ -5579,6 +5807,9 @@ main() {
                         box_host="$2"; shift 2 ;;
             --host=*)   box_host="${1#--host=}"; shift ;;
             --print-only) print_only="true"; shift ;;
+            # walkthrough: MEASURE the targets (one router read + HTTP probes
+            # against the live pair) instead of reporting what was last measured.
+            --verify)   do_verify="true"; shift ;;
             *)          passthru+=("$1"); shift ;;
         esac
     done
@@ -5711,6 +5942,7 @@ main() {
         nightly)  cmd_nightly "$site" "$tier" "$use_pair" "$via_key" "$box_host" "$dry_run" "$print_transport" ;;
         status)   cmd_status "$site" "$tier" ;;
         seal-status) cmd_seal_status "$site" "$tier" ;;
+        walkthrough) cmd_walkthrough "$site" "$tier" "$do_verify" ;;
         smoke)    cmd_smoke "$site" "$tier" "${DEMO_SMOKE_IP:-}" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         testers)  cmd_testers "$site" "$tier" "$remove" "${passthru[@]:-list}" ;;

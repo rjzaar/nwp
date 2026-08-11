@@ -778,3 +778,117 @@ def parse_tester_action_json(stdout: str) -> dict:
     if isinstance(data.get("note"), str):
         out["note"] = data["note"][:300]
     return out
+
+
+# ---------------------------------------------------------------------------
+# ops#328 t5 — `pl demo walkthrough <site> --json`
+# ---------------------------------------------------------------------------
+# The states the verb may attach to a target. Anything else — a typo, a newer
+# verb this console does not understand, a truncated document — becomes
+# "unknown". It must never become "verified": the whole point of the column is
+# that a link nobody measured looks different from one that was.
+WALKTHROUGH_STATES = ("verified", "missing", "drifted", "ambiguous",
+                      "unknown", "cannot_verify")
+
+
+def _wt_target(row) -> dict | None:
+    """One target row, sanitised. Returns None for a row that cannot be
+    rendered safely — notably a path that is not site-relative, which would
+    build a link to somewhere the catalogue never declared."""
+    if not isinstance(row, dict):
+        return None
+    path = str(row.get("path", ""))
+    if not path.startswith("/") or path.startswith("//") or "://" in path:
+        return None
+    v = row.get("verify") if isinstance(row.get("verify"), dict) else {}
+    state = str(v.get("state", ""))
+    if state not in WALKTHROUGH_STATES:
+        state = "unknown"
+    return {
+        "id": str(row.get("id", ""))[:120],
+        "side": "consumer" if row.get("side") == "consumer" else "provider",
+        "section": str(row.get("section", ""))[:40],
+        "section_label": str(row.get("section_label", ""))[:60],
+        "group": (str(row.get("group"))[:80] if row.get("group") else None),
+        "group_seed_key": (str(row.get("group_seed_key"))[:40]
+                           if row.get("group_seed_key") else None),
+        "key": str(row.get("key", ""))[:40],
+        "label": str(row.get("label", ""))[:120],
+        "path": path[:300],
+        "route": (str(row.get("route"))[:80] if row.get("route") else None),
+        "admin_only": bool(row.get("admin_only")),
+        "note": (str(row.get("note"))[:300] if row.get("note") else None),
+        "verify": {"state": state,
+                   "detail": str(v.get("detail", ""))[:200],
+                   "at": (str(v.get("at"))[:32] if v.get("at") else None)},
+    }
+
+
+def parse_walkthrough_json(stdout: str) -> dict:
+    """`pl demo walkthrough <site> --json` (ops#328 t5).
+
+    ok:false — an unreadable catalogue, an unreadable roster, an undeployed
+    drush command — keeps its reason and yields NO targets. An empty-but-
+    healthy walkthrough would read as "there is nothing to look at", which is
+    the ops#281 collapse this surface exists to prevent."""
+    raw = strip_ansi(stdout or "")[-4000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "targets": [], "counts": {}, "account": {}, "raw": raw,
+                "reason": "no JSON found in pl demo walkthrough --json output "
+                          "(is the deployed pl older than ops#328 tranche 5?)"}
+    if not data.get("ok"):
+        return {"ok": False, "targets": [], "counts": {}, "account": {}, "raw": raw,
+                "not_deployed": bool(data.get("not_deployed")),
+                "reason": str(data.get("reason", "walkthrough unreadable"))[:400]}
+
+    targets = [t for t in (_wt_target(r) for r in (data.get("targets") or [])) if t]
+    counts = {}
+    src = data.get("counts") if isinstance(data.get("counts"), dict) else {}
+    for k in ("total", "verified", "missing", "drifted", "ambiguous",
+              "unknown", "cannot_verify", "dropped"):
+        try:
+            counts[k] = int(src.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            counts[k] = 0
+    # The rendered list is the one the operator acts on, so the count shown is
+    # the count of THOSE rows — a total the page cannot show is a lie.
+    counts["rendered"] = len(targets)
+
+    acct_src = data.get("account") if isinstance(data.get("account"), dict) else {}
+    account = {
+        "present": bool(acct_src.get("present")),
+        "name": str(acct_src.get("name", ""))[:60],
+        "uid": _to_int(acct_src.get("uid")),
+        "admin": bool(acct_src.get("admin")),
+        "guilds": _to_int(acct_src.get("guilds")) or 0,
+        "roles": [str(r)[:40] for r in (acct_src.get("roles") or []) if isinstance(r, str)],
+        "sojourner_level": _to_int(acct_src.get("sojourner_level")) or 0,
+        "fenced": bool(acct_src.get("fenced")),
+        "reason": str(acct_src.get("reason", ""))[:400],
+    }
+
+    def _half(k):
+        h = data.get(k) if isinstance(data.get(k), dict) else {}
+        base = str(h.get("base", ""))[:200]
+        if base and not base.startswith("https://"):
+            base = ""
+        return {"site": str(h.get("site") or "")[:40], "base": base}
+
+    return {
+        "ok": True,
+        "site": str(data.get("site", ""))[:40],
+        "phase": str(data.get("phase", ""))[:20],
+        "jump_in_allowed": bool(data.get("jump_in_allowed")),
+        "provider": _half("provider"),
+        "consumer": _half("consumer"),
+        "account": account,
+        "groups": (data.get("groups") if isinstance(data.get("groups"), dict) else {}),
+        "session": (data.get("session") if isinstance(data.get("session"), dict) else {}),
+        "dropped": [d for d in (data.get("dropped") or []) if isinstance(d, dict)][:20],
+        "counts": counts,
+        "verification": (data.get("verification")
+                         if isinstance(data.get("verification"), dict) else {}),
+        "targets": targets,
+        "raw": "",
+    }

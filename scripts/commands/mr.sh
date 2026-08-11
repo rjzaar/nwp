@@ -360,6 +360,134 @@ cmd_status(){
 }
 
 ################################################################################
+# pl mr ci — WHY is this pipeline red?
+#
+# THE GAP THIS CLOSES. The operator reports a pipeline by NUMBER ("#2254
+# failed"). Until this verb there was no `pl` way to turn that number into a
+# branch, a job, or a log line: `pl mr status` shows GitLab's merge verdict and
+# says nothing about CI, and `pl mr merge` reads the job list only to decide
+# whether to retry. Every triage session therefore hand-rolled a curl loop
+# against /pipelines and /jobs/:id/trace — the exact "step around the verb"
+# shape the pl-first standing order names, repeated from scratch, wrongly, each
+# time. Recorded after a session did it again on 2026-08-11.
+#
+# WHAT IT REFUSES TO DO. It does not retry anything. A retry that goes green is
+# not a diagnosis, and a verb that offers one next to the log invites the habit
+# CLAUDE.md warns about ("it trains people to retry until green"). `pl mr merge`
+# owns retrying, once, for the hold gate alone.
+#
+# EXIT CODES, fail-closed:
+#   0 pipeline succeeded · 1 it failed · 2 CANNOT VERIFY · 3 not finished yet
+# 3 is separate on purpose: `running` is not a verdict, and grading it 0 or 1
+# would be substituting a literal for a measurement not yet takeable.
+################################################################################
+cmd_ci(){
+  local iid="" pid="" log_n=40
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --pipeline=*) pid="${1#*=}" ;;
+      --log=*)      log_n="${1#*=}" ;;
+      --no-log)     log_n=0 ;;
+      -h|--help)    echo "usage: pl mr ci <iid> | pl mr ci --pipeline=<id> [--log=N|--no-log]"; return 0 ;;
+      -*)           die "unknown flag: $1" ;;
+      *)            iid="$1" ;;
+    esac
+    shift
+  done
+  [[ "$log_n" =~ ^[0-9]+$ ]] || die "--log wants a number of lines"
+  [ -n "$iid$pid" ] || die "usage: pl mr ci <iid> | pl mr ci --pipeline=<id>"
+  _mr_have_token || die "no usable token (NWP_MR_TOKEN or .secrets.yml:gitlab.api_token)"
+
+  local pjson mr_iid=""
+  if [ -n "$pid" ]; then
+    [[ "$pid" =~ ^[0-9]+$ ]] || die "--pipeline wants a numeric id"
+    pjson=$(_mr_pipeline "$pid") || {
+      print_error "CANNOT VERIFY: cannot read pipeline #$pid (HTTP $(_mr_http_status))"
+      return 2; }
+    mr_iid=$(_mr_pipeline_ref_iid "$pjson") || true
+  else
+    [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr ci <iid>"
+    local mjson; mjson=$(_mr_fetch "$iid") || _mr_die_read "$iid"
+    pid=$(_mr_head_pipeline_id "$mjson")
+    if [ -z "$pid" ] || [ "$pid" = "null" ]; then
+      print_error "CANNOT VERIFY: MR !$iid has no head pipeline. That is not a"
+      print_error "  green tick — it is the absence of one."
+      return 2
+    fi
+    mr_iid="$iid"
+    pjson=$(_mr_pipeline "$pid") || {
+      print_error "CANNOT VERIFY: cannot read pipeline #$pid (HTTP $(_mr_http_status))"
+      return 2; }
+  fi
+
+  local pstatus pref psha pweb
+  pstatus=$(printf '%s' "$pjson" | _mr_jget status)
+  pref=$(printf '%s'    "$pjson" | _mr_jget ref)
+  psha=$(printf '%s'    "$pjson" | _mr_jget sha)
+  pweb=$(printf '%s'    "$pjson" | _mr_jget web_url)
+
+  print_header "pipeline #$pid — $pstatus"
+  printf "  ${BOLD}%-14s${NC} %s\n" "ref:"  "${pref:-?}"
+  printf "  ${BOLD}%-14s${NC} %s\n" "head sha:" "${psha:0:12}"
+  [ -n "$mr_iid" ] && printf "  ${BOLD}%-14s${NC} %s\n" "merge request:" "!$mr_iid"
+  printf "  ${BOLD}%-14s${NC} %s\n" "url:"  "${pweb:-?}"
+
+  local jobs
+  jobs=$(_mr_pipeline_jobs "$pid") || {
+    print_error "CANNOT VERIFY: the job list for pipeline #$pid could not be read."
+    return 2; }
+  if [ -z "$jobs" ]; then
+    print_error "CANNOT VERIFY: pipeline #$pid reports no jobs at all. An empty"
+    print_error "  job list is not a clean pipeline."
+    return 2
+  fi
+
+  echo
+  printf "  %-8s %-10s %-10s %s\n" "JOB" "STATUS" "STAGE" "NAME"
+  local jid jst jstage jname jallow n_failed=0
+  local -a failed_ids=() failed_names=()
+  while IFS=$'\t' read -r jid jst jstage jname jallow; do
+    [ -n "$jid" ] || continue
+    local mark=""
+    if [ "$jst" = "failed" ]; then
+      if [ "$jallow" = "true" ]; then mark="  (allow_failure)"
+      else n_failed=$((n_failed + 1)); failed_ids+=("$jid"); failed_names+=("$jname"); fi
+    fi
+    printf "  %-8s %-10s %-10s %s%s\n" "$jid" "$jst" "$jstage" "$jname" "$mark"
+  done <<<"$jobs"
+
+  if [ "$n_failed" -gt 0 ] && [ "$log_n" -gt 0 ]; then
+    local i
+    for i in "${!failed_ids[@]}"; do
+      echo
+      print_header "last $log_n lines — job ${failed_ids[$i]} (${failed_names[$i]})"
+      local trace
+      if trace=$(_mr_job_trace "${failed_ids[$i]}" "$log_n") && [ -n "$trace" ]; then
+        printf '%s\n' "$trace"
+      else
+        print_warning "the trace for job ${failed_ids[$i]} could not be read"
+      fi
+    done
+  fi
+
+  echo
+  case "$pstatus" in
+    success)  print_success "pipeline #$pid succeeded"; return 0 ;;
+    failed)   print_error   "pipeline #$pid FAILED — $n_failed blocking job(s)"
+              print_hint "classify before you retry: a defect in this MR, a failure already on the target branch, or a flake with a NAMED mechanism"
+              return 1 ;;
+    running|pending|created|waiting_for_resource|preparing|scheduled|manual)
+              print_warning "pipeline #$pid is $pstatus — not a verdict yet, ask again"
+              return 3 ;;
+    canceled|skipped)
+              print_error "CANNOT VERIFY: pipeline #$pid is $pstatus — it never ran to a verdict"
+              return 2 ;;
+    *)        print_error "CANNOT VERIFY: unrecognised pipeline status '$pstatus'"
+              return 2 ;;
+  esac
+}
+
+################################################################################
 # pl mr list — the one screen the 2026-08-01 sweep would have lit up red.
 ################################################################################
 cmd_list(){
@@ -1314,6 +1442,7 @@ main(){
     create|new)  cmd_create "$@" ;;
     merge)       cmd_merge "$@" ;;
     status|show) cmd_status "$@" ;;
+    ci)          cmd_ci "$@" ;;
     list|ls)     cmd_list "$@" ;;
     hold)        cmd_hold "$@" ;;
     release)     cmd_release "$@" ;;
@@ -1342,6 +1471,15 @@ pl mr — create, merge, hold, release and guard merge requests
                                    waiting for.
                                    0 merged · 1 refused · 2 conflict · 3 not
                                    ready · 4 cannot verify
+  pl mr ci <iid> | --pipeline=<id> [--log=N|--no-log]
+                                   WHY is it red: the pipeline, every job, and
+                                   the tail of each FAILED job's log. Takes a
+                                   bare pipeline NUMBER — which is how a failure
+                                   gets reported — and names the MR it belongs
+                                   to. Never retries anything: a retry that goes
+                                   green is not a diagnosis.
+                                   0 success · 1 failed · 2 cannot verify ·
+                                   3 not finished
   pl mr list                       every open MR: held? auto-merge armed?
   pl mr status <iid>               hold state, GitLab's own merge status,
                                    sensitive paths, release record

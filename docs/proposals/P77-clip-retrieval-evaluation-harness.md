@@ -1,4 +1,4 @@
-# P76 — Measuring clip retrieval: an evaluation harness, so a ranking change can be judged instead of argued about
+# P77 — Measuring clip retrieval: an evaluation harness, so a ranking change can be judged instead of argued about
 
 **Status:** PROPOSED — research and design only. No production code, no schema change, no
 golden shipped with this document. Every snippet below is illustrative.

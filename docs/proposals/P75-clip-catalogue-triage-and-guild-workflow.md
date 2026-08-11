@@ -236,7 +236,7 @@ anywhere in the codebase, and `ClipSuggestion::KIND_NEW_CLIP` is selectable in t
 code path that creates a snippet for it — `ClipSuggestionForm::validateForm()` requires an
 existing `proposed_snippet` entity id for every kind except `re_trim`, typed by hand into a
 `#type => 'number'` field. **Proposing a genuinely new clip is not possible today.** Stage A *is*
-that missing act, and the corpus search shipped in `nwp/dir1-project!1` is its instrument.
+that missing act, and the corpus search shipped in the corpus-search MR on the DIR site repo is its instrument.
 
 ### 2.3 The alternatives, and what they lose
 
@@ -590,8 +590,8 @@ members, all measurable:
 - a media address that no longer resolves — measured elsewhere: **8,094 of 8,626** v3 candidates
   carry no `youtube_id`, and audio is the only medium with complete coverage (648/648 episodes);
 - an `audio_url` that 404s;
-- a window that survives a re-transcription with different boundaries — dir1 segments average
-  **3.41 s / 54.6 chars** (`nwp/dir1-project!1`), so boundaries genuinely move.
+- a window that survives a re-transcription with different boundaries — DIR corpus segments average
+  **3.41 s / 54.6 chars** (the corpus-search MR on the DIR site repo), so boundaries genuinely move.
 
 **Why such a case vanishes today.** The report is a one-off artefact. Nothing *standing* re-asks
 the question, and the review UI has no state to hold the answer: all 176 slots are `pending`, and

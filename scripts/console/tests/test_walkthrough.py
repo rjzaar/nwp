@@ -510,7 +510,7 @@ def test_a_cross_origin_post_is_refused(mod, monkeypatch):
 def test_a_site_outside_the_callers_scope_mints_nothing(mod, monkeypatch):
     calls = []
     _wire(mod, monkeypatch, calls=calls)
-    r = _post(mod, site="ssc", side="provider", dest="/stream")
+    r = _post(mod, site="not-a-demo-site", side="provider", dest="/stream")
     assert r.status_code == 200 and "refusing to mint" in r.text
     assert calls == []
 

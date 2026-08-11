@@ -129,7 +129,7 @@ STUB
 [
  {"id":1,"path":"nwp","path_with_namespace":"nwp/nwp","visibility":"private",
   "default_branch":"main","namespace":{"id":9,"path":"nwp","full_path":"nwp"}},
- {"id":2,"path":"dir1-project","path_with_namespace":"nwp/dir1-project","visibility":"private",
+ {"id":2,"path":"sample-site-project","path_with_namespace":"nwp/sample-site-project","visibility":"private",
   "default_branch":"main","namespace":{"id":9,"path":"nwp","full_path":"nwp"},
   "forked_from_project":{"id":77,"path":"upstream-decoy","path_with_namespace":"other/upstream-decoy"}},
  {"id":3,"path":"courses","path_with_namespace":"nwp/courses","visibility":"public",

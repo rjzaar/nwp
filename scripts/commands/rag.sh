@@ -297,6 +297,23 @@ main() {
         done < <(yaml_get_all_sites "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
     fi
 
+    # KNOWN_SITES — what actually exists, so lib/audit-record.py can tell a real
+    # site from an ORPHAN audit record (a record whose site was deleted). Both
+    # sources count: nwp.yml (configured) AND sites/<name>/ on disk, because rag
+    # deliberately shows on-disk-but-unconfigured sites (mg, dir, fin,
+    # saintschool) and orphaning those would be a regression, not a fix.
+    #
+    # If BOTH enumerations come back empty we pass nothing, which switches the
+    # orphan check OFF rather than declaring the whole fleet non-existent — we
+    # do not infer absence from our own failure to look.
+    local known="" _k
+    while read -r _k; do [ -n "$_k" ] && known+="$_k "; done < <(
+        { yaml_get_all_sites "$PROJECT_ROOT/nwp.yml" 2>/dev/null || true
+          for _d in "$PROJECT_ROOT"/sites/*/; do
+              [ -d "$_d" ] && basename "$_d"
+          done 2>/dev/null || true
+        } | sort -u )
+
     # When syncing we only need state.json refreshed; ask python for JSON and sink
     # it so the table/JSON doesn't precede the sync plan on stdout.
     local out=/dev/stdout
@@ -307,7 +324,7 @@ main() {
     set +e
     { AUDIT_DIR="$AUDIT_DIR" TODO_JSON="$todo_json" STATE_DIR="$STATE_DIR" \
     SWEEP_STATE="$sweep_state" SWEEP_REASON="$sweep_reason" \
-    SITE="$SITE" JSON="$JSON" PHASES="$phases" MATURITIES="$mats" \
+    SITE="$SITE" JSON="$JSON" PHASES="$phases" MATURITIES="$mats" KNOWN_SITES="$known" \
     RED="$RED" YEL="$YELLOW" GRN="$GREEN" NC="$NC" BOLD="$BOLD" DIM="${DIM:-}" \
     python3 "$PROJECT_ROOT/lib/rag-render.py"
     } > "$out"

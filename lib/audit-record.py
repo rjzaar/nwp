@@ -64,6 +64,28 @@ def interpret_record(path):
 
     s = d.get("site") or site
     stale = bool(d.get("cache_stale", False))
+
+    # RETIRED — the site has been declared out of service (`retired:` in its
+    # .nwp.yml, mirroring `retired:` in the secrets registry, which exists for
+    # exactly this reason: "colouring a retired row green (or red) is how a
+    # phantom comes to look like a live one").
+    #
+    # A retired site's `security_count` is a fossil: the advisories were real
+    # when last measured, but nothing serves that code any more, so grading them
+    # as a live finding is not conservatism, it is noise. The case this was
+    # written for sat RED on 13 dependency advisories while its webroot had been
+    # renamed aside, no vhost served it, and its domain did not answer at all.
+    # A row that is red forever, and is MEANT to be, trains the reader to skip
+    # red.
+    retired = d.get("retired") or ""
+    if retired:
+        return {"site": s, "count": int(d.get("security_count", 0) or 0),
+                "ignored": int(d.get("ignored_count", 0) or 0),
+                "stale": False, "scanned": False, "retired": str(retired),
+                "retired_reason": d.get("retired_reason", "") or "",
+                "reason": "site is RETIRED (%s) — not scanned, not graded" % retired,
+                "checked": d.get("checked") or ""}
+
     scanned = d.get("scanned")
     if scanned is None:
         # Records predating the `scanned` key are inferred from cache_stale,
@@ -95,15 +117,46 @@ def interpret_record(path):
             "ignored": int(d.get("ignored_count", 0) or 0),
             "stale": stale,
             "scanned": bool(scanned),
+            "retired": "",
+            "retired_reason": "",
             "reason": reason,
             "checked": d.get("checked") or ""}
 
 
-def load_dir(audit_dir):
-    """site -> interpreted record, for every *.json in audit_dir."""
+ORPHAN_REASON = (
+    "no such site: %s is neither in nwp.yml nor on disk under sites/. This "
+    "record is debris from a removed site and its counts refer to nothing — "
+    "CANNOT VERIFY. Remove it: rm private/update-awareness/%s.json"
+)
+
+
+def load_dir(audit_dir, known_sites=None):
+    """site -> interpreted record, for every *.json in audit_dir.
+
+    `known_sites` (a set, or None) is what makes an ORPHAN detectable. A record
+    is written per site name; nothing else ever re-checks that the name still
+    denotes something. On 2026-08-11 the fleet board carried a permanent RED row
+    for a site name that was a duplicate registration of ANOTHER site's dev
+    environment (same `directory:`, different key), removed from nwp.yml weeks
+    earlier while its audit record survived. Its 4 advisories were the other
+    site's, counted a second time under a second name, and no patch could ever
+    have cleared them.
+
+    FAIL-CLOSED DIRECTION, and note it points the opposite way to the usual one:
+    `known_sites=None` means the CALLER could not tell us what exists. The
+    dangerous reading there is "therefore everything is an orphan", which would
+    blank the whole board on a config read failure. So None disables the check
+    and every record grades exactly as before — we do not invent absence from
+    ignorance, we only report it when we were actually told what exists.
+    """
     out = {}
     for f in glob.glob(os.path.join(audit_dir, "*.json")):
         r = interpret_record(f)
+        r["orphan"] = False
+        if known_sites is not None and r["site"] not in known_sites:
+            r["orphan"] = True
+            r["scanned"] = False
+            r["reason"] = ORPHAN_REASON % (r["site"], r["site"])
         out[r["site"]] = r
     return out
 

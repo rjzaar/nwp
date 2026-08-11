@@ -16,6 +16,9 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+# Derives the advisory-affected package set from `composer audit --format=json`
+# instead of guessing it from globs. Fail-closed: exit 2 = CANNOT VERIFY.
+source "$PROJECT_ROOT/lib/security-scope.sh"
 
 ################################################################################
 # Help
@@ -40,11 +43,18 @@ ${BOLD}OPTIONS:${NC}
     --auto                  Auto-apply and test (with update)
     --notify                Send notification on completion
     --all                   Check/update all sites
+    --advisories-only       (update) Update ONLY the packages that carry a
+                            security advisory, derived from composer audit
+                            rather than from drupal/*+guzzlehttp/* globs.
+                            Exits 2 CANNOT VERIFY if the advisories cannot
+                            be read — it never updates blind, and never
+                            reports "nothing to do" for a failed measurement.
 
 ${BOLD}EXAMPLES:${NC}
     ./security.sh check nwp              # Check for updates
     ./security.sh update nwp             # Apply updates
     ./security.sh update --auto nwp      # Apply, test, deploy if pass
+    ./security.sh update --advisories-only -y <site>  # Scoped security update
     ./security.sh check --all            # Check all sites
     ./security.sh audit nwp              # Full security audit
 
@@ -206,6 +216,7 @@ security_update() {
     local sitename="$1"
     local auto="${2:-false}"
     local yes="${3:-false}"
+    local advisories_only="${4:-false}"
     local site_path
 
     site_path=$(get_site_path "$sitename") || {
@@ -224,15 +235,75 @@ security_update() {
     "${SCRIPT_DIR}/backup.sh" -b "$sitename" "Pre-security-update"
     cd "$site_path" || return 1
 
-    # Update Drupal core and contrib, plus guzzlehttp — the HTTP stack is as
-    # much a security surface as drupal/* and is where the 2026-07 fleet
-    # advisories (4× Guzzle) actually lived; drupal/* alone missed it on any
-    # site whose core pin didn't happen to drag guzzle forward.
-    print_info "Updating Drupal + HTTP-stack packages..."
-    if [ "$yes" == "true" ]; then
-        ddev composer update "drupal/*" "guzzlehttp/*" --with-dependencies -n
+    if [ "$advisories_only" == "true" ]; then
+        # SCOPED MODE — update exactly the packages that carry an advisory,
+        # derived from the measurement rather than from globs. See
+        # lib/security-scope.sh for why the globs were a guess (they could not
+        # reach webonyx/graphql-php, which was 3 of that site's 15 advisories).
+        print_info "Reading advisories to derive the exact package set..."
+        local audit_json pkgs scope_rc=0
+        audit_json=$(ddev exec composer audit --locked --no-interaction --format=json 2>/dev/null || true)
+        pkgs=$(printf '%s' "$audit_json" | security_advisory_packages) || scope_rc=$?
+
+        if [ "$scope_rc" -ne 0 ]; then
+            # The whole point of the mode: we could not read the advisories, so
+            # we do not know what to update. Doing nothing and exiting 0 would
+            # be indistinguishable from "there was nothing to do".
+            print_error "CANNOT VERIFY which packages carry advisories — refusing to update blind."
+            print_info "$pkgs"
+            print_hint "Check by hand: (cd $site_path && ddev exec composer audit --locked)"
+            cd - > /dev/null
+            return 2
+        fi
+
+        if [ -z "$pkgs" ]; then
+            print_status "OK" "No advisories on $sitename — nothing to update."
+            cd - > /dev/null
+            return 0
+        fi
+
+        local -a pkg_args=()
+        while read -r _p; do [ -n "$_p" ] && pkg_args+=("$_p"); done <<< "$pkgs"
+        print_info "Advisory-affected packages (${#pkg_args[@]}): ${pkg_args[*]}"
+
+        # Naming the advisory package is NOT enough to move it. An exact pin in
+        # a root requirement (drupal/core-recommended requires drupal/core
+        # 10.6.12) silently wins: composer prints "Nothing to modify in lock
+        # file" and exits 0, so the update appears to succeed while changing
+        # nothing. Ask composer who pins each package and name those too.
+        local _pin _pins pin_rc=0
+        for _p in "${pkg_args[@]}"; do
+            _pins=$(ddev exec composer why "$_p" 2>/dev/null | security_root_pinners "$site_path") || pin_rc=$?
+            [ "$pin_rc" -ne 0 ] && continue
+            while read -r _pin; do
+                [ -n "$_pin" ] || continue
+                # shellcheck disable=SC2076
+                [[ " ${pkg_args[*]} " == *" $_pin "* ]] || pkg_args+=("$_pin")
+            done <<< "$_pins"
+        done
+        if [ "${#pkg_args[@]}" -gt 0 ]; then
+            print_info "…plus root requirements that pin them; updating (${#pkg_args[@]}): ${pkg_args[*]}"
+        fi
+
+        # -W (--with-all-dependencies), not --with-dependencies: root
+        # requirements must be allowed to move, which is the whole point of
+        # having resolved the pinners above.
+        if [ "$yes" == "true" ]; then
+            ddev composer update "${pkg_args[@]}" -W -n
+        else
+            ddev composer update "${pkg_args[@]}" -W
+        fi
     else
-        ddev composer update "drupal/*" "guzzlehttp/*" --with-dependencies
+        # Update Drupal core and contrib, plus guzzlehttp — the HTTP stack is as
+        # much a security surface as drupal/* and is where the 2026-07 fleet
+        # advisories (4× Guzzle) actually lived; drupal/* alone missed it on any
+        # site whose core pin didn't happen to drag guzzle forward.
+        print_info "Updating Drupal + HTTP-stack packages..."
+        if [ "$yes" == "true" ]; then
+            ddev composer update "drupal/*" "guzzlehttp/*" --with-dependencies -n
+        else
+            ddev composer update "drupal/*" "guzzlehttp/*" --with-dependencies
+        fi
     fi
 
     # DB steps only make sense against an INSTALLED site. Several dev tiers
@@ -415,12 +486,13 @@ main() {
     local AUTO=false
     local NOTIFY=false
     local ALL=false
+    local ADVISORIES_ONLY=false
     local COMMAND=""
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdy
-    local LONGOPTS=help,debug,yes,auto,notify,all
+    local LONGOPTS=help,debug,yes,auto,notify,all,advisories-only
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -437,6 +509,7 @@ main() {
             --auto) AUTO=true; shift ;;
             --notify) NOTIFY=true; shift ;;
             --all) ALL=true; shift ;;
+            --advisories-only) ADVISORIES_ONLY=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
@@ -474,7 +547,7 @@ main() {
                 print_error "Sitename required"
                 exit 1
             fi
-            security_update "$SITENAME" "$AUTO" "$YES"
+            security_update "$SITENAME" "$AUTO" "$YES" "$ADVISORIES_ONLY"
             ;;
         audit)
             if [ -z "$SITENAME" ]; then

@@ -273,9 +273,69 @@ PY
 # installed Drush ("use composer audit"). composer audit is the source of truth,
 # and it EXITS 3 when advisories are found — so we must capture output regardless
 # of exit code (never `|| fallback`, which discards exactly the findings we want).
+# A site may declare itself RETIRED in its own .nwp.yml:
+#
+#   project:
+#     retired: "YYYY-MM-DD"
+#     retired_reason: "why, plus the evidence — e.g. superseded by <site>;
+#                      webroot renamed aside on the host, no vhost serves it,
+#                      the domain does not answer"
+#
+# This is the same declared-fact idiom as `retired:` in the secrets registry
+# (scripts/commands/secrets.sh, lib/todo-checks.sh) — deliberately NOT a new
+# mechanism. A retired site is not scanned: there is no point measuring
+# advisories in code that nothing serves, and reporting them as live findings
+# is how a board acquires rows that are red forever by design.
+#
+# It is a CLAIM, not a mute button: the date and the reason go into the record,
+# `pl rag` prints them, and `pl server roots` independently reports whether the
+# thing is actually served. A false retirement is therefore checkable.
+_site_retired() {  # echo "<date>\t<reason>" if retired; else return 1
+    local cfg; cfg="$(_site_dir "$1")/.nwp.yml"
+    [ -f "$cfg" ] || return 1
+    command -v yq >/dev/null 2>&1 || return 1   # no yq ⇒ cannot read the claim ⇒ scan it
+    local when reason
+    when=$(yq e '.project.retired // ""' "$cfg" 2>/dev/null | grep -v '^null$' || true)
+    [ -n "$when" ] || return 1
+    reason=$(yq e '.project.retired_reason // ""' "$cfg" 2>/dev/null | grep -v '^null$' || true)
+    printf '%s\t%s' "$when" "$reason"
+}
+
+_write_retired_record() {  # $1=site $2=date $3=reason
+    local site="$1" when="$2" reason="$3"
+    python3 - "$STATE_DIR/$site.json" "$site" "$STAMP" "$when" "$reason" <<'PY'
+import sys, json
+path, site, stamp, when, reason = sys.argv[1:6]
+json.dump({
+  "site": site, "checked": stamp,
+  "source": "declared retired in sites/%s/.nwp.yml (project.retired)" % site,
+  # Kept at 0 and scanned:false together, so no consumer can read a fossil count
+  # as a live finding. `retired` is what downstream grades on.
+  "security_count": 0, "ignored_count": 0, "outdated_count": 0,
+  "cache_stale": False, "scanned": False,
+  "retired": when, "retired_reason": reason,
+  "stale_reason": "site is RETIRED (%s) — not scanned" % when,
+  "note": "RETIRED sites are not scanned. This is a dated CLAIM: verify it with "
+          "`pl server roots <server>` (the webroot should be served by nothing).",
+}, open(path, "w"), indent=2)
+PY
+}
+
 had_sec=0
 audit_site() {
     local site="$1"
+
+    # RETIRED first — before any platform detection. A retired site may still
+    # have a perfectly scannable tree on disk; the point is that we have decided
+    # not to grade it, not that we are unable to.
+    local _ret when reason
+    if _ret=$(_site_retired "$site"); then
+        when=${_ret%%$'\t'*}; reason=${_ret#*$'\t'}
+        _write_retired_record "$site" "$when" "$reason"
+        printf '%s\tRETIRED\t-\t-\t%s\tretired %s\n' "$site" "$STAMP" "$when"
+        return 0
+    fi
+
     # Moodle sites aren't composer-managed — audit against the Moodle release feed.
     if _site_is_moodle "$site"; then
         moodle_audit_site "$site"; return $?

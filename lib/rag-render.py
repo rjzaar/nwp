@@ -37,8 +37,16 @@ MAT_ABBR={"incubating":"inc","stabilizing":"stab","production":"prod"}
 # Interpretation (the `scanned` inference for pre-`scanned` records, the
 # unreadable-record blind spot, and the bogus-Moodle-version guard) lives in
 # lib/audit-record.py so `pl todo` grades the identical records identically.
-sec = {s: {k: r[k] for k in ("count", "ignored", "stale", "scanned", "reason")}
-       for s, r in audit_record.load_dir(audit_dir).items()}
+#
+# KNOWN_SITES (space-separated) is what lets an ORPHAN record be told from a
+# real one — see audit_record.load_dir. Empty/absent disables the check rather
+# than orphaning the fleet, because "the caller could not enumerate the sites"
+# must not render as "none of these sites exist".
+_known = os.environ.get("KNOWN_SITES", "").split()
+known_sites = set(_known) if _known else None
+sec = {s: {k: r.get(k) for k in ("count", "ignored", "stale", "scanned", "reason",
+                                 "retired", "retired_reason", "orphan")}
+       for s, r in audit_record.load_dir(audit_dir, known_sites=known_sites).items()}
 
 # --- work signal from pl todo ---
 # A TODO_JSON we cannot parse is a BLIND SWEEP, not an empty one (ops#178).
@@ -127,8 +135,19 @@ def is_scanned(s):
     if s not in sec: return False
     return bool(sec[s].get("scanned", False))
 
+def is_retired(s): return bool(sec.get(s,{}).get("retired"))
+def is_orphan(s):  return bool(sec.get(s,{}).get("orphan"))
+
 def grade(s):
     sc=sec.get(s,{}); wk=work.get(s,{})
+    # RETIRED and ORPHAN are answers to a DIFFERENT question than R/A/G. R/A/G
+    # asks "how healthy is this site"; these two say "this is not a site we are
+    # grading" — one by decision, one because it does not exist. Folding either
+    # into RED (today) or GREEN (the tempting alternative) makes the fleet line
+    # a worse instrument: RED-forever rows train the reader to ignore red, and a
+    # green one would let deletion masquerade as remediation.
+    if is_retired(s): return "RETIRED"
+    if is_orphan(s):  return "ORPHAN"
     secn=sc.get("count",0); sech=wk.get("sec_high",0); ovr=wk.get("ovr_high",0)
     if secn>0 or sech>0 or ovr>0: return "RED"
     if (wk.get("high",0)+wk.get("med",0)+wk.get("low",0))>0 or sc.get("stale"): return "AMBER"
@@ -151,16 +170,26 @@ for s in sorted(sites):
         "security":sc.get("count",0),"ignored":sc.get("ignored",0),"stale":sc.get("stale",False),
         "scanned":scanned,
         "unscanned_reason":("" if scanned else unscanned_reason(s)),
+        "retired":sc.get("retired","") or "",
+        "retired_reason":sc.get("retired_reason","") or "",
+        "orphan":bool(sc.get("orphan")),
         "unknown":wk.get("unknown",0),
         "todo_high":wk.get("high",0),"todo_med":wk.get("med",0),"todo_low":wk.get("low",0),
         "top":wk.get("top","")})
 
-counts={"RED":0,"AMBER":0,"GREEN":0}
+counts={"RED":0,"AMBER":0,"GREEN":0,"RETIRED":0,"ORPHAN":0}
 for r in rows: counts[r["rag"]]+=1
 # UNSCANNED is a separate axis from R/A/G: it says how much of the AMBER is
 # "we found work" versus "we cannot see". rag-sync files these as their own
 # issue class so a permanently-blind site cannot sit quietly in the amber pile.
-counts["UNSCANNED"]=sum(1 for r in rows if not r["scanned"])
+#
+# A RETIRED or ORPHAN site is NOT unscanned. "Unscanned" is a blind spot — we
+# tried to look and could not, and somebody should fix the looking. Here we
+# looked at the question and answered it: there is nothing to scan. Counting
+# them as blind spots would inflate exactly the number that is supposed to
+# measure how much of the estate we cannot see.
+counts["UNSCANNED"]=sum(1 for r in rows
+                        if not r["scanned"] and not r["retired"] and not r["orphan"])
 state={"generated":todo.get("timestamp") if isinstance(todo,dict) else None,
        "summary":counts,
        # A consumer (the console, pl fleet publish, rag-sync) must be able to
@@ -168,36 +197,66 @@ state={"generated":todo.get("timestamp") if isinstance(todo,dict) else None,
        # grades without publishing how they were obtained is what let a silent
        # sweep failure read as good news downstream.
        "todo_sweep":{"state":sweep_state,"reason":sweep_reason},
-       "unscanned":[{"site":r["site"],"reason":r["unscanned_reason"]} for r in rows if not r["scanned"]],
+       "unscanned":[{"site":r["site"],"reason":r["unscanned_reason"]}
+                    for r in rows if not r["scanned"] and not r["retired"] and not r["orphan"]],
+       "retired":[{"site":r["site"],"retired":r["retired"],"reason":r["retired_reason"]}
+                  for r in rows if r["retired"]],
+       # Named, not just counted: an orphan is a piece of debris somebody has to
+       # delete, and a number nobody can act on is how it survived for weeks.
+       "orphans":[{"site":r["site"],"reason":r["unscanned_reason"]} for r in rows if r["orphan"]],
        "sites":rows}
 json.dump(state, open(os.path.join(state_dir,"state.json"),"w"), indent=2)
 
 if as_json:
     print(json.dumps(state, indent=2))
 else:
-    dot={"RED":RED+"●"+NC,"AMBER":YEL+"●"+NC,"GREEN":GRN+"●"+NC}
+    DIM=os.environ.get("DIM","")
+    dot={"RED":RED+"●"+NC,"AMBER":YEL+"●"+NC,"GREEN":GRN+"●"+NC,
+         # Deliberately not a traffic-light colour: these rows are not a grade.
+         "RETIRED":DIM+"·"+NC,"ORPHAN":DIM+"·"+NC}
     if sweep_state=="failed":
         print(f"  {RED}TODO ● BLIND{NC}   {sweep_reason}")
         print( "                every site below is graded on its audit record ALONE.\n")
     elif sweep_state=="skipped":
         print(f"  {YEL}TODO ● skipped{NC} {sweep_reason}\n")
     print(f"\n  {'':2} {'SITE':<16} {'PHASE':<7} {'MAT':<6} {'SEC':>4} {'TODO(h/m/l)':>12}  TOP")
-    for r in sorted(rows, key=lambda x:{"RED":0,"AMBER":1,"GREEN":2}[x["rag"]]):
+    _ORDER={"RED":0,"AMBER":1,"GREEN":2,"RETIRED":3,"ORPHAN":4}
+    for r in sorted(rows, key=lambda x:_ORDER[x["rag"]]):
         if r["scanned"]:
             sec_s=str(r["security"]) + (f"+{r['ignored']}i" if r["ignored"] else "")
         else:
             sec_s="-"   # never "0": nothing was measured
         td=f"{r['todo_high']}/{r['todo_med']}/{r['todo_low']}"
         if r["unknown"]: td+=f" ?{r['unknown']}"
-        top=r["top"] or ("" if r["scanned"] else "UNSCANNED: "+r["unscanned_reason"][:40])
+        if r["retired"]:
+            # The date is the whole point: a retirement is a dated claim about
+            # the world, so it can be checked against the world later.
+            top=f"RETIRED {r['retired']}" + (f" — {r['retired_reason'][:40]}" if r["retired_reason"] else "")
+        elif r["orphan"]:
+            top="ORPHAN: "+r["unscanned_reason"][:52]
+        else:
+            top=r["top"] or ("" if r["scanned"] else "UNSCANNED: "+r["unscanned_reason"][:40])
         print(f"  {dot[r['rag']]}  {r['site']:<16} {r['phase']:<7} {r['maturity']:<6} {sec_s:>4} {td:>12}  {top}")
     unsc=counts["UNSCANNED"]
+    graded=len(rows)-counts["RETIRED"]-counts["ORPHAN"]
+    extra=""
+    if counts["RETIRED"]: extra+=f", {counts['RETIRED']} retired"
+    if counts["ORPHAN"]:  extra+=f", {counts['ORPHAN']} orphan"
     print(f"\n  {BOLD}Fleet:{NC} {RED}● {counts['RED']} red{NC}  {YEL}● {counts['AMBER']} amber{NC}  {GRN}● {counts['GREEN']} green{NC}"
-          f"   ({len(rows)} sites, {unsc} unscanned)   legend: SEC -=unscanned, +Ni=ignored, ?N=checks that could not run")
+          f"   ({graded} graded sites, {unsc} unscanned{extra})   legend: SEC -=unscanned, +Ni=ignored, ?N=checks that could not run")
+    if counts["ORPHAN"]:
+        print(f"  {YEL}{counts['ORPHAN']} audit record(s) name a site that does not exist — CANNOT VERIFY, not clean and not red:{NC}")
+        for r in rows:
+            if r["orphan"]:
+                print(f"    - {r['site']}: {r['unscanned_reason']}")
     if unsc:
         print(f"  {YEL}{unsc} site(s) could not be scanned — a blank SEC column is not a clean one:{NC}")
         for r in rows:
-            if not r["scanned"]:
+            # Same predicate as the count above. They were briefly different —
+            # the count said 8 and the list printed 12 — which is the identical
+            # class of defect this whole change is about: a summary number that
+            # does not describe the thing listed under it.
+            if not r["scanned"] and not r["retired"] and not r["orphan"]:
                 print(f"    - {r['site']}: {r['unscanned_reason']}")
     print(f"  state → {os.path.join(state_dir,'state.json')}")
 

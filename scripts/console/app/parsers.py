@@ -297,6 +297,10 @@ def parse_demo_codes_json(stdout: str) -> dict:
             "expires_iso": str(r.get("expires_iso", ""))[:25],
             "created_iso": str(r.get("created_iso", ""))[:25],
             "hash_prefix": str(r.get("hash_prefix", ""))[:16],
+            # tri-state on purpose: True / False / None(unknown) — see
+            # _parse_recovery. `bool(r.get(...))` here would be the bug.
+            "recoverable": (bool(r["recoverable"])
+                            if isinstance(r.get("recoverable"), bool) else None),
         })
     raw_counts = data.get("counts", {})
     if not isinstance(raw_counts, dict):
@@ -307,8 +311,116 @@ def parse_demo_codes_json(stdout: str) -> dict:
             counts[k] = int(raw_counts.get(k, 0) or 0)
         except (TypeError, ValueError):
             counts[k] = 0
+    recovery = _parse_recovery(data.get("recovery"))
+    if recovery["state"] != "measured":
+        # A pl older than ops#328 t4 emits no recovery block at all. UNKNOWN
+        # must stay None everywhere — rendering it as False would tell the
+        # operator "this code's plaintext is gone forever" on the strength of
+        # a measurement nobody took.
+        for r in codes:
+            r["recoverable"] = None
     return {"ok": True, "registry": str(data.get("registry", "present"))[:16],
-            "codes": codes, "counts": counts, "raw": raw}
+            "codes": codes, "counts": counts, "recovery": recovery, "raw": raw}
+
+
+def _parse_recovery(d) -> dict:
+    """The ops#328 t4 recovery block of `codes list --json`: can a row's
+    PLAINTEXT still be recovered from an invite pack on the registry home?
+
+    Three states, and keeping them apart is the whole point:
+      measured      — the packs were read; each row's `recoverable` is a fact.
+      cannot_verify — no readable pack directory. Every row is UNKNOWN.
+    An absent block reads as cannot_verify (fail closed), never as "none of
+    them are recoverable"."""
+    if not isinstance(d, dict) or d.get("state") != "measured":
+        return {"state": "cannot_verify",
+                "reason": str((d or {}).get(
+                    "reason",
+                    "the deployed pl does not report code recoverability "
+                    "(pre-ops#328 t4 — merge/redeploy first)"))[:300],
+                "packs_dir": str((d or {}).get("packs_dir", ""))[:200],
+                "packs_scanned": None,
+                "scope": str((d or {}).get("scope", ""))[:200]}
+    return {"state": "measured",
+            "reason": str(d.get("reason", ""))[:300],
+            "packs_dir": str(d.get("packs_dir", ""))[:200],
+            "packs_scanned": _to_int(d.get("packs_scanned")),
+            "scope": str(d.get("scope", ""))[:200]}
+
+
+def parse_code_reveal_json(stdout: str) -> dict:
+    """`pl demo codes <site> reveal <id> --json` (ops#328 t4).
+
+    `found` carries the distinction the operator acts on:
+      True  — the plaintext is in `code`, shown once.
+      False — scanned N readable packs, no match. It is genuinely unrecoverable.
+      None  — CANNOT VERIFY (no readable pack directory, unreadable registry,
+              an unreadable pack). "I could not look" is not "it is not there",
+              and this parser will not let them render alike."""
+    raw = strip_ansi(stdout or "")[-2000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "found": None, "id": "", "code": "", "pack": "",
+                "packs_scanned": None,
+                "reason": "no JSON found in pl demo codes reveal output "
+                          "(is the deployed pl older than ops#328 t4?)"}
+    out = {
+        "ok": bool(data.get("ok")),
+        "id": str(data.get("id", ""))[:40],
+        "bundle": str(data.get("bundle", ""))[:40],
+        "state": str(data.get("state", ""))[:12],
+        "pack": str(data.get("pack", ""))[:120],
+        "expires_iso": str(data.get("expires_iso", ""))[:25],
+        "packs_scanned": _to_int(data.get("packs_scanned")),
+        "reason": str(data.get("reason", ""))[:500],
+        "refused": bool(data.get("refused")),
+    }
+    out["found"] = True if out["ok"] else (
+        False if data.get("found") is False else None)
+    # The plaintext is carried ONLY on the success path. A refusal that somehow
+    # contained one would not be rendered from here.
+    out["code"] = str(data.get("code", ""))[:64] if out["ok"] else ""
+    return out
+
+
+# One-time login links (/user/reset/<uid>/<ts>/<hash>/login) are CREDENTIALS.
+# The verb never emits one outside its success document, but a parser that
+# passes free text through is one refactor away from carrying one into a page
+# or an audit line — so anything that looks like one is redacted on the way in.
+LOGIN_LINK_RE = re.compile(r"https?://\S*/user/reset/\S*")
+
+
+def _scrub_login_links(text: str) -> str:
+    return LOGIN_LINK_RE.sub("<one-time link REDACTED>", text or "")
+
+
+def parse_tester_login_json(stdout: str) -> dict:
+    """`pl demo testers <site> login <account> --tier=live --json` (ops#328 t4).
+
+    Success carries the one-time link, which the route renders exactly once and
+    never logs. Every other shape carries a reason with any link scrubbed out —
+    including the admin-link-trap refusal, whose whole point is that the link
+    it caught must not reach a human."""
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "refused": False, "not_deployed": False,
+                "account": "", "uid": None, "url": "",
+                "reason": "no JSON found in pl demo testers login output "
+                          "(is the deployed pl older than ops#328 t4?)"}
+    ok = bool(data.get("ok"))
+    url = str(data.get("url", ""))[:400] if ok else ""
+    return {
+        "ok": ok,
+        "refused": bool(data.get("refused")),
+        "not_deployed": bool(data.get("not_deployed")),
+        "account": str(data.get("account", ""))[:60],
+        "uid": _to_int(data.get("uid")),
+        "site": str(data.get("site", ""))[:40],
+        "uri": str(data.get("uri", ""))[:200],
+        "url": url,
+        "reason": _scrub_login_links(str(data.get("reason", "")))[:500],
+        "note": _scrub_login_links(str(data.get("note", "")))[:300],
+    }
 
 
 # ops#329 D4: the return leg is hourly; older than TWO cycles = the leg has

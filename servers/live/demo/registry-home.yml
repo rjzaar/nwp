@@ -19,3 +19,19 @@
 # change is always deliberate. Escape hatch for a one-off write elsewhere:
 # NWP_DEMO_REGISTRY_HOME_OVERRIDE='<why>' — ledgered to sites/<site>/demo-reset.log.
 registry_home: mini
+
+# THE INVITE PACKS LIVE WITH THE REGISTRY — operator ruling 2026-08-11
+# ("they should be on mini"). A pack (sites/<site>/demo-invites/invite-*.md) is
+# the ONLY surviving copy of a code's plaintext; one sitting on any other host
+# is plaintext invite codes in a place no verb looks after — not in the home's
+# backup pull, invisible to `pl demo codes … reveal`, and duplicated across two
+# machines. New packs already land here by construction (invite mints codes, so
+# the D1 home guard means it only runs on the home), and
+# `pl demo codes <site> packs relocate --apply` moves strays.
+#
+# The endpoint below is what `packs relocate` pushes to. It lives in THIS file
+# for the same reason the hostname does: the home's identity is a declared fact
+# with exactly one home of its own, and code/help stay hostname-generic (the
+# P61 leakage rule). It is a private mesh address, not a credential — the
+# transport is the caller's existing ssh key, which is never named here.
+registry_home_ssh: rob@100.64.0.2

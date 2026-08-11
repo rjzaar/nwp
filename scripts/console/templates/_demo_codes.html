@@ -5,10 +5,29 @@
        line declares any narrowing ("showing N of M, filter: X" — !394);
      * an unreadable registry renders CANNOT VERIFY, never an empty table
        (ops#281);
-     * plaintext codes are unrepresentable here — the registry stores sha256
-       hashes; plaintext is shown exactly once at issue time. #}
+     * SELECT-ALL SAYS WHAT IT WILL DO. It is a labelled control carrying the
+       live count of the rows on screen and the filter they are scoped to
+       ("Select all 12 shown (live only)"), not a bare checkbox in a header
+       cell that the operator reported as simply missing. The rows ARE the
+       filtered set — _demo_filter_rows narrows them server-side before
+       render — so the toggle reaching every rendered checkbox IS the
+       filter-scoped behaviour; the label makes that visible instead of
+       something the reader has to trust. It resolves its checkboxes from its
+       OWN enclosing form, never from `document`, so it can neither cross into
+       another demo site's table nor reach a row this filter excluded;
+     * plaintext codes are not IN this table — the registry stores sha256
+       hashes. The `plaintext` column says whether one is still RECOVERABLE
+       from an invite pack on the registry home, and unknown renders as
+       unknown (ops#328 t4). #}
 {% if codes_json and codes_json.ok %}
 {% set c = codes_json.counts %}
+{% set rec = codes_json.recovery %}
+{# DOM ids must be unique per RENDER, not per site: the bulk-action result
+   re-includes this same fragment inside the pane that already contains it, so
+   a site-only id would appear twice — and a <label for=…> binds to the FIRST
+   match, wiring the second table's label to the first table's checkbox. The
+   result block passes codes_dom_id; the pane takes the default. #}
+{% set cid = codes_dom_id | default(site, true) %}
 <p class="chips">
   {% for st, label in [("all", "All"), ("live", "Live"), ("revoked", "Revoked"), ("expired", "Expired")] %}
   <a class="chip codechip-{{ st }} {% if filter == st %}chip-on{% endif %}"
@@ -18,28 +37,56 @@
 </p>
 {% if can_act %}
 <form hx-post="/actions/demo_codes" hx-target="#demo-codes-{{ site }}"
-      hx-indicator="#codes-spin-{{ site }}">
+      hx-indicator="#codes-spin-{{ cid }}">
   <input type="hidden" name="site" value="{{ site }}">
+  <p class="selectall">
+    <label for="demo-select-all-{{ cid }}">
+      <input type="checkbox" id="demo-select-all-{{ cid }}"
+             {% if not rows %}disabled{% endif %}
+             onclick="this.closest('form').querySelectorAll('input[name=code_ids]').forEach(c=>{c.checked=this.checked})">
+      {% if rows %}<strong>Select all {{ rows|length }} shown</strong>{% if filter != "all" %}
+        <span class="muted">({{ filter }} only — the {{ c.total - rows|length }} row(s) this filter hides are NOT selected)</span>{% endif %}
+      {% else %}<span class="muted">nothing to select in this view</span>{% endif %}
+    </label>
+  </p>
 {% endif %}
   <table class="codetable">
-    <tr>{% if can_act %}<th><input type="checkbox" id="demo-select-all" aria-label="Select all listed codes"
-        onclick="this.closest('table').querySelectorAll('input[name=code_ids]').forEach(c=>{c.checked=this.checked})"></th>{% endif %}<th>id</th><th>bundle</th><th>state</th><th>expires</th><th>created</th><th>hash</th></tr>
+    <tr>{% if can_act %}<th class="muted">sel</th>{% endif %}<th>id</th><th>bundle</th><th>state</th><th>expires</th><th>created</th><th>hash</th><th>plaintext</th></tr>
     {% for r in rows %}
     <tr>
-      {% if can_act %}<td><input type="checkbox" name="code_ids" value="{{ r.id }}"></td>{% endif %}
+      {% if can_act %}<td><input type="checkbox" name="code_ids" value="{{ r.id }}"
+          aria-label="select code {{ r.id }}"></td>{% endif %}
       <td>{{ r.id }}</td>
       <td>{{ r.bundle }}</td>
       <td><span class="chip codechip-{{ r.state }}">{{ r.state }}</span></td>
       <td>{{ r.expires_iso }}</td>
       <td>{{ r.created_iso }}</td>
       <td class="muted">{{ r.hash_prefix }}…</td>
+      <td>
+        {%- if r.recoverable is sameas true -%}
+          {%- if can_act -%}
+          <button type="button" class="chip" hx-post="/actions/demo_code_reveal"
+                  hx-vals='{"site": "{{ site }}", "code_id": "{{ r.id }}"}'
+                  hx-target="#demo-reveal-{{ cid }}"
+                  hx-confirm="Show the plaintext of {{ r.id }} once? The access (id + who) is recorded in the demo log; the value is not.">reveal</button>
+          {%- else -%}<span class="muted">recoverable</span>{%- endif -%}
+        {%- elif r.recoverable is sameas false -%}
+          <span class="muted">not in a pack</span>
+        {%- else -%}
+          <span class="muted" title="{{ rec.reason }}">unknown</span>
+        {%- endif -%}
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="muted">no codes in this view</td></tr>
+    <tr><td colspan="8" class="muted">no codes in this view</td></tr>
     {% endfor %}
   </table>
   <p class="muted">showing {{ rows|length }} of {{ c.total }} code(s){% if filter != "all" %} (filter: {{ filter }}){% endif %}
      · plaintext is shown ONCE at issue time — the registry stores sha256 hashes only</p>
+  <p class="muted">plaintext column:
+    {%- if rec.state == "measured" %} hash-matched against the {{ rec.packs_scanned }} invite pack(s) on the registry home ({{ rec.scope }})
+    {%- else %} <span class="err">UNKNOWN</span> — {{ rec.reason }}. Unknown is not "gone": nothing here claims a code is unrecoverable
+    {%- endif %}</p>
 {% if can_act %}
   <button name="op" value="revoke" class="warn"
           hx-confirm="Revoke the selected codes on {{ site }}? The registry change is durable and the live site is updated immediately; one bad id refuses the whole batch.">
@@ -47,8 +94,9 @@
   <button name="op" value="purge" class="warn"
           hx-confirm="Purge the selected revoked/expired codes from {{ site }}'s registry? Rows are archived to demo-codes-purged.json; a LIVE id refuses the whole batch.">
     Purge selected</button>
-  <span id="codes-spin-{{ site }}" class="htmx-indicator">…</span>
+  <span id="codes-spin-{{ cid }}" class="htmx-indicator">…</span>
 </form>
+<div id="demo-reveal-{{ cid }}"></div>
 {% endif %}
 {% else %}
 <p class="err">CANNOT VERIFY invite codes for {{ site }}: {{ codes_json.reason if codes_json else "no registry data" }}</p>

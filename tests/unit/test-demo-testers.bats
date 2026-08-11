@@ -256,3 +256,194 @@ STUB
   [ "$status" -ne 0 ]
   [[ "$output" == *"REFUSED"* ]]
 }
+
+################################################################################
+# ops#328 t4 — `pl demo testers <site> login <account>`: sign in AS a tester
+#
+# The demo personas have no passwords (nwc:seed-demo mints them; nobody ever
+# set one), so the only way to see the site through a tester's eyes is a
+# one-time login link. Two traps, both verified live on nwd before this verb
+# existed, and both guarded here:
+#
+#   1. --uri is REQUIRED. Without it drush mints http://default/user/reset/…,
+#      a link that goes nowhere. The verb resolves the site's own base URL and
+#      refuses if it cannot — it never calls user:login without one.
+#   2. THE POSITIONAL ARGUMENT IS A PATH, NOT A USERNAME. `drush user:login
+#      <name>` puts the name in the `path` slot, falls through to
+#      User::load(1), and returns an ADMIN link that looks exactly like a
+#      persona link. The verb passes --name=, and then PROVES the returned
+#      link belongs to the expected uid by reading the uid out of
+#      /user/reset/<uid>/… — a mismatch DISCARDS the link unprinted.
+#
+# The link is a CREDENTIAL: it is rendered once on stdout, is never written to
+# the demo log, and never appears in a refusal document or a raw-output tail.
+################################################################################
+
+# Extends testers_fixture's stub with the drush user:login surface. Steered by:
+#   login_link  — what user:login prints (default: a well-formed link for uid 12)
+#   login_rc    — its exit code
+_login_fixture() {
+  testers_fixture
+  cat > "${TEST_TMP}/tester_json" <<'JSON'
+{"ok": true,
+ "counts": {"fenced_active": 2, "fenced_blocked": 0, "real_active": 1, "real_blocked": 0},
+ "accounts": [
+   {"uid": 12, "name": "demo_writer", "mail": "demo_writer@demo.invalid",
+    "active": true, "fence": "persona", "guilds": [], "roles": []},
+   {"uid": 13, "name": "demo_blocked", "mail": "demo_blocked@demo.invalid",
+    "active": false, "fence": "persona", "guilds": [], "roles": []},
+   {"uid": 1, "name": "trap_admin", "mail": "trap_admin@demo.invalid",
+    "active": true, "fence": "persona", "guilds": [], "roles": []}
+ ]}
+JSON
+  printf 'https://demo1-dev.ddev.site/user/reset/12/1786000000/AbCdEf/login\n' > "${TEST_TMP}/login_link"
+  printf '0\n' > "${TEST_TMP}/login_rc"
+  cat > "${TEST_TMP}/bin/ddev" <<STUB
+#!/bin/bash
+T="${TEST_TMP}"
+[ "\$1" = "drush" ] || exit 1
+shift
+case "\$1" in
+  cget)
+    cat "\$T/demo_mode" 2>/dev/null || true
+    exit 0 ;;
+  user:login)
+    echo "\$@" >> "\$T/drush_calls"
+    cat "\$T/login_link"
+    exit "\$(cat "\$T/login_rc")" ;;
+  nwc:tester-list|nwc:tester-set-guild|nwc:tester-set-level)
+    echo "\$@" >> "\$T/drush_calls"
+    if [ -e "\$T/not_defined" ]; then
+      echo "  Command \"\$1\" is not defined." >&2
+      exit 1
+    fi
+    cat "\$T/tester_json"
+    exit "\$(cat "\$T/drush_rc")" ;;
+  state:get) echo '{"version":1,"codes":[]}'; exit 0 ;;
+esac
+exit 1
+STUB
+  chmod +x "${TEST_TMP}/bin/ddev"
+}
+
+# bats `run` merges stdout and stderr, and every wrapper refusal prints a human
+# line to stderr BEFORE its JSON document (deliberately: an operator at a
+# terminal should not have to read JSON). Pull the document back out.
+_json() { printf '%s\n' "$output" | sed -n '/^{/,$p'; }
+
+@test "t4 login: mints a one-time link for a fenced tester and passes --name= AND --uri=" {
+  _login_fixture
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json --tier=dev
+  [ "$status" -eq 0 ]
+  _json | jq -e '.ok == true and .account == "demo_writer" and .uid == 12'
+  _json | jq -e '.url | test("/user/reset/12/")'
+  # the two traps, pinned at the call site
+  grep -q 'user:login --name=demo_writer' "${TEST_TMP}/drush_calls"
+  grep -q -- '--uri=https://demo1-dev.ddev.site' "${TEST_TMP}/drush_calls"
+  # the account is NEVER in the positional slot (that slot is a PATH)
+  ! grep -qE 'user:login (--[^ ]+ )*demo_writer( |$)' "${TEST_TMP}/drush_calls"
+}
+
+@test "t4 login: the ADMIN-LINK TRAP is unreachable — a uid-1 link is DISCARDED, never printed" {
+  _login_fixture
+  # drush answers with a uid-1 link (exactly what the positional-name mistake
+  # produces) while we asked for uid 12.
+  printf 'https://demo1-dev.ddev.site/user/reset/1/1786000000/RootHash/login\n' > "${TEST_TMP}/login_link"
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.ok == false and .refused == true'
+  _json | jq -e '.reason | test("uid 1")'
+  # THE LINK ITSELF MUST NOT APPEAR ANYWHERE IN THE REFUSAL
+  ! [[ "$output" == *"RootHash"* ]]
+  ! [[ "$output" == *"/user/reset/1/"* ]]
+}
+
+@test "t4 login: uid<=1 is refused ALWAYS, before any link is minted" {
+  _login_fixture
+  run bash "$DEMO_CMD" testers demo1 login trap_admin --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.ok == false and .refused == true'
+  _json | jq -e '.reason | test("uid")'
+  ! grep -q 'user:login' "${TEST_TMP}/drush_calls"
+}
+
+@test "t4 login: an account off the @demo.invalid fence is refused (--allow-real is not forwardable)" {
+  _login_fixture
+  cat > "${TEST_TMP}/tester_json" <<'JSON'
+{"ok": true, "counts": {},
+ "accounts": [{"uid": 42, "name": "realperson", "mail": "real@example.org",
+               "active": true, "fence": "none", "guilds": [], "roles": []}]}
+JSON
+  run bash "$DEMO_CMD" testers demo1 login realperson --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.refused == true'
+  _json | jq -e '.reason | test("fence")'
+  ! grep -q 'user:login' "${TEST_TMP}/drush_calls"
+  # and the wrapper still refuses --allow-real by name
+  run bash "$DEMO_CMD" testers demo1 login realperson --allow-real --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.reason | test("allow-real")'
+}
+
+@test "t4 login: an account that is not in the roster is refused, not guessed at" {
+  _login_fixture
+  run bash "$DEMO_CMD" testers demo1 login nobody_here --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.refused == true'
+  _json | jq -e '.reason | test("roster")'
+  ! grep -q 'user:login' "${TEST_TMP}/drush_calls"
+}
+
+@test "t4 login: a blocked tester is refused with a reason (drush would throw)" {
+  _login_fixture
+  run bash "$DEMO_CMD" testers demo1 login demo_blocked --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.reason | test("blocked")'
+  ! grep -q 'user:login' "${TEST_TMP}/drush_calls"
+}
+
+@test "t4 login: an unreadable roster is exit 2 CANNOT VERIFY — it never proceeds blind" {
+  _login_fixture
+  printf 'transport exploded\n' > "${TEST_TMP}/tester_json"
+  printf '3\n' > "${TEST_TMP}/drush_rc"
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json --tier=dev
+  [ "$status" -eq 2 ]
+  _json | jq -e '.ok == false'
+  ! grep -q 'user:login' "${TEST_TMP}/drush_calls"
+}
+
+@test "t4 login: a link on the WRONG origin (http://default — the missing --uri symptom) is discarded" {
+  _login_fixture
+  printf 'http://default/user/reset/12/1786000000/AbCdEf/login\n' > "${TEST_TMP}/login_link"
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.ok == false'
+  ! [[ "$output" == *"AbCdEf"* ]]
+}
+
+@test "t4 login: the one-time link is NEVER written to the demo log" {
+  _login_fixture
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json --tier=dev
+  [ "$status" -eq 0 ]
+  grep -q 'tester-login' "$(demo_log_file demo1)"
+  grep -q 'acct=demo_writer' "$(demo_log_file demo1)"
+  ! grep -q '/user/reset/' "$(demo_log_file demo1)"
+  ! grep -q 'AbCdEf' "$(demo_log_file demo1)"
+}
+
+@test "t4 login: writes name their tier (login mints a credential against a running site)" {
+  _login_fixture
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must name the tier"* ]]
+}
+
+@test "t4 login: refuses when demo_mode is not true (fails toward the fence)" {
+  _login_fixture
+  printf 'false\n' > "${TEST_TMP}/demo_mode"
+  run bash "$DEMO_CMD" testers demo1 login demo_writer --json --tier=dev
+  [ "$status" -ne 0 ]
+  _json | jq -e '.refused == true'
+  _json | jq -e '.reason | test("demo_mode")'
+  ! grep -q 'user:login' "${TEST_TMP}/drush_calls"
+}

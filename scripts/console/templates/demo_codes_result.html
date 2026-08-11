@@ -11,5 +11,5 @@
 <pre>{{ res.out }}
 {{ res.err }}</pre></details>
 <h5>Registry as re-read after this action</h5>
-{% include "_demo_codes.html" %}
+{% with codes_dom_id = site ~ "-result" %}{% include "_demo_codes.html" %}{% endwith %}
 {% endif %}

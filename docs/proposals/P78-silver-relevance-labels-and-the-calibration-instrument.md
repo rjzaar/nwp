@@ -398,16 +398,19 @@ Stated before the calibration result, so it cannot be written to fit whatever co
    depends on what the course intends the learner to take away — which the author knows and the
    machine infers from ~200 words. This is where the calibration is most likely to disagree, and
    it is the boundary the production shortlist actually turns on.
-3. **The judge is not internally consistent, and this is measured.** The 26 judging batches were
-   independent instances of the same model with the same prompt. Their grade-3 rates span
-   **2.9% to 35.5%** (sd 7.8 pp) and their mean grades span **1.20 to 1.98** (sd 0.19). Four
-   batches returned **no grade 0 at all**. **Absolute grade rates from this set are therefore
-   not trustworthy**; only within-batch or same-candidate paired comparisons are.
-   **Stated honestly, this figure is an upper bound**: it is confounded with genuine
-   differences in pool quality between courses, and this design cannot separate the two. The
-   clean way to separate them — re-judge one batch with a second instance and measure
-   instance-vs-instance κ on identical items — was **not** done here and is the single
-   cheapest thing a follow-up should do.
+3. ~~**The judge is not internally consistent, and this is measured.**~~ **SUPERSEDED
+   2026-08-11 by the separating experiment — see §5.2. The 2.9 %–35.5 % spread was
+   almost entirely the COURSES, not the judges.** What this row originally said, and
+   correctly flagged as an upper bound, was: the 26 judging batches were independent
+   instances of the same model with the same prompt; their grade-3 rates span **2.9 % to
+   35.5 %** (sd 7.8 pp) and their mean grades span **1.20 to 1.98** (sd 0.19); four batches
+   returned no grade 0 at all. That observation stands as an observation. Its *reading* —
+   *"absolute grade rates from this set are not trustworthy"* — does not: instance identity
+   was confounded with which courses each instance judged, and **§5.2 separated them**.
+   Measured on identical items, the judge-only sd is **1.53 pp** (95 % CI 0.80–3.63),
+   i.e. **3.8 %** of that variance (95 % CI 1.1 %–21.6 %). The remaining ~96 % is which
+   learning points a batch happened to contain. The correct replacement warning is
+   narrower and is stated in §5.2.
 4. **Long windows are judged on a fraction of their text** (§2.3), and the bias is asymmetric
    between the two rankers.
 5. **Sibling learning points are near-duplicates by construction.** Courses walk through one
@@ -449,6 +452,232 @@ corpus with a truncated version of the single most valuable field they have.** T
 noticing that the operator's calibration document would have shown him less of a learning point
 than the machine saw. Repairing the summaries is a catalogue edit with no model, no index and no
 new dependency, and it belongs in P76 Phase 1 rather than here.
+
+---
+
+## 5.2 THE SEPARATING EXPERIMENT — run 2026-08-11, and it moves item 3 above
+
+§5 item 3 called the 2.9 %–35.5 % spread an **upper bound**, because instance identity was
+confounded with which courses each instance judged, and named the clean separation as *"the
+single cheapest thing a follow-up should do"*. It was done. This section is the result.
+
+**The design, in one line:** several independent instances judge the **same** items, so
+instance-to-instance disagreement is measurable with item difficulty held constant by
+construction.
+
+### 5.2.1 What was run, and how it was sized
+
+| | |
+|---|---|
+| **Arm A — identical items, original working conditions** | **20 learning points**, 2 drawn from each of the 10 course families A–J with a fixed seed and **no reference to any observed grade** — selecting on the outcome would manufacture the course effect being measured. **263 items.** Split into two panels of 10 LPs (**136** and **127** items) so each instance's workload matches the original run's **~127 per batch**; working conditions must match or the measurement is of a different thing. **8 fresh instances per panel = 16.** |
+| **Arm B — the shortlist arm** | **6** of the same 20 LPs, pool deepened to the current pipeline's **top-40** (P76 Phase 3's stated shortlist depth), so *"pick the best 16"* is a real **16-of-40** selection and not a formality. **234 items**, two panels of 3 LPs, **5 instances per panel = 10.** |
+| total | **26 fresh instances, 3,274 new judgements**, same model, same prompt file (`sha256 790bb029…`, byte-identical to the original run's) |
+| plus | the **original 2026-08-11 label set re-entered as one more rater** on Arm A — legitimate because Arm A packets were **reproduced byte-identically** from `unblinding_key.json`, and the builder **exits 2** if any packet's key set differs from what the original instance actually answered |
+
+Sizing: 8 instances × ~130 items is the point where the cluster bootstrap over learning
+points (the unit of dependence) still resolves a judge sd of ~1.5 pp, while each instance's
+load stays inside the original run's envelope. All CIs are 95 % cluster bootstrap over
+learning points, 4,000 resamples.
+
+### 5.2.2 The harness was proven able to return "inconsistent" FIRST
+
+Thresholds and the scorer were written, hashed and recorded in `PRE-REGISTRATION.md`
+**before a single instance was launched** (`answers/` was empty; the hashes are in that
+file). The bands for graded and screening agreement are **deliberately the same numbers as
+Gates 1 and 2 of §4.4**, so machine-vs-machine sits on the same ruler as machine-vs-human.
+
+Eight synthetic answer sets, scored before any real answer existed:
+
+| synthetic set | exit | QWK | κ (≥2) | judge sd | top-16 overlap | 1↔2 verdict |
+|---|---|---|---|---|---|---|
+| **identical instances** | 0 | **1.000** | 1.000 | 0.00 pp | **1.000** | n/a — no disagreement to locate |
+| ±1 on ~35 % of items | 2 | 0.690 | 0.584 | 1.76 pp | 0.718 | CONFIRMED |
+| **1↔2 flipped at random** | 2 | 0.730 | **0.218** | 0.00 pp | 0.644 | **CONFIRMED** |
+| **2↔3 flipped at random** | 2 | 0.834 | 1.000 | 1.99 pp | 0.837 | **REFUTED** |
+| **systematic harshness spread** | 2 | 0.465 | 0.290 | **30.07 pp** | 0.865 | CANNOT VERIFY |
+| **independent random grades** | 0 | **−0.023** | −0.046 | 2.49 pp | **0.422** (chance 0.400) | — |
+| one instance short of a full set | 0 | — | — | — | — | that instance **excluded and named** |
+| only three instances | **2** | — | — | — | — | **CANNOT VERIFY**, `MIN_JUDGES=4` |
+
+Four things this establishes that an untested harness could not. **It reports total
+inconsistency as total inconsistency** (κ ≈ 0, overlap at chance). **It reports identity as
+identity** (κ = 1.000, judge sd 0.00, overlap 1.000). **The boundary detector points where
+the disagreement actually is** — it says CONFIRMED on a 1↔2-only perturbation and **REFUTED**
+on a 2↔3-only one, which is the negative control without which §5 item 2's claim could not
+be tested at all. And **fail-closed bites**: too few instances exits 2, an incomplete
+instance is excluded rather than silently averaged, and a CI straddling a band edge returns
+CANNOT VERIFY rather than the nearer band.
+
+### 5.2.3 Result 1 — grade agreement between instances, on identical items
+
+Arm A, 16 fresh instances, 20 learning points, 263 items, 56 instance pairs:
+
+| statistic | value | 95 % CI | verdict vs the pre-registered band |
+|---|---|---|---|
+| **quadratic-weighted κ**, mean over pairs | **0.915** | [0.882, 0.941] | **GRADED-USABLE** (≥ 0.60) |
+| **Cohen's κ on `grade ≥ 2`** (the screening decision) | **0.873** | [0.823, 0.916] | **PASS** (≥ 0.45) |
+| Krippendorff's α, interval metric | **0.921** | [0.887, 0.947] | above Krippendorff's own **0.800 "firm conclusions"** bar (P77 §3.5) |
+| exact agreement | 0.893 | [0.866, 0.923] | — |
+| **agreement within one grade** | **1.0000** | [1.000, 1.000] | — |
+
+Arm B agrees: κ_w **0.902** [0.831, 0.927], κ(≥2) 0.854, α 0.911.
+
+**Across all 9,586 paired comparisons in both arms, not one pair ever differed by more than
+a single grade.** No instance called a passage 3 that another called 1 or 0. The 4×4
+confusion matrix is strictly tri-diagonal.
+
+Per-instance grade-3 rates on identical items: **15.4 %–21.3 %** on panel A1 and
+**15.8 %–17.3 %** on panel A2 — against the 2.9 %–35.5 % that instance identity was blamed
+for.
+
+**And the label set actually in hand is reproducible.** Entering the original run's own
+judgements as an extra rater gives κ_w **0.897** [0.860, 0.923] over 18 raters. Original-
+versus-fresh pairs average κ_w **0.833** (range 0.765–0.901) against **0.915** (0.845–0.970)
+for fresh-versus-fresh — slightly lower, which is expected, because the original instance
+answered the identical *items* inside a different *batch* and so had different context. It
+is a real gap and it is small.
+
+### 5.2.4 Result 2 — how much of the 2.9 %–35.5 % spread was the judge
+
+| | |
+|---|---|
+| observed between-batch sd of grade-3 rate (§5 item 3) | **7.8 pp**, range width **32.6 pp** |
+| **judge-only sd, measured on identical items** | **1.53 pp**, 95 % CI **[0.80, 3.63]** |
+| **judge share of the between-batch VARIANCE** | **3.8 %**, 95 % CI **[1.1 %, 21.6 %]** |
+| content share — which learning points a batch contained | **96.2 %**, 95 % CI [78.4 %, 98.9 %] |
+| implied content-only between-batch sd | **7.65 pp** |
+| **range a judge-only effect would produce across 26 batches** | **6.0 pp**, CI [3.2, 14.4] — against the observed **32.6 pp** |
+
+**The twelvefold spread was the courses.** Roughly 6 pp of the 32.6 pp range is attributable
+to which instance judged; the other ~27 pp is which learning points it was handed. Some
+courses genuinely have no good passage in the corpus for their learning points, and that —
+not judge temperament — is what the spread was measuring.
+
+Entering the original label set as an extra rater raises the judge sd to 1.78 pp (share
+5.2 %), which is the more conservative of the two and still small.
+
+**The replacement warning, narrower than the one it replaces:** *absolute grade rates from
+this set carry a judge term of about ±1.5 pp on a batch of ~130 judgements. That is small
+enough to quote a rate with, and far too small to explain a difference of tens of points
+between courses. A large difference between two batches is a statement about their
+learning points.*
+
+### 5.2.5 Result 3 — where the disagreement actually is
+
+Of **9,586** paired comparisons, **1,047 (10.9 %)** disagree. Their composition:
+
+| boundary | share of all disagreement |
+|---|---|
+| 0 ↔ 1 (irrelevant vs related) | **18.5 %** |
+| **1 ↔ 2 (related vs relevant)** | **57.7 %** |
+| 2 ↔ 3 (relevant vs the passage) | 23.8 % |
+| more than one grade apart | **0.0 %** |
+
+Pairwise discordance at each cut, Arm A pooled: **1.56 %** at `≥1`, **6.17 %** at `≥2`,
+**2.94 %** at `≥3`. The `≥2` cut exceeds `≥1` by **+4.61 pp** [2.04, 7.20] and `≥3` by
+**+3.24 pp** [0.05, 6.23] — **CONFIRMED**, but the second leg only barely, and it is
+**CANNOT VERIFY** on panel A1 alone and on Arm B alone.
+
+**So §5 item 2 is half right and should be quoted at that strength.** The 1↔2 boundary
+**is** where most disagreement lives — 57.7 %, more than the other two boundaries combined
+— and that is the boundary a shortlist turns on, exactly as claimed. But *"carries **all**
+the difficulty"* is too strong: 23.8 % of disagreement is at 2↔3, and on the deep Arm B
+pools the 1↔2 cut is not separably worse than 0↔1. **§5 item 1's claim that the floor is
+grade 1 also needs qualifying**: grade 0 is used, and used consistently — the `≥1` cut is
+the *least* contested of the three — but its rate is strongly LP-dependent (0.7 %–3.7 % on
+one panel, 7.9 %–11.8 % on the other), which is the same content effect as §5.2.4.
+
+### 5.2.6 Result 4 — the decisive one: does any of this reach the 16-slot shortlist?
+
+The product is a **shortlist**, not a grade. Grade disagreement that does not move a
+candidate out of the top 16 costs an author nothing. Arm B measures this directly: each
+instance picks its best 16 from a real pool of 40.
+
+**A defect in the pre-registered statistic, found in the data and reported rather than
+absorbed.** On 4 of the 6 Arm B learning points an instance grades **fewer than 16**
+candidates at ≥ 2. Its top 16 is therefore *"everything I thought was worth a human's time,
+plus grade-1 filler"*, and the filler is chosen by a tie-break that is deliberately
+judge-independent (so that identical grade vectors give identical shortlists — the property
+that makes the `identical instances` red-proof row mean anything). Two instances then agree
+on the filler **for free**. A statistic that is partly free agreement is the *asserts less
+than it looks* shape, so it is reported four ways:
+
+| statistic | value | 95 % CI | reading |
+|---|---|---|---|
+| **S-A, as pre-registered** (shared tie-break) | **0.852** | [0.824, 0.881] | **STABLE** (band ≥ 0.69) |
+| S-A with a **judge-specific** tie-break (ties pay chance) | 0.769 | [0.680, 0.845] | **CANNOT VERIFY** — the lower bound straddles the 0.69 edge |
+| **marginal-preserving null** — each instance keeps its own grade profile, grades shuffled across candidates | **0.462** | [0.415, 0.531] | the honest floor for this data; it is **not** 16/40 = 0.400 |
+| **Jaccard of the `grade ≥ 2` sets** — tie-break free | **0.813** | [0.714, 0.902] | the statistic with neither artefact |
+| Jaccard of the `grade = 3` sets | 0.682 | [0.404, 0.950] | see below |
+| **S-B — recall of one instance's grade-3 items inside another's top 16** | **1.000** | [1.000, 1.000] | **CARRIES-BEST** |
+| S-C — same single best candidate | 0.767 / 1.000 by panel | — | reported, not a gate |
+
+Arm A at the matching selection fraction (top 5 of 14, f = 0.36 against production's
+16/40 = 0.40) agrees over 20 learning points: overlap **0.878** [0.844, 0.911], judge-specific
+tie-break 0.801, null 0.413, Jaccard(≥2) **0.868** [0.814, 0.912].
+
+**The number that matters, and its benchmark.** Two independent instances agree on **81 %**
+of the set they call *worth a human's time*, tie-break free. P77 §3.5 records the human
+comparator: Voorhees' TREC assessors overlapped at **Jaccard ≈ 0.30** on the relevant set,
+and system rankings survived at τ ≈ 0.94 anyway. **These machine instances agree with each
+other about 2.7× as closely as human assessors agreed with each other**, on the statistic
+the human number was measured with.
+
+**S-B's honest limit.** It came back at exactly 1.000, and its headroom is real: instances
+find only 0–4 grade-3s per 40-candidate pool, and 16 slots is a lot of room. It is not
+guaranteed — the red proof drove it to 0.846, 0.772 and 0.413 on the noisy, harshness-spread
+and random sets — but a ceiling reached this easily should be read as *"no instance ever
+pushed another's best passage out of a 16-slot list"* and not as a tight bound.
+
+**And the one place set agreement does NOT hold: the single pick.** The grade-3 sets overlap
+at Jaccard 0.682 with a CI of **[0.404, 0.950]** — too wide to act on — and per learning
+point the values are **0.85, 0.25, 1.00, 1.00, 0.85, 0.14**. On two of six, independent
+instances barely agree about *which* passage is *the* passage, while still agreeing about
+which 16 are worth reading. That is §3.1's operational reading, now measured rather than
+argued: **build the shortlist by machine, do not let the machine make the pick.**
+
+### 5.2.7 What this experiment CANNOT establish
+
+- **It measures reliability, not validity.** A machine judge audited machine judges. Every
+  number above says *the instances agree with each other*; not one says *they are right*.
+  **Only the operator's §4 calibration set can speak to validity**, and nothing here reduces
+  the need for it — if anything §5.2.3 sharpens it, because agreement this high means
+  §4's gates will be measuring the model's *bias*, which is the quantity a single instance
+  cannot see in itself.
+- **Every instance is the same model.** This is stochastic self-consistency, not judge
+  independence. A systematic error shared by all instances of `claude-opus-5` is invisible
+  here **by construction**, and κ_w = 0.915 is exactly what a shared systematic bias would
+  also look like.
+- **Arm B is 6 learning points.** The shortlist CIs are wide and the grade-3 Jaccard CI is
+  too wide to act on. Treat Arm B as a direct measurement of small n, not as an estimate
+  over the catalogue.
+- **The 26-batch partition was never recorded.** `silver_labels.json` carries no batch id —
+  a real gap, since it is the one field that would have made this decomposition trivial. The
+  decomposition anchors on the **reported** 7.8 pp. Reconstructions of the partition give
+  6.2–7.0 pp, which would raise the judge share to at most ~6 % — still small, and the
+  direction of the conclusion does not move.
+- **Nothing here touches §2.3's excerpt bias.** Long windows are still judged on a fraction
+  of their text, and all instances inherit that bias identically — which is precisely why
+  agreeing about it proves nothing about it.
+- **The per-panel run exits 2**, because the 1↔2-versus-2↔3 comparison straddles zero on 3
+  of the 4 panels. That is the fail-closed rule working, not a failure of the experiment.
+
+### 5.2.8 The bottom line for the authorised 16-per-LP production run
+
+> **Machine shortlisting is reliable enough to hand an author. Machine picking is not.**
+>
+> Handing an author **16 candidates chosen by one instance** is safe: a differently-seeded
+> instance would have chosen 81–85 % of the same set, would never have disagreed by more than
+> one grade about any of them, and never once pushed the other's best passage off the list.
+> The part that is **not** reliable is the last step — *which one of the 16* — where
+> independent instances agree at Jaccard 0.68 with a CI spanning 0.40 to 0.95. **That step
+> belongs to the author, and it is the same step §3.1 already reserved for the guilds on
+> doctrinal grounds.** The reliability finding and the doctrinal finding land on the same
+> boundary from opposite directions.
+
+Artefacts, reproduction commands and the pre-registration hashes:
+`~/dir/courses_v3/judge-consistency-2026-08-11/` (Appendix A). Counts and hashes only are
+committed here, as `docs/reports/clip-judge-consistency-2026-08-11.json`, per §6.
 
 ---
 
@@ -508,6 +737,12 @@ Human-facing excerpts are capped at **600 characters** per candidate, the estate
 **Phase 2 is a decision point, not a formality.** Every outcome including DISCARD is written down
 in advance, which is the only thing that makes the other outcomes mean anything.
 
+**§5.2 does not move phase 2 and must not be read as doing so.** The separating experiment
+shows the instances are consistent *with each other*; it says nothing about whether they are
+right. If anything it raises the value of the operator's 60–90 minutes, because at κ_w = 0.915
+between instances, the residual risk is a bias **shared by every instance**, and a shared bias
+is exactly what a human comparator — and only a human comparator — can see.
+
 ---
 
 ## Appendix A — reproduction
@@ -536,9 +771,40 @@ proposed `clip eval`). It is kept, with the label set, at:
 ~/dir/courses_v3/reports/answers-template.json
 ```
 
-Committed to `nwp/nwp` by this MR: **this proposal**, and
-`docs/reports/clip-silver-labels-2026-08-11.json` — counts, hashes and gate status only, with
-no rationale, no excerpt and no `preview` field, per §6.
+The §5.2 separating experiment is a sibling directory, same rights constraint:
+
+```
+~/dir/courses_v3/judge-consistency-2026-08-11/
+    PRE-REGISTRATION.md    thresholds + scorer hashes + the red-proof table, recorded
+                           with answers/ EMPTY, before any instance was launched
+    THRESHOLDS.md          the bands, and why each one is where it is
+    JUDGE-PROMPT.md        byte-identical to the silver run's (sha256 790bb029…)
+    build_consistency_packets.py   Arm A reproduced from unblinding_key.json (exits 2
+                           on any key-set mismatch); Arm B deepened to top-40
+    render_panel.py        the packet a judge instance reads
+    packets/panel_*.{json,md}      2 Arm A panels + 2 Arm B panels
+    answers/*.jsonl        26 fresh instances, 3,274 judgements  <- corpus-derived, stays here
+    make_redproof.py · redproof/   the 8 adversarial sets of §5.2.2
+    analyse.py             the pre-registered scorer (fail-closed; exit 2 CANNOT VERIFY)
+    analyse_pooled.py      pooling + the variance decomposition (defines no new band)
+    shortlist_null.py      the tie-break null and the tie-break-free Jaccards of §5.2.6
+    result_*.json · shortlist_null_*.json
+```
+
+**Re-running §5.2:**
+
+```
+cd ~/dir/courses_v3/judge-consistency-2026-08-11
+BOOT=1200 ./run_redproof.sh                       # the 8 rows of §5.2.2
+python3 analyse.py answers --boot=4000             # per panel; exit 2 (Q3 straddles) is expected
+python3 analyse_pooled.py answers --arm=A           # §5.2.3 and §5.2.4
+python3 shortlist_null.py answers --arm=B --k=16    # §5.2.6
+```
+
+Committed to `nwp/nwp` by this MR: **this proposal**,
+`docs/reports/clip-silver-labels-2026-08-11.json`, and
+`docs/reports/clip-judge-consistency-2026-08-11.json` — counts, coefficients, hashes and gate
+status only, with no rationale, no excerpt and no `preview` field, per §6.
 
 **Re-running the red proof:**
 
@@ -564,6 +830,9 @@ python3 score_calibration.py ~/dir/courses_v3/reports/answers.json
 - **No corpus text left the estate's own machines**, and nothing was written to `~/dir`'s
   build outputs, the catalogue, or any live tier.
 - **No `video:` block was read as truth, edited, or inferred from** (§7).
+- **No GPU work and no contention with the indexing agent** in the §5.2 follow-up either: it
+  is CPU-only, local-only, and read-only against `~/dir`. `pl server health --all` was run as
+  the standing preflight and returned HEALTHY on all three hosts; no remote host was touched.
 - **No claim that the current ranker is bad or that the hybrid is good.** §2.3's comparison is
   silver-labelled, single-judge, and un-calibrated until §4 runs. It is a hypothesis with a
   number attached, which is more than existed yesterday and less than a result.

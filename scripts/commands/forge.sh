@@ -52,6 +52,10 @@ PROBE_KEY="${NWP_FORGE_PROBE_KEY:-$HOME/.ssh/nwp-forge-probe}"
 LEGACY_KEY="${NWP_FORGE_LEGACY_KEY:-$HOME/.ssh/gitlab_linode}"
 ADMIN_TOKEN_FILE="${NWP_FORGE_ADMIN_TOKEN:-$HOME/.config/nwp/forge-admin.token}"
 ADMIN_REGISTRY_ID="gitlab_forge_admin"
+# Where a key snapshot lands. SSH PUBLIC keys are not secrets, but a machine→
+# identity map is, so it goes under private/ (its own repo) rather than the
+# engine tree, and the directory is 0700.
+KEY_BACKUP_DIR="${NWP_FORGE_KEY_BACKUP_DIR:-$NWP_DIR/private/forge-key-backups}"
 # Resolved from servers/<forge>/.nwp-server.yml, never hardcoded: a literal
 # internal FQDN in a tracked file is both a leak (the gitleaks operator ruleset
 # refuses it) and a lie waiting to happen if the forge ever moves.
@@ -174,6 +178,181 @@ _api_body() { printf '%s' "$1" | sed '$d'; }
 _is_admin() {
     local r; r="$(_api GET /application/settings)" || return 2
     [ "$(_api_code "$r")" = "200" ]
+}
+
+# Every WRITE on this plane goes through here first. Two separate facts, and
+# the second is the one that matters for a rehome: an SSH key deletion is only
+# safe because the API can put the key back, and a token that cannot administer
+# users is not that safety net. Refusing on "present" alone would be the
+# swallowed-verdict shape — a credential that exists is not a credential that
+# works.
+_require_admin() {
+    _admin_token_present || { _refuse_no_admin; return 2; }
+    if ! _is_admin; then
+        print_error "CANNOT VERIFY: the forge credential is present but not an instance admin"
+        echo "  looked in:   ${ADMIN_TOKEN_FILE}"
+        echo "  registry id: ${ADMIN_REGISTRY_ID}"
+        echo "  probe:       GET /application/settings (admin-only) did not return 200"
+        echo "  why it blocks a write: the API is the SAFETY NET for every key move — a key"
+        echo "               deleted from a user can always be restored through it. A token"
+        echo "               that cannot administer users is not that net, so the move would"
+        echo "               be one-way. Refusing while it is still reversible."
+        echo
+        print_hint "pl forge whoami   ·   pl secrets steps ${ADMIN_REGISTRY_ID}"
+        return 2
+    fi
+    return 0
+}
+
+_need_tool() { # tool  why
+    command -v "$1" >/dev/null 2>&1 && return 0
+    print_error "CANNOT VERIFY: '${1}' is not installed — ${2}"
+    return 2
+}
+
+################################################################################
+# Application plane — users, SSH keys, memberships (the ops#331 migration)
+################################################################################
+
+# → "<id>\t<username>"; 0 found · 1 no such user (a measured absence) ·
+#   2 could not ask. The three outcomes are kept apart deliberately: "the API
+#   said no such user" and "I could not reach the API" must never collapse into
+#   one refusal, because only the first is safe to act on.
+_resolve_user() { # user-or-id
+    local who="$1" r code body n
+    if [[ "$who" =~ ^[0-9]+$ ]]; then
+        r="$(_api GET "/users/${who}")" || return 2
+        code="$(_api_code "$r")"; body="$(_api_body "$r")"
+        [ "$code" = "404" ] && return 1
+        [ "$code" = "200" ] || { print_error "CANNOT VERIFY: GET /users/${who} returned HTTP ${code}" >&2; return 2; }
+        printf '%s\t%s\n' "$(jq -r '.id' <<<"$body")" "$(jq -r '.username' <<<"$body")"
+        return 0
+    fi
+    r="$(_api GET "/users?username=${who}")" || return 2
+    code="$(_api_code "$r")"; body="$(_api_body "$r")"
+    [ "$code" = "200" ] || { print_error "CANNOT VERIFY: GET /users?username=${who} returned HTTP ${code}" >&2; return 2; }
+    n="$(jq -r 'length' <<<"$body" 2>/dev/null)" || return 2
+    [ "$n" = "0" ] && return 1
+    printf '%s\t%s\n' "$(jq -r '.[0].id' <<<"$body")" "$(jq -r '.[0].username' <<<"$body")"
+    return 0
+}
+
+_keys_body() { # uid → the raw JSON array
+    local r code; r="$(_api GET "/users/${1}/keys")" || return 2
+    code="$(_api_code "$r")"
+    [ "$code" = "200" ] || { print_error "CANNOT VERIFY: GET /users/${1}/keys returned HTTP ${code}" >&2; return 2; }
+    _api_body "$r"
+}
+
+# The API does NOT return a fingerprint on this endpoint, so it is COMPUTED
+# from the blob — the same way ops#331's key→machine mapping had to be. A
+# fingerprint that cannot be computed is never silently blanked: the row
+# carries UNCOMPUTABLE and every match against it fails.
+_key_fingerprint() { # blob
+    local f fp
+    f="$(mktemp)"; printf '%s\n' "$1" > "$f"
+    fp="$(ssh-keygen -lf "$f" 2>/dev/null | awk '{print $2}')"
+    rm -f "$f"
+    [ -n "$fp" ] || { printf 'UNCOMPUTABLE'; return 1; }
+    printf '%s' "$fp"
+}
+
+_body_tsv() { # keys-json → id \t fingerprint \t title \t blob
+    local id title blob fp
+    while IFS=$'\t' read -r id title blob; do
+        [ -n "$id" ] || continue
+        fp="$(_key_fingerprint "$blob")" || true
+        printf '%s\t%s\t%s\t%s\n' "$id" "$fp" "$title" "$blob"
+    done < <(jq -r '.[] | [(.id|tostring), .title, .key] | @tsv' <<<"$1")
+}
+
+# A selector is a numeric KEY ID or a fingerprint (full, or a prefix, with or
+# without the SHA256: header). A prefix that matches more than one key is
+# AMBIGUOUS and is refused — picking the first would be the estate's worst
+# available failure mode on this verb.
+_match_keys() { # selector  tsv
+    local sel="$1" tsv="$2"
+    if [[ "$sel" =~ ^[0-9]+$ ]]; then
+        awk -F'\t' -v s="$sel" '$1==s' <<<"$tsv"
+    else
+        awk -F'\t' -v s="$sel" '$2!="UNCOMPUTABLE" && (index($2,s)==1 || index(substr($2,8),s)==1)' <<<"$tsv"
+    fi
+}
+
+_print_key_rows() { # tsv
+    local id fp title blob
+    printf '    %-5s %-52s %s\n' ID FINGERPRINT TITLE
+    while IFS=$'\t' read -r id fp title blob; do
+        [ -n "$id" ] || continue
+        printf '    %-5s %-52s %s\n' "$id" "$fp" "$title"
+    done <<<"$1"
+}
+
+_user_has_fp() { # uid  fingerprint → 0 present · 1 absent · 2 cannot verify
+    local body; body="$(_keys_body "$1")" || return 2
+    local tsv; tsv="$(_body_tsv "$body")"
+    awk -F'\t' -v f="$2" '$2==f{found=1} END{exit found?0:1}' <<<"$tsv"
+}
+
+# Writes go through these two so that EVERY caller — rehome, restore, rollback
+# — sends the same request and reads the same verdict.
+FORGE_LAST_CODE=""; FORGE_LAST_BODY=""
+_add_key() { # uid  title  blob
+    local bf rc r
+    bf="$(mktemp)"; chmod 600 "$bf"
+    jq -n --arg t "$2" --arg k "$3" '{title:$t, key:$k}' > "$bf"
+    r="$(_api POST "/users/${1}/keys" -H 'Content-Type: application/json' --data-binary "@${bf}")"; rc=$?
+    rm -f "$bf"
+    FORGE_LAST_CODE="$(_api_code "$r")"; FORGE_LAST_BODY="$(_api_body "$r")"
+    [ $rc -eq 0 ] || return 2
+    case "$FORGE_LAST_CODE" in 200|201) return 0 ;; esac
+    return 1
+}
+_del_key() { # uid  keyid
+    local r rc
+    r="$(_api DELETE "/users/${1}/keys/${2}")"; rc=$?
+    FORGE_LAST_CODE="$(_api_code "$r")"; FORGE_LAST_BODY="$(_api_body "$r")"
+    [ $rc -eq 0 ] || return 2
+    case "$FORGE_LAST_CODE" in 200|204) return 0 ;; esac
+    return 1
+}
+
+# The snapshot. Everything a rehome could destroy is in here BEFORE anything is
+# destroyed, in a form `pl forge keys restore` can put back without a human
+# reading JSON.
+_write_backup() { # uid  username  outfile  keys-json
+    local uid="$1" uname="$2" out="$3" body="$4"
+    local dir; dir="$(dirname "$out")"
+    mkdir -p "$dir" 2>/dev/null || { print_error "CANNOT VERIFY: cannot create ${dir}"; return 2; }
+    chmod 700 "$dir" 2>/dev/null || true
+    local fps="{}" id fp title blob
+    while IFS=$'\t' read -r id fp title blob; do
+        [ -n "$id" ] || continue
+        fps="$(jq --arg k "$id" --arg v "$fp" '. + {($k):$v}' <<<"$fps")"
+    done < <(_body_tsv "$body")
+    jq --argjson fp "$fps" \
+       --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg host "${FORGE_API_HOST:-unknown}" \
+       --argjson uid "$uid" --arg uname "$uname" \
+       '{schema:"nwp.forge.key-backup/1", taken_at:$ts, api_host:$host,
+         user:{id:$uid, username:$uname},
+         keys:[ .[] | {id, title, key, created_at, fingerprint_sha256:($fp[(.id|tostring)] // null)} ]}' \
+       <<<"$body" > "$out" || { print_error "CANNOT VERIFY: could not write ${out}"; return 2; }
+    chmod 600 "$out" 2>/dev/null || true
+    return 0
+}
+
+# Printed on every rehome, dry-run and execute alike. An operator watching a
+# step whose middle is "this key authenticates to nothing" is entitled to know
+# what is NOT at stake — and it was measured, not assumed (2026-08-11).
+_print_not_at_risk() {
+    echo
+    print_info "NOT AT RISK — shell access to the forge box"
+    echo "    ~/.ssh/gitlab_linode authenticates to gitlab@<forge> through that box's own"
+    echo "    ~gitlab/.ssh/authorized_keys, which is a DIFFERENT plane from a GitLab user's"
+    echo "    SSH keys. Removing a key from a GitLab USER cannot remove box administration,"
+    echo "    and this verb never touches authorized_keys. If everything below fails, the"
+    echo "    box is still reachable and the API can still restore the key."
 }
 
 ################################################################################
@@ -326,13 +505,480 @@ _read_only_api() { # description  path
     _api_body "$r"
 }
 
+# ops#331 rehomes met's key to a `met` service user — and there is no `met`
+# user. This is the verb that makes step 2 of the migration possible without an
+# operator browser session. No password is ever generated, printed or sent:
+# `reset_password` makes GitLab mail a set-password link, so there is no
+# credential here for this process to leak.
+cmd_user_create() { # <username> --name=… --email=… [--admin] [--execute] [--yes]
+    local uname="" name="" email="" admin=0 execute=0 yes=0 a
+    for a in "$@"; do
+        case "$a" in
+            --name=*)  name="${a#--name=}" ;;
+            --email=*) email="${a#--email=}" ;;
+            --admin)   admin=1 ;;
+            --execute) execute=1 ;;
+            --yes)     yes=1 ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  [ -z "$uname" ] && uname="$a" || { print_error "unexpected argument: $a"; return 2; } ;;
+        esac
+    done
+    [ -n "$uname" ] || { print_error "usage: pl forge user create <username> --name='…' --email='…' [--admin] [--execute]"; return 2; }
+    _need_tool jq "the API speaks JSON" || return 2
+    _require_admin || return 2
+    if [ -z "$name" ] || [ -z "$email" ]; then
+        print_error "REFUSED: --name and --email are both required — this verb does not invent an identity"
+        print_hint "pl forge user create ${uname} --name='${uname} (service account)' --email='${uname}@…' --execute"
+        return 2
+    fi
+    local u rc; u="$(_resolve_user "$uname")"; rc=$?
+    [ $rc -eq 2 ] && return 2
+    if [ $rc -eq 0 ]; then
+        print_error "REFUSED: user '${uname}' already exists (id $(cut -f1 <<<"$u")) — nothing was changed"
+        return 1
+    fi
+    print_header "create forge user '${uname}'"
+    printf '  name    %s\n  email   %s\n  admin   %s\n  password  none is set or sent — GitLab mails a set-password link\n' \
+        "$name" "$email" "$( [ "$admin" -eq 1 ] && echo YES || echo no )"
+    if [ "$admin" -eq 1 ]; then
+        print_warning "an ADMIN user is being requested — ADR-0038 scopes admin to ONE bot (${ADMIN_REGISTRY_ID})."
+    fi
+    if [ "$execute" -eq 0 ]; then print_info "DRY RUN — nothing sent. Re-run with --execute."; return 0; fi
+    if [ "$yes" -eq 0 ]; then
+        local typed; printf 'Type the username (%s) to confirm creation: ' "$uname"; read -r typed
+        [ "$typed" = "$uname" ] || { echo "Confirmation did not match — nothing was created."; return 1; }
+    fi
+    local bf r code body
+    bf="$(mktemp)"; chmod 600 "$bf"
+    jq -n --arg u "$uname" --arg n "$name" --arg e "$email" --argjson ad "$admin" \
+       '{username:$u, name:$n, email:$e, admin:($ad==1), reset_password:true, skip_confirmation:true}' > "$bf"
+    r="$(_api POST /users -H 'Content-Type: application/json' --data-binary "@${bf}")"; rc=$?
+    rm -f "$bf"
+    [ $rc -eq 0 ] || { print_error "CANNOT VERIFY: the request to create ${uname} did not complete"; return 2; }
+    code="$(_api_code "$r")"; body="$(_api_body "$r")"
+    case "$code" in 200|201) ;; *) print_error "create FAILED (HTTP ${code}) — ${body}"; return 1 ;; esac
+    # Verify by re-reading, not by trusting the 201.
+    u="$(_resolve_user "$uname")" || { print_error "VERIFY FAILED: the API reported ${code} but ${uname} is not resolvable"; return 1; }
+    print_success "created and VERIFIED: ${uname} (id $(cut -f1 <<<"$u"))"
+    print_hint "give it access:  pl forge members add <group|project> ${uname} --level=reporter --execute"
+    return 0
+}
+
 cmd_users() {
     case "${1:-list}" in
         list) _read_only_api "users" "/users?per_page=50&without_project_bots=true" ;;
         show) [ -n "${2:-}" ] || { print_error "usage: pl forge users show <username>"; return 2; }
               _read_only_api "user ${2}" "/users?username=${2}" ;;
-        *) print_error "usage: pl forge users list|show <username>"; return 2 ;;
+        create) shift; cmd_user_create "$@" ;;
+        *) print_error "usage: pl forge user list|show <username>|create <username> --name=… --email=…"; return 2 ;;
     esac
+}
+
+_default_backup_path() { # username
+    printf '%s/%s-%s.json' "$KEY_BACKUP_DIR" "$1" "$(date -u +%Y%m%dT%H%M%SZ)"
+}
+
+# Shared front door for every keys verb that names a user: resolve, or refuse
+# in a way that says which of the three things went wrong.
+# NOTE the >&2 on every message: this helper is called inside $( ), so anything
+# it writes to stdout is CAPTURED as the resolved user instead of reaching the
+# operator. The first draft printed the "create it first" hint to stdout and it
+# vanished — the refusal was correct and invisible, which on this verb is the
+# same as being wrong.
+_keys_user_or_refuse() { # user  → prints "id\tusername"
+    local who="$1" u rc
+    u="$(_resolve_user "$who")"; rc=$?
+    if [ $rc -eq 1 ]; then
+        print_error "REFUSED: no such user '${who}' on the forge — nothing has been touched"
+        print_hint "create it first:  pl forge user create ${who} --name='…' --email='…' --execute" >&2
+        return 1
+    fi
+    [ $rc -eq 0 ] || return 2
+    printf '%s' "$u"
+}
+
+cmd_keys_backup() { # [user] [--out=FILE]
+    local who="root" out="" a
+    for a in "$@"; do
+        case "$a" in
+            --out=*) out="${a#--out=}" ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  who="$a" ;;
+        esac
+    done
+    _need_tool jq "the backup is JSON" || return 2
+    _need_tool ssh-keygen "fingerprints are computed from the key blob" || return 2
+    _require_admin || return 2
+    local u rc; u="$(_keys_user_or_refuse "$who")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    local uid uname; IFS=$'\t' read -r uid uname <<<"$u"
+    local body; body="$(_keys_body "$uid")" || return 2
+    [ -n "$out" ] || out="$(_default_backup_path "$uname")"
+    _write_backup "$uid" "$uname" "$out" "$body" || return 2
+    print_success "backed up $(jq -r '.keys|length' "$out") key(s) of ${uname} (id ${uid})"
+    echo "  file: ${out}"
+    print_hint "restore any of them with:  pl forge keys restore ${out} --key-id=<id> --execute"
+    return 0
+}
+
+cmd_keys_verify() { # <user> <selector>
+    local who="${1:-}" sel="${2:-}"
+    [ -n "$who" ] && [ -n "$sel" ] || { print_error "usage: pl forge keys verify <user> <fingerprint|key-id>"; return 2; }
+    _need_tool jq "the API speaks JSON" || return 2
+    _need_tool ssh-keygen "fingerprints are computed from the key blob" || return 2
+    _require_admin || return 2
+    local u rc; u="$(_keys_user_or_refuse "$who")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    local uid uname; IFS=$'\t' read -r uid uname <<<"$u"
+    local body tsv hits n
+    body="$(_keys_body "$uid")" || return 2
+    tsv="$(_body_tsv "$body")"
+    hits="$(_match_keys "$sel" "$tsv")"
+    n="$(printf '%s' "$hits" | grep -c . || true)"
+    if [ "$n" = "0" ]; then
+        print_error "NOT on ${uname} (id ${uid}): no key matching '${sel}'"
+        [ -n "$tsv" ] && { echo "  what ${uname} does hold:"; _print_key_rows "$tsv"; }
+        return 1
+    fi
+    print_success "PRESENT on ${uname} (id ${uid}) — ${n} matching key(s)"
+    _print_key_rows "$hits"
+    return 0
+}
+
+cmd_keys_add() { # <user> --key-file=F [--title=T] [--execute] [--yes]
+    local who="" kf="" title="" execute=0 yes=0 a
+    for a in "$@"; do
+        case "$a" in
+            --key-file=*) kf="${a#--key-file=}" ;;
+            --title=*)    title="${a#--title=}" ;;
+            --execute)    execute=1 ;;
+            --yes)        yes=1 ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  [ -z "$who" ] && who="$a" || { print_error "unexpected argument: $a"; return 2; } ;;
+        esac
+    done
+    [ -n "$who" ] && [ -n "$kf" ] || { print_error "usage: pl forge keys add <user> --key-file=<pubkey> [--title=…] [--execute]"; return 2; }
+    [ -r "$kf" ] || { print_error "CANNOT VERIFY: cannot read ${kf}"; return 2; }
+    _need_tool jq "the API speaks JSON" || return 2
+    _need_tool ssh-keygen "fingerprints are computed from the key blob" || return 2
+    _require_admin || return 2
+    local u rc; u="$(_keys_user_or_refuse "$who")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    local uid uname; IFS=$'\t' read -r uid uname <<<"$u"
+    local blob fp; blob="$(head -1 "$kf")"
+    fp="$(_key_fingerprint "$blob")" || { print_error "CANNOT VERIFY: ${kf} is not a public key ssh-keygen can read"; return 2; }
+    [ -n "$title" ] || title="$(awk '{print $3}' <<<"$blob")"
+    [ -n "$title" ] || title="added by pl forge"
+    printf '  add %s\n  to  %s (id %s) as "%s"\n' "$fp" "$uname" "$uid" "$title"
+    if [ "$execute" -eq 0 ]; then print_info "DRY RUN — nothing sent. Re-run with --execute."; return 0; fi
+    if [ "$yes" -eq 0 ]; then
+        local typed; printf 'Type the username (%s) to confirm: ' "$uname"; read -r typed
+        [ "$typed" = "$uname" ] || { echo "Confirmation did not match — nothing was changed."; return 1; }
+    fi
+    if _add_key "$uid" "$title" "$blob" && _user_has_fp "$uid" "$fp"; then
+        print_success "added and VERIFIED on ${uname}"; return 0
+    fi
+    print_error "add FAILED (HTTP ${FORGE_LAST_CODE}) — ${FORGE_LAST_BODY}"
+    return 1
+}
+
+cmd_keys_delete() { # <user> <selector> [--execute] [--yes] [--no-backup]
+    local who="" sel="" execute=0 yes=0 a
+    for a in "$@"; do
+        case "$a" in
+            --execute) execute=1 ;;
+            --yes)     yes=1 ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  if   [ -z "$who" ]; then who="$a"
+                elif [ -z "$sel" ]; then sel="$a"
+                else print_error "unexpected argument: $a"; return 2; fi ;;
+        esac
+    done
+    [ -n "$who" ] && [ -n "$sel" ] || { print_error "usage: pl forge keys delete <user> <fingerprint|key-id> [--execute]"; return 2; }
+    _need_tool jq "the API speaks JSON" || return 2
+    _need_tool ssh-keygen "fingerprints are computed from the key blob" || return 2
+    _require_admin || return 2
+    local u rc; u="$(_keys_user_or_refuse "$who")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    local uid uname; IFS=$'\t' read -r uid uname <<<"$u"
+    local body tsv hits n
+    body="$(_keys_body "$uid")" || return 2
+    tsv="$(_body_tsv "$body")"
+    hits="$(_match_keys "$sel" "$tsv")"
+    n="$(printf '%s' "$hits" | grep -c . || true)"
+    [ "$n" = "0" ] && { print_error "REFUSED: no key on ${uname} matches '${sel}'"; _print_key_rows "$tsv"; return 1; }
+    [ "$n" -gt 1 ] && { print_error "AMBIGUOUS: '${sel}' matches ${n} keys on ${uname} — refusing to pick one"; _print_key_rows "$hits"; return 2; }
+    local kid fp title blob; IFS=$'\t' read -r kid fp title blob <<<"$hits"
+    printf '  delete key %s "%s"\n  from       %s (id %s)\n  %s\n' "$kid" "$title" "$uname" "$uid" "$fp"
+    if [ "$execute" -eq 0 ]; then print_info "DRY RUN — nothing sent. Re-run with --execute."; return 0; fi
+    local bk; bk="$(_default_backup_path "$uname")"
+    _write_backup "$uid" "$uname" "$bk" "$body" || return 2
+    echo "  backup: ${bk}"
+    if [ "$yes" -eq 0 ]; then
+        local typed; printf 'Type the username (%s) to confirm deletion: ' "$uname"; read -r typed
+        [ "$typed" = "$uname" ] || { echo "Confirmation did not match — nothing was changed."; return 1; }
+    fi
+    if _del_key "$uid" "$kid"; then
+        print_success "deleted — restore with:  pl forge keys restore ${bk} --key-id=${kid} --execute"
+        return 0
+    fi
+    print_error "delete FAILED (HTTP ${FORGE_LAST_CODE}) — nothing was changed"
+    return 1
+}
+
+cmd_keys_restore() { # <backup.json> [--user=U] [--key-id=N|--all] [--execute] [--yes]
+    local file="" who="" kid="" all=0 execute=0 yes=0 a
+    for a in "$@"; do
+        case "$a" in
+            --user=*)   who="${a#--user=}" ;;
+            --key-id=*) kid="${a#--key-id=}" ;;
+            --all)      all=1 ;;
+            --execute)  execute=1 ;;
+            --yes)      yes=1 ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  [ -z "$file" ] && file="$a" || { print_error "unexpected argument: $a"; return 2; } ;;
+        esac
+    done
+    [ -n "$file" ] || { print_error "usage: pl forge keys restore <backup.json> [--key-id=N|--all] [--execute]"; return 2; }
+    [ -r "$file" ] || { print_error "CANNOT VERIFY: cannot read ${file}"; return 2; }
+    [ -n "$kid" ] || [ "$all" -eq 1 ] || { print_error "usage: name what to restore — --key-id=<id> or --all"; return 2; }
+    _need_tool jq "the backup is JSON" || return 2
+    _need_tool ssh-keygen "fingerprints are computed from the key blob" || return 2
+    jq -e '.schema=="nwp.forge.key-backup/1"' "$file" >/dev/null 2>&1 || {
+        print_error "CANNOT VERIFY: ${file} is not an nwp.forge.key-backup/1 snapshot"; return 2; }
+    _require_admin || return 2
+    [ -n "$who" ] || who="$(jq -r '.user.username' "$file")"
+    local u rc; u="$(_keys_user_or_refuse "$who")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    local uid uname; IFS=$'\t' read -r uid uname <<<"$u"
+
+    local rows
+    if [ "$all" -eq 1 ]; then rows="$(jq -r '.keys[] | [(.id|tostring), .title, .key] | @tsv' "$file")"
+    else rows="$(jq -r --arg i "$kid" '.keys[] | select((.id|tostring)==$i) | [(.id|tostring), .title, .key] | @tsv' "$file")"; fi
+    [ -n "$rows" ] || { print_error "REFUSED: ${file} holds no key with id ${kid}"; return 1; }
+
+    print_header "restore key(s) from ${file} → ${uname} (id ${uid})"
+    local id title blob fp done_n=0 skip_n=0 fail_n=0
+    while IFS=$'\t' read -r id title blob; do
+        [ -n "$id" ] || continue
+        fp="$(_key_fingerprint "$blob")" || { print_error "  key ${id}: unreadable blob — skipped"; fail_n=$((fail_n+1)); continue; }
+        if _user_has_fp "$uid" "$fp"; then
+            printf '  %-5s %s  ALREADY PRESENT\n' "$id" "$fp"; skip_n=$((skip_n+1)); continue
+        fi
+        printf '  %-5s %s  "%s"\n' "$id" "$fp" "$title"
+        [ "$execute" -eq 0 ] && continue
+        if _add_key "$uid" "$title" "$blob" && _user_has_fp "$uid" "$fp"; then
+            print_success "  restored and VERIFIED on ${uname}"; done_n=$((done_n+1))
+        else
+            print_error "  FAILED (HTTP ${FORGE_LAST_CODE}) — ${FORGE_LAST_BODY}"; fail_n=$((fail_n+1))
+        fi
+    done <<<"$rows"
+
+    if [ "$execute" -eq 0 ]; then
+        print_info "DRY RUN — nothing sent. Re-run with --execute."
+        return 0
+    fi
+    printf '\n  %s restored, %s already present, %s failed\n' "$done_n" "$skip_n" "$fail_n"
+    [ "$fail_n" -eq 0 ] || return 1
+    return 0
+}
+
+################################################################################
+# rehome — the ops#331 migration, as ONE verb
+#
+# WHY IT IS ONE VERB AND NOT "delete then add".
+# GitLab enforces SSH-key uniqueness INSTANCE-WIDE. Measured 2026-08-11:
+# POSTing root's key blob to another user answers
+#   {"message":{"fingerprint_sha256":["has already been taken"]}}
+# so the safe order — add to the new home, confirm it works, then remove from
+# the old — IS NOT AVAILABLE on this API. The move is necessarily
+# DELETE-then-ADD, and between those two calls the key authenticates to no
+# account at all. That window is the whole risk, so it belongs inside one verb
+# that owns it, rather than in a session's shell where the recovery step is
+# whatever the operator can remember at the time.
+#
+# HOW THE WINDOW IS MINIMISED
+#   * Everything that can fail early is done early: tool checks, the ADMIN
+#     probe, both user resolutions, both key lists, the fingerprint match, the
+#     backup file, the typed confirm. By the time the DELETE is sent, the only
+#     remaining unknowns are the two HTTP calls themselves.
+#   * The window is literally two adjacent statements — no prompt, no file I/O,
+#     no resolution between them (tests/unit/test-forge-keys-rehome.bats 2b
+#     asserts the two requests are adjacent in the request log).
+#   * A signal inside the window (Ctrl-C, SIGTERM) is trapped and rolls back.
+#   * If the process is killed outright (SIGKILL, power loss) the backup file
+#     written before the DELETE is the recovery, and its path is printed BEFORE
+#     the window opens, not only afterwards.
+################################################################################
+
+_REHOME_IN_WINDOW=0
+_rehome_panic() {
+    [ "$_REHOME_IN_WINDOW" -eq 1 ] || exit 130
+    echo
+    print_warning "INTERRUPTED INSIDE THE WINDOW — attempting rollback before exiting"
+    if _add_key "$_RH_SRC_ID" "$_RH_TITLE" "$_RH_BLOB" && _user_has_fp "$_RH_SRC_ID" "$_RH_FP"; then
+        print_success "ROLLED BACK — the key is back on ${_RH_SRC_NAME} (verified)"
+        exit 1
+    fi
+    print_error "ROLLBACK FAILED — the key authenticates to NO account right now"
+    echo "  backup:  ${_RH_BACKUP}"
+    echo "  repair:  pl forge keys restore ${_RH_BACKUP} --key-id=${_RH_KEY_ID} --execute"
+    exit 1
+}
+
+cmd_keys_rehome() { # <selector> --to=<user> [--from=<user>] [--title=…] [--execute] [--yes]
+    local sel="" to="" from="root" title="" execute=0 yes=0 a
+    for a in "$@"; do
+        case "$a" in
+            --to=*)    to="${a#--to=}" ;;
+            --from=*)  from="${a#--from=}" ;;
+            --title=*) title="${a#--title=}" ;;
+            --execute) execute=1 ;;
+            --yes)     yes=1 ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  [ -z "$sel" ] && sel="$a" || { print_error "unexpected argument: $a"; return 2; } ;;
+        esac
+    done
+    [ -n "$sel" ] && [ -n "$to" ] || {
+        print_error "usage: pl forge keys rehome <fingerprint|key-id> --to=<user> [--from=<user>] [--title=…] [--execute]"
+        print_hint "the source defaults to 'root' — the account ops#331 is about"
+        return 2; }
+
+    _need_tool jq "the API speaks JSON" || return 2
+    _need_tool ssh-keygen "the fingerprint is computed from the key blob, not returned by the API" || return 2
+    _require_admin || return 2
+
+    # ---- resolution, both ends, BEFORE anything is touched --------------
+    local u rc src_id src_name dst_id dst_name
+    u="$(_keys_user_or_refuse "$from")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    IFS=$'\t' read -r src_id src_name <<<"$u"
+    u="$(_keys_user_or_refuse "$to")";  rc=$?; [ $rc -eq 0 ] || return $rc
+    IFS=$'\t' read -r dst_id dst_name <<<"$u"
+    [ "$src_id" != "$dst_id" ] || { print_error "REFUSED: source and target are the same user (${src_name})"; return 2; }
+
+    local src_body dst_body src_tsv dst_tsv
+    src_body="$(_keys_body "$src_id")" || return 2
+    dst_body="$(_keys_body "$dst_id")" || return 2
+    src_tsv="$(_body_tsv "$src_body")"
+    dst_tsv="$(_body_tsv "$dst_body")"
+
+    local hits n dhits dn
+    hits="$(_match_keys "$sel" "$src_tsv")"; n="$(printf '%s' "$hits" | grep -c . || true)"
+    dhits="$(_match_keys "$sel" "$dst_tsv")"; dn="$(printf '%s' "$dhits" | grep -c . || true)"
+
+    if [ "$n" = "0" ] && [ "$dn" != "0" ]; then
+        print_success "nothing to do: '${sel}' is already on ${dst_name} (id ${dst_id})"
+        _print_key_rows "$dhits"
+        print_hint "confirm independently:  pl forge keys verify ${dst_name} ${sel}"
+        return 0
+    fi
+    if [ "$n" = "0" ]; then
+        print_error "REFUSED: no key on ${src_name} matches '${sel}' — nothing has been touched"
+        echo "  what ${src_name} (id ${src_id}) holds:"
+        _print_key_rows "$src_tsv"
+        return 1
+    fi
+    if [ "$n" -gt 1 ]; then
+        print_error "AMBIGUOUS: '${sel}' matches ${n} keys on ${src_name} — refusing to pick one"
+        _print_key_rows "$hits"
+        print_hint "name a full fingerprint or the numeric key id"
+        return 2
+    fi
+
+    local key_id fp orig_title blob new_title
+    IFS=$'\t' read -r key_id fp orig_title blob <<<"$hits"
+    new_title="${title:-$orig_title}"
+
+    # ---- the impact manifest -------------------------------------------
+    print_header "rehome ONE SSH key: ${src_name} → ${dst_name}"
+    printf '  key id      %s\n' "$key_id"
+    printf '  title       "%s"%s\n' "$orig_title" "$( [ "$new_title" = "$orig_title" ] || printf '  → "%s"' "$new_title" )"
+    printf '  fingerprint %s\n' "$fp"
+    printf '  FROM        %s (id %s) — loses this key\n' "$src_name" "$src_id"
+    printf '  TO          %s (id %s) — gains it\n' "$dst_name" "$dst_id"
+    echo
+    print_warning "THE WINDOW: GitLab enforces key uniqueness instance-wide, so this is DELETE"
+    echo "    then ADD — there is no add-first order. Between the two calls this key"
+    echo "    authenticates to NO GitLab account. Any failure inside the window rolls back"
+    echo "    to ${src_name} and re-reads the key list to prove it."
+    _print_not_at_risk
+
+    if [ "$execute" -eq 0 ]; then
+        echo
+        print_info "DRY RUN — nothing sent, no backup written. Re-run with --execute."
+        printf '  backup would be written to: %s\n' "$(_default_backup_path "$src_name")"
+        return 0
+    fi
+
+    # ---- typed confirm --------------------------------------------------
+    if [ "$yes" -eq 0 ]; then
+        local typed
+        printf '\nType the transition (%s->%s) to proceed: ' "$src_name" "$dst_name"
+        read -r typed
+        if [ "$typed" != "${src_name}->${dst_name}" ]; then
+            echo "Confirmation did not match — NOTHING was changed."
+            return 1
+        fi
+    fi
+
+    # ---- the backup, BEFORE the window ---------------------------------
+    local backup; backup="$(_default_backup_path "$src_name")"
+    _write_backup "$src_id" "$src_name" "$backup" "$src_body" || {
+        print_error "REFUSED: could not write the snapshot — a rehome without a restorable backup is not allowed"
+        return 2; }
+    grep -qF "$blob" "$backup" || {
+        print_error "REFUSED: the snapshot at ${backup} does not contain the key blob — refusing to proceed"
+        return 2; }
+    print_success "snapshot written: ${backup}"
+    printf '  if this process dies mid-move, THIS is the repair:\n    pl forge keys restore %s --key-id=%s --execute\n' "$backup" "$key_id"
+
+    _RH_SRC_ID="$src_id"; _RH_SRC_NAME="$src_name"; _RH_TITLE="$orig_title"
+    _RH_BLOB="$blob"; _RH_FP="$fp"; _RH_BACKUP="$backup"; _RH_KEY_ID="$key_id"
+
+    # ======================= THE WINDOW OPENS ===========================
+    _REHOME_IN_WINDOW=1
+    trap _rehome_panic INT TERM HUP
+    local fail_reason=""
+    if ! _del_key "$src_id" "$key_id"; then
+        _REHOME_IN_WINDOW=0; trap - INT TERM HUP
+        print_error "DELETE failed (HTTP ${FORGE_LAST_CODE}) — nothing was changed; the key is still on ${src_name}"
+        echo "  ${FORGE_LAST_BODY}"
+        return 1
+    fi
+    if _add_key "$dst_id" "$new_title" "$blob"; then
+        if _user_has_fp "$dst_id" "$fp"; then
+            _REHOME_IN_WINDOW=0; trap - INT TERM HUP
+            # ==================== THE WINDOW CLOSES =====================
+            print_success "VERIFIED — the key is now on ${dst_name} (id ${dst_id}) and gone from ${src_name}"
+            echo "  re-read of /users/${dst_id}/keys matched ${fp}"
+            echo "  snapshot kept: ${backup}"
+            print_hint "confirm independently:  pl forge keys verify ${dst_name} ${fp}"
+            return 0
+        fi
+        fail_reason="VERIFY FAILED: the ADD returned HTTP ${FORGE_LAST_CODE} but ${fp} is NOT in ${dst_name}'s key list"
+    else
+        fail_reason="ADD FAILED (HTTP ${FORGE_LAST_CODE}): ${FORGE_LAST_BODY}"
+    fi
+
+    # ---- rollback -------------------------------------------------------
+    print_error "$fail_reason"
+    print_warning "ROLLING BACK: re-adding the key to ${src_name}…"
+    if _add_key "$src_id" "$orig_title" "$blob" && _user_has_fp "$src_id" "$fp"; then
+        _REHOME_IN_WINDOW=0; trap - INT TERM HUP
+        print_success "ROLLED BACK — the key is back on ${src_name} (id ${src_id}), verified by re-reading its key list"
+        echo "  the estate is exactly as it was before this command ran."
+        echo "  snapshot kept: ${backup}"
+        return 1
+    fi
+    _REHOME_IN_WINDOW=0; trap - INT TERM HUP
+    echo
+    print_error "ROLLBACK FAILED — the key authenticates to NO account right now"
+    echo "  It was removed from ${src_name} and could not be placed on ${dst_name} OR put back."
+    echo "  fingerprint: ${fp}"
+    echo "  last API code: ${FORGE_LAST_CODE}"
+    echo "  snapshot:    ${backup}"
+    echo
+    print_warning "REPAIR IT WITH THIS, EXACTLY:"
+    echo "    pl forge keys restore ${backup} --key-id=${key_id} --execute"
+    echo "  then confirm:"
+    echo "    pl forge keys verify ${src_name} ${fp}"
+    _print_not_at_risk
+    return 1
 }
 
 cmd_keys() {
@@ -340,22 +986,101 @@ cmd_keys() {
         list) local u="${2:-}"
               if [ -n "$u" ]; then _read_only_api "keys of ${u}" "/users/${u}/keys"
               else _read_only_api "own keys" "/user/keys"; fi ;;
-        add|delete)
-            _admin_token_present || { _refuse_no_admin; return 2; }
-            print_error "not yet implemented: \`pl forge keys ${1}\` is the ops#331 rehoming step"
-            print_hint "it lands with the credential (ADR-0038 §Migration step 3), red-then-green, with a typed confirm"
-            return 2 ;;
-        *) print_error "usage: pl forge keys list [<user>] | add | delete"; return 2 ;;
+        backup)  shift; cmd_keys_backup "$@" ;;
+        verify)  shift; cmd_keys_verify "$@" ;;
+        rehome)  shift; cmd_keys_rehome "$@" ;;
+        restore) shift; cmd_keys_restore "$@" ;;
+        add)     shift; cmd_keys_add "$@" ;;
+        delete)  shift; cmd_keys_delete "$@" ;;
+        *) print_error "usage: pl forge keys list|backup|verify|rehome|restore|add|delete"; return 2 ;;
     esac
+}
+
+# A path is a project or a group, and guessing wrong writes a membership to the
+# wrong object. Ask, in that order, and refuse if neither answers.
+_resolve_namespace() { # path → "projects|groups\t<encoded>"
+    local enc="${1//\//%2F}" r code
+    r="$(_api GET "/projects/${enc}")" || return 2
+    code="$(_api_code "$r")"
+    [ "$code" = "200" ] && { printf 'projects\t%s\n' "$enc"; return 0; }
+    r="$(_api GET "/groups/${enc}")" || return 2
+    code="$(_api_code "$r")"
+    [ "$code" = "200" ] && { printf 'groups\t%s\n' "$enc"; return 0; }
+    return 1
+}
+
+_access_level() { # word → number, or refuse
+    case "$1" in
+        reporter)   printf 20 ;;
+        developer)  printf 30 ;;
+        maintainer) printf 40 ;;
+        *) return 1 ;;
+    esac
+}
+
+cmd_members_add() { # <project|group> <user> --level=… [--execute] [--yes]
+    local where="" who="" level="" execute=0 yes=0 a
+    for a in "$@"; do
+        case "$a" in
+            --level=*) level="${a#--level=}" ;;
+            --execute) execute=1 ;;
+            --yes)     yes=1 ;;
+            -*) print_error "Unknown option: $a"; return 2 ;;
+            *)  if   [ -z "$where" ]; then where="$a"
+                elif [ -z "$who" ];   then who="$a"
+                else print_error "unexpected argument: $a"; return 2; fi ;;
+        esac
+    done
+    [ -n "$where" ] && [ -n "$who" ] || { print_error "usage: pl forge members add <project|group> <user> --level=reporter|developer|maintainer [--execute]"; return 2; }
+    _need_tool jq "the API speaks JSON" || return 2
+    _require_admin || return 2
+    local lvl
+    if ! lvl="$(_access_level "$level")"; then
+        print_error "REFUSED: --level must be one of reporter | developer | maintainer (got '${level:-none}')"
+        echo "  guest is below anything ops#331 needs; owner and admin are NOT grantable here —"
+        echo "  ADR-0038 keeps instance-level privilege to the one declared bot."
+        return 2
+    fi
+    local ns rc; ns="$(_resolve_namespace "$where")"; rc=$?
+    [ $rc -eq 2 ] && return 2
+    if [ $rc -eq 1 ]; then
+        print_error "CANNOT VERIFY: '${where}' is neither a project nor a group this credential can see"
+        print_hint "check the full path, e.g. nwp/nwp (project) or nwp (group)"
+        return 2
+    fi
+    local kind enc; IFS=$'\t' read -r kind enc <<<"$ns"
+    local u; u="$(_keys_user_or_refuse "$who")"; rc=$?; [ $rc -eq 0 ] || return $rc
+    local uid uname; IFS=$'\t' read -r uid uname <<<"$u"
+
+    print_header "add ${uname} (id ${uid}) to ${kind%s} ${where} as ${level}"
+    printf '  access_level %s (%s)\n' "$lvl" "$level"
+    if [ "$execute" -eq 0 ]; then print_info "DRY RUN — nothing sent. Re-run with --execute."; return 0; fi
+    if [ "$yes" -eq 0 ]; then
+        local typed; printf 'Type the username (%s) to confirm: ' "$uname"; read -r typed
+        [ "$typed" = "$uname" ] || { echo "Confirmation did not match — nothing was changed."; return 1; }
+    fi
+    local bf r code body
+    bf="$(mktemp)"; chmod 600 "$bf"
+    jq -n --argjson u "$uid" --argjson l "$lvl" '{user_id:$u, access_level:$l}' > "$bf"
+    r="$(_api POST "/${kind}/${enc}/members" -H 'Content-Type: application/json' --data-binary "@${bf}")"; rc=$?
+    rm -f "$bf"
+    [ $rc -eq 0 ] || { print_error "CANNOT VERIFY: the membership request did not complete"; return 2; }
+    code="$(_api_code "$r")"; body="$(_api_body "$r")"
+    case "$code" in 200|201) print_success "added ${uname} to ${where} as ${level}"; return 0 ;; esac
+    print_error "add FAILED (HTTP ${code}) — ${body}"
+    return 1
 }
 
 cmd_members() {
     case "${1:-list}" in
-        list) [ -n "${2:-}" ] || { print_error "usage: pl forge members list <project>"; return 2; }
-              _read_only_api "members" "/projects/${2//\//%2F}/members/all?per_page=50" ;;
-        add)  _admin_token_present || { _refuse_no_admin; return 2; }
-              print_error "not yet implemented: write verbs land with the credential (ADR-0038 §Migration)"; return 2 ;;
-        *) print_error "usage: pl forge members list <project> | add"; return 2 ;;
+        list) [ -n "${2:-}" ] || { print_error "usage: pl forge members list <project|group>"; return 2; }
+              local ns rc; ns="$(_resolve_namespace "$2")"; rc=$?
+              [ $rc -eq 2 ] && return 2
+              [ $rc -eq 1 ] && { print_error "CANNOT VERIFY: '${2}' is neither a project nor a group this credential can see"; return 2; }
+              local kind enc; IFS=$'\t' read -r kind enc <<<"$ns"
+              _read_only_api "members" "/${kind}/${enc}/members/all?per_page=50" ;;
+        add)  shift; cmd_members_add "$@" ;;
+        *) print_error "usage: pl forge members list <project|group> | add <project|group> <user> --level=…"; return 2 ;;
     esac
 }
 
@@ -428,10 +1153,23 @@ DIAGNOSIS:
 
 APPLICATION PLANE (GitLab REST — needs the forge-admin PAT, ADR-0038 plane 2):
   pl forge users list|show <u>
-  pl forge keys list [<user>] | add | delete
-  pl forge members list <project> | add
+  pl forge user create <username> --name='…' --email='…' [--admin] [--execute]
+  pl forge keys list [<user>]
+  pl forge keys backup [<user>] [--out=FILE]          snapshot every key, so restore is possible
+  pl forge keys verify <user> <fingerprint|key-id>    0 = present · 1 = not there · 2 = could not ask
+  pl forge keys rehome <fingerprint|key-id> --to=<user> [--from=root] [--title=…] [--execute]
+                                                      THE ops#331 MIGRATION: backup → delete →
+                                                      add → verify, rolling back on any failure
+  pl forge keys restore <backup.json> --key-id=N|--all [--execute]
+  pl forge keys add <user> --key-file=<pubkey> [--title=…] [--execute]
+  pl forge keys delete <user> <fingerprint|key-id> [--execute]
+  pl forge members list <project|group>
+  pl forge members add <project|group> <user> --level=reporter|developer|maintainer [--execute]
   pl forge ci-var list <project> | set
   pl forge deploy-key list <project> | add
+
+Every write is DRY-RUN BY DEFAULT and needs --execute plus a typed confirm
+(--yes for automation). A rehome writes its snapshot BEFORE it deletes anything.
 
 MIGRATION:
   pl forge retire-legacy-key   swap off ~/.ssh/gitlab_linode (verifies first; not yet armed)
@@ -455,7 +1193,7 @@ case "${1:-}" in
     run)           shift; cmd_run "$@" ;;
     doctor)        shift; cmd_doctor "$@" ;;
     whoami)        shift; cmd_whoami "$@" ;;
-    users)         shift; cmd_users "$@" ;;
+    users|user)    shift; cmd_users "$@" ;;
     keys)          shift; cmd_keys "$@" ;;
     members)       shift; cmd_members "$@" ;;
     ci-var)        shift; cmd_ci_var "$@" ;;

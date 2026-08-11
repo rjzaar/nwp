@@ -80,6 +80,7 @@ Post-v0.30.0 additions, catalogued here as a pointer; see each file under
 | P66 | Module passports + scoped AI fixes | PROPOSED |
 | P67 | Per-site workflow maturity | ✅ SHIPPED — `pl maturity`, `pl branch`, `maturity_guard_deploy()` in stg2prod/live2prod (nwp/ops#48, MR !47) |
 | P69 | Fix-engine bake-off | PROPOSED |
+| P75 | Clip catalogue triage + Media Guild workflow | PROPOSED (nwp/ops#337; follows ops#336) |
 | F31 | Repo-wide hardening & modernization | PROPOSED |
 | F32 | Tiered architecture implementation | IN PROGRESS (Phase A) |
 | F33 | Repository topology refactor | SUPERSEDED (2026-05-22) |

@@ -207,7 +207,27 @@ cmd_health() {
     if [[ "$target" == "--all" ]]; then
         local servers worst=0
         servers=$(discover_servers)
-        [[ -z "$servers" ]] && { echo "No servers configured."; return 0; }
+
+        # THE CORPUS COMES FIRST. --all can only be as complete as
+        # discover_servers(), which lists a host only if it has a
+        # .nwp-server.yml. On 2026-08-11 servers/met/ held real captured host
+        # state with no identity file, so this verb returned 0 over two hosts
+        # while the CI/backup/demo-cron machine went unmeasured AND unmentioned.
+        # An unmeasured host is not a healthy host: report it and return 3
+        # UNKNOWN, the same code an unreachable host gets, because it is the
+        # same fact — "I could not look".
+        local unreg=""
+        if unreg=$(host_check_servers_registered "${NWP_DIR:-$PROJECT_ROOT}" 2>&1); then
+            unreg=""
+        else
+            printf '%s\n' "$unreg"
+            worst=3
+        fi
+
+        if [[ -z "$servers" ]]; then
+            [[ $worst -eq 0 ]] && { echo "No servers configured."; return 0; }
+            return $worst
+        fi
         while IFS= read -r name; do
             [[ -z "$name" ]] && continue
             echo "$name:"

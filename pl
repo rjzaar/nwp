@@ -776,6 +776,14 @@ cmd_status() {
 
 # GitLab create project
 cmd_gitlab_create() {
+    # lib/git.sh and lib/common.sh both read ${PROJECT_ROOT} at source time, and
+    # `pl` runs under `set -u`. On the run_script path a subcommand sets it for
+    # itself; on this INLINE path nobody did, so both gitlab verbs died with
+    # `PROJECT_ROOT: unbound variable` before they could read a token — and then
+    # reported the symptom as "ERROR: API token required", which is a different
+    # and much more misleading fault. Not exported: the run_script children keep
+    # resolving it exactly as they do today.
+    PROJECT_ROOT="${PROJECT_ROOT:-$SCRIPT_DIR}"
     source "${SCRIPT_DIR}/lib/ui.sh"
     source "${SCRIPT_DIR}/lib/common.sh"
     source "${SCRIPT_DIR}/lib/git.sh"
@@ -793,6 +801,8 @@ cmd_gitlab_create() {
 
 # GitLab list projects
 cmd_gitlab_list() {
+    # See cmd_gitlab_create for why PROJECT_ROOT is defaulted here.
+    PROJECT_ROOT="${PROJECT_ROOT:-$SCRIPT_DIR}"
     source "${SCRIPT_DIR}/lib/ui.sh"
     source "${SCRIPT_DIR}/lib/common.sh"
     source "${SCRIPT_DIR}/lib/git.sh"

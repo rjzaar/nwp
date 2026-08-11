@@ -606,6 +606,14 @@ check_server_state() {
         errors=$((errors + 1))
     fi
 
+    if out=$(host_check_servers_registered "$PROJECT_ROOT" 2>&1); then
+        print_success "every host with captured state is in the server registry"
+    else
+        while IFS= read -r line; do [[ -n "$line" ]] && print_error "$line"; done <<< "$out"
+        print_hint "An unregistered host is invisible to 'pl server health --all' — the required preflight"
+        errors=$((errors + 1))
+    fi
+
     if out=$(host_check_servers_tracked "$PROJECT_ROOT" 2>&1); then
         print_success "captured host state is trackable and committed"
     else

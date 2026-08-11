@@ -1,0 +1,396 @@
+{
+ "experiment_id": "judge-consistency-2026-08-11",
+ "question": "Is the 2.9-35.5 pct grade-3 spread of silver-2026-08-11-dir-clip the JUDGES or the COURSES?",
+ "answer": "The courses. Judge share of that variance: 3.8 pct, 95 pct CI [1.1, 21.6].",
+ "note": "Counts, coefficients and hashes only. Carries no corpus text, no rationale, no excerpt. The judgements stay in ~/dir (P78 section 6).",
+ "measures": "RELIABILITY (do independent instances agree with each other), NOT VALIDITY (are they right). Only the operator's section 4 calibration set speaks to validity. All instances are the same model, so a systematic bias shared by all of them is invisible here by construction.",
+ "judge_model": "claude-opus-5, 26 fresh independent instances",
+ "method_sha256": "790bb0295cceef95d3b19c9dbd057ba4aa8cbed4122d71b39f1a6f19fda6a478",
+ "design": {
+  "arm_A": {
+   "purpose": "grade agreement on identical items, original working conditions",
+   "learning_points": 20,
+   "items": 263,
+   "panels": {
+    "A1": {
+     "items": 136,
+     "lps": 10
+    },
+    "A2": {
+     "items": 127,
+     "lps": 10
+    }
+   },
+   "instances_per_panel": 8,
+   "packets": "reproduced byte-identically from the original run; the builder exits 2 on any key-set mismatch"
+  },
+  "arm_B": {
+   "purpose": "16-of-40 shortlist set agreement",
+   "learning_points": 6,
+   "items": 234,
+   "pool_depth": 40,
+   "panels": {
+    "B1": {
+     "items": 120,
+     "lps": 3
+    },
+    "B2": {
+     "items": 114,
+     "lps": 3
+    }
+   },
+   "instances_per_panel": 5
+  },
+  "new_judgements": 3274,
+  "sampling": "2 learning points from each of the 10 course families, fixed seed, chosen without reference to any observed grade",
+  "ci": "95 pct cluster bootstrap over learning points, 4000 resamples"
+ },
+ "red_proof": {
+  "run": "before any judge instance was launched; hashes recorded in PRE-REGISTRATION.md",
+  "identical_instances": {
+   "qwk": 1.0,
+   "kappa_ge2": 1.0,
+   "judge_sd_pp": 0.0,
+   "overlap16": 1.0,
+   "exit": 0
+  },
+  "independent_random": {
+   "qwk": -0.023,
+   "kappa_ge2": -0.046,
+   "overlap16": 0.422,
+   "chance": 0.4,
+   "exit": 0
+  },
+  "systematic_harshness_spread": {
+   "qwk": 0.465,
+   "kappa_ge2": 0.29,
+   "judge_sd_pp": 30.07,
+   "exit": 2
+  },
+  "flip_1_2_only": {
+   "qwk": 0.73,
+   "kappa_ge2": 0.218,
+   "boundary_verdict": "CONFIRMED",
+   "exit": 2
+  },
+  "flip_2_3_only": {
+   "qwk": 0.834,
+   "kappa_ge2": 1.0,
+   "boundary_verdict": "REFUTED",
+   "exit": 2
+  },
+  "noise_pm1_on_35pct": {
+   "qwk": 0.69,
+   "kappa_ge2": 0.584,
+   "exit": 2
+  },
+  "one_instance_short": {
+   "result": "that instance excluded and named",
+   "exit": 0
+  },
+  "three_instances_only": {
+   "result": "CANNOT VERIFY, MIN_JUDGES=4",
+   "exit": 2
+  }
+ },
+ "grade_agreement": {
+  "arm_A_16_instances": {
+   "n_lps": 20,
+   "n_pairs": 56,
+   "qwk": {
+    "point": 0.9149,
+    "ci": [
+     0.8818,
+     0.9411
+    ]
+   },
+   "kappa_ge2": {
+    "point": 0.8726,
+    "ci": [
+     0.823,
+     0.9163
+    ]
+   },
+   "krippendorff_alpha_interval": {
+    "point": 0.9208,
+    "ci": [
+     0.8869,
+     0.947
+    ]
+   },
+   "exact_agreement": {
+    "point": 0.8932,
+    "ci": [
+     0.8662,
+     0.9226
+    ]
+   },
+   "within_one_grade": {
+    "point": 1.0,
+    "ci": [
+     1.0,
+     1.0
+    ]
+   }
+  },
+  "arm_A_plus_original_label_set_18_raters": {
+   "qwk": {
+    "point": 0.8967,
+    "ci": [
+     0.8598,
+     0.9231
+    ]
+   },
+   "kappa_ge2": {
+    "point": 0.8405,
+    "ci": [
+     0.7877,
+     0.8872
+    ]
+   },
+   "original_vs_fresh_mean_qwk": 0.8327,
+   "fresh_vs_fresh_mean_qwk": 0.9149
+  },
+  "arm_B_10_instances": {
+   "qwk": {
+    "point": 0.9019,
+    "ci": [
+     0.8314,
+     0.9272
+    ]
+   },
+   "kappa_ge2": {
+    "point": 0.8536,
+    "ci": [
+     0.7813,
+     0.9262
+    ]
+   },
+   "krippendorff_alpha_interval": {
+    "point": 0.9108,
+    "ci": [
+     0.8539,
+     0.9441
+    ]
+   }
+  },
+  "paired_comparisons_total": 9586,
+  "disagreements": 1047,
+  "disagreement_rate": 0.1092,
+  "disagreements_more_than_one_grade": 0,
+  "per_instance_grade3_rate_on_identical_items_pct": {
+   "panel_A1": [
+    15.44,
+    21.32
+   ],
+   "panel_A2": [
+    15.75,
+    17.32
+   ]
+  },
+  "verdicts": {
+   "G-A graded QWK": "GRADED-USABLE",
+   "G-B screening kappa": "PASS"
+  },
+  "bands": "identical to P78 section 4.4 Gates 1 and 2, on purpose: a judge cannot agree with a human more reliably than it agrees with itself"
+ },
+ "variance_decomposition": {
+  "observed_between_batch_sd_pp": 7.8,
+  "observed_between_batch_range_pp": [
+   2.9,
+   35.5
+  ],
+  "observed_range_width_pp": 32.6,
+  "measured_judge_sd_pp": 1.528,
+  "measured_judge_sd_ci": [
+   0.804,
+   3.625
+  ],
+  "judge_share_of_between_batch_VARIANCE_pct": 3.84,
+  "judge_share_ci_pct": [
+   1.06,
+   21.6
+  ],
+  "content_share_of_variance_pct": 96.16,
+  "implied_content_only_between_batch_sd_pp": 7.65,
+  "judge_only_expected_range_over_26_batches_pp": 6.05,
+  "judge_only_expected_range_ci_pp": [
+   3.18,
+   14.35
+  ],
+  "V_LP_content_pp2": 201.6,
+  "content_only_batch_sd_from_LP_variance_pp_LOWER_BOUND": 4.57,
+  "note": "The LP-variance route is a LOWER bound on the content term because learning points inside one batch come from only ~2 courses and are therefore positively correlated, which the independent-LP formula ignores."
+ },
+ "boundary": {
+  "share_of_all_disagreement_pct": {
+   "0_1": 18.5,
+   "1_2": 57.7,
+   "2_3": 23.8,
+   "more_than_one_grade": 0.0
+  },
+  "cut_discordance_arm_A_pooled": {
+   "ge1": {
+    "point": 0.0156,
+    "ci": [
+     0.004,
+     0.0295
+    ]
+   },
+   "ge2": {
+    "point": 0.0617,
+    "ci": [
+     0.0405,
+     0.0845
+    ]
+   },
+   "ge3": {
+    "point": 0.0294,
+    "ci": [
+     0.0126,
+     0.0489
+    ]
+   },
+   "ge2_minus_ge1": {
+    "point": 0.0461,
+    "ci": [
+     0.0204,
+     0.072
+    ]
+   },
+   "ge2_minus_ge3": {
+    "point": 0.0324,
+    "ci": [
+     0.0005,
+     0.0623
+    ]
+   }
+  },
+  "verdict_arm_A_pooled": "CONFIRMED",
+  "verdict_arm_B_pooled": "CANNOT VERIFY",
+  "reading": "the 1<->2 boundary carries most disagreement (57.7 pct, more than the other two combined) but not all; 'carries ALL the difficulty' is too strong"
+ },
+ "shortlist_16_of_40": {
+  "chance_overlap": 0.4,
+  "S_A_pre_registered_shared_tiebreak": {
+   "point": 0.8521,
+   "ci": [
+    0.8239,
+    0.8812
+   ],
+   "n_lps": 6
+  },
+  "S_A_judge_specific_tiebreak": {
+   "point": 0.7688,
+   "ci": [
+    0.6802,
+    0.8448
+   ],
+   "n_lps": 6
+  },
+  "marginal_preserving_null": {
+   "point": 0.4616,
+   "ci": [
+    0.4151,
+    0.5314
+   ],
+   "n_lps": 6
+  },
+  "jaccard_grade_ge2_tiebreak_free": {
+   "point": 0.8128,
+   "ci": [
+    0.7139,
+    0.9019
+   ],
+   "n_lps": 6
+  },
+  "jaccard_grade3": {
+   "point": 0.6822,
+   "ci": [
+    0.4036,
+    0.95
+   ],
+   "n_lps": 6
+  },
+  "S_B_grade3_recall_in_top16": {
+   "point": 1.0,
+   "ci": [
+    1.0,
+    1.0
+   ],
+   "headroom_caveat": "instances find 0-4 grade-3s per 40-candidate pool against 16 slots; the red proof drove this statistic to 0.846 / 0.772 / 0.413, so it can fall, but a ceiling reached this easily is not a tight bound"
+  },
+  "S_C_top1_agreement_by_panel": [
+   0.7667,
+   1.0
+  ],
+  "arm_A_at_matching_selection_fraction_k5_of_14": {
+   "overlap": {
+    "point": 0.8775,
+    "ci": [
+     0.8436,
+     0.9114
+    ],
+    "n_lps": 20
+   },
+   "judge_specific_tiebreak": {
+    "point": 0.8014,
+    "ci": [
+     0.7579,
+     0.8471
+    ],
+    "n_lps": 20
+   },
+   "null": {
+    "point": 0.4125,
+    "ci": [
+     0.3775,
+     0.4574
+    ],
+    "n_lps": 20
+   },
+   "jaccard_ge2": {
+    "point": 0.8679,
+    "ci": [
+     0.8136,
+     0.9124
+    ],
+    "n_lps": 20
+   },
+   "jaccard_grade3": {
+    "point": 0.8438,
+    "ci": [
+     0.7468,
+     0.9305
+    ],
+    "n_lps": 16
+   }
+  },
+  "human_benchmark": "Voorhees' TREC assessors overlapped at Jaccard ~0.30 on the relevant set (P77 section 3.5)",
+  "verdicts": {
+   "S-A pre-registered": "STABLE",
+   "S-A judge-specific tiebreak": "CANNOT VERIFY - lower bound 0.680 straddles the 0.69 edge",
+   "S-B": "CARRIES-BEST"
+  }
+ },
+ "conclusion": "Machine shortlisting is reliable enough to hand an author. Machine picking of the single best clip is not: grade-3 set Jaccard 0.682, 95 pct CI [0.404, 0.950].",
+ "limits": [
+  "reliability, not validity",
+  "all instances are one model, so a shared systematic bias is invisible by construction",
+  "arm B is 6 learning points; its CIs are wide and the grade-3 Jaccard CI is too wide to act on",
+  "the 26-batch partition was never recorded in silver_labels.json; the decomposition anchors on the reported 7.8 pp, and reconstructions (6.2-7.0 pp) would raise the judge share to at most ~6 pct",
+  "P78 section 2.3's excerpt under-sampling of long windows is untouched and is shared identically by every instance"
+ ],
+ "artefact_sha256": {
+  "JUDGE-PROMPT.md": "790bb0295cceef95d3b19c9dbd057ba4aa8cbed4122d71b39f1a6f19fda6a478",
+  "MANIFEST.json": "c9f5c24acb3df26cfc055be51b73b3da754c27a6740b89c495cc6d52fbc34c61",
+  "PRE-REGISTRATION.md": "9ecec39d7f3969b568e4aaf90dcf836a6f65013af774b3cb27977702b3cb519f",
+  "THRESHOLDS.md": "60f907df3536a79aed371dda5d3db7b22e5100ce6557a16825cf7a942d3d46c9",
+  "analyse.py": "0bd93322109e0c0f3bb76abb6fbb9fefeda34b436c60dabfd8ad5b39af5487f3",
+  "analyse_pooled.py": "0322ef01942df45b1f7fb99541b930c00ad04f943ce91c2d48500c4b2c1a1b93",
+  "build_consistency_packets.py": "5c6dd75624e1836d7c58874bfedb26fad6c1d4bd1f64fcda8613efd877e8e05b",
+  "make_redproof.py": "ddf11cba5db87a73b68614009c0d4b0d9f0f29cb155092edc09eb3c89d85a9f5",
+  "shortlist_null.py": "4909cb461beea88a716e66d0857706376b2ab636841711ec8d45a0161c3fe173"
+ },
+ "artefacts_home": "~/dir/courses_v3/judge-consistency-2026-08-11/ - never committed to nwp/nwp (P78 section 6)"
+}

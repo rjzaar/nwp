@@ -26,6 +26,11 @@ set -euo pipefail
 #   pl console user list | role <name> <role> | rm <name>
 #   pl console enroll [--expiry 1h] [--runbook]            mint a Headscale pre-auth key
 #                                                          on settings.console.headscale_host
+#   pl console nodes [--json]                              list the mesh (headscale nodes)
+#   pl console register <node-key> [--name <n>]            admit a device that signed in
+#                                                          INTERACTIVELY instead of using
+#                                                          the pre-auth key (the mobile
+#                                                          app's normal behaviour)
 #   pl console dns                                         upsert console A record (Linode API)
 #   pl console cert                                        LE cert via DNS-01 (issued HERE,
 #                                                          only cert+key pushed to host)
@@ -116,6 +121,11 @@ ${BOLD}USAGE:${NC}
     pl console project assign|unassign <user> <pid> [--role viewer|operator|maintainer]
     pl console project export [FILE]   (project->sites map -> private/project-map.json, 0600)
     pl console enroll                  (Headscale pre-auth key runbook for a new device)
+    pl console nodes [--json]          (list the mesh: id, name, IP, online)
+    pl console register <node-key> [--name <n>]
+                                       (admit a device that showed you the "run this command
+                                        on the headscale server" page — the mobile app signs
+                                        in interactively and leaves the pre-auth key unused)
     pl console dns                     (upsert ${CONSOLE_FQDN} A -> ${CONSOLE_TAILNET_IP})
     pl console cert                    (issue/renew the LE cert, DNS-01, push to host)
     pl console logs [--host <ssh-host>]
@@ -814,8 +824,15 @@ cmd_addkey() {
     # prompt depends entirely on what you are enrolling, so say the one that
     # matches the mode rather than a generic line that is wrong half the time.
     if [ "$qr" = 1 ] || [ "$do_open" = 0 ]; then
-        print_hint "on that device, save it as a passkey ON the device (face/fingerprint) — that is the"
-        print_hint "right answer for a phone; 'security key' would ask you for a USB key it cannot reach."
+        # This used to assert that 'security key' "would ask you for a USB key it
+        # cannot reach". A phone reaches one perfectly well over USB-C or NFC —
+        # 2026-08-11 enrolled one with a Solo plugged in — so the hint was
+        # talking the operator out of a working option. Say what each choice
+        # DOES and let the device in front of them decide.
+        print_hint "on that device: face/fingerprint saves it to the phone's own provider — or to"
+        print_hint "Bitwarden etc, but ONLY if you set that as the passkey provider FIRST (Android 14+:"
+        print_hint "Bitwarden > Settings > Autofill > Passkey management; Chromium browsers only)."
+        print_hint "'security key' is right if you have one plugged into the phone or held to its NFC."
     else
         print_hint "when the browser asks WHERE to save it, choose the SECURITY KEY — 'this device' makes a"
         print_hint "platform passkey on this laptop instead of using the hardware key. Then touch the key."
@@ -929,6 +946,202 @@ cmd_user() {
     esac
 }
 
+# ---------------------------------------------------------------------------
+# Headscale control-plane helpers.
+#
+# THE FLAG TRAP, written down because it cost a live enrolment on 2026-08-11:
+# headscale v0.28.0 disagrees WITH ITSELF about what --user means.
+#
+#     headscale preauthkeys create --user <NUMERIC ID>
+#         a name  => "strconv.ParseUint: invalid syntax"
+#     headscale nodes register     --user <NAME>
+#         an id   => "Cannot register node: looking up user: user not found"
+#
+# Neither form is "the" answer, and the second error names the user rather than
+# the flag, so it reads as "your config is wrong" when the config is fine. Both
+# directions are resolved here from the single human name in nwp.yml, so no
+# caller has to remember which subcommand wants which.
+# ---------------------------------------------------------------------------
+_hs_ssh() { ssh -o ConnectTimeout=10 "$HEADSCALE_HOST" "$@"; }
+
+_hs_require() {
+    [ -n "$HEADSCALE_HOST" ] && [ -n "$HEADSCALE_USER" ] && return 0
+    print_error "settings.console.{headscale_host,headscale_user} not set in nwp.yml"
+    print_hint "headscale runs on the box holding the PUBLIC control endpoint, not necessarily ${CONSOLE_HOST}"
+    print_hint "find it with: headscale users list   (on that box)"
+    return 1
+}
+
+# The `-o json` field is `name` and it carries what the human table prints in
+# the USERNAME column (the Name column is a separate, usually-empty field).
+# Checked against v0.28.0 rather than assumed from the table headings.
+_hs_user_field() { # $1 want: id|name
+    local want="$1" out
+    out=$(_hs_ssh "sudo -n headscale users list -o json 2>/dev/null" \
+          | python3 -c "
+import json,sys
+u=sys.argv[1]; want=sys.argv[2]
+try: rows=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for r in rows:
+    if str(r.get('name'))==u or str(r.get('id'))==u:
+        print(r.get(want,'')); break
+" "$HEADSCALE_USER" "$want" 2>/dev/null) || true
+    out="${out//[$'\r\n']/}"
+    [ -n "$out" ] || {
+        print_error "headscale user '${HEADSCALE_USER}' not found on ${HEADSCALE_HOST}"
+        print_hint "list them with: ssh ${HEADSCALE_HOST} 'sudo -n headscale users list'"
+        return 1
+    }
+    printf '%s' "$out"
+}
+
+_hs_user_id()   { _hs_user_field id; }     # for: preauthkeys create --user
+_hs_user_name() { _hs_user_field name; }   # for: nodes register --user
+
+# headscale colourises even when stdout is a pipe, so a bare capture is full of
+# escape sequences. Strip them for human output; --json bypasses this entirely.
+_strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
+
+cmd_nodes() {
+    local as_json=0
+    while [ $# -gt 0 ]; do case "$1" in
+        --json) as_json=1; shift ;;
+        *) print_error "unknown flag: $1 (want --json)"; return 1 ;;
+    esac; done
+    _hs_require || return 1
+
+    if [ "$as_json" = 1 ]; then
+        _hs_ssh "sudo -n headscale nodes list -o json 2>/dev/null" || {
+            print_error "could not list nodes on ${HEADSCALE_HOST}"; return 1; }
+        return 0
+    fi
+
+    local out
+    out=$(_hs_ssh "sudo -n headscale nodes list 2>/dev/null" | _strip_ansi) || {
+        print_error "could not list nodes on ${HEADSCALE_HOST}"
+        print_hint "check: ssh ${HEADSCALE_HOST} 'sudo -n headscale nodes list'  (passwordless sudo?)"
+        return 1
+    }
+    [ -n "$out" ] || { print_warning "no nodes on the mesh"; return 0; }
+    printf '%s\n' "$out"
+
+    # A device whose hostname headscale could not use is named `invalid-xxxx`.
+    # That is not a broken registration — it is an unnamed one — but it looks
+    # like damage in a list, so say which it is and how to fix it.
+    #
+    # Keyed on given_name, NOT on the rendered table: `nodes rename` changes the
+    # Name column and leaves Hostname alone, so a grep over the text keeps
+    # nagging about a node that has already been named (observed on node 6,
+    # 2026-08-11 — renamed to 'phone', still reported as needing a rename).
+    local unnamed
+    unnamed=$(_hs_ssh "sudo -n headscale nodes list -o json 2>/dev/null" \
+              | python3 -c "
+import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for r in rows:
+    if str(r.get('given_name','')).startswith('invalid-'):
+        print('%s(%s)' % (r.get('id',''), r.get('given_name','')))
+" 2>/dev/null | tr '\n' ' ') || true
+    if [ -n "${unnamed// /}" ]; then
+        echo
+        print_hint "unnamed: ${unnamed% }"
+        print_hint "an 'invalid-*' name means headscale could not use that device's own hostname"
+        print_hint "(spaces or an apostrophe, typical of a phone). It works; rename it:"
+        print_hint "    ssh ${HEADSCALE_HOST} 'sudo -n headscale nodes rename --identifier <id> <name>'"
+    fi
+}
+
+cmd_register() {
+    # WHY THIS VERB EXISTS: the Tailscale mobile app does not consume a pre-auth
+    # key. It signs in interactively and parks a pending registration, showing
+    # the device a page that says "run the command below in the headscale
+    # server". That is the NORMAL mobile path, not an error — but the estate had
+    # no verb for it, so 2026-08-11 was done by hand over raw ssh, and the
+    # minted pre-auth key went unused.
+    local key="" name=""
+    while [ $# -gt 0 ]; do case "$1" in
+        --name)   name="${2:-}"; shift 2 ;;
+        --name=*) name="${1#--name=}"; shift ;;
+        --key)    key="${2:-}"; shift 2 ;;
+        --key=*)  key="${1#--key=}"; shift ;;
+        # A paste of the device's whole '--key XXXX' fragment arrives as ONE
+        # quoted argument. Without this arm it hits -*) and is reported as an
+        # unknown flag, which blames the operator for copying what we told them
+        # to copy. Must precede -*).
+        "--key "*) key="${1#--key }"; shift ;;
+        -*) print_error "unknown flag: $1 (want --name <n> | --key <k>)"; return 1 ;;
+        *)  [ -z "$key" ] && key="$1" || { print_error "unexpected argument: $1"; return 1; }; shift ;;
+    esac; done
+
+    [ -n "$key" ] || {
+        print_error "usage: pl console register <node-key> [--name <name>]"
+        print_hint "the key is on the page the device showed you, after '--key'"
+        return 1
+    }
+    # Paste-tolerant: people copy the whole '--key XXXX' or a 'nodekey:...' form.
+    key="${key#--key }"; key="${key#--key=}"; key="${key#nodekey:}"
+    [[ "$key" =~ ^[A-Za-z0-9_-]{16,}$ ]] || {
+        print_error "that does not look like a node key: ${key}"
+        print_hint "copy the value after '--key' on the device's registration page"
+        return 1
+    }
+    [ -z "$name" ] || _name_ok "$name" || return 1
+    _hs_require || return 1
+
+    local uname
+    uname=$(_hs_user_name) || return 1
+
+    print_info "registering the node on ${HEADSCALE_HOST} (headscale user '${uname}')"
+    local out
+    # --user takes the NAME here. See the flag-trap note above _hs_ssh.
+    out=$(_hs_ssh "sudo -n headscale nodes register --user '$uname' --key '$key' 2>&1" | _strip_ansi) || {
+        printf '%s\n' "$out"
+        print_error "registration failed"
+        # The most common real cause, and it expires fast, so name it.
+        printf '%s' "$out" | grep -qi 'not found' && \
+            print_hint "headscale caches a pending registration for ~15 min — if the device has been"
+        printf '%s' "$out" | grep -qi 'not found' && \
+            print_hint "sitting on that page a while, reload it there for a fresh key and retry"
+        return 1
+    }
+    printf '%s\n' "$out"
+
+    # `nodes register` prints the name but not the id, and rename needs the id.
+    local given id
+    given=$(printf '%s' "$out" | sed -n 's/^Node \(.*\) registered$/\1/p' | head -1)
+    if [ -n "$name" ] && [ -n "$given" ]; then
+        id=$(_hs_ssh "sudo -n headscale nodes list -o json 2>/dev/null" \
+             | python3 -c "
+import json,sys
+g=sys.argv[1]
+try: rows=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for r in rows:
+    if r.get('given_name')==g or r.get('name')==g:
+        print(r.get('id','')); break
+" "$given" 2>/dev/null) || true
+        id="${id//[$'\r\n']/}"
+        if [ -n "$id" ]; then
+            _hs_ssh "sudo -n headscale nodes rename --identifier '$id' '$name'" >/dev/null 2>&1 \
+                && print_success "registered and renamed to '${name}' (node ${id})" \
+                || print_warning "registered as '${given}', but the rename to '${name}' failed"
+        else
+            print_warning "registered as '${given}' — could not resolve its id to rename it"
+        fi
+    elif [ -n "$given" ]; then
+        print_success "registered as '${given}'"
+        case "$given" in
+            invalid-*) print_hint "headscale could not use that device's hostname — name it with: pl console register --name <n>, or rename it now:"
+                       print_hint "    ssh ${HEADSCALE_HOST} 'sudo -n headscale nodes rename --identifier <id> <name>'" ;;
+        esac
+    fi
+
+    print_hint "confirm the mesh:  pl console nodes"
+    print_hint "then give it a passkey:  pl console user addkey <name> --no-open"
+}
+
 _enroll_steps() { # $1 optional pre-auth key
     local key="${1:-}"
     cat <<EOF
@@ -941,6 +1154,17 @@ ${BOLD}On the device (phone or laptop), once:${NC}
     (Android/iOS: menu -> Settings -> Accounts -> "Use an alternate server".)
  3. Sign in with the pre-auth key$([ -n "$key" ] && printf ' above' || printf '').
  4. Verify: https://${CONSOLE_FQDN}:${CONSOLE_PORT}/health -> {"ok":true}
+
+${BOLD}If the device shows "Machine registration / run the command below":${NC}
+    That is the MOBILE APP'S NORMAL BEHAVIOUR, not a failure. It signs in
+    interactively and leaves the pre-auth key unused. Do not retype the
+    command it prints (its --user placeholder wants a NAME, and the flag
+    means something else on 'preauthkeys create'). Instead, copy the value
+    after --key and run, from here:
+
+        pl console register <node-key> --name <short-name>
+
+ 5. Verify the mesh sees it:  pl console nodes
 
 Then give that device a passkey:
     pl console user addkey <name> --no-open      # open the printed link ON the device
@@ -975,6 +1199,9 @@ cmd_enroll() {
         # the old one did.
         echo "    sudo headscale users list                 # note the numeric id"
         echo "    sudo headscale preauthkeys create --user <numeric-user-id> --expiration ${expiry}"
+        echo "    # and if the device registers INTERACTIVELY instead (the mobile app does):"
+        echo "    sudo headscale nodes register --user <user-NAME> --key <node-key>"
+        echo "    #                                    ^ NAME here, ID above. Same flag, v0.28.0."
         _enroll_steps
         [ "$runbook" = 1 ] && return 0 || return 1
     fi
@@ -982,18 +1209,10 @@ cmd_enroll() {
     # headscale >= 0.26 takes a numeric user ID on --user and rejects the name
     # outright ("strconv.ParseUint"). The config names a HUMAN user, so resolve
     # it here rather than making the operator store an integer that changes if
-    # the user is ever recreated.
-    local uid="$HEADSCALE_USER"
-    if ! [[ "$uid" =~ ^[0-9]+$ ]]; then
-        uid=$(ssh -o ConnectTimeout=10 "$HEADSCALE_HOST" \
-                "sudo -n headscale users list -o json 2>/dev/null" \
-              | python3 -c "import json,sys;u='$HEADSCALE_USER';print(next((str(x['id']) for x in json.load(sys.stdin) if x.get('name')==u),''))" 2>/dev/null) || true
-        [ -n "$uid" ] || {
-            print_error "headscale user '${HEADSCALE_USER}' not found on ${HEADSCALE_HOST}"
-            print_hint "list them with: ssh ${HEADSCALE_HOST} 'sudo -n headscale users list'"
-            return 1
-        }
-    fi
+    # the user is ever recreated. See _hs_user_id — and note that `nodes
+    # register` wants the OPPOSITE form on the same flag.
+    local uid
+    uid=$(_hs_user_id) || return 1
 
     print_info "minting a ${expiry} pre-auth key on ${HEADSCALE_HOST} (headscale user '${HEADSCALE_USER}' = id ${uid})"
     local key
@@ -1061,6 +1280,8 @@ main() {
         user)    cmd_user ${args[@]+"${args[@]}"} ;;      # gates itself AFTER validating input
         project) cmd_project ${args[@]+"${args[@]}"} ;;   # ditto
         enroll)  cmd_enroll ${args[@]+"${args[@]}"} ;;
+        nodes)    cmd_nodes ${args[@]+"${args[@]}"} ;;     # gates on _hs_require
+        register) cmd_register ${args[@]+"${args[@]}"} ;;  # validates input BEFORE ssh
         dns)     _require_configured && cmd_dns ;;
         cert)    _require_configured && cmd_cert ;;
         logs)    _require_configured && cmd_logs ;;

@@ -69,6 +69,91 @@ setup() {
   [[ "$output" == *preauthkeys* ]]
 }
 
+@test "register validates the node key locally, before any ssh" {
+  # The whole point of the verb is that it runs from the workstation instead of
+  # the operator hand-typing on the control plane, so a typo must fail HERE.
+  run "$CONSOLE_SH" register 'not a key'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not look like a node key"* ]]
+}
+
+@test "register with no key prints usage and never reaches the network" {
+  run "$CONSOLE_SH" register
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pl console register"* ]]
+  [[ "$output" == *"--key"* ]]
+}
+
+@test "register tolerates a pasted '--key XXXX' and a nodekey: prefix" {
+  # People copy the whole fragment off the device's registration page. Accepting
+  # only the bare value turns a paste into a "does not look like a node key".
+  NWP_CONSOLE_HEADSCALE_HOST= NWP_CONSOLE_HEADSCALE_USER= \
+    NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent \
+    run "$CONSOLE_SH" register '--key EXAMPLE-node-key-NOT-REAL-0000'
+  # gets PAST key validation and fails on the unconfigured control plane instead
+  [[ "$output" != *"does not look like a node key"* ]]
+  [[ "$output" == *"headscale_host"* ]]
+
+  NWP_CONSOLE_HEADSCALE_HOST= NWP_CONSOLE_HEADSCALE_USER= \
+    NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent \
+    run "$CONSOLE_SH" register 'nodekey:EXAMPLE-node-key-NOT-REAL-0000'
+  [[ "$output" != *"does not look like a node key"* ]]
+}
+
+@test "nodes and register fail closed when the control plane is unset" {
+  NWP_CONSOLE_HEADSCALE_HOST= NWP_CONSOLE_HEADSCALE_USER= \
+    NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent \
+    run "$CONSOLE_SH" nodes
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"headscale_host"* ]]
+
+  NWP_CONSOLE_HEADSCALE_HOST= NWP_CONSOLE_HEADSCALE_USER= \
+    NWP_CONSOLE_CONFIG=/nonexistent HOME=/nonexistent \
+    run "$CONSOLE_SH" register EXAMPLE-node-key-NOT-REAL-0000
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"headscale_host"* ]]
+}
+
+@test "nodes rejects a stray argument instead of treating it as a flag" {
+  run "$CONSOLE_SH" nodes EXAMPLE-node-key-NOT-REAL-0000
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--json"* ]]
+}
+
+@test "the two headscale --user forms are resolved separately, not shared" {
+  # v0.28.0: `preauthkeys create --user` takes the NUMERIC id and `nodes
+  # register --user` takes the NAME. Passing the id to register fails with
+  # "user not found", which names the user and not the flag — so it reads as a
+  # bad config. One helper for both directions is the fix; this pins that the
+  # call sites do not converge back onto one form.
+  grep -q '_hs_user_id()'   "$CONSOLE_SH"
+  grep -q '_hs_user_name()' "$CONSOLE_SH"
+  # preauthkeys create is given the id
+  run bash -c "grep -A2 'preauthkeys create' '$CONSOLE_SH' | grep -c 'uid'"
+  [ "$output" != "0" ]
+  # nodes register is given the name
+  run bash -c "grep -B4 'nodes register --user' '$CONSOLE_SH' | grep -c 'uname'"
+  [ "$output" != "0" ]
+}
+
+@test "the runbook covers the interactive registration the mobile app forces" {
+  # The app never consumes a pre-auth key: it signs in interactively and shows
+  # a "run this command on the headscale server" page. A runbook that only
+  # documents the pre-auth path strands every phone at that screen.
+  run "$CONSOLE_SH" enroll --runbook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Machine registration"* ]]
+  [[ "$output" == *"pl console register"* ]]
+  [[ "$output" == *"nodes register --user"* ]]
+}
+
+@test "the phone hint no longer talks the operator out of a plugged-in key" {
+  # It asserted 'security key' "would ask you for a USB key it cannot reach".
+  # A phone reaches one over USB-C or NFC; that hint was simply wrong.
+  ! grep -q 'it cannot reach' "$CONSOLE_SH"
+  grep -q 'NFC' "$CONSOLE_SH"
+}
+
 @test "every subcommand actually RECEIVES its flags (the dispatch drops nothing)" {
   # `enroll` was dispatched as bare `cmd_enroll`, so no flag ever reached it:
   # --runbook silently took the network path and --expiry never reached its
@@ -81,7 +166,7 @@ setup() {
   # empty-string argument, which the parsers read as an unknown flag — so the
   # no-argument path must reach the verb with genuinely zero arguments.
   local sub
-  for sub in deploy user project enroll; do
+  for sub in deploy user project enroll nodes register; do
     grep -qE "^ *${sub}\)" "$CONSOLE_SH"
     # each dispatch arm forwards the collected args, and none of them uses the
     # :- form that injects an empty argument

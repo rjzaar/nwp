@@ -391,9 +391,9 @@ the answer is "one each", this whole lever is closed and that is worth knowing i
 | A | Whisper transcripts (already built) | `whisper_merged`, in tree | — | yes (fixed artefact) |
 | A | ad / boilerplate mask | new, rule + near-duplicate | — | **yes** |
 | A | sentence snapping | `wtpsplit` SaT `sat-3l-sm` **or** Whisper's own punctuation | wtpsplit 2.2.1 | model inference: no · cached output: yes |
-| C | BM25 | **`bm25s`** (pure Python + numpy) | 0.2.x, MIT | **yes** |
+| C | BM25 | **`bm25s`** (pure Python + numpy) | 0.3.10, MIT | **yes, but only with `PYTHONHASHSEED=0`** — §5.4(b) |
 | C | embeddings | **`BAAI/bge-m3`** via ollama `bge-m3` (568M, 1024-d, 8192 ctx) | MIT | **no** — see §5.3 |
-| C | vector index | **none — brute-force `numpy` matmul** | — | **yes** |
+| C | vector index | **none — brute-force `numpy` matmul**, fp16 on disk, fp32 in RAM | numpy 2.x | **yes, with `OPENBLAS_CORETYPE` pinned** — §5.4(a) |
 | D | fusion | RRF, `k = 60` | — | **yes** |
 | E | rerank rubric | the existing `CRITERIA.md` composite, refitted | in tree | **yes** |
 | E | span trimming | new, rule-based over word timings | — | **yes** |
@@ -419,6 +419,21 @@ made deterministic-by-construction with a content-addressed cache (§5.3).
   model download, not three.
 - MIT licence. `jina-embeddings-v3/v4/v5` are CC-BY-NC and are therefore **out** for this
   estate regardless of quality.
+
+**The co-equal alternative is `ibm-granite/granite-embedding-english-r2`** — 149M, 768-dim,
+8192 context, **Apache-2.0**, **no prefix required**, BEIR 53.1. It is a quarter the size of
+bge-m3, so a quarter of the reindex cost; it excludes MS MARCO from its training data on
+licensing grounds, which is the cleanest contamination story available; and at 149M it runs
+comfortably as **ONNX Runtime on CPU**, which is the most reproducible inference path this
+estate has — no kernel autotuning, no GPU reduction-order variance, no ROCm-vs-Vulkan backend
+question. Bake both off in M2; if they land within the §3.5 noise floor of each other, take
+granite for the determinism and the cost.
+
+**Passage length is a hard filter on this shortlist.** A 150 s passage is ~430 words ≈ 600
+tokens. Every 512-token model — `multilingual-e5-large-instruct`, `nomic-embed-text-v2-moe`,
+`stella`, `bge-large-en-v1.5`, and every `mxbai-rerank-*-v1` — would silently truncate a third
+of every passage. Do not shortlist one, and check `max_seq_length` before believing any
+benchmark number.
 
 ### 4.2 Why the passage build is the first phase and not the last
 
@@ -520,6 +535,40 @@ Likewise **no embedding quantization**. Binary/int8 buys ~50 MB here and costs r
 it — `e5-base-v2` retains **74.77 %**
 ([HF measurement](https://huggingface.co/blog/embedding-quantization)).
 
+**Independently measured, on the estate's weakest box** (i7-1165G7, numpy 2.4.2 on
+scipy-OpenBLAS 0.3.31), exact top-100 over a flat float32 matrix:
+
+| N × dim | mean | p95 | resident |
+|---|---|---|---|
+| 30,000 × 1024 | 7.9 ms | 12.3 ms | 123 MB |
+| **60,000 × 1024** | **16.5 ms** | 24.3 ms | 246 MB |
+| 100,000 × 1024 | 28.2 ms | 39.1 ms | 410 MB |
+
+Batching 32 queries into one GEMM: **2.6 ms/query**. Thread count barely matters — a
+matrix-*vector* product is memory-bandwidth-bound. `faiss.IndexFlatIP` measured **22.3 ms** at
+30k × 1024, *slower* than plain numpy, because numpy dispatches straight to an OpenBLAS
+`sgemv`. **Use numpy.**
+
+**And the HNSW rejection is measured, not assumed.** Building each index twice in separate
+processes and comparing the file's sha256:
+
+| index | 1 thread | 4 threads |
+|---|---|---|
+| `faiss.IndexFlatIP` | identical | **identical** |
+| `faiss.IndexIVFFlat` | identical | **identical** |
+| `faiss.IndexHNSWFlat` | identical | **DIFFER** |
+| `hnswlib` (explicit `random_seed`) | identical | **DIFFER** |
+
+This matches FAISS's own documentation — *"The HNSW add function is performed in an
+unspecified order… several runs will give different results"*
+([FAISS wiki](https://github.com/facebookresearch/faiss/wiki/Threads-and-asynchronous-calls)).
+An explicit seed does **not** help, because the seed does not control thread interleaving.
+
+**Store fp16, compute fp32.** Measured: fp16 on disk → fp32 in RAM halves the file (123 MB vs
+246 MB) with **identical top-10 ordering** and no speed loss. A *native* fp16 matmul is **18×
+slower** (296 ms vs 16.5 ms) because numpy has no BLAS path for it. int8 preserved the top-50
+*set* but **reordered the top-10** — don't.
+
 ### 5.2 Serving
 
 Nothing runs at serve time. The pipeline is a **build** that emits a static artefact
@@ -532,6 +581,21 @@ Build hosts: the GPU build host for embedding (measured: 13,957 passages in 930 
 anything for BM25 and fusion. **The forge box is not a build host** — it has 3.8 GB of RAM
 and serves GitLab plus five live sites (CLAUDE.md), and `pl server health` is a required
 preflight before anything heavy touches it.
+
+**This is the answer to "but the query has to be embedded somewhere".** In the proposed
+workflow it does not: the queries are the 251 learning points, they are known at build time,
+and their results are precomputed. Zero inference and zero vectors on the review box — it
+serves a file. Only if the reviewer later wants free-text search does query encoding become a
+question, and the fallbacks then are, in order: lexical-only live search (needs no model at
+all), or proxying one 5 ms forward pass to the GPU host over the mesh.
+
+If it is ever wanted, the *maximal* version of this is well-trodden: the artefact can be served
+as **static files behind nginx with `Range` support**, with the client doing the query —
+either the Pagefind index-sharding pattern, or SQLite-over-HTTP-range-requests, which fetches
+**~70 KiB for a full-text search over an 8 MiB FTS table**
+([phiresky](https://phiresky.github.io/blog/2021/hosting-sqlite-databases-on-github-pages/),
+[Pagefind](https://pagefind.app/)). No application process, no Python, no model, no memory
+pressure. Out of scope for Phase 4, noted so nobody proposes a service later.
 
 ### 5.3 Determinism — what is, what isn't, and how the build stays byte-identical
 
@@ -575,6 +639,52 @@ which is the pattern `c22dfbd` already established. A model or runtime upgrade t
 **And it must be proven red.** Per the standing order: embed a 1,000-item fixture twice and
 assert byte equality — then embed it once more **at a different batch size and assert the
 hash differs**. If it does not differ, the check is asserting nothing.
+
+The gate must assert **ordering**, not just similarity. ollama issue #7085's entire finding
+was that **cosine stayed high while retrieval order changed** across versions — a
+cosine-threshold gate would have passed it silently. So: `cosine ≥ 0.999 element-wise` **AND**
+identical top-k on a held-out query set, proven red first against a deliberately wrong pooling
+mode or a stripped instruction prefix.
+
+### 5.4 Three further determinism traps, each measured, none of them the model's fault
+
+**(a) OpenBLAS picks a different kernel per CPU microarchitecture.** Same input, same code,
+same numpy — four different score vectors:
+
+```
+OPENBLAS_CORETYPE=SKYLAKEX    -> 042284e4b836df82…
+OPENBLAS_CORETYPE=HASWELL     -> 96a0c97e65dfba78…
+OPENBLAS_CORETYPE=SANDYBRIDGE -> 68419662c6de5323…
+OPENBLAS_CORETYPE=NEHALEM     -> 7bfe518cef10babe…
+```
+
+Scores were bit-identical across *thread counts*, so this is not a threading problem — it is
+runtime CPU dispatch. **Consequence: hash the top-k result set, never the score vector, and
+make the sort stable with an explicit tie-break on passage ID.** Otherwise the build's hash
+depends on which box ran it.
+
+**(b) `bm25s` index artefacts are not byte-reproducible by default.** Built in separate
+processes, `bm25s` 0.3.10 with a stemmer produced **three different file hashes in three
+runs**. Cause, in `bm25s/tokenization.py`: `vocab = set(tokens_stemmed)` followed by
+`{token: i for i, token in enumerate(vocab)}` — `set[str]` iteration order depends on Python's
+per-process string-hash randomisation, so term→ID assignment varies. Setting
+`PYTHONHASHSEED=0` fixes it; so does `sorted(set(...))`, which is worth an upstream PR. **There
+is no open or closed bm25s issue mentioning determinism** — this is undocumented upstream and
+the build verb must pin it. Retrieval *results* were bitwise equal throughout; it is the bytes
+that move.
+
+SQLite FTS5 and `sqlite-vec` both rebuilt byte-identical — but SQLite's byte-identity is **per
+library version** (the file header at offset 96 stores `SQLITE_VERSION_NUMBER`), so pin SQLite
+too.
+
+**(c) Low precision manufactures ties, and ties are broken by list order.** Measured on 200
+scores: normalised dot products in bf16 gave **~184 unique values out of 200**; a cross-encoder
+sigmoid over bf16 logits gave **~150 of 200**. Upcast to fp32 first and both return 200. So
+roughly a quarter of a bf16 reranker's scores would be ties resolved by index order, which
+*"inflates the variance and bias of retrieval metrics and can even flip model rankings"*
+([sentence-transformers #3894](https://github.com/UKPLab/sentence-transformers/issues/3894)).
+**Keep the forward pass in fp16/bf16, upcast the final scoring op to fp32 before the activation
+and before sorting.** Free, and it should be done from day one.
 
 ---
 
@@ -743,8 +853,10 @@ the label (§2.2), and never report a passage-list rank as if it were an episode
 
 | rejected | why |
 |---|---|
-| **A vector database** (Qdrant / Weaviate / Milvus / Vespa / LanceDB / sqlite-vec / Chroma) | 14k vectors = 57 MB. Brute force is milliseconds with recall 1.0. A service is operational weight for nothing. |
-| **HNSW / IVF / any ANN index** | Graph construction is insertion-order dependent → the build stops being byte-reproducible. Buys nothing at this scale. |
+| **A vector database** (Qdrant / Weaviate / Milvus / Vespa / LanceDB / Chroma / Typesense / Meilisearch) | 14k vectors = 57 MB; measured brute force is 16.5 ms at 60k × 1024 with recall 1.0. Also, per host: Vespa's own docs say *"start with an 8 GB node"* — more than the whole review box; Typesense holds the index in RAM by design and is GPL-3.0; Meilisearch is now **MIT AND BUSL-1.1** and defaults `MEILI_MAX_INDEXING_MEMORY` to **two-thirds of available RAM**, which is a plausible repeat of the 2026-07-25 OOM; Marqo's OSS project is **deprecated**; Chroma pulls **77** transitive packages. |
+| **HNSW / any ANN index** | **Measured non-reproducible**: `IndexHNSWFlat` and `hnswlib` produce different index bytes across multi-threaded builds, seed or no seed (§5.1). `IndexFlat` and `IndexIVFFlat` *are* reproducible — but at this scale flat numpy is faster than FAISS flat anyway. |
+| **`sqlite-vec` on the hot path** | Byte-reproducible and zero-dependency, so fine as *storage*. But it is a scalar C loop with no BLAS: measured **89.5 ms/query** at 30k × 1024 against numpy's 7.9 ms. |
+| **SQLite FTS5 as the lexical leg** | Reproducible and tiny (15.5 MB at `detail=none`), but it has **no stopword facility at all** and does not skip: measured **445–569 ms p99 on common terms**. `bm25s`' cost is flat regardless of term selectivity, which is the property this workload needs. FTS5 also hard-codes `k1=1.2 b=0.75` and returns a **negated** score. |
 | **Embedding quantization** (binary / int8) | Saves ~50 MB. Costs recall. The famous 96 % retention is a property of one model trained for it; `e5-base-v2` retains 74.77 %. |
 | **Semantic chunking** (LlamaIndex `SemanticSplitterNodeParser`, LangChain `SemanticChunker`) | Loses to fixed-size on all four *natural*-document datasets in [arXiv:2410.13070](https://arxiv.org/abs/2410.13070); ranked **last** in LumberChunker's own table. Its percentile breakpoint *guarantees* ~5 % of gaps become boundaries whether or not a topic shifted. |
 | **A trained topic segmenter** (TextTiling successors, Wiki-727K models, C99) | Wikipedia-trained models are **worse than 1997 TextTiling** on conversational speech (Pk 0.447 vs 0.391). Human ceiling on segmentation is Pk ≈ 15, not 0. And there is no gold segmentation here to train or measure against. |
@@ -756,7 +868,9 @@ the label (§2.2), and never report a passage-list rank as if it were an episode
 | **doc2query / docTTTTTquery over the corpus** | Genuinely tempting — it is inspectable (you can show a reviewer the generated questions) and it runs offline. But it adds a generation pass over 14k passages that must be cached and re-run on any model change, and §3.4 says the problem is ordering, not recall. **Phase 6 candidate, explicitly deferred, not rejected.** |
 | **Fine-tuning an embedder on the 205 pairs** | 205 examples is enough to *measure* a ceiling, not to train. It would also destroy the labelled set as an evaluation instrument. |
 | **Any hosted API** (OpenAI, Cohere, Voyage, Jina API) | Corpus is `derivative-cleared-pending` and password-gated. Prohibited by the threat model and by the rights position. Not a close call. |
-| **Jina embedding models** (v3 / v4 / v5) | Strong, but **CC-BY-NC-4.0**. |
+| **Jina embedding models** (v3 / v4 / v5) **and the whole Jina reranker line** (v2 / v3 / v3.5 / m0) | Strong — `jina-reranker-v3.5` posts the best BEIR number on the board at **63.20**, ~5.7 points clear — and all of it is **CC-BY-NC-4.0**. Unusable, however tempting. |
+| **ollama for embedding or reranking in the shipped build** | Fine for the pilot; wrong for an artefact anyone depends on. It has **no rerank endpoint at all** (the request has been open since June 2025; PR #7219 closed), it applies L2 normalisation with no way to disable it, `truncate` behaviour has changed across releases, embedding **values changed between 0.3.3 and 0.3.12 with retrieval order changing while cosine stayed high** ([#7085](https://github.com/ollama/ollama/issues/7085)), and a mis-tagged GGUF's `pooling_type` cannot be overridden ([#16076](https://github.com/ollama/ollama/issues/16076)). Use `sentence-transformers` as the correctness oracle and llama.cpp or ONNX Runtime for the build. |
+| **llama.cpp `--reranking` without an A/B** | `token_type_ids` are hardcoded to zero, which mis-scores BERT-family cross-encoders ([PR #21729](https://github.com/ggml-org/llama.cpp/pull/21729)); Qwen3-family rerankers return ~1e-20 for everything because the rerank path pools from CLS and Qwen3 emits a yes/no logit ([#25447](https://github.com/ggml-org/llama.cpp/issues/25447), maintainer-declared out of scope); and the rerank prompt cache is write-only, leaking ~23 MB per call ([#26293](https://github.com/ggml-org/llama.cpp/issues/26293) — set `--cache-ram 0`). Never run `--embedding` and `--reranking` in one process. |
 | **`mxbai-embed-large` / `nomic-embed-text`** | The two most-pulled ollama embedding models, and the wrong defaults for long-form content: 0.660 and 0.633 on long-document needle retrieval against 0.973 for bge-m3. |
 | **LangChain / LlamaIndex / Haystack** | Two indexes, one fusion function and a scoring rubric. A framework would be more code than the thing it wraps, and a bigger audit surface. Plain Python. |
 | **Post-hoc explainers (LIME / SHAP / attention) for the ranker** | §6.3 item 3. Unfalsifiable by construction. |

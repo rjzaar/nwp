@@ -1,0 +1,194 @@
+{
+ "video_id": "vidSHORT0001",
+ "duration": 20.0,
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 80.0,
+   "text": "the lantern keeper counted seven amber stones beside the quiet",
+   "words": [
+    {
+     "word": "the",
+     "start": 0.0
+    },
+    {
+     "word": "lantern",
+     "start": 8.0
+    },
+    {
+     "word": "keeper",
+     "start": 16.0
+    },
+    {
+     "word": "counted",
+     "start": 24.0
+    },
+    {
+     "word": "seven",
+     "start": 32.0
+    },
+    {
+     "word": "amber",
+     "start": 40.0
+    },
+    {
+     "word": "stones",
+     "start": 48.0
+    },
+    {
+     "word": "beside",
+     "start": 56.0
+    },
+    {
+     "word": "the",
+     "start": 64.0
+    },
+    {
+     "word": "quiet",
+     "start": 72.0
+    }
+   ]
+  },
+  {
+   "start": 80.0,
+   "end": 160.0,
+   "text": "harbour wall and wrote every number into a folded paper",
+   "words": [
+    {
+     "word": "harbour",
+     "start": 80.0
+    },
+    {
+     "word": "wall",
+     "start": 88.0
+    },
+    {
+     "word": "and",
+     "start": 96.0
+    },
+    {
+     "word": "wrote",
+     "start": 104.0
+    },
+    {
+     "word": "every",
+     "start": 112.0
+    },
+    {
+     "word": "number",
+     "start": 120.0
+    },
+    {
+     "word": "into",
+     "start": 128.0
+    },
+    {
+     "word": "a",
+     "start": 136.0
+    },
+    {
+     "word": "folded",
+     "start": 144.0
+    },
+    {
+     "word": "paper",
+     "start": 152.0
+    }
+   ]
+  },
+  {
+   "start": 160.0,
+   "end": 240.0,
+   "text": "notebook that smelled of rain while the ferry engines idled",
+   "words": [
+    {
+     "word": "notebook",
+     "start": 160.0
+    },
+    {
+     "word": "that",
+     "start": 168.0
+    },
+    {
+     "word": "smelled",
+     "start": 176.0
+    },
+    {
+     "word": "of",
+     "start": 184.0
+    },
+    {
+     "word": "rain",
+     "start": 192.0
+    },
+    {
+     "word": "while",
+     "start": 200.0
+    },
+    {
+     "word": "the",
+     "start": 208.0
+    },
+    {
+     "word": "ferry",
+     "start": 216.0
+    },
+    {
+     "word": "engines",
+     "start": 224.0
+    },
+    {
+     "word": "idled",
+     "start": 232.0
+    }
+   ]
+  },
+  {
+   "start": 240.0,
+   "end": 320.0,
+   "text": "under a low grey sky above the estuary gulls argued",
+   "words": [
+    {
+     "word": "under",
+     "start": 240.0
+    },
+    {
+     "word": "a",
+     "start": 248.0
+    },
+    {
+     "word": "low",
+     "start": 256.0
+    },
+    {
+     "word": "grey",
+     "start": 264.0
+    },
+    {
+     "word": "sky",
+     "start": 272.0
+    },
+    {
+     "word": "above",
+     "start": 280.0
+    },
+    {
+     "word": "the",
+     "start": 288.0
+    },
+    {
+     "word": "estuary",
+     "start": 296.0
+    },
+    {
+     "word": "gulls",
+     "start": 304.0
+    },
+    {
+     "word": "argued",
+     "start": 312.0
+    }
+   ]
+  }
+ ]
+}

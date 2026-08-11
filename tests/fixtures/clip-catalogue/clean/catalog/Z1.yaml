@@ -1,0 +1,40 @@
+# SYNTHETIC fixture — invented prose, no corpus content. See ../../README.md.
+#
+# The CLEAN counterpart of ../../defective/catalog/Z1.yaml: every window exists,
+# plays, and is honestly labelled. `pl clips verify` must exit 0 against it.
+# Without this file a check could pass by never firing at all.
+course:
+  code: Z1
+  title: Fixture Course
+  schema_version: 3
+  learning_points:
+  - id: Z1.01
+    title: A window that exists, plays, and is honestly labelled
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:10'
+          end: '0:40'
+          duration_min: 0.5
+          youtube_id: vidSAME00001
+  - id: Z1.02
+    title: An unfilled slot that says so
+    session: 1
+    depths:
+      short:
+        summary: A complete summary that ends properly.
+      standard:
+        text: A complete summary that ends properly. It continues for a second sentence.
+        video:
+          episode: 1
+          start: '0:00'
+          end: '8:00'
+          duration_min: 8.0
+          youtube_id: vidSAME00001
+          unset: true
+          unset_reason: catalogue-wide default window, not a selection

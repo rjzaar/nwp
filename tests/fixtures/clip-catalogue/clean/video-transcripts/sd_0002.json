@@ -1,0 +1,366 @@
+{
+ "video_id": "vidOFFSET001",
+ "duration": 708.0,
+ "segments": [
+  {
+   "start": 100.0,
+   "end": 180.0,
+   "text": "the lantern keeper counted seven amber stones beside the quiet",
+   "words": [
+    {
+     "word": "the",
+     "start": 100.0
+    },
+    {
+     "word": "lantern",
+     "start": 108.0
+    },
+    {
+     "word": "keeper",
+     "start": 116.0
+    },
+    {
+     "word": "counted",
+     "start": 124.0
+    },
+    {
+     "word": "seven",
+     "start": 132.0
+    },
+    {
+     "word": "amber",
+     "start": 140.0
+    },
+    {
+     "word": "stones",
+     "start": 148.0
+    },
+    {
+     "word": "beside",
+     "start": 156.0
+    },
+    {
+     "word": "the",
+     "start": 164.0
+    },
+    {
+     "word": "quiet",
+     "start": 172.0
+    }
+   ]
+  },
+  {
+   "start": 180.0,
+   "end": 260.0,
+   "text": "harbour wall and wrote every number into a folded paper",
+   "words": [
+    {
+     "word": "harbour",
+     "start": 180.0
+    },
+    {
+     "word": "wall",
+     "start": 188.0
+    },
+    {
+     "word": "and",
+     "start": 196.0
+    },
+    {
+     "word": "wrote",
+     "start": 204.0
+    },
+    {
+     "word": "every",
+     "start": 212.0
+    },
+    {
+     "word": "number",
+     "start": 220.0
+    },
+    {
+     "word": "into",
+     "start": 228.0
+    },
+    {
+     "word": "a",
+     "start": 236.0
+    },
+    {
+     "word": "folded",
+     "start": 244.0
+    },
+    {
+     "word": "paper",
+     "start": 252.0
+    }
+   ]
+  },
+  {
+   "start": 260.0,
+   "end": 340.0,
+   "text": "notebook that smelled of rain while the ferry engines idled",
+   "words": [
+    {
+     "word": "notebook",
+     "start": 260.0
+    },
+    {
+     "word": "that",
+     "start": 268.0
+    },
+    {
+     "word": "smelled",
+     "start": 276.0
+    },
+    {
+     "word": "of",
+     "start": 284.0
+    },
+    {
+     "word": "rain",
+     "start": 292.0
+    },
+    {
+     "word": "while",
+     "start": 300.0
+    },
+    {
+     "word": "the",
+     "start": 308.0
+    },
+    {
+     "word": "ferry",
+     "start": 316.0
+    },
+    {
+     "word": "engines",
+     "start": 324.0
+    },
+    {
+     "word": "idled",
+     "start": 332.0
+    }
+   ]
+  },
+  {
+   "start": 340.0,
+   "end": 420.0,
+   "text": "under a low grey sky above the estuary gulls argued",
+   "words": [
+    {
+     "word": "under",
+     "start": 340.0
+    },
+    {
+     "word": "a",
+     "start": 348.0
+    },
+    {
+     "word": "low",
+     "start": 356.0
+    },
+    {
+     "word": "grey",
+     "start": 364.0
+    },
+    {
+     "word": "sky",
+     "start": 372.0
+    },
+    {
+     "word": "above",
+     "start": 380.0
+    },
+    {
+     "word": "the",
+     "start": 388.0
+    },
+    {
+     "word": "estuary",
+     "start": 396.0
+    },
+    {
+     "word": "gulls",
+     "start": 404.0
+    },
+    {
+     "word": "argued",
+     "start": 412.0
+    }
+   ]
+  },
+  {
+   "start": 420.0,
+   "end": 500.0,
+   "text": "over a dropped biscuit near the weighbridge and the tide",
+   "words": [
+    {
+     "word": "over",
+     "start": 420.0
+    },
+    {
+     "word": "a",
+     "start": 428.0
+    },
+    {
+     "word": "dropped",
+     "start": 436.0
+    },
+    {
+     "word": "biscuit",
+     "start": 444.0
+    },
+    {
+     "word": "near",
+     "start": 452.0
+    },
+    {
+     "word": "the",
+     "start": 460.0
+    },
+    {
+     "word": "weighbridge",
+     "start": 468.0
+    },
+    {
+     "word": "and",
+     "start": 476.0
+    },
+    {
+     "word": "the",
+     "start": 484.0
+    },
+    {
+     "word": "tide",
+     "start": 492.0
+    }
+   ]
+  },
+  {
+   "start": 500.0,
+   "end": 580.0,
+   "text": "turned slowly against the mossy timber pilings of the old",
+   "words": [
+    {
+     "word": "turned",
+     "start": 500.0
+    },
+    {
+     "word": "slowly",
+     "start": 508.0
+    },
+    {
+     "word": "against",
+     "start": 516.0
+    },
+    {
+     "word": "the",
+     "start": 524.0
+    },
+    {
+     "word": "mossy",
+     "start": 532.0
+    },
+    {
+     "word": "timber",
+     "start": 540.0
+    },
+    {
+     "word": "pilings",
+     "start": 548.0
+    },
+    {
+     "word": "of",
+     "start": 556.0
+    },
+    {
+     "word": "the",
+     "start": 564.0
+    },
+    {
+     "word": "old",
+     "start": 572.0
+    }
+   ]
+  },
+  {
+   "start": 580.0,
+   "end": 660.0,
+   "text": "landing stage a bell rang twice for the evening crossing",
+   "words": [
+    {
+     "word": "landing",
+     "start": 580.0
+    },
+    {
+     "word": "stage",
+     "start": 588.0
+    },
+    {
+     "word": "a",
+     "start": 596.0
+    },
+    {
+     "word": "bell",
+     "start": 604.0
+    },
+    {
+     "word": "rang",
+     "start": 612.0
+    },
+    {
+     "word": "twice",
+     "start": 620.0
+    },
+    {
+     "word": "for",
+     "start": 628.0
+    },
+    {
+     "word": "the",
+     "start": 636.0
+    },
+    {
+     "word": "evening",
+     "start": 644.0
+    },
+    {
+     "word": "crossing",
+     "start": 652.0
+    }
+   ]
+  },
+  {
+   "start": 660.0,
+   "end": 708.0,
+   "text": "and the keeper closed his book",
+   "words": [
+    {
+     "word": "and",
+     "start": 660.0
+    },
+    {
+     "word": "the",
+     "start": 668.0
+    },
+    {
+     "word": "keeper",
+     "start": 676.0
+    },
+    {
+     "word": "closed",
+     "start": 684.0
+    },
+    {
+     "word": "his",
+     "start": 692.0
+    },
+    {
+     "word": "book",
+     "start": 700.0
+    }
+   ]
+  }
+ ]
+}

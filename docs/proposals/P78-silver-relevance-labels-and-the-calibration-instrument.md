@@ -784,7 +784,9 @@ The §5.2 separating experiment is a sibling directory, same rights constraint:
     render_panel.py        the packet a judge instance reads
     packets/panel_*.{json,md}      2 Arm A panels + 2 Arm B panels
     answers/*.jsonl        26 fresh instances, 3,274 judgements  <- corpus-derived, stays here
-    make_redproof.py · redproof/   the 8 adversarial sets of §5.2.2
+    make_redproof.py · run_redproof.sh · redproof/
+                           the 8 adversarial sets of §5.2.2, and the driver that
+                           scores all 8 in one pass
     analyse.py             the pre-registered scorer (fail-closed; exit 2 CANNOT VERIFY)
     analyse_pooled.py      pooling + the variance decomposition (defines no new band)
     shortlist_null.py      the tie-break null and the tie-break-free Jaccards of §5.2.6
@@ -795,7 +797,7 @@ The §5.2 separating experiment is a sibling directory, same rights constraint:
 
 ```
 cd ~/dir/courses_v3/judge-consistency-2026-08-11
-BOOT=1200 ./run_redproof.sh                       # the 8 rows of §5.2.2
+BOOT=1200 bash run_redproof.sh                     # the 8 rows of §5.2.2
 python3 analyse.py answers --boot=4000             # per panel; exit 2 (Q3 straddles) is expected
 python3 analyse_pooled.py answers --arm=A           # §5.2.3 and §5.2.4
 python3 shortlist_null.py answers --arm=B --k=16    # §5.2.6

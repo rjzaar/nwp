@@ -11,7 +11,7 @@
 #   - `guzzlehttp/*` is in that list only because a 2026-07 fleet sweep found
 #     four Guzzle advisories that `drupal/*` alone had missed. The fix was to
 #     append the ecosystem that surprised us.
-#   - On mayo, 3 of 15 advisories were `webonyx/graphql-php` — neither glob.
+#   - On one live site, 3 of 15 advisories were `webonyx/graphql-php` — neither glob.
 #     The command would have run, exited 0, and left them in place.
 #
 # A list that must be extended every time reality surprises it is not a scope,

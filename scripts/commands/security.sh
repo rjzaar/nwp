@@ -54,7 +54,7 @@ ${BOLD}EXAMPLES:${NC}
     ./security.sh check nwp              # Check for updates
     ./security.sh update nwp             # Apply updates
     ./security.sh update --auto nwp      # Apply, test, deploy if pass
-    ./security.sh update --advisories-only -y mayo   # Scoped security update
+    ./security.sh update --advisories-only -y <site>  # Scoped security update
     ./security.sh check --all            # Check all sites
     ./security.sh audit nwp              # Full security audit
 
@@ -239,7 +239,7 @@ security_update() {
         # SCOPED MODE — update exactly the packages that carry an advisory,
         # derived from the measurement rather than from globs. See
         # lib/security-scope.sh for why the globs were a guess (they could not
-        # reach webonyx/graphql-php, which was 3 of mayo's 15 advisories).
+        # reach webonyx/graphql-php, which was 3 of that site's 15 advisories).
         print_info "Reading advisories to derive the exact package set..."
         local audit_json pkgs scope_rc=0
         audit_json=$(ddev exec composer audit --locked --no-interaction --format=json 2>/dev/null || true)

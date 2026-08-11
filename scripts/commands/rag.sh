@@ -300,8 +300,8 @@ main() {
     # KNOWN_SITES — what actually exists, so lib/audit-record.py can tell a real
     # site from an ORPHAN audit record (a record whose site was deleted). Both
     # sources count: nwp.yml (configured) AND sites/<name>/ on disk, because rag
-    # deliberately shows on-disk-but-unconfigured sites (mg, dir, fin,
-    # saintschool) and orphaning those would be a regression, not a fix.
+    # deliberately shows on-disk-but-unconfigured sites, and orphaning
+    # those would be a regression, not a fix.
     #
     # If BOTH enumerations come back empty we pass nothing, which switches the
     # orphan check OFF rather than declaring the whole fleet non-existent — we

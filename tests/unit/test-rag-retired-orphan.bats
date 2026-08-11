@@ -89,7 +89,7 @@ else: print("ABSENT")' "$TMP/state/state.json" "$1"
 @test "orphan: a record whose site is absent from KNOWN_SITES does not grade RED" {
   _audit_record dev 4          # the real dev.json shape: 4 advisories, measured
   _audit_record nwc 0
-  run _run_rag true "nwc mayo avc"
+  run _run_rag true "nwc sitea siteb"
   [ "$status" -eq 0 ] || [ "$status" -eq 3 ]
   # The precise defect: `dev` graded RED off a stale count for a deleted site.
   refute_grade_red dev
@@ -105,7 +105,7 @@ refute_grade_red() {
 
 @test "orphan: the row is labelled ORPHAN and says CANNOT VERIFY, not a number" {
   _audit_record dev 4
-  run _run_rag "" "nwc mayo avc"
+  run _run_rag "" "nwc sitea siteb"
   echo "$output"
   [[ "$output" == *"ORPHAN"* ]]
   # It must name the reason rather than presenting 4 as a live finding.
@@ -158,25 +158,25 @@ print("RED", d["summary"]["RED"])'
 ################################################################################
 
 @test "retired: a declared-retired site does not grade RED on its stale advisories" {
-  _retired_record avc 13 "2026-08-07"
+  _retired_record siteb 13 "2026-08-07"
   _audit_record nwc 0
-  run _run_rag true "avc nwc"
+  run _run_rag true "siteb nwc"
   echo "$output"
-  refute_grade_red avc
+  refute_grade_red siteb
 }
 
 @test "retired: the row says RETIRED and carries the date, not a live SEC number" {
-  _retired_record avc 13 "2026-08-07"
-  run _run_rag "" "avc nwc"
+  _retired_record siteb 13 "2026-08-07"
+  run _run_rag "" "siteb nwc"
   echo "$output"
   [[ "$output" == *"RETIRED"* ]]
   [[ "$output" == *"2026-08-07"* ]]
 }
 
 @test "retired: it is counted apart and does not inflate UNSCANNED" {
-  _retired_record avc 13 "2026-08-07"
+  _retired_record siteb 13 "2026-08-07"
   _audit_record nwc 0
-  _run_rag true "avc nwc" || true
+  _run_rag true "siteb nwc" || true
   run python3 -c '
 import json
 d=json.load(open("'"$TMP"'/state/state.json"))
@@ -193,12 +193,12 @@ print("RETIRED", s.get("RETIRED"), "RED", s["RED"], "UNSCANNED", s["UNSCANNED"])
 @test "retired: a retired site still present and serving would be a lie we can catch" {
   # A retirement is a CLAIM about the world. The record keeps the evidence
   # (retired_reason) so `pl rag --json` can be audited against reality later.
-  _retired_record avc 13 "2026-08-07"
-  _run_rag true "avc" || true
+  _retired_record siteb 13 "2026-08-07"
+  _run_rag true "siteb" || true
   run python3 -c '
 import json
 d=json.load(open("'"$TMP"'/state/state.json"))
-r=[x for x in d["sites"] if x["site"]=="avc"][0]
+r=[x for x in d["sites"] if x["site"]=="siteb"][0]
 print(r.get("retired"), "|", r.get("retired_reason"))'
   echo "$output"
   [[ "$output" == *"2026-08-07"* ]]
@@ -210,25 +210,25 @@ print(r.get("retired"), "|", r.get("retired_reason"))'
 ################################################################################
 
 @test "a retired site and an orphan record are distinguishable in the envelope" {
-  _retired_record avc 13 "2026-08-07"
+  _retired_record siteb 13 "2026-08-07"
   _audit_record dev 4
   _audit_record nwc 0
-  _run_rag true "avc nwc" || true
+  _run_rag true "siteb nwc" || true
   run python3 -c '
 import json
 d=json.load(open("'"$TMP"'/state/state.json"))
 for r in d["sites"]:
     print(r["site"], r["rag"], r.get("retired") or "-", r.get("orphan") or "-")'
   echo "$output"
-  [[ "$output" == *"avc RETIRED 2026-08-07 -"* ]]
+  [[ "$output" == *"siteb RETIRED 2026-08-07 -"* ]]
   [[ "$output" == *"dev ORPHAN - True"* ]]
   [[ "$output" == *"nwc GREEN - -"* ]]
 }
 
 @test "neither state may be rendered as GREEN" {
-  _retired_record avc 13 "2026-08-07"
+  _retired_record siteb 13 "2026-08-07"
   _audit_record dev 4
-  _run_rag true "avc" || true
+  _run_rag true "siteb" || true
   run python3 -c '
 import json
 d=json.load(open("'"$TMP"'/state/state.json"))
@@ -243,7 +243,7 @@ print(d["summary"]["GREEN"])'
   # them, so the board said "8 site(s) could not be scanned" above a list of 12.
   # A summary number that does not describe the rows beneath it is the same
   # defect class as everything else in this file.
-  _retired_record avc 13 "2026-08-07"
+  _retired_record siteb 13 "2026-08-07"
   _audit_record dev 4
   python3 - "$TMP/audit/dir.json" <<'PY'
 import sys, json
@@ -251,7 +251,7 @@ json.dump({"site":"dir","checked":"2026-08-11T00:00:00Z","security_count":0,
            "ignored_count":0,"cache_stale":True,"scanned":False,
            "stale_reason":"no ddev binary"}, open(sys.argv[1],"w"))
 PY
-  run _run_rag "" "avc dir"
+  run _run_rag "" "siteb dir"
   echo "$output"
   n_claimed=$(echo "$output" | grep -oE '[0-9]+ site\(s\) could not be scanned' | grep -oE '^[0-9]+')
   n_listed=$(echo "$output" | sed -n '/site(s) could not be scanned/,/state →/p' | grep -cE '^    - ')

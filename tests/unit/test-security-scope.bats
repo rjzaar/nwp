@@ -9,12 +9,12 @@
 # Two problems, and the second is the dangerous one:
 #
 #   1. SCOPE. That moves every Drupal package on the site, vulnerable or not, to
-#      clear (on mayo) 6 packages. On a site imported from a live server that is
+#      clear (on sitea) 6 packages. On a site imported from a live server that is
 #      a far larger blast radius than the finding justifies, and it is the
 #      "blanket update" the operator's standing instruction rules out.
 #
 #   2. COVERAGE THAT LOOKS LIKE SCOPE. The two globs are a HARDCODED GUESS at
-#      where advisories live. mayo's real advisory set included
+#      where advisories live. sitea's real advisory set included
 #      webonyx/graphql-php — neither drupal/* nor guzzlehttp/* — so the command
 #      would have run, exited 0, and left an advisory it never had any way to
 #      reach. The comment above it even records this being patched once before,
@@ -130,7 +130,7 @@ EOF
 ################################################################################
 # Root pinners — naming the advisory package is not enough to move it
 ################################################################################
-# THE DEFECT (mayo, 2026-08-11): `composer update drupal/core --with-dependencies`
+# THE DEFECT (sitea, 2026-08-11): `composer update drupal/core --with-dependencies`
 # printed "Nothing to modify in lock file" and EXITED 0. The advisory count stayed
 # at 15. drupal/core is pinned to an exact version by drupal/core-recommended, a
 # ROOT requirement, which composer will not touch unless it is named. A scoped
@@ -192,17 +192,17 @@ WHY
 
 @test "root pinners: ONLY exact pins count — a flexible root requirement is not a blocker" {
   # The first cut of this rule added any root requirement that required the
-  # advisory package. On mayo that grew a 6-package scoped update to 17 and
+  # advisory package. On sitea that grew a 6-package scoped update to 17 and
   # dragged in drupal/webform 6.2.10 => 6.3.0 to fix a Guzzle advisory — the
   # blanket update coming back in through the pinner resolver.
   load_lib
   cat > "$BATS_TEST_TMPDIR/composer.json" <<'JSON'
-{"require":{"drupal/core-recommended":"^10.5","drupal/webform":"^6.2","nwp/avc":"^0.3"}}
+{"require":{"drupal/core-recommended":"^10.5","drupal/webform":"^6.2","vendor/frozen-profile":"^0.3"}}
 JSON
   run security_root_pinners "$BATS_TEST_TMPDIR" <<'WHY'
 drupal/core-recommended  10.6.12 requires  drupal/core (10.6.12)
 drupal/webform           6.2.10  requires  drupal/core (^10.2 || ^11)
-nwp/avc                  0.3.1   requires  drupal/core (^10)
+vendor/frozen-profile                  0.3.1   requires  drupal/core (^10)
 WHY
   echo "status=$status output=$output"
   [ "$status" -eq 0 ]
@@ -212,10 +212,10 @@ WHY
 
 @test "root pinners: an exact pre-release pin (3.0.0-beta4) is still an exact pin" {
   load_lib
-  echo '{"require":{"nwp/avc":"^0.3"}}' > "$BATS_TEST_TMPDIR/composer.json"
+  echo '{"require":{"vendor/frozen-profile":"^0.3"}}' > "$BATS_TEST_TMPDIR/composer.json"
   run security_root_pinners "$BATS_TEST_TMPDIR" <<'WHY'
-nwp/avc 0.3.1 requires drupal/ginvite (3.0.0-beta4)
+vendor/frozen-profile 0.3.1 requires drupal/ginvite (3.0.0-beta4)
 WHY
   [ "$status" -eq 0 ]
-  [ "$output" = "nwp/avc" ]
+  [ "$output" = "vendor/frozen-profile" ]
 }

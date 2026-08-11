@@ -26,7 +26,7 @@ def root_pinners(composer_json_path):
     ROOT REQUIREMENTS of this project.
 
     WHY THIS SECOND MODE EXISTS. Naming the advisory package is not enough to
-    update it. On mayo, `composer update drupal/core --with-dependencies` reported
+    update it. On a real site, `composer update drupal/core --with-dependencies` reported
     "Nothing to modify in lock file" and exited 0 — a completely silent no-op —
     because drupal/core is pinned to an exact version by drupal/core-recommended,
     which is a ROOT requirement and so is never touched unless it is named:
@@ -63,14 +63,14 @@ def root_pinners(composer_json_path):
     # them are root requirements with constraints like "^9.5 || ^10 || ^11".
     # Those admit the fixed version already — naming them updates packages that
     # were never in the way, which is the blanket update by the back door. The
-    # first cut of this rule did exactly that: it grew mayo's scoped update from
+    # first cut of this rule did exactly that: it grew a scoped update from
     # 6 packages to 17, dragging in drupal/webform 6.2.10 => 6.3.0 for a Guzzle
     # advisory.
     #
     # An EXACT constraint ("10.6.12", "1.19.0", "3.0.0-beta4") is the one that
     # genuinely pins, and it is the shape a metapackage uses:
     #     drupal/core-recommended 10.6.12 requires drupal/core (10.6.12)
-    #     nwp/avc                 0.3.1   requires drupal/paragraphs (1.19.0)
+    #     a frozen site profile  0.3.1   requires drupal/paragraphs (1.19.0)
     EXACT = re.compile(r"^v?\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?$")
 
     out = []

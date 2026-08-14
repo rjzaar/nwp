@@ -344,13 +344,20 @@ cmd_plugin_build() {
 
     # Resolve the build tree: --tree wins; else --ddev site's dev tree.
     # ops#326: NO engine default site — the engine ships no estate.
+    # EXCEPTION (ops#336 regression): --check-only with an explicit --from is a
+    # freshness check on the SOURCE dir and never touches a build tree — it is
+    # exactly what `plugin deploy`'s gate 7 invokes, with no --tree/--ddev to
+    # give. Demanding a tree here broke EVERY plugin deploy at the gate,
+    # dry-run included. check-only WITHOUT --from still refuses: its source
+    # default would be the stale ~/nwptoolkit snapshot.
     local build_tree="$tree"
     if [ -z "$build_tree" ]; then
-        if [ -z "$ddev" ]; then
+        if [ -n "$ddev" ]; then
+            build_tree="$PROJECT_ROOT/sites/${ddev}/dev"
+        elif [ "$check_only" != "true" ] || [ -z "$from" ]; then
             print_error "no build tree: pass --tree=DIR or --ddev=SITE (ops#326: the engine ships no default site)"
             return 1
         fi
-        build_tree="$PROJECT_ROOT/sites/${ddev}/dev"
     fi
 
     print_header "Moodle plugin build: ${plugin} ($([ "$check_only" = true ] && echo check-only || echo build))"

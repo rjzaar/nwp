@@ -48,8 +48,13 @@ ${BOLD}SOURCES${NC} (fixed set — anything else is refused, not forwarded):
   systemd    journalctl (honours --since)
   watchdog   /var/log/syslog
   mail       /var/log/mail.{log,err} — the MTA. Answers "did that confirmation
-             email actually leave?". Reports UNREADABLE/ABSENT rather than
-             returning an empty tail, because here silence is the answer.
+             email actually leave?".
+
+  Every file-backed source reports UNREADABLE (it exists, we lack privilege —
+  one \`sudo -n\` is attempted first) or ABSENT (no such file) rather than
+  returning an empty tail, and exits 3 as CANNOT VERIFY. Silence must never be
+  mistaken for "nothing happened". These logs are typically 0640 root:adm, so
+  on a host whose login user is not in \`adm\` this is the NORMAL path.
 
 ${BOLD}BOUNDS:${NC}
   --tail defaults to 200 and is clamped to 5000. There is no follow mode and no

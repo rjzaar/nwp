@@ -1661,6 +1661,135 @@ demo_golden_verify() {
     return 0
 }
 
+# ── demo_golden_quiz_gate <db.sql.gz> [site] — refuse to seal a catalogue
+#    whose every depthcontent row has lost its quiz items ─────────────────────
+#
+# WHY THIS EXISTS. The pre-e9c596f build_json.py stripped quiz_items out of
+# every learning point, so the 2026-07-11 mbz — and everything seeded from it —
+# carried the ssd catalogue's 213 LPs with no quizzes (1,671 items). A golden
+# is a reference image (ops#145): the nightly reset restores it verbatim, and
+# the box wrapper deliberately has no reseed step, so a capture taken in that
+# state FREEZES the loss into every night thereafter and nothing goes red.
+# This is the CONTENT twin of the ops#145 config-parity gate, measured on the
+# CAPTURED DUMP — the exact bytes a reset will restore — never on the site, so
+# it cannot pass on bytes it did not check. (Audited build order step 1,
+# 2026-08-15.)
+#
+# SCOPE. The canonical payload (servers/live/demo/ssd-catalogue-content.json,
+# engine-tracked; override via $3) DECLARES which LPs must carry quiz items —
+# the gate checks each declared LP's ROW in the dump. This matters: the REAL
+# 2026-08-02 loss-class golden holds 3 quiz-bearing demo.prayer rows while all
+# 213 catalogue rows are stripped, so any-row heuristics pass it (proven in
+# tests/unit/test-demo-golden-quiz-gate.bats, RED-PROOF v2).
+#   · no depthcontent rows in the dump      → pass (Drupal half / module absent;
+#     mysqldump writes no INSERT for an empty table, so "no INSERT" is "no rows")
+#   · a declared LP present but quiz-less   → REFUSE, naming the LPs
+#   · a declared LP absent from the dump    → not this gate's defect (that is
+#     seeding/purge territory); ignored
+#   · payload unreadable / jq missing       → fall back, loudly, to the any-row
+#     heuristic: rows exist and not one carries quiz items → REFUSE
+# Sibling tables (depthcontent_fb_state, _mastery, …) are excluded by the
+# table-name anchor, so a decoy match there can never mask a stripped catalogue.
+#
+# The row matcher mirrors the two content encodings measured in real ssd live
+# goldens on 2026-08-15: compact `\":[{\"` and pretty `\": [\n    {\"` (JSON
+# double quotes arrive backslash-escaped from mysqldump; \n is the two-char
+# escape, so every row stays on one dump line and line-based awk is sound).
+#
+# Returns 0 pass · 1 REFUSED · 2 CANNOT VERIFY (unreadable/corrupt dump —
+# fail-closed, the estate rule; exit 2 is never a pass).
+#
+# Override: NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ='<why>' seals anyway, loudly, and
+# is recorded in the demo log — the --allow-config-gaps mirror, env-shaped so
+# the reason travels with the decision (the NWP_ROTATION_DEBT_OVERRIDE pattern).
+demo_golden_quiz_gate() {
+    local dumpgz="$1" site="${2:-}"
+    local payload="${3:-${PROJECT_ROOT:-$HOME/nwp}/servers/live/demo/ssd-catalogue-content.json}"
+    if [[ ! -r "$dumpgz" ]]; then
+        print_error "CANNOT VERIFY quiz content: dump unreadable: ${dumpgz}"
+        return 2
+    fi
+    if ! gzip -t -- "$dumpgz" 2>/dev/null; then
+        print_error "CANNOT VERIFY quiz content: dump corrupt (gzip -t failed): ${dumpgz}"
+        return 2
+    fi
+
+    # Per-row measurement, attributed to the depthcontent table only. Emits one
+    # "<pointid> <0|1>" line per catalogue row (1 = carries a non-empty
+    # quiz_items array), plus a DCSEEN sentinel when any row was seen at all.
+    # The pointid is the quoted field immediately before the content_json
+    # column (which is the only field whose value starts with '{).
+    local rowdata
+    rowdata="$(zcat -- "$dumpgz" 2>/dev/null | awk -v q="'" '
+        BEGIN { pidre = "," q "[A-Za-z0-9._-]+" q "," q "[{]" }
+        /^INSERT INTO `/ { tbl = $3 }
+        tbl ~ /^`([a-z0-9_]*_)?depthcontent`$/ && /^\(/ {
+            print "DCSEEN"
+            has = ($0 ~ /quiz_items\\": ?\[( |\\n)*[{]/) ? 1 : 0
+            if (match($0, pidre)) {
+                pid = substr($0, RSTART + 2, RLENGTH - 6)
+                print pid " " has
+            }
+        }')"
+    if [[ -z "$rowdata" ]]; then
+        # No catalogue in this dump — the gate does not apply.
+        return 0
+    fi
+    local nonempty
+    nonempty="$(printf '%s\n' "$rowdata" | awk '$2 == 1' | wc -l)"
+
+    # ── Payload mode: check each DECLARED quiz-bearing LP's row ──
+    if [[ -r "$payload" ]] && command -v jq >/dev/null 2>&1 \
+        && jq -e . "$payload" >/dev/null 2>&1; then
+        local expected
+        expected="$(jq -r '.content // {} | to_entries[]
+            | select((.value.quiz_items // []) | length > 0) | .key' "$payload")"
+        if [[ -n "$expected" ]]; then
+            local stripped
+            stripped="$(comm -12 \
+                <(printf '%s\n' "$expected" | sort -u) \
+                <(printf '%s\n' "$rowdata" | awk '$2 == 0 {print $1}' | sort -u))"
+            if [[ -z "$stripped" ]]; then
+                print_status "OK" "Catalogue quiz content present in the capture (${nonempty} rows carry quiz items; every declared LP intact)"
+                return 0
+            fi
+            local nstripped
+            nstripped="$(printf '%s\n' "$stripped" | wc -l)"
+            if [[ -z "${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ:-}" ]]; then
+                print_error "REFUSED: ${nstripped} catalogue LP(s) the canonical payload declares quiz-bearing carry NO quiz items in this capture — the pre-e9c596f strip class."
+                print_error "First stripped: $(printf '%s\n' "$stripped" | head -5 | tr '\n' ' ')"
+                print_error "Sealing it would make every nightly reset restore a quiz-stripped catalogue, silently."
+                print_hint  "repair first (ssd example): scripts/demo/ssd-restore-catalogue-content.sh --tier=live — then re-capture"
+                print_hint  "a deliberately empty catalogue: NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ='<why>' pl demo golden …"
+                [[ -n "$site" ]] && demo_log "$site" quiz-gate-refused "dump=$(basename "$dumpgz") stripped=${nstripped}"
+                return 1
+            fi
+            print_status "WARN" "quiz gate OVERRIDDEN: sealing with ${nstripped} declared LP(s) quiz-less — ${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ}"
+            [[ -n "$site" ]] && demo_log "$site" quiz-gate-overridden "reason=${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ}"
+            return 0
+        fi
+    else
+        print_status "WARN" "canonical payload unreadable (${payload}) — falling back to the any-row heuristic"
+    fi
+
+    # ── Fallback: the any-row heuristic (systematic strip only) ──
+    if (( nonempty > 0 )); then
+        print_status "OK" "Catalogue quiz content present in the capture (${nonempty} rows carry quiz items)"
+        return 0
+    fi
+    if [[ -n "${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ:-}" ]]; then
+        print_status "WARN" "quiz gate OVERRIDDEN: sealing a catalogue with NO quiz items — ${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ}"
+        [[ -n "$site" ]] && demo_log "$site" quiz-gate-overridden "reason=${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ}"
+        return 0
+    fi
+    print_error "REFUSED: this capture's depthcontent rows carry no quiz items — the pre-e9c596f strip class."
+    print_error "Sealing it would make every nightly reset restore a quiz-less catalogue, silently."
+    print_hint  "repair first (ssd example): scripts/demo/ssd-restore-catalogue-content.sh --tier=live — then re-capture"
+    print_hint  "a deliberately empty catalogue: NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ='<why>' pl demo golden …"
+    [[ -n "$site" ]] && demo_log "$site" quiz-gate-refused "dump=$(basename "$dumpgz")"
+    return 1
+}
+
 # ── demo_golden_stage_and_verify <site> — push the freshly captured golden to
 #    the box, or say loudly that the nightly will NOT restore it (ops#269) ────
 #

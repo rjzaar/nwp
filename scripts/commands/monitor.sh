@@ -183,18 +183,104 @@ _http_status() {
     echo "${code:-000}"
 }
 
-# Days until the TLS cert on <host>:443 expires. Echoes an integer, or "" when
-# it cannot be determined (no cert / unreachable / IP target we skip).
-_tls_days_left() {
-    local host="$1"
-    local enddate
-    enddate=$(echo | openssl s_client -servername "$host" -connect "${host}:443" 2>/dev/null \
-        | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)
-    [ -z "$enddate" ] && { echo ""; return 0; }
-    local exp now
-    exp=$(date -d "$enddate" +%s 2>/dev/null) || { echo ""; return 0; }
+# Does a certificate name (SAN entry or CN) match the host we asked for?
+# Wildcards match exactly ONE label: *.example.org matches a.example.org but
+# neither example.org nor a.b.example.org — the rule browsers apply (RFC 6125).
+_tls_name_matches() {
+    local name="$1" host="$2"
+    name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+    host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+    [ -n "$name" ] || return 1
+    [ "$name" = "$host" ] && return 0
+    case "$name" in
+        \*.*)
+            local suffix="${name#\*}"          # ".example.org"
+            case "$host" in
+                *"$suffix")
+                    # The wildcard covers exactly one label: what it replaced
+                    # must not itself contain a dot.
+                    local left="${host%"$suffix"}"
+                    [ -n "$left" ] && [ "${left//./}" = "$left" ] && return 0
+                    ;;
+            esac
+            ;;
+    esac
+    return 1
+}
+
+# The names a certificate actually presents, one per line. SANs are the
+# authority; the CN is read only as a fallback for certificates old enough to
+# have no SAN extension (browsers stopped honouring CN, but a cert with no SAN
+# must not be reported as presenting NO names — that would be a mismatch we
+# invented). `-ext` needs OpenSSL >= 1.1.1, so `-text` is parsed when it yields
+# nothing: the check must not silently change verdict with the box's openssl.
+_tls_cert_names() {
+    local pem="$1" sans=""
+    sans=$(printf '%s\n' "$pem" | openssl x509 -noout -ext subjectAltName 2>/dev/null \
+        | tr ',' '\n' | sed -n 's/.*DNS:[[:space:]]*//p' | tr -d ' ' | sed '/^$/d')
+    if [ -z "$sans" ]; then
+        sans=$(printf '%s\n' "$pem" | openssl x509 -noout -text 2>/dev/null \
+            | grep -A1 'Subject Alternative Name' | tr ',' '\n' \
+            | sed -n 's/.*DNS:[[:space:]]*//p' | tr -d ' ' | sed '/^$/d')
+    fi
+    if [ -z "$sans" ]; then
+        sans=$(printf '%s\n' "$pem" | openssl x509 -noout -subject 2>/dev/null \
+            | sed -n 's/.*CN[[:space:]]*=[[:space:]]*//p' | cut -d, -f1 | tr -d ' ' | sed '/^$/d')
+    fi
+    printf '%s\n' "$sans"
+}
+
+# TLS verdict for <host>:443. Echoes ONE of:
+#
+#   OK|<days>|<name>          cert is valid for <host>; <days> until expiry
+#   MISMATCH|<days>|<name>    the handshake returned a cert for a DIFFERENT host
+#   UNREACHABLE||             no handshake / no parsable certificate
+#
+# WHY THE NAME CHECK IS LOAD-BEARING (nwp/ops#359, incident 2026-08-13). This
+# function used to report the expiry of whatever certificate the handshake
+# returned, and nothing compared it to the host asked for. One live site's
+# vhost had been renamed to a `.bak` during a box split and never restored, so
+# it had NO nginx server block at all — TLS fell through to the first 443 block
+# on the box and presented a DIFFERENT site's certificate. The fleet dashboard
+# rendered that borrowed certificate's healthy `82d` in the broken site's row
+# for twelve days, while the site served no TLS any browser would accept. Two
+# further sites on the same box are in that state as this is written.
+#
+# A TLS column that cannot go red for a wrong-domain certificate is exactly the
+# CLAUDE.md "check that has never been proven to fail": it looked like a gate
+# and was a hypothesis. The three states below are kept distinct on purpose —
+# in particular a failed handshake is CANNOT VERIFY and is never green, because
+# "I could not look" must not be indistinguishable from "I looked and it was
+# fine" (the fail-closed rule).
+_tls_probe() {
+    local host="$1" pem enddate exp now days name matched=0
+    pem=$(echo | openssl s_client -servername "$host" -connect "${host}:443" 2>/dev/null || true)
+    # An empty or certificate-less handshake is blindness, not health.
+    case "$pem" in
+        *"BEGIN CERTIFICATE"*) : ;;
+        *) echo "UNREACHABLE||"; return 0 ;;
+    esac
+
+    enddate=$(printf '%s\n' "$pem" | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)
+    [ -n "$enddate" ] || { echo "UNREACHABLE||"; return 0; }
+    exp=$(date -d "$enddate" +%s 2>/dev/null) || { echo "UNREACHABLE||"; return 0; }
     now=$(date +%s)
-    echo $(( (exp - now) / 86400 ))
+    days=$(( (exp - now) / 86400 ))
+
+    local first=""
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        [ -z "$first" ] && first="$name"
+        if _tls_name_matches "$name" "$host"; then matched=1; break; fi
+    done < <(_tls_cert_names "$pem")
+
+    # No parsable names at all: we hold a certificate we cannot judge. Say so.
+    if [ -z "$first" ]; then echo "UNREACHABLE||"; return 0; fi
+    if [ "$matched" -eq 1 ]; then
+        echo "OK|${days}|${first}"
+    else
+        echo "MISMATCH|${days}|${first}"
+    fi
 }
 
 ################################################################################
@@ -249,20 +335,29 @@ cmd_uptime() {
         IFS='|' read -r label target kind <<<"$line"
         total=$((total+1))
 
-        local http tls_days grade dot http_disp tls_disp
+        local http tls_days grade dot http_disp tls_disp tls_state tls_name
         http=$(_http_status "$target" "$kind")
 
         # TLS: only meaningful for a named HTTPS host. Bare IPs have no SNI
         # hostname; tailnet boxes are build/AI hosts, not web servers.
+        tls_state="skip"; tls_days=""; tls_name=""
         if [ "$kind" = "ip" ]; then
-            tls_days=""; tls_disp="(skipped: IP)"
+            tls_disp="(skipped: IP)"
         elif [ "$kind" = "tailnet" ]; then
-            tls_days=""; tls_disp="(skipped: tailnet)"
+            tls_disp="(skipped: tailnet)"
         else
-            tls_days=$(_tls_days_left "$target")
-            if [ -z "$tls_days" ]; then tls_disp="n/a"
-            elif [ "$tls_days" -lt 0 ]; then tls_disp="EXPIRED"
-            else tls_disp="${tls_days}d"; fi
+            IFS='|' read -r tls_state tls_days tls_name <<<"$(_tls_probe "$target")"
+            case "$tls_state" in
+                OK)
+                    if [ "$tls_days" -lt 0 ]; then tls_disp="EXPIRED"
+                    else tls_disp="${tls_days}d"; fi
+                    ;;
+                # Name the certificate actually served. In the incident the row
+                # said "82d" and the operator had no way to learn from the
+                # dashboard that it was reading another site's certificate.
+                MISMATCH)  tls_disp="MISMATCH (served: ${tls_name})" ;;
+                *)         tls_disp="CANNOT VERIFY" ;;
+            esac
         fi
 
         # Grade. tailnet hosts are only in this list because ping reached them,
@@ -280,10 +375,18 @@ cmd_uptime() {
                 *) grade="AMBER" ;;
             esac
         fi
-        if [ -n "$tls_days" ]; then
-            if [ "$tls_days" -lt 0 ]; then grade="RED"
-            elif [ "$tls_days" -lt "$TLS_WARN_DAYS" ] && [ "$grade" = "GREEN" ]; then grade="AMBER"; fi
-        fi
+        # TLS grading. A certificate for the WRONG HOST is a hard RED: the site
+        # is serving TLS no browser will accept, which is indistinguishable
+        # from down for a real visitor — and it is the state that hid behind a
+        # green cell for twelve days. Blindness is AMBER, never GREEN.
+        case "$tls_state" in
+            OK)
+                if [ "$tls_days" -lt 0 ]; then grade="RED"
+                elif [ "$tls_days" -lt "$TLS_WARN_DAYS" ] && [ "$grade" = "GREEN" ]; then grade="AMBER"; fi
+                ;;
+            MISMATCH)    grade="RED" ;;
+            UNREACHABLE) [ "$grade" = "GREEN" ] && grade="AMBER" ;;
+        esac
         # Show tailnet reachability rather than the (expected) empty HTTP.
         if [ "$kind" = "tailnet" ] && [ "$http" = "000" ]; then http="up"; fi
 

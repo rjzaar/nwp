@@ -413,6 +413,10 @@ ${BOLD}MONITORING (launch gate, P13/#71):${NC}
                                     fleet state, it cannot compute it (no sites there)
     fleet status                    What is published, where, and how old
     fleet schedule                  Publish periodically from this machine (cron)
+    fleet sync status               Is any nwp host running stale main? (ops#360)
+    fleet sync install --host=<role>  Provision the */15 engine-code pull cron
+                                    (ff-only, verified, health-checked; prod
+                                    roles refused — see pl fleet --help)
     monitor uptime [--tier=live]    Fleet HTTP status + TLS expiry (red/amber/green)
     monitor mail <site>             Outbound mail readiness (SPF/DKIM/DMARC/PTR/MX)
     monitor mail <site> --send-test <addr> --execute   Opt-in live probe (gated)

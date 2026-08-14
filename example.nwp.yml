@@ -517,6 +517,14 @@ recipes:
     profile: standard
     install_modules: [pathauto, simple_sitemap, podcast_publisher]
 settings:
+  # `pl fleet sync` (ops#360) — which ROLES' hosts are graded (and provisioned)
+  # for engine-code currency. Roles, never hostnames: they resolve through the
+  # private instance manifest, and prod-reaching roles (verifier, signed-deploy,
+  # prod-cluster, prod-agent, prod-au) plus `authoring` are refused by the verb
+  # regardless of what is listed here. Unset = "ai-host ci-host".
+  # fleet:
+  #   sync_roles: "ai-host ci-host"
+
   # `pl backup replicate` — copy each site's newest backup artifact(s) to
   # these ssh targets (verified by remote sha256), so one dead disk is an
   # inconvenience, not a loss. DELIBERATELY no default: an undeclared replica

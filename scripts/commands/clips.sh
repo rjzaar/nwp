@@ -54,6 +54,41 @@ set -uo pipefail
 #   pl clips finish [--json]
 #   pl clips sources
 #
+#   pl clips calibrate packet --rater=<id> [--rater=<id> ...] [--out=DIR]
+#                             [--keys-out=DIR] [--exclusions=FILE]
+#   pl clips calibrate score  <answers.json> [<answers.json> ...] [--boot=N]
+#   pl clips calibrate status
+#
+# ── `calibrate` — THE PANEL INSTRUMENT (P79, ops#348) ─────────────────────────
+#
+# The operator ruled that the calibration set is "really for the media guild to
+# do". That is not a relabelling: with one assessor the four P78 4.4 gates
+# measure operator-vs-machine, and with N members they also measure
+# HUMAN-vs-HUMAN — the one quantity no machine measurement can supply, because
+# every judging instance was the same model and a bias they share is invisible
+# by construction (P78 5.2.7).
+#
+#   packet   builds ONE blinded packet per rater. Each rater gets their own
+#            presentation seed, so order effects are not correlated across the
+#            panel, and anti-self-review exclusions are applied at BUILD time —
+#            an item a rater must not judge is not in their packet at all.
+#            Writes to TWO places: --out holds what the member is handed, and
+#            --keys-out (a SIBLING, never a child) holds the join maps, which
+#            carry the lp_id the packet withholds. REFUSES to write either
+#            inside this repository, which is publicly mirrored (ADR-0039 /
+#            P78 6), and refuses --keys-out inside --out.
+#
+#   score    takes N answers files, joins each through its own packet, and runs
+#            the generalised gates. Gate 0 (panel coherence) is evaluated FIRST
+#            and DOMINATES: a panel that did not agree with itself has not
+#            measured the machine, so it may not discard the labels — even when
+#            Gates 1, 2 and 4 all say DISCARD.
+#
+# It degrades to N = 1 without changing the artefact format: same answers file,
+# one per rater. At N = 1 Gates 0, 1b and 3b report NOT ARMED and the run is the
+# instrument P78 already committed. Arming follows a declared fact — how many
+# answers files exist — never a flag.
+#
 # `repair` is DRY RUN by default and repairs only what needs no judgement:
 # it completes a truncated summary from the same learning point's own
 # `standard.text`, and stamps unfilled slots, unplayable windows and measured
@@ -133,7 +168,7 @@ CLIP_SIGPIPE_FILES="${NWP_CLIPS_SIGPIPE_FILES:-scripts/commands/secrets.sh scrip
 _err() { printf 'ERROR: %s\n' "$*" >&2; }
 
 usage() {
-    sed -n '3,87p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,122p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 cmd_sources() {
@@ -632,6 +667,129 @@ cmd_finish() {
     return "$F_RC"
 }
 
+################################################################################
+# pl clips calibrate — the panel instrument (P79)
+################################################################################
+
+CAL_SCORER="$PROJECT_ROOT/scripts/lib/clip-calibration-multi.py"
+CAL_PACKET="$PROJECT_ROOT/scripts/lib/clip-calibration-packet.py"
+# The calibration set and the packets live in ~/dir because they carry corpus
+# excerpts (P78 6). Only the METHOD lives here.
+CAL_SET="${NWP_CLIPS_CAL_SET:-$CLIP_SCORER_DIR/calibration_set.json}"
+CAL_PANEL_DIR="${NWP_CLIPS_PANEL_DIR:-$CLIP_CAL_DIR/panel}"
+# The join maps live OUTSIDE the directory a member is handed. They carry the
+# lp_id the member-facing document withholds, so keeping them beside it would
+# make the blinding a matter of remembering which files to send.
+CAL_KEYS_DIR="${NWP_CLIPS_KEYS_DIR:-$CLIP_CAL_DIR/calibration-keys}"
+
+cmd_calibrate() {
+    local sub="${1:-}"; shift || true
+    case "$sub" in
+        packet)
+            [ -f "$CAL_PACKET" ] || { _err "builder missing: $CAL_PACKET"; return 2; }
+            [ -f "$CAL_SET" ] || {
+                _err "no calibration set at $CAL_SET"
+                _err "CANNOT VERIFY: a packet cannot be built from a set that is not here."
+                return 2; }
+            local -a args=(--cal="$CAL_SET") ; local have_out=0
+            for a in "$@"; do
+                case "$a" in
+                    --out=*) have_out=1; args+=("$a") ;;
+                    *) args+=("$a") ;;
+                esac
+            done
+            [ "$have_out" -eq 0 ] && args+=(--out="$CAL_PANEL_DIR")
+            case " $* " in *" --keys-out="*) ;; *) args+=(--keys-out="$CAL_KEYS_DIR") ;; esac
+            python3 "$CAL_PACKET" "${args[@]}"
+            ;;
+        score)
+            [ -f "$CAL_SCORER" ] || { _err "scorer missing: $CAL_SCORER"; return 2; }
+            [ -f "$CAL_SET" ] || {
+                _err "no calibration set at $CAL_SET"
+                _err "CANNOT VERIFY: refusing to score answers against a set that is not here."
+                return 2; }
+            local -a sargs=(--cal="$CAL_SET" --packet-dir="$CAL_KEYS_DIR")
+            local n=0
+            for a in "$@"; do
+                case "$a" in
+                    --*) sargs+=("$a") ;;
+                    *)   sargs+=("$a"); n=$((n + 1)) ;;
+                esac
+            done
+            if [ "$n" -eq 0 ]; then
+                # No files named: take every answers file in the panel dir. A
+                # panel is whoever handed in, and that is a DECLARED FACT read
+                # off the directory, not a roster kept somewhere else.
+                local f found=0
+                for f in "$CAL_PANEL_DIR"/answers-*.json; do
+                    [ -e "$f" ] || continue
+                    sargs+=("$f"); found=$((found + 1))
+                done
+                if [ "$found" -eq 0 ]; then
+                    _err "no answers files in $CAL_PANEL_DIR and none named"
+                    _err "CANNOT VERIFY: an empty panel is not a passing panel."
+                    return 2
+                fi
+                printf '%sscoring %d rater(s) found in %s%s\n' \
+                    "${DIM:-}" "$found" "$CAL_PANEL_DIR" "${NC:-}" >&2
+            fi
+            python3 "$CAL_SCORER" "${sargs[@]}"
+            ;;
+        status)
+            printf '%-24s %s\n' "calibration set" "$CAL_SET"
+            printf '%-24s %s\n' "panel directory (members)" "$CAL_PANEL_DIR"
+            printf '%-24s %s\n' "join maps (operator)" "$CAL_KEYS_DIR"
+            if [ ! -f "$CAL_SET" ]; then
+                printf '\nCANNOT VERIFY: the calibration set is not on this machine.\n' >&2
+                return 2
+            fi
+            local total
+            total=$(python3 -c '
+import json,sys
+c=json.load(open(sys.argv[1]))
+print(sum(len(l["items"]) for l in c))' "$CAL_SET" 2>/dev/null) || total=0
+            printf '%-24s %s\n\n' "judgements per rater" "$total"
+            printf '%-14s %-9s %-9s %s\n' "RATER" "GRADED" "OF" "PACKET"
+            # Worst-of, same convention as `finish`: 2 (cannot look) dominates
+            # 1 (owed), which dominates 0. A half-graded panel must never read
+            # as a finished one just because the table rendered.
+            local f rid graded pk any=0 rc=0
+            for f in "$CAL_PANEL_DIR"/answers-*.json; do
+                [ -e "$f" ] || continue
+                any=1
+                rid=$(basename "$f" .json); rid="${rid#answers-}"
+                graded=$(python3 -c '
+import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: print(-1); raise SystemExit
+print(sum(1 for v in d.values() if v is not None))' "$f" 2>/dev/null) || graded=-1
+                pk="$CAL_KEYS_DIR/calibration-packet-$rid.json"
+                if [ -f "$pk" ]; then pk="present"; else
+                    pk="MISSING — this rater CANNOT be scored"; rc=2
+                fi
+                printf '%-14s %-9s %-9s %s\n' "$rid" "$graded" "$total" "$pk"
+                if [ "$graded" -lt 0 ]; then rc=2
+                elif [ "$graded" -lt "$total" ] && [ "$rc" -ne 2 ]; then rc=1; fi
+            done
+            if [ "$any" -eq 0 ]; then
+                printf '(no rater has handed in)\n\n'
+                printf 'CANNOT VERIFY: nobody has judged anything yet. An empty\n' >&2
+                printf 'panel is not a passing panel.\n' >&2
+                return 2
+            fi
+            case "$rc" in
+                0) printf '\nall raters complete.\nnext: pl clips calibrate score\n' ;;
+                1) printf '\nOWED: at least one rater has judgements outstanding.\n' ;;
+                2) printf '\nCANNOT VERIFY: a rater above cannot be scored at all.\n' >&2 ;;
+            esac
+            return "$rc"
+            ;;
+        ""|-h|--help|help)
+            usage; return 0 ;;
+        *)  _err "unknown calibrate subcommand: $sub"; usage; return 1 ;;
+    esac
+}
+
 run_helper() {
     local mode="$1"; shift
     if [ ! -f "$HELPER" ]; then
@@ -652,6 +810,15 @@ run_helper() {
 
 main() {
     local sub="${1:-}"; shift || true
+
+    # `calibrate` takes its own flags (--rater=, --exclusions=, --boot=) and
+    # positional answers files, so it is dispatched BEFORE the shared option
+    # loop below, which would reject them as unknown.
+    if [ "$sub" = "calibrate" ]; then
+        cmd_calibrate "$@"
+        return $?
+    fi
+
     local -a passthru=()
     local linkage="--linkage"
 

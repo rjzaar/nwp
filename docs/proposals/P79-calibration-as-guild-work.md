@@ -170,6 +170,42 @@ wide CI, and the straddle rule turns a CI crossing 0.667 into CANNOT VERIFY rath
 nearer band. **The cheapest way out of that is a third rater, not more items per rater** — which
 is P77 §3.4's *"shallow-and-wide beats deep-and-narrow"* applied to people instead of topics.
 
+### 3.3.1 PRECEDENCE — what governs when Gate 0 is unproven and a DISCARD exists
+
+Raised by cross-model review of !449, and it is the **expected** situation at N = 2 rather than a
+corner case: one pairwise α over 120 items has a wide CI, so straddling the 0.400 floor is the
+normal outcome for a two-person panel. The rule, committed here:
+
+> **A DISCARD is admissible only when the panel's coherence is ESTABLISHED above the 0.400 floor
+> — that is, when Gate 0's cluster-bootstrap CI has its LOWER bound at or above 0.400.** A point
+> estimate above the floor with an interval reaching below it has established nothing. At N = 1
+> Gate 0 is NOT ARMED, there is no panel to establish, and P78's single-assessor instrument
+> governs unchanged.
+
+So the full precedence, strongest first:
+
+| # | condition | verdict | exit |
+|---|---|---|---|
+| 1 | Gate 0 **INSTRUMENT FAILURE** (α below the floor, definitively) | CANNOT VERIFY — nothing follows about the machine | 2 |
+| 2 | integrity (`DUPLICATE-RATER`, unresolvable packet) | CANNOT VERIFY | 2 |
+| 3 | a DISCARD **and** the floor is established | **DISCARD** — P78 §4.5 | 1 |
+| 4 | a DISCARD and the floor is **not** established | **CANNOT VERIFY — DISCARD WITHHELD**, the failing gates named, labels intact | 2 |
+| 5 | any CANNOT VERIFY (CI straddle, incomplete rater) | CANNOT VERIFY | 2 |
+| 6 | Gate 3 or 3b FAIL | FAIL — recalibrate | 1 |
+| 7 | otherwise | PASS / PARTIAL | 0 |
+
+**Rows 3 and 4 are the whole point, and they are the same rule as row 1 applied one step
+earlier.** Deletion is the permissive direction — P78 §4.5's remedy is `rm -rf` — so an *unproven*
+reference standard withholds it exactly as a *failed* one does. The alternative reading, that a
+DISCARD signal is alarming enough to act on regardless, would let a two-person panel whose own
+agreement was never established delete 3,309 labels. That is the `21 → 22` error with the sign
+flipped: acting on a difference the instrument could not resolve.
+
+**The withheld DISCARD is reported in full, never dropped.** The verdict names which gates said
+DISCARD, sets `discard_withheld_pending_panel_coherence: true`, and states the remedy: **another
+rater, not more items** — the same shallow-and-wide logic as §6. Red proof in §3.10 row **E**,
+which this rule moved from `DISCARD · 1` to `CANNOT VERIFY · 2`.
+
 ### 3.4 Gate 1 — screening agreement *(P78 §4.4, unchanged thresholds)*
 
 Cohen's κ on the binary collapse `grade ≥ 2` = *"worth a human's time"*, computed **per rater**
@@ -281,7 +317,7 @@ ones against a synthetic corpus-free fixture so they run on a CI runner that has
 | **B** | one rater, grades randomly permuted, alone | NOT ARMED | DISCARD | NOT ARMED | PASS / — | **DISCARD (11 items)** | DISCARD · 1 |
 | **C** | two honest raters **+ the same random rater** | **0.163** [0.067, 0.272] INSTRUMENT FAILURE | CANNOT VERIFY | PASS | PASS / PASS | **PASS (0 corroborated)** + `rand` named, 11 severe vs panel median 0 | CANNOT VERIFY · 2 |
 | **D** | one rater uniformly +1, one uniformly −1 | −0.138 INSTRUMENT FAILURE | CANNOT VERIFY | NOT ARMED | **PASS / FAIL (sd 0.79)** | PASS | CANNOT VERIFY · 2 |
-| **E** | three raters agreeing around a shifted truth | CANNOT VERIFY (CI straddles 0.400) | CANNOT VERIFY | PASS | PASS / PASS | **DISCARD (3 corroborated)** | DISCARD · 1 |
+| **E** | three raters agreeing around a shifted truth | CANNOT VERIFY — α 0.513, **CI [0.379, 0.626] straddles the 0.400 floor** | CANNOT VERIFY | PASS | PASS / PASS | **DISCARD (3 corroborated)** | **CANNOT VERIFY · 2 — DISCARD WITHHELD** (see §3.3.1) |
 | **F** | **three raters answering at random** | −0.035 INSTRUMENT FAILURE | **DISCARD** | PASS | PASS / PASS | **DISCARD** | **CANNOT VERIFY · 2 — labels NOT discarded** |
 | **G** | three raters who agree with each other and read `1↔2` the opposite way to the machine | **0.936 COHERENT** | DISCARD | **DISCARD** (machine 0.701 below lowest human; means 0.526 / 0.528 / 0.526 vs **−0.175**) | PASS / PASS | PASS | DISCARD · 1 |
 | **H₃₀** | as G, but only 30% of `1↔2` items flipped | **0.958 COHERENT** | **CANNOT VERIFY** (0.570, CI [0.414, 0.710] straddles 0.45) | **DISCARD** (gap 0.220) | PASS / PASS | PASS | **DISCARD · 1** |
@@ -299,6 +335,10 @@ seen to fire — or only ever seen to pass — would be exactly the hypothesis-n
 
 Six things this establishes that an untested instrument could not:
 
+0. **Row E is the precedence rule of §3.3.1 firing.** Gate 4 corroborates a DISCARD on three
+   control items, and the run still refuses to delete, because α = 0.513 with a CI reaching to
+   0.379 never established the panel above the floor. Compare row G, where the same DISCARD
+   *stands* because α = 0.936 did.
 1. **Row F is the whole design in one line.** Gates 1, 2 *and* 4 all say DISCARD, and the run
    **refuses to discard**, because the panel did not resolve and therefore never measured the
    machine. Fail-closed here means *refusing to delete*, which is the opposite of the reflex.

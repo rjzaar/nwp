@@ -30,7 +30,7 @@
 #   6. AT N=1 IT IS STILL P78'S INSTRUMENT. If the thresholds move when the
 #      panel arrives, they were not committed in advance.
 #
-# RED PROOF — OBSERVED, not predicted. Four mutations were applied to
+# RED PROOF — OBSERVED, not predicted. Six mutations were applied to
 # `scripts/lib/clip-calibration-multi.py` and `clip-calibration-packet.py` ONLY
 # (this file was untouched):
 #
@@ -43,35 +43,37 @@
 #      dest.startswith(repo + os.sep):` changed to `if False:`
 #   5. the join map written back beside the member's document — `pj =
 #      os.path.join(keys, ...)` reverted to `os.path.join(dest, ...)`
+#   6. `g0_floor_established` forced to `True`        (a DISCARD is never withheld)
 #
 # and this file was run against the mutated code. Observed, verbatim:
 #
-#   1..19
+#   1..21
 #   not ok 2 three identical answer files are one opinion, not three
 #   not ok 5 a panel that did not resolve may not DISCARD the labels
-#   not ok 8 N=2: one rater's bad morning does NOT delete the label set
-#   not ok 9 N=2: the kill switch STILL fires when both raters agree the machine is wrong
-#   not ok 13 per-rater packets shuffle the order and the join recovers the same verdicts
-#   not ok 14 answers in a per-rater ordering with no join map are REFUSED, not guessed
-#   not ok 15 the builder REFUSES to write corpus excerpts into the mirrored repo
-#   not ok 16 the join map is written OUTSIDE the directory the member is handed
-#   not ok 17 the default keys directory is a SIBLING of --out, never a child
+#   not ok 6 a DISCARD is WITHHELD while the panel's coherence is unproven
+#   not ok 10 N=2: one rater's bad morning does NOT delete the label set
+#   not ok 11 N=2: the kill switch STILL fires when both raters agree the machine is wrong
+#   not ok 15 per-rater packets shuffle the order and the join recovers the same verdicts
+#   not ok 16 answers in a per-rater ordering with no join map are REFUSED, not guessed
+#   not ok 17 the builder REFUSES to write corpus excerpts into the mirrored repo
+#   not ok 18 the join map is written OUTSIDE the directory the member is handed
+#   not ok 19 the default keys directory is a SIBLING of --out, never a child
 #
-# NINE failures of NINETEEN. Mutation 3 breaks TWO tests, which is the point of
+# TEN failures of TWENTY-ONE. Mutation 3 breaks TWO tests, which is the point of
 # having both: one proves the gate does not fire on a single dissenter, the
 # other proves it still fires on two, and a corroboration rule needs both or it
 # is only half observed. Mutation 5 breaks FOUR — the two that assert the
-# separation directly (16, 17) and the two that read the map from where it is
-# supposed to be (13, 14).
+# separation directly (18, 19) and the two that read the map from where it is
+# supposed to be (15, 16).
 #
 # WHAT THIS ALSO SHOWED, and it is the reason the Gate 4 bug survived first
-# review: test 7 ("one rater who answered at random is NAMED, not obeyed") runs
+# review: test 9 ("one rater who answered at random is NAMED, not obeyed") runs
 # THREE raters, and at N=3 the buggy `(N+1)//2` and the correct `N//2+1` BOTH
 # evaluate to 2. The defect was invisible at every panel size the original suite
 # exercised and bit only at N=2 — which is the size §6 actually designs for.
-# Tests 1, 3, 4, 6, 7, 10, 11, 12, 18 and 19 stayed green under all five
-# mutations; recorded rather than tidied away, because claiming nineteen
-# failures when nine were observed is the same species of error this file exists
+# Tests 1, 3, 4, 7, 8, 9, 12, 13, 14, 20 and 21 stayed green under all six
+# mutations; recorded rather than tidied away, because claiming twenty-one
+# failures when ten were observed is the same species of error this file exists
 # to catch.
 #
 # Mutation 4 was not merely detected, it left evidence: the mutated builder
@@ -223,6 +225,51 @@ PY
     # ... and the run refused to act on it
     [[ "$(overall "$output")" == "CANNOT VERIFY — INSTRUMENT FAILURE at Gate 0."* ]]
     [[ "$output" == *"labels are NOT discarded and P78 4.5 is NOT triggered"* ]]
+}
+
+# ── 5b. the N=2 precedence rule ──────────────────────────────────────────────
+# Cross-model review of !449 asked which verdict governs when the panel's
+# coherence is UNPROVEN (Gate 0's CI straddles the floor — the expected outcome
+# at N=2) but a DISCARD signal exists. Answer: the DISCARD is withheld, because
+# deletion is the permissive direction and an unproven reference standard
+# withholds it exactly as a failed one does.
+@test "a DISCARD is WITHHELD while the panel's coherence is unproven" {
+    # two raters who agree with each other only loosely, and who both find the
+    # machine severely wrong on the same four control items
+    python3 - "$CAL" "$W" <<'PY'
+import json, random, sys
+cal = json.load(open(sys.argv[1])); W = sys.argv[2]
+truth = {it["label"]: it["machine_grade"] for lp in cal for it in lp["items"]}
+ctrl = [it["label"] for lp in cal if lp["stratum"].startswith("C-control")
+        for it in lp["items"]]
+non = [k for k in truth if k not in ctrl[:4]]
+for n, s in (("u1", 71), ("u2", 72)):
+    r = random.Random(s)
+    d = {k: ((3 if v <= 1 else 0) if k in ctrl[:4] else v) for k, v in truth.items()}
+    for k in non:                      # heavy independent noise -> low alpha
+        if r.random() < 0.70:
+            d[k] = max(0, min(3, d[k] + r.choice([-1, 1])))
+    json.dump(d, open("%s/answers-%s.json" % (W, n), "w"), indent=1)
+PY
+    # alpha lands at ~0.43 with a CI of about [0.25, 0.58]: the POINT estimate
+    # clears the 0.400 floor and the interval does not. That is precisely the
+    # case the rule exists for -- a point estimate above the floor with an
+    # interval reaching below it has established nothing.
+    run score "$W/answers-u1.json" "$W/answers-u2.json"
+    [ "$status" -eq 2 ]
+    [[ "$(gate gate4_controls_corroborated "$output")" == DISCARD* ]]
+    [[ "$output" == *'"floor_established": false'* ]]
+    [[ "$output" == *"the DISCARD is WITHHELD and the labels are NOT deleted"* ]]
+    [[ "$output" == *"gate4 (DISCARD)"* ]]
+    [[ "$output" == *'"discard_withheld_pending_panel_coherence": true'* ]]
+    [[ "$(overall "$output")" != DISCARD* ]]
+}
+
+@test "a DISCARD STANDS once the panel's coherence is established" {
+    run score "$W/answers-d1.json" "$W/answers-d2.json" "$W/answers-d3.json"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'"floor_established": true'* ]]
+    [[ "$(overall "$output")" == DISCARD* ]]
 }
 
 # ── 6. Gate 3 can pass vacuously; 3b is why that is caught ───────────────────

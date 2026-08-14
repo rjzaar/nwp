@@ -117,6 +117,12 @@ pl clips calibrate score                   # scores everyone who has handed in
    before anybody judged. They can return PASS, PARTIAL, CANNOT VERIFY or DISCARD — and DISCARD
    deletes thousands of machine labels in one step.
 
+   **Question 1 has to be settled before question 2 can be acted on.** If the panel's own
+   agreement is not established, a DISCARD is *withheld* rather than carried out — the labels
+   stay, and the answer is another rater rather than another sitting. With only two of you that
+   is the likely outcome, and it is the correct one, not a wasted morning: it is how the estate
+   finds out it needs a third pair of eyes.
+
 **One rater's mistake cannot delete the label set.** The kill-switch items only count against the
 machine when a *strict majority* of raters disagrees — **both of two**, two of three. That
 protection exists only because there is more than one of you — which is, precisely, why you were asked.

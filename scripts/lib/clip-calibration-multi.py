@@ -511,6 +511,12 @@ def main():
     g0_verdict = "NOT ARMED (1 rater; arms at 2)"
     g0_cap_binary = False
     g0_instrument_failure = False
+    # Is the panel's coherence ESTABLISHED above the 0.400 floor? At N = 1 there
+    # is no panel to establish, and P78's single-assessor instrument governs
+    # unchanged. At N >= 2 it takes the CI's LOWER bound clearing the floor --
+    # a point estimate above 0.400 with an interval reaching below it has not
+    # established anything. See the precedence rule at the overall verdict.
+    g0_floor_established = (nh < 2)
     if nh >= 2:
         by_item = collections.defaultdict(list)
         item_lp = {}
@@ -561,6 +567,10 @@ def main():
         g0["exact_agreement"] = (round(bd["agree"] / pairs_seen, 4)
                                  if pairs_seen else None)
 
+        g0_floor_established = (a_int is not None and ci0 is not None
+                                and ci0[0] >= G0_FLOOR)
+        g0["floor_established"] = g0_floor_established
+        g0["floor"] = G0_FLOOR
         msg, blind = straddle(a_int, ci0, [G0_COHERENT, G0_FLOOR])
         if blind:
             g0_verdict = msg
@@ -886,9 +896,30 @@ def main():
                           "follows about the machine. The labels are NOT "
                           "discarded and P78 4.5 is NOT triggered.")
         code = 2
-    elif any(v.startswith("DISCARD") for v in armed):
+    elif any(v.startswith("DISCARD") for v in armed) and g0_floor_established:
         rep["OVERALL"] = "DISCARD — delete the label-set directory (P78 4.5)"
         code = 1
+    elif any(v.startswith("DISCARD") for v in armed):
+        # A DISCARD signal exists but the panel's own coherence is UNPROVEN.
+        # This is the N = 2 case: one pairwise alpha over 120 items has a wide
+        # CI, so straddling the 0.400 floor is the EXPECTED outcome, not a rare
+        # one. Deletion is the permissive answer here (P78 4.5 is `rm -rf`), so
+        # an unproven reference standard withholds it exactly as a failed one
+        # does. The signal is reported in full and named, never silently
+        # dropped -- the remedy is a third rater, not a rerun of the same two.
+        rep["OVERALL"] = (
+            "CANNOT VERIFY — a DISCARD signal exists but the panel's coherence "
+            "is UNPROVEN (Gate 0 did not establish alpha above the %.2f floor), "
+            "so the DISCARD is WITHHELD and the labels are NOT deleted. "
+            "Gate(s) reporting DISCARD: %s. The cheapest way to resolve this is "
+            "another rater, not more items." % (
+                G0_FLOOR, "; ".join(n + " (" + v.split(" —")[0].strip() + ")"
+                                    for n, v in (
+                    ("gate1", g1v), ("gate2", g2v), ("gate4", g4["verdict"]),
+                    ("gate1b", g1b["verdict"]))
+                    if v.startswith("DISCARD"))))
+        rep["discard_withheld_pending_panel_coherence"] = True
+        code = 2
     elif g0["verdict"].startswith("CANNOT VERIFY") or \
             any(v.startswith("CANNOT VERIFY") for v in armed):
         rep["OVERALL"] = "CANNOT VERIFY — grade AMBER, do not treat as a pass"

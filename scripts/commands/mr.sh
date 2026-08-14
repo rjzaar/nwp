@@ -1852,7 +1852,13 @@ main(){
     release)     cmd_release "$@" ;;
     guard|gate)  cmd_guard "$@" ;;
     -h|--help|help)
-      cat <<EOF
+      # QUOTED heredoc. This block is pure prose — it interpolates nothing — and
+      # unquoted it EXECUTES anything in backticks. Writing "the same idiom as
+      # `pl issue comment`" in the ops#356 line ran that as a command
+      # substitution, which failed silently and printed a blank where the verb
+      # name should have been. Help text that runs commands is a bug waiting for
+      # a `$(...)` to be typed into it; quoting the delimiter ends the class.
+      cat <<'EOF'
 pl mr — create, merge, hold, release and guard merge requests
 
   pl mr create [--source=BRANCH] [--target=main] [--title=..]

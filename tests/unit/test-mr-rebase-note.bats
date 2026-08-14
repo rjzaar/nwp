@@ -405,3 +405,17 @@ EOF
   run grep -qE '^\s+note\|comment\)\s+cmd_note' "$MR"
   [ "$status" -eq 0 ]
 }
+
+# THE HELP TEXT MUST NOT EXECUTE ITSELF. `pl mr --help` was an UNQUOTED heredoc,
+# so writing "the same idiom as `pl issue comment`" in it ran that as a command
+# substitution: it failed silently and printed a blank space where the verb name
+# should have been. Found by reading the rendered output, which is the only place
+# it is visible. Asserting the STRING, not the exit code — a help screen that
+# exits 0 having eaten a word is the shape this whole suite is about.
+@test "both new verbs appear in --help, and the help heredoc does not EXECUTE its backticks" {
+  run bash "$MR" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pl mr rebase"* ]]
+  [[ "$output" == *"pl mr note"* ]]
+  [[ "$output" == *'`pl issue comment`'* ]]
+}

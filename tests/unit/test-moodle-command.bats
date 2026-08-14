@@ -241,3 +241,19 @@ teardown() { rm -rf "${TEST_TMP}"; }
   [[ "$output" == *"--tree"* ]]
   [[ "$output" == *"no default site"* ]]
 }
+
+# ops#326 regression: `plugin deploy`'s freshness gate calls
+#   cmd_plugin_build <plugin> --from=DIR --check-only
+# with NO --tree/--ddev — check-only runs the freshness check on the SOURCE dir
+# and never touches a build tree, so it must not demand one. After 158ad0c
+# removed the real-site default, this refused with "no build tree", broke EVERY
+# `pl moodle plugin deploy` (any source rung) at gate 7, dry-run included.
+# The refusal above (check-only WITHOUT --from) still stands: there the
+# nwptoolkit source default would be the trap.
+@test "ops#326: check-only WITH --from needs no build tree (deploy freshness gate path)" {
+  run bash "${REPO_ROOT}/scripts/commands/moodle.sh" plugin build mod/foo \
+      --from="${FRESH}" --check-only
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"no build tree"* ]]
+  [[ "$output" == *"fresh"* ]]
+}

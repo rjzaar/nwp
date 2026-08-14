@@ -2235,6 +2235,21 @@ cmd_golden_live() {
     demo_rssh "$site" "rm -f ~/${rdb} ~/${rfiles}" >/dev/null 2>&1 || true
     [[ "$ok" == "true" ]] || { print_error "Golden capture aborted — artifact verification failed."; return 1; }
 
+    # QUIZ-CONTENT GATE — the ops#145 lesson applied to content: a golden is a
+    # reference image, and sealing a quiz-stripped catalogue freezes the loss
+    # into every nightly reset (the pre-e9c596f strip carried 1,671 items).
+    # Measured on the pulled dump, the exact bytes a reset will restore. On
+    # refusal the BOX still holds the previous golden (staging has not run),
+    # and the local dir holds an unsealed capture whose manifest was never
+    # written — demo_golden_verify fails closed on it, so nothing can restore
+    # the refused bytes.
+    local qgate_rc=0
+    demo_golden_quiz_gate "$gdir/$GOLDEN_DB" "$site" || qgate_rc=$?
+    if (( qgate_rc != 0 )); then
+        print_error "Golden NOT sealed or staged — the box still holds the previous golden."
+        return "$qgate_rc"
+    fi
+
     # 4. Manifest + the same verification the restore will run.
     demo_manifest_write "$gdir" "$site" "$GOLDEN_DB" "$GOLDEN_FILES" "${DEMO_PENDING_UPDATES:-unknown}" || return 1
     demo_golden_verify "$gdir" "$site" || {

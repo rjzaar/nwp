@@ -46,13 +46,50 @@ EOF
 echo -n "200"
 EOF
 
-  # openssl: s_client → passthrough; x509 -enddate → a date ~90 days out.
+  # openssl: table-driven so the TLS column can be exercised for the three
+  # states it must tell apart — matching cert, WRONG-HOST cert, and no
+  # handshake at all. TLS_MODE selects; default = a healthy matching cert.
+  #
+  # The s_client mock echoes a marker line carrying the name it will claim, and
+  # the x509 mock reads that marker back off stdin — so the "which cert did the
+  # handshake actually return" question is answerable in the mock exactly as it
+  # is against a real server.
   cat > "$MOCKBIN/openssl" <<'EOF'
 #!/bin/bash
+mode="${TLS_MODE:-match}"
 case "$1" in
-  s_client) cat >/dev/null 2>&1 || true; echo "-----CERT-----" ;;
-  x509)     echo "notAfter=$(date -u -d '+90 days' '+%b %d %H:%M:%S %Y GMT')" ;;
-  *)        exit 0 ;;
+  s_client)
+    cat >/dev/null 2>&1 || true
+    # Which host was asked for (-servername)?
+    asked=""; prev=""
+    for a in "$@"; do [ "$prev" = "-servername" ] && asked="$a"; prev="$a"; done
+    case "$mode" in
+      # No handshake: real openssl prints nothing usable on stdout.
+      unreachable) exit 1 ;;
+      # The incident shape: the box has no vhost for the asked-for name, so
+      # TLS falls through to another site's certificate.
+      mismatch)    served="borrowed.example.com" ;;
+      *)           served="$asked" ;;
+    esac
+    echo "-----BEGIN CERTIFICATE-----"
+    echo "NWPMOCK-SERVED:${served}"
+    echo "-----END CERTIFICATE-----"
+    ;;
+  x509)
+    served=""
+    while IFS= read -r line; do
+      case "$line" in NWPMOCK-SERVED:*) served="${line#NWPMOCK-SERVED:}" ;; esac
+    done
+    [ -n "$served" ] || exit 1
+    for a in "$@"; do
+      case "$a" in
+        -enddate) echo "notAfter=$(date -u -d '+90 days' '+%b %d %H:%M:%S %Y GMT')" ;;
+        -subject) echo "subject=CN = ${served}" ;;
+        -ext)     echo "X509v3 Subject Alternative Name:"; echo "    DNS:${served}" ;;
+      esac
+    done
+    ;;
+  *) exit 0 ;;
 esac
 EOF
 
@@ -231,4 +268,47 @@ EOF
   run bash "$MON" mail nwc
   [[ "$output" != *"Sending one probe"* ]]
   [[ "$output" != *"send-test"* ]]
+}
+
+# ── TLS: the column must be capable of going RED (nwp/ops#359, 2026-08-13)
+#
+# `_tls_days_left` reported the expiry of WHATEVER certificate the handshake
+# returned and never checked it matched the host asked for. Throughout the
+# 2026-08-13 outage the fleet dashboard showed a green `82d` for a site that was
+# serving no usable TLS at all: its vhost had been renamed away during a box
+# split, so TLS fell through to the first 443 block on the box and the column
+# was measuring a DIFFERENT site's certificate. Two more sites on that box
+# served the same borrowed cert for twelve days. A TLS column that cannot go red
+# for a wrong-domain certificate is the CLAUDE.md "check that has never been
+# proven to fail".
+
+@test "TLS: a wrong-host certificate grades RED and names the cert actually served" {
+  TLS_MODE=mismatch run bash "$MON" uptime
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"MISMATCH"* ]]
+  [[ "$output" == *"borrowed.example.com"* ]]
+  [[ "$output" == *"red"* ]]
+}
+
+@test "TLS: a wrong-host certificate never renders as days-remaining" {
+  # The precise false green: the borrowed cert's 90 days displayed as health.
+  TLS_MODE=mismatch run bash "$MON" uptime
+  [[ ! "$output" =~ [0-9]+d[[:space:]] ]]
+}
+
+@test "TLS: a failed handshake is CANNOT VERIFY, never green" {
+  TLS_MODE=unreachable run bash "$MON" uptime
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  # Blindness must not be indistinguishable from health: a row whose TLS
+  # reading was never taken may not be graded green.
+  [[ "$output" != *"0 amber"* ]]
+  [[ "$output" == *"amber"* ]]
+}
+
+@test "TLS: a matching certificate still reports days remaining and stays green" {
+  TLS_MODE=match run bash "$MON" uptime
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ [0-9]+d ]]
+  [[ "$output" != *"MISMATCH"* ]]
+  [[ "$output" == *"green"* ]]
 }

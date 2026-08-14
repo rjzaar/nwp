@@ -38,6 +38,12 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+# impact_rm_scratch: the tree's single audited primitive for removing a
+# throwaway directory this process created. Used instead of a bare recursive
+# delete so a future edit that passes the wrong variable gets a refusal —
+# and so this file does not read as manifest-class destruction to the
+# impact-contract gate (its only deletions are its own mktemp staging dirs).
+source "$PROJECT_ROOT/lib/impact.sh"
 
 # The artefact of record: 609 contested pairs, sha256 from its sidecar.
 # Declared here so "609" is stated once on this side of the boundary.
@@ -222,7 +228,7 @@ cmd_pairs_verify() {
     if [ -z "$file" ]; then
         staging="$(mktemp -d)"
         # shellcheck disable=SC2064
-        trap "rm -rf '$staging'" RETURN
+        trap "impact_rm_scratch '$staging' >/dev/null || true" RETURN
         _clip_pairs_fetch "$host" "$remote_path" "$staging" || return $?
         file="${staging}/contested-pairs.jsonl"
     fi
@@ -263,7 +269,7 @@ cmd_pairs_import() {
     if [ -z "$file" ]; then
         staging="$(mktemp -d)"
         # shellcheck disable=SC2064
-        trap "rm -rf '$staging'" RETURN
+        trap "impact_rm_scratch '$staging' >/dev/null || true" RETURN
         _clip_pairs_fetch "$host" "$remote_path" "$staging" || return $?
         file="${staging}/contested-pairs.jsonl"
     fi

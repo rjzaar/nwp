@@ -65,6 +65,12 @@ setup() {
   git -C "$REPO" add -A && git -C "$REPO" commit -q -m feature
   git -C "$REPO" push -q -u origin feature
   git -C "$REPO" checkout -q main
+  # MAIN MOVES AFTER THE BRANCH IS CUT. This is !441's own shape — the fix the
+  # branch needs landed on the target — and it is what makes a rebase a real
+  # rebase here rather than a no-op.
+  printf 'later\n' > "$REPO/ON-MAIN.md"
+  git -C "$REPO" add -A && git -C "$REPO" commit -q -m "moved on"
+  git -C "$REPO" push -q origin main
 
   STUB="$TMP/bin"; mkdir -p "$STUB"
   cat > "$STUB/curl" <<'STUBEOF'
@@ -87,7 +93,13 @@ case "$meth $path" in
   "POST "*"/notes")
       emit '{"id":7}' "$(cat "$STATE/note_http" 2>/dev/null || echo 201)" ;;
   "GET "*"include_rebase_in_progress"*)
-      emit "$(cat "$STATE/mr_rebase.json")" "$(cat "$STATE/mr_http" 2>/dev/null || echo 200)" ;;
+      # Answers may be a SEQUENCE: mr_rebase.<n>.json for the nth read, falling
+      # back to mr_rebase.json. A rebase is asynchronous, so "what the first read
+      # said" and "what the third read said" are different facts and the suite
+      # has to be able to express both.
+      n=$(( $(cat "$STATE/rbcount" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/rbcount"
+      f="$STATE/mr_rebase.$n.json"; [ -f "$f" ] || f="$STATE/mr_rebase.json"
+      emit "$(cat "$f")" "$(cat "$STATE/mr_http" 2>/dev/null || echo 200)" ;;
   "GET "*"/merge_requests/"*)
       if [ -e "$STATE/rebased" ] && [ -f "$STATE/mr_after.json" ]; then
         emit "$(cat "$STATE/mr_after.json")" "$(cat "$STATE/mr_http" 2>/dev/null || echo 200)"
@@ -198,7 +210,69 @@ run_in_repo() { ( cd "$REPO" && bash "$MR" "$@" ); }
   mk_mr_rebase true ""
   run run_in_repo rebase 441
   [ "$status" -eq 3 ]
-  [[ "$output" == *"STILL rebasing"* ]]
+  [[ "$output" == *"has not landed"* ]]
+}
+
+# 4b. THE FALSE NEGATIVE THIS VERB SHIPPED WITH, AND WAS CAUGHT COMMITTING
+#     AGAINST THE REAL !441 (2026-08-14).
+#
+# `PUT /rebase` returns 202 and a sidekiq worker does the work, so the FIRST read
+# after it still reports rebase_in_progress=false and the OLD head sha. The first
+# cut of this verb read that as "finished, nothing changed" and printed
+#     SUCCESS: !441 is already up to date with main — head unchanged (c733a54f9615)
+# eight seconds before the rebase landed as 9d32e469d656. A literal substituted
+# for a measurement not yet takeable, wearing a green tick.
+#
+# The loop must therefore end on an OBSERVED head change, never on the absence of
+# one. Read #1 below is the racing answer; read #2 is the truth.
+@test "an unchanged head on the FIRST read is 'not yet', never 'already up to date'" {
+  cat > "$STATE/mr_rebase.1.json" <<'EOF'
+{"iid":441,"state":"opened","title":"REVIEW: a thing","sha":"c733a54f9615aaaa",
+ "source_branch":"feature","target_branch":"main","draft":false,"labels":[],
+ "rebase_in_progress":false,"merge_error":"",
+ "head_pipeline":{"id":2275,"status":"failed"}}
+EOF
+  run run_in_repo rebase 441
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"already up to date"* ]]
+  [[ "$output" == *"9f9f9f9f9f9f"* ]]
+  [[ "$output" == *"NEW pipeline #2281"* ]]
+}
+
+# 4c. …and when the head NEVER moves, that is exit 3, not a success. This is the
+# same refusal from the other side: without it, the fix above would just push the
+# false SUCCESS out to the end of the loop.
+@test "a head that never moves is NOT FINISHED (exit 3), not 'nothing to do'" {
+  cat > "$STATE/mr_rebase.json" <<'EOF'
+{"iid":441,"state":"opened","title":"REVIEW: a thing","sha":"c733a54f9615aaaa",
+ "source_branch":"feature","target_branch":"main","draft":false,"labels":[],
+ "rebase_in_progress":false,"merge_error":"",
+ "head_pipeline":{"id":2275,"status":"failed"}}
+EOF
+  run run_in_repo rebase 441
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"has not landed"* ]]
+  # Stronger than grepping for the old wording: no SUCCESS line may appear at
+  # all. A verb that cannot tell whether its write landed has nothing to
+  # congratulate anyone about.
+  [[ "$output" != *"SUCCESS"* ]]
+}
+
+# 4d. The other half of the fix: whether the head MUST move is measured against
+# the refs, so a genuinely current branch is reported without a write at all.
+@test "an MR already on the tip of its target is reported WITHOUT writing" {
+  # Cut a branch that already contains origin/main's tip.
+  git -C "$REPO" checkout -q -b uptodate origin/main
+  printf 'x\n' > "$REPO/X.md"
+  git -C "$REPO" add -A && git -C "$REPO" commit -q -m x
+  git -C "$REPO" push -q -u origin uptodate
+  git -C "$REPO" checkout -q main
+  mk_mr ci_must_pass uptodate
+  run run_in_repo rebase 441
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ALREADY on the tip"* ]]
+  [[ "$output" == *"Measured, not assumed"* ]]
+  ! grep -qE '^(PUT|POST) ' "$CURL_LOG"
 }
 
 # 5. THE REPORT THAT CONFUSED !441 THREE TIMES. The old pipeline is a completed

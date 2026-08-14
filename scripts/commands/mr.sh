@@ -724,12 +724,37 @@ EOF
     print_warning "  so any release record bound to ${old_sha:0:12} is invalidated by design."
   fi
 
+  # ── DOES THE HEAD HAVE TO MOVE AT ALL? MEASURED, NOT INFERRED ──────────────
+  #
+  # This is asked BEFORE the write, and it is what makes the poll loop below
+  # honest. `PUT /rebase` is asynchronous, so for the first second the MR still
+  # reports rebase_in_progress=false and the OLD head sha — indistinguishable, on
+  # the wire alone, from "there was nothing to rebase". The first cut of this verb
+  # inferred the latter and told the operator
+  #     "!441 is already up to date with main — head unchanged (c733a54f9615)"
+  # while the rebase it had just requested landed moments later as 9d32e469d656.
+  # So the question is settled against the refs the forge holds, not against a
+  # field that has not caught up yet.
+  local current_rc=0
+  _mr_branch_is_current "$tgt" "$src" || current_rc=$?
+  if [ "$current_rc" -eq 0 ]; then
+    echo
+    print_success "!$iid is ALREADY on the tip of $tgt — nothing to rebase."
+    print_info "Measured, not assumed: origin/$tgt is an ancestor of origin/$src."
+    print_info "Pipeline #${old_pid:-none} therefore stands as this MR's result. If it is"
+    print_info "red, the cause is on this branch — \`pl mr ci $iid\` says which job."
+    return 0
+  fi
+
   if [ "$dry" = true ]; then
     echo
     print_header "DRY RUN — nothing was sent"
     print_info "would: PUT /projects/$(_mr_project_human)/merge_requests/$iid/rebase"
     print_info "would move !$iid from ${old_sha:0:12} onto the tip of $tgt"
     print_info "would CANCEL pipeline #${old_pid:-none} and start a new one"
+    [ "$current_rc" -eq 2 ] && print_warning "could not measure locally whether the head needs to move (no fetchable
+  origin/$tgt or origin/$src). The real run would require an OBSERVED head
+  change before it reported success."
     return 0
   fi
 
@@ -760,27 +785,34 @@ EOF
   local max_rounds
   if [ "$poll" -gt 0 ]; then max_rounds=$(( wait_s / poll + 1 ));
   else max_rounds=$(( wait_s > 0 ? wait_s : 1 )); fi
-  local rounds=0 rjson merr new_sha
+  # DONE means OBSERVED done. Three things end this loop, and "the head has not
+  # moved yet" is none of them: the head actually moved, the forge recorded an
+  # error, or the wait ran out (which is exit 3, "ask again", never success).
+  local rounds=0 rjson merr="" new_sha=""
   while :; do
     rounds=$((rounds + 1))
     rjson=$(_mr_fetch_rebase "$iid") || {
       print_error "CANNOT VERIFY: the rebase was accepted but !$iid could not be re-read"
       print_error "  (HTTP $(_mr_http_status)) — its state is now unknown, not unchanged."
       return 2; }
-    _mr_rebase_in_progress "$rjson" || break
+    if ! _mr_rebase_in_progress "$rjson"; then
+      merr=$(_mr_merge_error "$rjson")
+      new_sha=$(_mr_head_sha "$rjson")
+      [ -n "$merr" ] && break
+      [ -n "$new_sha" ] && [ "$new_sha" != "$old_sha" ] && break
+    fi
     if [ "$rounds" -ge "$max_rounds" ]; then
       printf '\n' >&2
-      print_warning "!$iid is STILL rebasing after ${wait_s}s — not finished."
-      print_info    "  This is 'ask again', not a failure. \`pl mr rebase $iid\` is safe to"
-      print_info    "  re-run, or read the outcome with \`pl mr status $iid\`."
+      print_warning "!$iid: the rebase has not landed after ${wait_s}s — NOT finished."
+      print_info    "  The head is still ${old_sha:0:12}. GitLab does a rebase on a worker,"
+      print_info    "  so this is 'not yet', and it is deliberately NOT reported as 'already"
+      print_info    "  up to date' — that inference is what made this verb lie about !441."
+      print_info    "  Ask again: pl mr rebase $iid   ·   or read it: pl mr status $iid"
       return 3
     fi
     [ "$poll" -gt 0 ] && { sleep "$poll"; printf '.' >&2; }
   done
   [ "$rounds" -gt 1 ] && printf '\n' >&2
-
-  merr=$(_mr_merge_error "$rjson")
-  new_sha=$(_mr_head_sha "$rjson")
 
   # ── A CONFLICT CLAIM IS A HYPOTHESIS UNTIL IT IS REPRODUCED ────────────────
   if [ -n "$merr" ]; then
@@ -815,10 +847,12 @@ EOF
     return 2
   fi
   if [ "$new_sha" = "$old_sha" ]; then
-    print_success "!$iid is already up to date with $tgt — head unchanged (${old_sha:0:12})."
-    print_info "Nothing was pushed, so pipeline #${old_pid:-none} is NOT superseded and"
-    print_info "stands as this MR's result. If it is red, the cause is on this branch."
-    return 0
+    # Unreachable by the loop above, which only breaks on a CHANGED head or an
+    # error. Kept as a belt: if a future edit re-introduces the inference, this
+    # says CANNOT VERIFY rather than congratulating anyone.
+    print_error "CANNOT VERIFY: the loop exited with the head still ${old_sha:0:12}."
+    print_error "  An unchanged head is not evidence that the rebase finished."
+    return 2
   fi
   print_success "!$iid rebased onto $tgt: ${old_sha:0:12} → ${new_sha:0:12}"
 

@@ -324,6 +324,40 @@ _mr_target_branch(){ printf '%s' "$1" | _mr_jget target_branch; }
 _mr_merge_error(){   printf '%s' "$1" | _mr_jget merge_error; }
 _mr_rebase_in_progress(){ [ "$(printf '%s' "$1" | _mr_jget rebase_in_progress)" = "true" ]; }
 
+# _mr_branch_is_current <target-branch> <source-branch>
+#   rc 0 = origin/<target> is ALREADY an ancestor of origin/<source>, so a
+#          rebase is a genuine no-op and the head will not move
+#   rc 1 = it is not; a rebase WILL move the head
+#   rc 2 = could not measure
+#
+# WHY THIS EXISTS — a real false negative, observed on !441 on 2026-08-14 by the
+# verb that now calls it. `PUT /rebase` returns 202 and a sidekiq worker does the
+# work, so for the first second or so `rebase_in_progress` is STILL FALSE and the
+# head sha is STILL the old one. A poll loop that treats that state as "finished,
+# nothing changed" reports:
+#
+#     SUCCESS: !441 is already up to date with main — head unchanged (c733a54f9615)
+#
+# …while the rebase it just requested lands moments later (9d32e469d656). That is
+# the swallowed-verdict shape from CLAUDE.md: a literal substituted for a
+# measurement that had not yet become takeable, wearing a green tick.
+#
+# The fix is to MEASURE whether the head must move, instead of inferring it from
+# the head not having moved yet. `git merge-base --is-ancestor` answers exactly
+# that, against the refs the forge holds. When it cannot be measured the caller
+# must NOT fall back to "unchanged means done" — it reports not-finished (exit 3),
+# because "I could not tell" is never "there was nothing to do".
+_mr_branch_is_current(){
+  local target="$1" source="$2" t s
+  git rev-parse --git-dir >/dev/null 2>&1 || return 2
+  git fetch -q origin "$target" "$source" >/dev/null 2>&1 || return 2
+  t=$(git rev-parse --verify --quiet "refs/remotes/origin/$target" 2>/dev/null) || return 2
+  s=$(git rev-parse --verify --quiet "refs/remotes/origin/$source" 2>/dev/null) || return 2
+  [ -n "$t" ] && [ -n "$s" ] || return 2
+  git merge-base --is-ancestor "$t" "$s" && return 0
+  return 1
+}
+
 # _mr_local_testmerge <target-branch> <source-branch>
 #   rc 0 = the merge is CLEAN · 1 = a REPRODUCED conflict (paths on stdout)
 #   rc 2 = could not run the test at all

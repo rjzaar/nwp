@@ -154,13 +154,29 @@ demo_site_on_reset_path() {
 #
 # Read from the site's own tree, not from a list here — a second site that
 # grows the module must be covered without anybody remembering to add it.
+#
+# NO PIPE HERE, ON PURPOSE (ops#351). This was
+#   `find … | grep -q .`
+# which under `set -o pipefail` — the way `pl` runs, and the way lib/ inherits —
+# is decided by timing, not by the tree: `grep -q .` leaves on the FIRST path,
+# `find` is then killed by SIGPIPE and exits 141, and pipefail promotes 141 to
+# the pipeline's verdict. The `if` takes the ELSE branch about a site whose
+# clip-review directory it had just found. Measured: certain once find's output
+# passes the 64 KiB pipe buffer, so a small site "works" until it grows.
+#
+# The direction is fail-OPEN and this is a data-loss check: a lost match reads
+# as "holds no clip-review data", and `pl demo clip-survival` then reports SAFE
+# for a site whose authoring work the 01:00 `drush sql:drop` destroys.
+# `-print -quit` asks the same question with no reader to race — find stops
+# itself at the first hit, and nothing can be killed mid-write.
 demo_site_has_clip_authoring() {
     local site="$1"
     local root="${PROJECT_ROOT:?PROJECT_ROOT not set}"
     local d
     for d in "${root}/sites/${site}"/*/; do
         [[ -d "$d" ]] || continue
-        if find "$d" -maxdepth 8 -type d -name 'nwc_clip_review' -not -path '*/vendor/*' 2>/dev/null | grep -q .; then
+        if [[ -n "$(find "$d" -maxdepth 8 -type d -name 'nwc_clip_review' \
+                         -not -path '*/vendor/*' -print -quit 2>/dev/null)" ]]; then
             return 0
         fi
     done

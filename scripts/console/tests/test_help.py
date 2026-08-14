@@ -507,3 +507,41 @@ def test_a_scoped_member_gets_help_with_strict_scoping_on(wired):
     r = _client(wired, {"name": "dana", "role": "operator"}).get("/help")
     assert r.status_code == 200
     assert "Saint School" in r.text or "ss-nw" in r.text     # the scope bar rendered too
+
+
+# ---------------------------------------------------------------------------
+# 6. coverage: the tab bar may not grow a pane the help does not describe
+# ---------------------------------------------------------------------------
+def test_every_pane_in_the_tab_bar_has_its_own_help_section(wired):
+    """THE coverage gate. main.PANES is the whole UI — one full-screen pane per
+    entry — so a pane id with no same-id help section is a screen with no
+    instructions. This is the test that goes red when someone adds a tab
+    without writing its help, which is exactly when it should."""
+    _api, app_main, help_module = wired
+    ids = {s["id"] for s in help_module.SECTIONS}
+    missing = [pane for pane, _label in app_main.PANES if pane not in ids]
+    assert not missing, (
+        f"panes with no help section (need /help/<pane> with the same id): {missing}"
+    )
+
+
+def test_the_tab_bar_offers_contextual_help_for_the_active_pane():
+    """The [feedback-2] item ('help topic should be clickable'), from the tab
+    bar's side: index.html carries a contextual help link whose href the
+    pane-switching script retargets to /help/<active pane>. String-asserted
+    against the template because the script is inline and never unit-run."""
+    body = (TEMPLATES / "index.html").read_text()
+    assert 'id="pane-help"' in body, "no contextual help link in the tab bar"
+    assert "'/help/' +" in body, "the script does not retarget the help link per pane"
+
+
+def test_the_demo_help_actually_tells_a_tester_how_to_get_in():
+    """The operator's ask, pinned: the tester-facing demo help must name the
+    join path, the code, the nightly reset and the code's survival of it.
+    Presence-of-words, not prose quality — but a section that loses any of
+    these has lost the instruction it exists to give."""
+    s = help_mod.get_section("demo-tester")
+    assert s is not None, "no demo-tester help section"
+    text = " ".join(_strings_of(s))
+    for must in ("/demo/join", "code", "reset", "expir"):
+        assert must in text, f"demo-tester help no longer mentions {must!r}"

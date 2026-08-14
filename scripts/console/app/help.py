@@ -16,11 +16,21 @@ WHAT IT IS ALLOWED TO SAY
     rather than describing a plan as a fact.
 
 TENANCY
-    Help is STATIC and site-agnostic. It carries no provenance (nothing was
-    gathered, so there is nothing to be stale) and — deliberately — names no
-    site anywhere, so `scope.scrub()` has nothing to drop and `scope.redact()`
-    has nothing to strip. Both are no-ops over this context BY CONSTRUCTION,
-    and tests/test_help.py pins that rather than trusting it.
+    Help is STATIC. It carries no provenance (nothing was gathered, so there
+    is nothing to be stale) and no gathered row, so `scope.scrub()` has
+    nothing to drop and `scope.redact()` has nothing to strip. Both are
+    no-ops over this context BY CONSTRUCTION, and tests/test_help.py pins
+    that rather than trusting it. Site names and live domains stay OUT of the
+    text — the engine repo is publicly mirrored and the leak lints ban them —
+    so the tester-facing demo help names the /demo/join PATH and points at the
+    invitation email (rendered at draft time from the site's declared live
+    domain) for the exact link.
+
+COVERAGE CONTRACT
+    Every pane id in main.PANES has a section here with the SAME id, and the
+    tab bar's contextual "?" deep-links to /help/(active pane).
+    tests/test_help.py fails when a tab exists with no help — adding a pane
+    means writing its section in the same change.
 
 This module must not import main/actions/runner/subprocess: it is content, and
 content must never be able to run anything.
@@ -78,44 +88,33 @@ SECTIONS: tuple = (
     },
     {
         "id": "panes",
-        "title": "The panes, one by one",
-        "summary": "Fleet, Issues, Todo, Demo, Backups, CI, Quokka — what each actually shows.",
+        "title": "The tab bar — a map",
+        "summary": "Nine panes in tab order; each has its own help section below.",
         "blocks": (
-            _t("The tab bar is the whole UI: one full-screen pane at a time, in this order."),
+            _t("The tab bar is the whole UI: one full-screen pane at a time, in this order. "
+               "Each pane has its own section further down this page — tap a name in the "
+               "topics list, or use the small ? beside the ⟳ button, which always links to "
+               "the help for the pane you are on."),
             _d(
-                ("Fleet", "One row per site in scope: its RAG grade, its canonical phase, the "
-                          "reasons behind the grade, and — when the snapshot carries the security "
-                          "feed — a clickable advisory count that opens that site's advisory "
-                          "detail further down the pane."),
-                ("Issues", "Every issue tracker this console reads, one block each, "
-                           "paginated and with the real total stated: the ops board "
-                           "(nwp/ops) AND the tester-feedback tracker (nwp/nwc), which is "
-                           "where `drush nwc-feedback:sync-to-gitlab` files what your "
-                           "testers report. Filter by state and by label — the chips cover "
-                           "agent-eligible (queued for the agent-loop), needs-human (agents "
-                           "must not touch it) and demo-tester. A paused agent-loop is "
-                           "announced at the top. An operator can add a note, add or remove "
-                           "a label, or close one, but only on the write tracker; other "
-                           "trackers are read-only here and deep-link into GitLab. A tracker "
-                           "this console's token cannot read is shown as UNREADABLE, never "
-                           "as empty."),
-                ("Todo", "The `pl todo check` sweep as a FLAT list — one row per item, in the "
-                         "order the sweep emitted them, each row naming its site in bold and "
-                         "carrying a high/medium/low priority chip. It is not grouped or "
-                         "re-sorted by site. The table shows the first 60 items; the counts "
-                         "above it describe the whole set."),
-                ("Demo", "Per demo-tier site: its reset status as a few highlight lines, with "
-                         "the full output one tap away, and its invite-code registry — which "
-                         "lists HASHES and ids only, never a usable code. Operators get the demo "
-                         "actions here. When a reset failed or was skipped it is the Demo TAB "
-                         "that raises a dot, not a flag inside the pane."),
-                ("Backups", "The backup-freshness slice of the same todo sweep. Read-only "
-                            "always — the sweep runs where the backups live, not here."),
+                ("Review", "The operator's ONE queue: open merge requests plus needs-decision "
+                           "issues. It sits first because it is the thing the console exists "
+                           "to answer."),
+                ("Fleet", "One row per site in scope: RAG grade, canonical phase, reasons, "
+                          "and clickable advisory counts."),
+                ("Issues", "Every issue tracker this console reads — the ops board and the "
+                           "tester-feedback tracker — with filters and safe actions."),
+                ("Todo", "The `pl todo check` sweep as a flat, priority-chipped list."),
+                ("Demo", "The demo tier: golden-seal status, the invite-code registry, the "
+                         "tester roster and editor, and the demo actions. When a reset "
+                         "failed or was skipped it is the Demo TAB that raises a dot."),
+                ("Backups", "The backup-freshness slice of the todo sweep. Read-only."),
                 ("CI", "Open merge requests per configured CI project with their head "
-                       "pipeline. An operator can retry a pipeline."),
+                       "pipeline, and a retry button."),
                 ("Quokka", "The local-model chat tab. 🟢 means the model answered a health "
                            "check within the last minute; 💤 means it is asleep or "
                            "unreachable, and the other tabs are unaffected."),
+                ("Visuals", "The estate overview and four charts as subtabs, plus the "
+                            "walkthrough jump-in page for the demo pair."),
             ),
             _t("Numbers in the tab bar refresh on load and then every 90 seconds. Each count "
                "is computed independently and best-effort: a feed that breaks loses its "
@@ -130,6 +129,64 @@ SECTIONS: tuple = (
                "happened.",
                "Otherwise the console reopens on the last pane you used, remembered "
                "per-device in the browser."),
+        ),
+    },
+    {
+        "id": "review",
+        "title": "Review — the one queue",
+        "summary": "Open MRs + needs-decision issues, from `pl decisions --json`. Estate-level.",
+        "blocks": (
+            _t("The Review pane is the operator's single queue: every open merge request in "
+               "the configured projects, then every issue labelled needs-decision, grouped by "
+               "the gate it blocks. It reads `pl decisions --json` and nothing else, and it "
+               "is estate-level — inside a project scope it does not render; step back to "
+               "“All projects” to see it."),
+            _d(
+                ("Awaiting your merge", "Open MRs with title, draft/conflict flags and the "
+                 "description one tap away. “Review / Approve on GitLab” is a DEEP LINK: in "
+                 "solo mode the merge click on the MR page is the whole approval. This "
+                 "console holds no merge credential and never merges — a machine never "
+                 "merges, a human does, there."),
+                ("RED — decision needed", "needs-decision issues in reading order. Nothing "
+                 "moves until these are answered. “Approve recommended” posts your approval "
+                 "as a [console-review]-tagged note AND discharges the decision labels in the "
+                 "same action, then shows the tracker state re-read after it — so an "
+                 "answered decision cannot sit in the queue being re-approved."),
+                ("AMBER — decision wanted", "The decision::wanted tier: real questions, but "
+                 "nothing is standing still waiting for them. Ordered partly by inference — "
+                 "treat it as a reading sequence, not a ruling. Promote one to RED with "
+                 "`pl issue label` adding needs-decision."),
+                ("comment", "Every write here is a [console-review]-tagged note on the issue "
+                 "or MR; the note is the instruction the next working session acts on."),
+                ("skip", "Hides the card on this device only. The console is the window, not "
+                 "the store — nothing is recorded, and the card returns on reload."),
+            ),
+            _n("A queue this console could not read renders CANNOT-VERIFY, never as empty — "
+               "“nothing to review” and “the console could not look” are different facts. "
+               "Likewise “⚠ possibly already resolved” on a decision is a flag to read the "
+               "newest comment, never a reason the issue was hidden."),
+        ),
+    },
+    {
+        "id": "fleet",
+        "title": "Fleet — sites and their grades",
+        "summary": "One row per site: RAG grade, canonical phase, reasons, advisories.",
+        "blocks": (
+            _t("One row per site in scope: its RAG grade as a coloured dot, its canonical "
+               "phase (dev, live or prod), and the reasons behind the grade. When the "
+               "published snapshot carries the security feed, a site with advisories shows a "
+               "clickable count that opens that site's advisory detail further down the "
+               "pane."),
+            _l("The RED / AMBER / GREEN badges at the top are counts over the rows you can "
+               "see, recounted inside a project scope — never inherited from a fleet total.",
+               "“Re-run RAG check” (operators) re-grades the whole fleet, so it cannot be "
+               "narrowed to a project: scoped users are refused and told to run it unscoped "
+               "or on the workstation.",
+               "The provenance line above the table says which host published these numbers "
+               "and how old they are — see “Where the numbers come from”. A red STALE banner "
+               "means you are reading history."),
+            _n("What the grades mean — and why an unscanned site can never be GREEN — is in "
+               "“What the RAG grades mean”, the next section."),
         ),
     },
     {
@@ -153,6 +210,260 @@ SECTIONS: tuple = (
             _t("The three badges at the top of the Fleet pane are RED / AMBER / GREEN counts "
                "for the sites you can see. When you are inside a project they are recounted "
                "from your own rows, never inherited from a fleet-wide total."),
+        ),
+    },
+    {
+        "id": "issues",
+        "title": "Issues — the boards, and the safe writes",
+        "summary": "Ops board + tester-feedback tracker, filtered server-side, honest about gaps.",
+        "blocks": (
+            _t("Every issue tracker this console reads renders as its own block, paginated "
+               "and with the real total stated (“showing N of M”): the ops board AND the "
+               "tester-feedback tracker, which is where the feedback testers file on the "
+               "demo sites ends up. A truncated list says it was cut off; it never trims "
+               "silently."),
+            _d(
+                ("Filters", "State and label are applied BY THE TRACKER per query — a filter "
+                 "is a real search, not a client-side hide of rows that were never fetched. "
+                 "The quick chips cover agent-eligible (queued for the agent-loop), "
+                 "needs-human (agents must not touch it) and demo-tester."),
+                ("act", "On the write tracker an operator can post a note, add or remove a "
+                 "label, or close an issue — each re-checked server-side at POST time. Other "
+                 "trackers are read-only here and deep-link into GitLab."),
+                ("⏸ agent-loop paused", "The banner means nothing labelled agent-eligible "
+                 "will be picked up until the loop resumes — a queue whose consumer is "
+                 "stopped is not a queue, and you deserve to know before approving work "
+                 "into it."),
+                ("unreadable tracker", "A tracker this console's token cannot read is shown "
+                 "as UNREADABLE with the reason, never as an empty (clean-looking) list. The "
+                 "fix is a sibling 0600 token file on the console host — the message names "
+                 "it."),
+            ),
+            _n("Inside a project, an empty list means “nothing carries this project's "
+               "label” — the pane names the label it filtered on so you can check that "
+               "first. A project with no issue label configured sees no issues at all, and "
+               "says so as a warning, not as good news."),
+        ),
+    },
+    {
+        "id": "todo",
+        "title": "Todo — the sweep, flat",
+        "summary": "Every `pl todo check` item, one row each, priority-chipped.",
+        "blocks": (
+            _t("The `pl todo check` sweep as a FLAT list — one row per item, in the order "
+               "the sweep emitted them, each row naming its site in bold and carrying a "
+               "high, medium or low priority chip. It is not grouped or re-sorted by site; "
+               "where a row carries a suggested command it is shown under the item."),
+            _n("The table shows the first 60 items; the counts above it describe the whole "
+               "set. Inside a project you see only rows for your project's sites."),
+        ),
+    },
+    {
+        "id": "demo",
+        "title": "Demo — the pane, control by control",
+        "summary": "Golden seal, invite codes, tester roster and editor, and the demo actions.",
+        "blocks": (
+            _t("One block per demo-tier site in scope. Everything here acts on the LIVE demo "
+               "pair only — the tier that exists to be handed to outside testers — and every "
+               "action is an allowlisted verb with fixed arguments, never a pasted command."),
+            _d(
+                ("Golden seal banner", "When the golden image was last sealed, from where, "
+                 "and the nightly reset window. THE FACT THAT MATTERS: any change made on "
+                 "the live demo now — revoke, purge, guild edits, tester content — REVERTS "
+                 "at the next nightly reset unless a new golden is sealed; the banner names "
+                 "the workstation command (`pl demo golden … --with-pair`). An unreadable "
+                 "seal renders CANNOT VERIFY, which is not the same as “no golden”."),
+                ("Return leg", "The demo box's own last feedback-status run. It is hourly, "
+                 "so a stale timestamp means the leg has stopped and nobody has said so — "
+                 "rendered as CANNOT VERIFY, not ignored."),
+                ("Live-box backups", "Newest backup per subdirectory on the live box, with "
+                 "age and size — or CANNOT VERIFY with the reason."),
+                ("Reset status", "A few highlight lines from the site's demo status, with "
+                 "the full raw output one tap away. A failed or skipped reset raises the "
+                 "dot on the Demo tab itself."),
+            ),
+            _t("INVITE CODES — the registry table. It lists ids, bundles, states and sha256 "
+               "hash prefixes; a usable code is never in this table. The chips (All, Live, "
+               "Revoked, Expired) always count the WHOLE registry; the row-count line under "
+               "the table declares any narrowing."),
+            _d(
+                ("Select all", "A labelled control that says exactly what it will do — "
+                 "“Select all N shown”, scoped to the rows the current filter rendered. Rows "
+                 "the filter hides are NOT selected, and it cannot reach another site's "
+                 "table."),
+                ("Revoke selected", "Revokes the selected codes by id. The registry change "
+                 "is durable and the live site is updated immediately; one bad id refuses "
+                 "the whole batch. What renders afterwards is the registry RE-READ, not a "
+                 "success note."),
+                ("Purge selected", "Removes already-revoked or expired rows from the "
+                 "registry, archiving them to a purged-codes file. A LIVE id in the "
+                 "selection refuses the whole batch."),
+                ("reveal", "Shows a code's plaintext ONCE, if it is still recoverable from "
+                 "an invite pack on the registry home. The access (id and who) is recorded "
+                 "in the demo log; the value never is. “Not in a pack” is a real "
+                 "measurement; “unknown” means the console could not look."),
+                ("plaintext column", "Whether a plaintext still exists ANYWHERE: the "
+                 "registry stores hashes only, so a code's plaintext survives only in the "
+                 "invitation draft and the 0600 invite pack saved beside it."),
+            ),
+            _t("TESTERS — the fenced roster, read live from the site (a ~5-7 second read, so "
+               "it loads when scrolled into view; ⟳ re-reads it). Only the synthetic "
+               "@demo.invalid accounts are editable; real accounts are counted but not "
+               "touchable here. Tap an account to open its editor:"),
+            _d(
+                ("Guild × role matrix", "Every guild in the site's catalogue, with join, "
+                 "role-set and remove per guild. Roles offered are the site's own "
+                 "assignable ids plus plain membership."),
+                ("Sojourner level", "RAISE-ONLY, and it works through evidence: the verb "
+                 "records qualifying course completions and the real engine recomputes the "
+                 "level. There is deliberately no raw setter and no demotion — to lower a "
+                 "tester, reset the demo tier."),
+                ("Consent", "Read-only, always. Even a synthetic tester's consent changes "
+                 "only through the site's own consent flows, so every consent record stays "
+                 "one a real gate wrote."),
+                ("Sign in as this tester", "Mints a ONE-TIME login link for that account: "
+                 "single use, shown once, stored nowhere, and proven to belong to that uid "
+                 "before it is shown (an admin session can never wear a tester's name). "
+                 "Open it in a private window — in this one it replaces your own session."),
+            ),
+            _t("ACTIONS at the bottom of each site block: “Invite email” drafts the "
+               "invitation (next section); “Reset to golden (if idle)” resets the site but "
+               "keeps the idle guard even on the button — it skips if a tester was active "
+               "in the last 30 minutes — and restores the standard tester set; “Issue "
+               "code” mints one code for a chosen tester role bundle, valid 14 days."),
+            _n("The code registry has ONE writable home per tier and it survives the "
+               "nightly wipe — which is exactly why a tester's code keeps working after "
+               "everything they did has been erased."),
+        ),
+    },
+    {
+        "id": "demo-tester",
+        "title": "Demo — giving a tester access, and what they do",
+        "summary": "The invite email, the join URL, the code, and the nightly reset.",
+        "blocks": (
+            _t("The whole tester flow is carried by the invitation email the console drafts "
+               "for you: Demo pane, “Invite email” (tick the checkbox to add the reviewer "
+               "levels). It mints one fresh code per tester level and renders a complete, "
+               "copy-ready email — the codes appear ONCE in that draft (the registry stores "
+               "hashes), with a 0600 copy saved in the site's demo-invites directory on the "
+               "console host. Delete the level blocks your recipient should not get, paste "
+               "the rest into your mail client, and send."),
+            _l("STEP 1 — joining. The tester opens the join link the email carries — the "
+               "community demo site's /demo/join page, resolved from the site's declared "
+               "live domain when the draft is rendered — and pastes their code. A short "
+               "discernment page (the examen) comes first; answering it "
+               "honestly either carries them straight on or asks them to come back later. "
+               "They land signed in on the community home, under a saint's name the site "
+               "gives them — no email address, no real name, nothing about them is kept.",
+               "STEP 2 — the courses. From the courses site's login page they click the "
+               "single-sign-on button under “Log in using your account on:” — the email "
+               "names the exact button — and they are in the courses half with the same "
+               "identity. There is no code box on the courses site; it uses the community "
+               "sign-in, not a code.",
+               "REPORTING. On the community site: the feedback form the email links "
+               "(/feedback/submit). On the courses site: the floating “Report a problem” "
+               "button. One sentence is plenty — reports land in the tester-feedback "
+               "tracker you see on the Issues tab."),
+            _n("THE NIGHTLY RESET, which you should tell every tester about: both halves of "
+               "the demo pair are wiped back to the sealed golden every night in the "
+               "01:00-03:30 Australia/Melbourne window. Everything anyone did that day is "
+               "erased — tester content is disposable by design. The tester's ACCESS CODE "
+               "is not — the code registry lives outside the wiped site, so the same code "
+               "keeps working until it expires (14 days by default); a returning tester "
+               "simply joins again with the code they already have."),
+            _n("The apply-route bundles (apply-review, apply-auto) are different: those "
+               "codes are redeemed on the site's real application form at /apply, not on "
+               "/demo/join — they exist to test joining-for-real end to end. The console's "
+               "Issue-code dropdown offers only the tester bundles; apply codes are minted "
+               "from the workstation with `pl demo codes … issue`."),
+        ),
+    },
+    {
+        "id": "backups",
+        "title": "Backups — freshness only",
+        "summary": "The backup-freshness slice of the todo sweep. Read-only, always.",
+        "blocks": (
+            _t("The backup-freshness slice of the same `pl todo check` sweep the Todo pane "
+               "shows: one priority-chipped row per stale or missing backup, or a green "
+               "“no backup-freshness items” line when the sweep is clean on this host."),
+            _n("Read-only always — the backup sweeps run where the backups live (the "
+               "workstation and the backup hosts), not here. This console can tell you a "
+               "backup is stale; fixing it happens on the machine that owns it."),
+        ),
+    },
+    {
+        "id": "ci",
+        "title": "CI — pipelines on open MRs",
+        "summary": "Head pipeline per open merge request, and a retry button.",
+        "blocks": (
+            _t("Open merge requests per configured CI project, each with its head "
+               "pipeline's status chip. An operator can retry a FAILED pipeline from here; "
+               "everything else is a deep link into GitLab."),
+            _n("With no GitLab token on this host the pane degrades to deep links and says "
+               "so. CI is read live on every load — the ⟳ button simply asks GitLab "
+               "again."),
+        ),
+    },
+    {
+        "id": "quokka",
+        "title": "Quokka — chat and voice",
+        "summary": "A local model, told only what you may see. Nothing leaves the host.",
+        "blocks": (
+            _t("Quokka is a local language model running on the console host itself. It is "
+               "given a rendered snapshot of live state as context — built from the SAME "
+               "scoped gatherers the panes use, so it is never told a fact about a site you "
+               "may not see, and it is told which project it is answering inside."),
+            _t("It is read-only by construction: the chat path has no route to the action "
+               "allowlist, and a test asserts that it cannot acquire one."),
+            _l("The brief button asks for a summary over a richer 24-hour context.",
+               "If the model is unreachable the tab shows 💤 and says so plainly. Nothing "
+               "else on the console depends on it.",
+               "Speaking to Quokka is exactly as privileged as typing to it: the microphone "
+               "produces text, which is then sent like any other message.",
+               "Both speech legs run on this host — no cloud speech service is called, and "
+               "the browser's own speech recognition is deliberately never used because in "
+               "several browsers it uploads your microphone audio.",
+               "The audio itself is never kept: it lives in a locked-down temporary file for "
+               "as long as one transcription runs and is shredded afterwards, on success and "
+               "on failure alike.",
+               "No microphone button means the host has no speech backend installed. Type "
+               "instead; nothing is broken."),
+            _n("If the mic button is there but the browser says the microphone is blocked, it "
+               "is a browser permission, not the console. Allow it in the site settings behind "
+               "the padlock and reload."),
+        ),
+    },
+    {
+        "id": "visuals",
+        "title": "Visuals — overview, charts, and the walkthrough",
+        "summary": "Subtabs: estate overview, four read-only charts, and the demo jump-in page.",
+        "blocks": (
+            _t("A subtabbed collection: the estate overview first, then four charts, then "
+               "the walkthrough. Everything is rendered on the console host — no chart "
+               "library, no external request — and every chart carries a table view with "
+               "the same numbers. The pane repaints itself every two minutes, preserving "
+               "the subtab you are on (the walkthrough deliberately does not — its data is "
+               "a slow live read, and repainting under your cursor is worse)."),
+            _d(
+                ("overview", "Estate slots — local host, ops queue, fleet, demo pair — each "
+                 "carrying its own age and its own ⟳ (a re-read, not an action)."),
+                ("fleet / security / todo", "Charts over the published fleet snapshot. When "
+                 "that snapshot is stale a banner says every number below is history — the "
+                 "charts never quietly present old numbers as current."),
+                ("ci", "The pipeline strip, read live from GitLab — which is why the stale "
+                 "banner never covers it."),
+                ("walkthrough", "The ONE subtab that acts. Every link is a button that "
+                 "mints a one-time login for the demo pair's walkthrough account at CLICK "
+                 "time and drops you straight onto that page, signed in — the page you "
+                 "were looking at never contained a credential. Targets show their "
+                 "verification state (verified, unknown, missing, drifted); “NEVER "
+                 "MEASURED” means every target reads unknown until someone runs the "
+                 "verify verb where the sites live. Signing out is the site's own confirm "
+                 "page — this console cannot do it for you, and says so."),
+            ),
+            _n("Apart from the walkthrough, no subtab carries a form or a POST anywhere — "
+               "a test keeps it that way. The charts can never disagree with the Fleet, "
+               "Todo and CI tabs because they render from the same scoped gatherers."),
         ),
     },
     {
@@ -353,35 +664,6 @@ SECTIONS: tuple = (
                "Unconfigured is a silent no-op, not an error — a fresh deploy never fails "
                "because Gotify is absent.",
                "Tapping a push opens the console on the pane that explains it."),
-        ),
-    },
-    {
-        "id": "quokka",
-        "title": "Quokka — chat and voice",
-        "summary": "A local model, told only what you may see. Nothing leaves the host.",
-        "blocks": (
-            _t("Quokka is a local language model running on the console host itself. It is "
-               "given a rendered snapshot of live state as context — built from the SAME "
-               "scoped gatherers the panes use, so it is never told a fact about a site you "
-               "may not see, and it is told which project it is answering inside."),
-            _t("It is read-only by construction: the chat path has no route to the action "
-               "allowlist, and a test asserts that it cannot acquire one."),
-            _l("The brief button asks for a summary over a richer 24-hour context.",
-               "If the model is unreachable the tab shows 💤 and says so plainly. Nothing "
-               "else on the console depends on it.",
-               "Speaking to Quokka is exactly as privileged as typing to it: the microphone "
-               "produces text, which is then sent like any other message.",
-               "Both speech legs run on this host — no cloud speech service is called, and "
-               "the browser's own speech recognition is deliberately never used because in "
-               "several browsers it uploads your microphone audio.",
-               "The audio itself is never kept: it lives in a locked-down temporary file for "
-               "as long as one transcription runs and is shredded afterwards, on success and "
-               "on failure alike.",
-               "No microphone button means the host has no speech backend installed. Type "
-               "instead; nothing is broken."),
-            _n("If the mic button is there but the browser says the microphone is blocked, it "
-               "is a browser permission, not the console. Allow it in the site settings behind "
-               "the padlock and reload."),
         ),
     },
     {

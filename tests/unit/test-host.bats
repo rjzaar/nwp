@@ -746,3 +746,96 @@ EOF
   printf 'unallowlisted dead lib: %s\n' "${dead[@]:-none}"
   [ "${#dead[@]}" -eq 0 ]
 }
+
+################################################################################
+# pl logs — EVERY file-backed source must tell "could not read" apart from
+# "nothing was logged" (nwp/ops#359).
+#
+# Measured on the standalone live box 2026-08-14: nginx/auth/syslog/php-fpm logs
+# are all 0640 root|www-data:adm and the login user is NOT in `adm`. The bare
+# `tail ... 2>/dev/null` those sources used exited 1 with its message discarded,
+# and `pl logs live --source=nginx` reported UNREACHABLE. The host was reachable
+# and the paths were correct; only the privilege handling that `mail` already
+# had was missing. During the 2026-08-13 incident that forced a raw
+# `sudo tail /var/log/nginx/error.log` outside any verb.
+################################################################################
+
+@test "every file-backed log source reports an UNREADABLE file, never an empty tail" {
+  # As root `[ -r ]` is true for any file, so this branch cannot be exercised;
+  # REFUSE rather than skip (bats scores a skip as ok — the H3 dishonesty).
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "REFUSING: run this suite unprivileged — the unreadable-log branch cannot fire as root" >&2
+    return 1
+  fi
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  cat > "${STUBBIN}/sudo" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${STUBBIN}/sudo"
+  mkdir -p "${TMP}/varlog/nginx"
+
+  local src script
+  for src in nginx auth watchdog; do
+    script="$(host_log_source_cmd "$src" 200)"
+    # Rewrite the fixed paths onto a fixture whose files exist and are 0000.
+    script="${script//\/var\/log\//${TMP}/varlog/}"
+    printf 'a real log line\n' > "${TMP}/varlog/nginx/error.log"
+    printf 'a real log line\n' > "${TMP}/varlog/nginx/access.log"
+    printf 'a real log line\n' > "${TMP}/varlog/auth.log"
+    printf 'a real log line\n' > "${TMP}/varlog/syslog"
+    chmod 000 "${TMP}"/varlog/nginx/* "${TMP}"/varlog/auth.log "${TMP}"/varlog/syslog
+    PATH="${STUBBIN}:$PATH" run bash -c "$script"
+    chmod 644 "${TMP}"/varlog/nginx/* "${TMP}"/varlog/auth.log "${TMP}"/varlog/syslog 2>/dev/null || true
+    [ "$status" -eq 4 ] || { echo "source=$src expected exit 4, got $status: $output" >&2; return 1; }
+    [[ "$output" == *"NWPLOG-UNREADABLE"* ]] || { echo "source=$src: $output" >&2; return 1; }
+  done
+}
+
+@test "pl logs renders an unreadable nginx log as CANNOT VERIFY, not UNREACHABLE" {
+  # The two are different facts: UNREACHABLE means the box did not answer.
+  # Reporting a permission problem as UNREACHABLE sends the reader to look at
+  # the network while the log sits there readable by one `sudo`.
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  run host_log_source_cmd nginx 200
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NWPLOG-UNREADABLE"* ]]
+  [[ "$output" == *"sudo -n tail"* ]]
+}
+
+@test "an ABSENT nginx log is reported, never rendered as 'nothing was logged'" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  local script
+  script="$(host_log_source_cmd nginx 200)"
+  mkdir -p "${TMP}/emptylog"
+  script="${script//\/var\/log\//${TMP}/emptylog/}"
+  run bash -c "$script"
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"NWPLOG-ABSENT"* ]]
+}
+
+@test "a readable nginx log is tailed and real lines survive" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  local script
+  script="$(host_log_source_cmd nginx 200)"
+  mkdir -p "${TMP}/goodlog/nginx"
+  script="${script//\/var\/log\//${TMP}/goodlog/}"
+  printf 'connect() failed (111: Connection refused) while connecting to upstream\n' \
+    > "${TMP}/goodlog/nginx/error.log"
+  printf '10.0.0.1 - - "GET / HTTP/1.1" 200 615\n' > "${TMP}/goodlog/nginx/access.log"
+  run bash -c "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Connection refused"* ]]
+  [[ "$output" == *"GET /"* ]]
+}
+
+@test "every file-backed source is still clamped to 5000 lines" {
+  source "${REPO_ROOT}/lib/host-capture.sh"
+  local src
+  for src in nginx php-fpm auth watchdog mail; do
+    run host_log_source_cmd "$src" 999999
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"5000"* ]] || { echo "source=$src not clamped: $output" >&2; return 1; }
+    [[ "$output" != *"999999"* ]] || { echo "source=$src leaked 999999" >&2; return 1; }
+  done
+}

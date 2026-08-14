@@ -753,31 +753,53 @@ host_log_source_cmd() {
         sincearg="--since=$since"
     fi
     case "$src" in
-        nginx)    printf 'tail -n %s /var/log/nginx/error.log /var/log/nginx/access.log 2>/dev/null\n' "$tail" ;;
-        php-fpm)  printf 'tail -n %s /var/log/php*-fpm.log 2>/dev/null\n' "$tail" ;;
-        auth)     printf 'tail -n %s /var/log/auth.log 2>/dev/null\n' "$tail" ;;
+        nginx)    _host_file_log_script "$tail" 'no requests were served and nothing errored' \
+                      /var/log/nginx/error.log /var/log/nginx/access.log ;;
+        php-fpm)  _host_file_log_script "$tail" 'PHP logged nothing' /var/log/php\*-fpm.log ;;
+        auth)     _host_file_log_script "$tail" 'nobody authenticated' /var/log/auth.log ;;
         systemd)  printf 'journalctl --no-pager -n %s %s 2>/dev/null\n' "$tail" "$sincearg" ;;
-        watchdog) printf 'tail -n %s /var/log/syslog 2>/dev/null\n' "$tail" ;;
-        mail)     _host_mail_log_script "$tail" ;;
+        watchdog) _host_file_log_script "$tail" 'the system logged nothing' /var/log/syslog ;;
+        mail)     _host_file_log_script "$tail" 'no mail was sent' \
+                      /var/log/mail.log /var/log/mail.err ;;
         *)        return 1 ;;
     esac
 }
 
-# _host_mail_log_script <tail>
-# The MTA log is the only source whose SILENCE is itself the answer people want
-# ("did the applicant's confirmation email leave?"), so it is the one source
-# where an unreadable or absent file must not render as an empty tail. It is
-# also the only one that normally needs privilege: mail.log is 0640 syslog:adm.
+# _host_file_log_script <tail> <what-silence-would-wrongly-mean> <path>...
+#
+# The remote reader for every file-backed source. Three outcomes, kept apart:
+# tailed, NWPLOG-UNREADABLE (privilege), NWPLOG-ABSENT (no such file). Both
+# failure outcomes exit 4, which `pl logs` renders as CANNOT VERIFY.
+#
+# WHY EVERY FILE SOURCE NEEDS THIS, not just mail (nwp/ops#359). This shape was
+# written for the MTA log, on the reasoning that mail is "the one source whose
+# SILENCE is itself the answer". That reasoning was too narrow: the other file
+# sources did a bare `tail -n N <paths> 2>/dev/null`, and on the standalone live
+# box every one of those paths is 0640 root/www-data:adm while the login user is
+# not in `adm`. So `tail` exited 1 with its message thrown away, and `pl logs`
+# reported UNREACHABLE — "could not read logs on live (rc=1)".
+#
+# That was WRONG TWICE. The host was perfectly reachable, and the fix is not a
+# path change: the paths were right all along. It was a permission the verb
+# already knew how to handle for one source and not the other five. During the
+# 2026-08-13 incident this is what forced a raw `sudo tail /var/log/nginx/
+# error.log` — the pl-first standing order broken because the verb could not do
+# its job, which is the "fix the verb" case exactly.
 #
 # ops#271 gotcha, recorded because it produced a wrong answer once already:
 # `sudo -n wc -l < /var/log/mail.log` has the REDIRECT expanded by the calling
 # shell, so the file is opened as the unprivileged user — "Permission denied"
 # that looks exactly like a count of zero. Every path below is an ARGUMENT.
-_host_mail_log_script() {
-    local tail="$1"
+#
+# Paths are literals from host_log_source_cmd's fixed case list, never operator
+# text. They are left unquoted in the `for` so the REMOTE shell expands a glob
+# (php*-fpm.log); an unmatched glob fails `[ -e ]` and reports ABSENT.
+_host_file_log_script() {
+    local tail="$1" silence="$2"; shift 2
+    local paths="$*"
     cat <<REMOTE
 rc=0; seen=0
-for f in /var/log/mail.log /var/log/mail.err; do
+for f in ${paths}; do
   [ -e "\$f" ] || continue
   seen=1
   printf '==> %s <==\n' "\$f"
@@ -786,12 +808,12 @@ for f in /var/log/mail.log /var/log/mail.err; do
   elif sudo -n tail -n ${tail} "\$f" 2>/dev/null; then
     :
   else
-    printf 'NWPLOG-UNREADABLE: %s — could not read it. This is NOT "no mail was sent".\n' "\$f" >&2
+    printf 'NWPLOG-UNREADABLE: %s — it exists but could not be read (no permission, no sudo). This is NOT "${silence}".\n' "\$f" >&2
     rc=4
   fi
 done
 if [ "\$seen" -eq 0 ]; then
-  printf 'NWPLOG-ABSENT: no /var/log/mail.log or /var/log/mail.err on this host — it may run no MTA, or log elsewhere. This is NOT "no mail was sent".\n' >&2
+  printf 'NWPLOG-ABSENT: none of (${paths}) exist on this host — it may not run that service, or may log elsewhere. This is NOT "${silence}".\n' >&2
   rc=4
 fi
 exit \$rc

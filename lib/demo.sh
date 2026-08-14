@@ -1719,6 +1719,11 @@ demo_golden_quiz_gate() {
     # quiz_items array), plus a DCSEEN sentinel when any row was seen at all.
     # The pointid is the quoted field immediately before the content_json
     # column (which is the only field whose value starts with '{).
+    # KNOWN BLIND SPOT (pinned by a fixture in test-demo-golden-quiz-gate.bats):
+    # a pointid outside [A-Za-z0-9._-] never matches pidre, so its row emits
+    # DCSEEN but no per-LP verdict — payload mode then treats that LP as
+    # absent-from-dump (ignored) even if its quiz_items are stripped. Every
+    # real ssd pointid fits the alphabet; widen pidre before the corpus does.
     local rowdata
     rowdata="$(zcat -- "$dumpgz" 2>/dev/null | awk -v q="'" '
         BEGIN { pidre = "," q "[A-Za-z0-9._-]+" q "," q "[{]" }
@@ -1768,6 +1773,15 @@ demo_golden_quiz_gate() {
             [[ -n "$site" ]] && demo_log "$site" quiz-gate-overridden "reason=${NWP_DEMO_GOLDEN_ALLOW_EMPTY_QUIZ}"
             return 0
         fi
+        # !453 follow-up: a READABLE payload that declares ZERO quiz-bearing
+        # LPs gives payload mode nothing to measure. Before this WARN, the
+        # downgrade to the any-row heuristic was SILENT — the probe
+        # {"content":{"A1.01":{"quiz_items":[]}}} passed the strip-era decoy
+        # golden RC=0 printing the same success line as a healthy capture.
+        # The verdict below still comes from the fallback, but nobody may
+        # mistake it for a payload-measured one.
+        print_status "WARN" "canonical payload (${payload}) declares ZERO quiz-bearing LPs — payload mode has nothing to check; falling back to the WEAK any-row heuristic (one quiz-bearing row anywhere passes)"
+        [[ -n "$site" ]] && demo_log "$site" quiz-gate-empty-expected "payload=$(basename "$payload")"
     else
         print_status "WARN" "canonical payload unreadable (${payload}) — falling back to the any-row heuristic"
     fi

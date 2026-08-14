@@ -115,7 +115,6 @@ lib/todo-checks.sh::check_site_registry_drift::COND::if ! printf '%s\n' "$yaml_l
 lib/todo-checks.sh::todo_check_registry_defects::COND::if ! printf '%s\n' "${listed[@]}" | grep -qx -- "$func"
 lib/todo-checks.sh::todo_is_ignored::ERREXIT::$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .expires // \"\"" "$config_file" 2>/dev/null | grep -v '^null$' | head -1)
 scripts/ci/lint-conflict-markers.sh::(toplevel)::COND::if printf '%s\n' "$fenced" | grep -qxF "$ln"
-scripts/ci/lint-gate-redproof.sh::has_red_proof::TAIL::cut -f1 "$proofs_file" | grep -qxF "$1"
 scripts/ci/lint-gate-redproof.sh::job_is_cannot_fail::COND::if printf '%s' "$line" | grep -qE '\|\|[[:space:]]*(true|:|echo([[:space:]]|$))'
 scripts/ci/lint-secrets.sh::(toplevel)::COND::elif ! printf '%s' "$out" | grep -q 'NO-PROBE'
 scripts/ci/lint-site-names.sh::(toplevel)::COND::if ! printf '%s' "$n" | grep -qE '^[a-z0-9][a-z0-9_-]*$'

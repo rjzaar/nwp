@@ -1100,17 +1100,38 @@ cmd_register() {
         printf '%s\n' "$out"
         print_error "registration failed"
         # The most common real cause, and it expires fast, so name it.
-        printf '%s' "$out" | grep -qi 'not found' && \
+        #
+        # WAS `printf '%s' "$out" | grep -qi 'not found' && print_hint …`, twice
+        # (ops#351). `$out` is REMOTE output — whatever this headscale version
+        # decided to print — and under console.sh's `set -euo pipefail` a
+        # `grep -q` that leaves early kills the writer with SIGPIPE, exit 141,
+        # which pipefail makes the pipeline's verdict. The `&&` then does not
+        # fire and the hint naming the actual cause is silently dropped. A
+        # match on a variable needs no pipe at all.
+        if [[ "${out,,}" == *"not found"* ]]; then
             print_hint "headscale caches a pending registration for ~15 min — if the device has been"
-        printf '%s' "$out" | grep -qi 'not found' && \
             print_hint "sitting on that page a while, reload it there for a fresh key and retry"
+        fi
         return 1
     }
     printf '%s\n' "$out"
 
     # `nodes register` prints the name but not the id, and rename needs the id.
-    local given id
-    given=$(printf '%s' "$out" | sed -n 's/^Node \(.*\) registered$/\1/p' | head -1)
+    #
+    # WAS `given=$(printf '%s' "$out" | sed -n '…p' | head -1)` (ops#351): the
+    # WORST of the three, because it is a bare assignment under `set -e`. When
+    # `head -1` left and `sed` died of SIGPIPE, pipefail made the substitution
+    # exit 141, the assignment failed, and the verb aborted with status 141 —
+    # *after* the device had already been admitted to the mesh, printing no
+    # confirmation and skipping the rename. Read the reply in-process instead:
+    # no pipeline, so no writer to kill.
+    local given="" id _line
+    while IFS= read -r _line; do
+        if [[ "$_line" =~ ^Node\ (.+)\ registered$ ]]; then
+            given="${BASH_REMATCH[1]}"
+            break
+        fi
+    done <<<"$out"
     if [ -n "$name" ] && [ -n "$given" ]; then
         id=$(_hs_ssh "sudo -n headscale nodes list -o json 2>/dev/null" \
              | python3 -c "

@@ -321,3 +321,67 @@ YAML
     # …and specifically NOT the reassuring sentence.
     [[ "$output" != *"not on the nightly reset path"* ]]
 }
+
+# ── ops#351: the predicate's verdict was decided by SIGPIPE, not by the tree ──
+#
+# `find … | grep -q .` under `set -o pipefail` — which is exactly how `pl` runs
+# (`set -euo pipefail`) — is a coin flip weighted by input size. `grep -q .`
+# exits the instant the FIRST path arrives; if `find` still has bytes to write,
+# the kernel kills it with SIGPIPE and it exits 141; `pipefail` then promotes
+# 141 to the pipeline's verdict, so the `if` takes the ELSE branch about a site
+# whose clip-review directory it had just found.
+#
+# The DIRECTION is what makes this the priority: a lost match reads as "this
+# site holds no clip-review data", so `pl demo clip-survival` reports SAFE for a
+# site whose authoring data the 01:00 `drush sql:drop` is about to destroy. A
+# false green on a data-loss check — the swallowed-verdict class.
+#
+# The fixture makes the race CERTAIN rather than likely: `find` emits well past
+# the 64 KiB pipe buffer, so it MUST block on a write nobody is reading. A red
+# proof that is itself a flake proves nothing.
+#
+# Note this asserts CORRECTNESS, not stability: five identical wrong answers are
+# perfectly stable.
+@test "clip-authoring is still detected when find outwrites the 64 KiB pipe buffer (ops#351)" {
+    mk_demo_site big
+    # ~1500 matching directories × ~145 bytes of path ≈ 210 KiB of find output,
+    # against a 64 KiB pipe. grep -q leaves after the first line.
+    mkdir -p "$PROJECT_ROOT/sites/big/dev"/pad-to-cross-the-64KiB-pipe-buffer-{0001..1500}/nwc_clip_review
+
+    # `pl` is `set -euo pipefail`; lib/ inherits it. Reproduce that here.
+    set -o pipefail
+    demo_site_has_clip_authoring big
+}
+
+# The small-tree case must keep working, and the negative must stay negative:
+# a fix that answers "yes" unconditionally would pass the test above.
+@test "a site with no clip-review directory is still NOT clip-authoring under pipefail (ops#351)" {
+    mk_demo_site small
+    mkdir -p "$PROJECT_ROOT/sites/small/dev"/pad-to-cross-the-64KiB-pipe-buffer-{0001..1500}/something_else
+    set -o pipefail
+    ! demo_site_has_clip_authoring small
+}
+
+# vendor/ is excluded on purpose — a composer-installed copy of the module is
+# not an author's data. Kept adjacent so a rewrite of the predicate cannot drop
+# the exclusion silently.
+@test "a nwc_clip_review under vendor/ does not count as authoring data (ops#351)" {
+    mk_demo_site vend
+    mkdir -p "$PROJECT_ROOT/sites/vend/dev/vendor/nwc/mod/nwc_clip_review"
+    set -o pipefail
+    ! demo_site_has_clip_authoring vend
+}
+
+# The operator-visible consequence, asserted where the operator reads it. This
+# is the whole reason the site above is the priority one: the wrong answer is
+# not a wrong log line, it is `pl demo clip-survival` telling the operator his
+# authors' work is safe on the night it is deleted.
+@test "the REPORT says AT RISK, not 'holds no clip-review data', on a large tree (ops#351)" {
+    mk_demo_site big
+    mkdir -p "$PROJECT_ROOT/sites/big/dev"/pad-to-cross-the-64KiB-pipe-buffer-{0001..1500}/nwc_clip_review
+    set -o pipefail
+    run demo_clip_survival_report big
+    [[ "$output" != *"holds no clip-review data"* ]]
+    [[ "$output" == *"AT RISK"* ]]
+    [ "$status" -eq 1 ]
+}

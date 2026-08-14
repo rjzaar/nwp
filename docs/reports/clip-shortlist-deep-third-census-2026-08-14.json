@@ -1,0 +1,105 @@
+{
+  "report": "SHORTLIST-16 deep-third census (ops#348 defect 4)",
+  "date": "2026-08-14",
+  "rights": "METHOD AND COUNTS ONLY. The corpus is derivative-cleared-pending and password-gated; it lives on mini and no corpus text, excerpt, transcript, rationale or clip address appears in this repository (ADR-0039 — nwp/nwp is publicly mirrored).",
+  "artefact": {
+    "path": "mini:~/clip-pool/shortlist/SHORTLIST-16.jsonl",
+    "sha256_before": "78a535c9b2c901220905f63a0b6291c41d48b9028ac04ce497d6ef0f22555675",
+    "sha256_after": "85b6b9b4e19ac9b43b88a3b7fa2d8c9178bda07f093bc4faa5f007d8a4b63595",
+    "backup": "mini:~/clip-pool/shortlist/SHORTLIST-16.jsonl.pre-d4census.bak (sha verified before the write)",
+    "learning_points": 251,
+    "rows_before": 3950,
+    "rows_after": 3950
+  },
+  "problem": "31.9% of shortlist rows sat past moment_rank 16. Of 1254 such deep rows, 605 were UNFORCED (displaced nothing corroborated) and 649 were CONTESTED (a corroborated in-window moment was passed over). Only 40 contested rows had ever been judged, sampled at 47.5% strict survival, 95% CI [32.9%, 62.5%]. 609 were unjudged.",
+  "method": {
+    "population": "d4sample.py's population recomputed from scratch against the shipped artefact before anything was trusted; matched the declared 1254 deep / 649 contested / 605 unforced / 251 LPs exactly",
+    "partition": "649 contested rows split 16 ways by index mod 16 over (lp_id, deep_moment_id); one claude-opus-5 judging instance per partition",
+    "judgement": "each contested deep row compared against the specific corroborated in-window moment it displaced; KEEP_DEEP or SWAP_TO_INWINDOW with a written reason citing what is in each passage; ABSTAIN where the call turns on doctrine or pedagogy rather than which passage teaches the point",
+    "sd_cap": "agreement always read against max_sources_possible (3 DIR, 2 SD/retreat); no reason reads 3 > 2 across corpora",
+    "coverage_verified": "every partition diffed row-by-row against the independently regenerated population",
+    "emitted_view": "each applied swap emits the exact view the judge assessed; all 361 applicable claimed durations resolved to a real view of the displaced moment"
+  },
+  "coverage": {
+    "contested_rows_judged": 649,
+    "contested_rows_total": 649,
+    "duplicates": 0,
+    "gaps": 0,
+    "displaced_pairings_matching_independent_recomputation": 649,
+    "deep_moment_ranks_matching_pool": 649
+  },
+  "result": {
+    "verdicts": {"SURVIVES": 200, "SURVIVES_CEILING": 83, "SWAP": 362, "ABSTAIN_PEDAGOGY": 4},
+    "strict_survival": {"k": 200, "n": 645, "pct": 31.0, "ci95": [27.6, 34.7], "note": "SURVIVES only, abstentions excluded from the denominator"},
+    "lenient_survival": {"k": 283, "n": 645, "pct": 43.9, "ci95": [40.1, 47.7]},
+    "strict_survival_all_rows": {"k": 200, "n": 649, "pct": 30.8, "ci95": [27.4, 34.5]}
+  },
+  "was_the_sample_representative": {
+    "answer": "NO — it was optimistic",
+    "sample_estimate_pct": 47.5,
+    "sample_ci95": [32.9, 62.5],
+    "census_pct": 31.0,
+    "census_point_estimate_below_sample_ci_lower_bound": true,
+    "p_of_19_or_more_survivors_in_40_at_census_rate": 0.021,
+    "newly_judged_609_rows": {"n_decided": 605, "strict_pct": 30.1, "ci95": [26.6, 33.9]},
+    "previously_sampled_40_rows": {"n": 40, "strict_pct": 45.0},
+    "sample_vs_census_agreement": "40/40 survive-vs-swap, but 34 of the 40 carry an explicit reused_from_sample flag — the census carried those verdicts over rather than re-judging them, so this is largely a copy check and is NOT independent corroboration",
+    "extrapolation_was_too_kind": "the sample projected ~292 of 649 better replaced (CI 243-435); the census found 362"
+  },
+  "applied": {
+    "swaps_applied": 327,
+    "learning_points_touched": 152,
+    "shape": "one-for-one, in place; nothing padded, nothing dropped",
+    "provenance": "every applied row carries a census_swap block naming the row it replaced, that row's moment_rank, duration and agreement, and the partition that judged it"
+  },
+  "refused_by_the_write_gate": {
+    "total": 35,
+    "EXCLUDED_SLICE": {"n": 27, "why": "partition d4-01 was REJECTED by its adversarial verifier (incumbent bias; four counter-evidenced KEEP_DEEP reasons measured against the pool). Rejected judgements are not applied, in either direction."},
+    "ASR_CORRUPT": {"n": 4, "why": "the replacement's emitted view is ASR-triplicated (distinct-5gram < 0.75), which the declared recipe treats as disqualifying"},
+    "UNADDRESSABLE": {"n": 3, "why": "the replacement has no known media URL while the deep row it would replace is openable; a swap may not make a clip less openable"},
+    "CEILING_UNWINNABLE": {"n": 1, "why": "the displaced moment has no view under the operator's 420 s ceiling, so the slot was never winnable"}
+  },
+  "gate": {
+    "rule": "prove it can REFUSE before trusting it to pass",
+    "corruptions_fed": 15,
+    "corruptions_refused": 15,
+    "cases": ["unresolvable passage_id", "duplicate moment_id within a learning point", "row over the 420 s ceiling", "fabricated single-quoted fragment", "fabricated double-quoted fragment", "a learning point deleted", "a row silently dropped", "start contradicting the pool", "moment_rank contradicting the pool", "duplicate lp id", "n_selected disagreeing with the rows", "a recorded shortfall reason rewritten", "passage attributed to the wrong moment", "a swap that makes an openable clip unopenable", "a swap naming a row absent from the base"],
+    "bug_found_by_the_red_proof": "the gate's own start/end comparison used (value or -1), so a legitimate start of 0.0 read as missing and produced 26 false findings; fixed before the write",
+    "invariants": ["251 learning points, no gaps or duplicates", "every row resolves in the pool by moment_id + passage_id", "no duplicate moment_id within a learning point", "row count per learning point invariant (never pad, never drop)", "recorded shortfall reasons never rewritten", "no row over 420 s", "start/end/moment_rank agree with the pool", "every quoted fragment verbatim in its own emitted clip"]
+  },
+  "measured_cost": {
+    "note": "the swap is not free; buying agreement spends duration",
+    "rows_past_moment_rank_16": {"before": 1254, "after": 927, "pct_before": 31.7, "pct_after": 23.5},
+    "rows_whose_moment_carries_2plus_source_agreement": {"before": 1813, "after": 2129, "pct_before": 45.9, "pct_after": 53.9},
+    "rows_in_operator_band_120_240s": {"before": 2601, "after": 2468, "pct_before": 65.8, "pct_after": 62.5},
+    "rows_under_60s": {"before": 355, "after": 507, "pct_before": 9.0, "pct_after": 12.8},
+    "rows_over_420s": {"before": 0, "after": 0},
+    "addressable_rows": {"before": 3938, "after": 3938},
+    "distinct_episodes": {"before": 696, "after": 682},
+    "mean_duration_s": {"before": 185.2, "after": 179.2},
+    "median_duration_s": {"before": 178.7, "after": 178.4}
+  },
+  "quote_invariant": {
+    "verdict_reasons_containing_a_quotation_mark": 0,
+    "note": "all 649 reasons were written in reported speech, so the hardened detector had nothing to check on the new rows. The Defect 1 invariant holds over them VACUOUSLY, not by measurement, and is recorded that way.",
+    "whole_file_after_the_write": {"fragments": 3916, "verbatim": 3824, "not_located": 0, "negation_flip": 0, "near_not_verbatim": 0, "cannot_verify": 0, "verdict": "GREEN"}
+  },
+  "still_owed": [
+    {"item": "41 rows (partition d4-01) owe a re-judgement", "detail": "judged, but their judgements were rejected by an adversarial verifier that measured four KEEP_DEEP reasons against the pool and found them counter-evidenced. Their 27 swaps were not applied. The verifier's finding runs toward MORE swapping, so these rows are if anything still too deep."},
+    {"item": "322 contested deep rows remain in the artefact", "detail": "all judged — 200 SURVIVES + 83 SURVIVES_CEILING + 4 ABSTAIN + 35 gate-refused. None is unjudged."},
+    {"item": "only 1 of 16 adversarial verifier verdicts reached the applying session, and it was a FAIL", "detail": "the other fifteen were reported as passing but their text did not arrive. Fifteen partitions were applied on an assertion of verification plus this session's own independent checks: partition integrity against a from-scratch population, SD-cap conformance, quote fabrication, ceiling, ASR corruption, addressability, and a read-based spot check of 20 swaps drawn by a pre-stated hash rule. That is weaker than sixteen adversarial reads."},
+    {"item": "pl clips finish hardcodes census_refused: true", "detail": "scripts/lib/clip-finish-shortlist.py on the unmerged branch clips-finish-ops348 asserts the census was refused. It now reads judged 649 / contested 649 / contested_unjudged 0 / sha_match true / cannot_verify [] from live artefacts, but that one constant is stale and should be measured rather than asserted."},
+    {"item": "every verdict is claude-opus-5 judging claude-opus-5's output", "detail": "a bias shared by judge and verifier is invisible here by construction. No number in this report speaks to validity; only the operator's calibration set can."}
+  ],
+  "reproduce": {
+    "host": "mini (100.64.0.2), LOCAL ONLY",
+    "verdicts": "~/clip-pool/work-d4census/d4-01.jsonl … d4-16.jsonl (each with a .sha256 sidecar)",
+    "population_and_coverage": "~/clip-pool/work-d4apply/repop.py, checkcov.py",
+    "apply": "~/clip-pool/work-d4apply/apply.py",
+    "gate": "~/clip-pool/work-d4apply/gate.py <candidate> <base>",
+    "red_proofs": "~/clip-pool/work-d4apply/redproof.py, redproof2.py",
+    "summary": "~/clip-pool/work-d4apply/D4-CENSUS.json",
+    "narrative": "~/clip-pool/shortlist/README.md — ADDENDUM: Defect 4 CENSUSED"
+  },
+  "provenance": "MACHINE-RANKED. The shortlist is a shortlist for a human author, not a pick and not gold. No human has reviewed a single one of the 3950 rows."
+}

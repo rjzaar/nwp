@@ -543,18 +543,29 @@ defined on incomplete designs, so climbing the ladder changes the roster and not
 
 ## 7. Where it runs: the exact gaps between `nwc_clip_review` and a member grading on a Saturday
 
-Audited against the module as it stands on `nwd` (branch `ops-328-clip-corpus`). **The headline
-is better than expected and the conclusion is unexpected:**
+**Audited against `origin/main` of `nwp/nwc`.** The first pass of this section was taken against
+a working checkout that was **15 commits behind** it, and cross-model review of !449 caught the
+error; two of the findings did not survive re-checking and are withdrawn below rather than
+quietly dropped. Everything that remains has been re-verified on `origin/main` by direct
+`git show`.
 
 > **The deep-review surface is already almost blind — and the calibration does not need the site
 > at all.** A packet is a Markdown file and a JSON file. A member can do the whole 60–90 minutes
 > today, with nothing deployed anywhere. **That is why the packet exporter is what this proposal
-> ships and the UI work is what it defers.**
+> ships and the UI work is what it defers.** That conclusion is unaffected by the correction.
 
-**Corrections to assumptions worth recording.** There is **no `RubricExplainer`** anywhere in
-`src/` — the rubric breakdown is stored as raw JSON and never rendered. The off-list telemetry
-(`ChoiceOutcome`, `choice_rank`, outcomes `shortlist`/`off_list`/`rejected`/`no_shortlist`) is
-real but sits **unmerged** on `ops-338-choice-telemetry`, not on main.
+**WITHDRAWN — two claims that were true only of the stale tree:**
+
+| withdrawn claim | what `origin/main` actually has |
+|---|---|
+| *"There is **no `RubricExplainer`** anywhere in `src/`"* | `src/Service/RubricExplainer.php` **exists**, landed in `d8eb868` *"reachable queue, readable candidates, inspectable rubric, one-click propose"* (ops#336). The rubric is rendered, with per-term sub-scores and a residual. |
+| *"`ReviewQueueController` is a flat slot list, `->range(0, 100)`… leaves 76 of 176 slots unreachable"* | **Fixed.** The controller now injects `PagerManagerInterface` and registers a pager; its own header records the old defect. |
+
+**The correction cuts against this proposal, which is why it is worth stating plainly.** A
+rendered, inspectable rubric is *better* for the review queue and *worse* for calibration: it is
+one more thing a calibration route must suppress, and it is now suppressed by an explainer
+service rather than by a raw field. §7(b)(3) below is larger on `origin/main` than it was on the
+stale tree, not smaller.
 
 ### (a) Pure data plumbing — **BUILT BY THIS PROPOSAL**
 
@@ -562,44 +573,52 @@ real but sits **unmerged** on `ops-338-choice-telemetry`, not on main.
 |---|---|
 | a per-rater blinded packet, own seed, anti-self-review at build time | `scripts/lib/clip-calibration-packet.py` |
 | an answers template per rater, in the schema the scorer already reads | same |
+| the join map kept OUT of the member's directory | same (`--keys-out`, §4.1) |
 | N-rater scoring, both axes, seven gates, fail-closed | `scripts/lib/clip-calibration-multi.py` |
 | the join between a rater's local labels and the candidates | in the scorer; refuses without the map |
 | the rights boundary between the packet and the mirrored repo | enforced in the builder, proven red |
 | a verb, per the standing order | `pl clips calibrate packet\|score\|status` |
 
-### (b) Needs new UI — **specified, NOT built**
+### (b) Needs new UI — **specified, NOT built**  *(all re-verified on `origin/main`)*
 
-1. **No route serves a fixed, pre-selected item list to a named person.**
-   `ReviewQueueController` is a flat slot list, `->range(0, 100)` sorted by `changed DESC` —
-   the same list for everybody, and P75 measured that this leaves **76 of 176 slots
-   unreachable**. Calibration needs its own route rendering one packet item at a time.
+1. **No route serves a fixed, pre-selected item list to a named person.** The queue is now
+   reachable, but it is still *the same queue for everybody*, ordered by the data rather than by
+   an assignment. Calibration needs its own route rendering one packet item at a time, in that
+   rater's own order.
 2. **Excerpt truncation is on the wrong side of the wire.** `PREVIEW_CHARS = 600` exists only in
-   `data/build-clip-corpus.py:65`, capping a `preview_text` the UI never renders. What the deep
-   template actually prints is `full_text`, `context_before`, `context_after` — **untruncated**,
-   from unbounded `string_long` fields. The estate's 600-character bound is enforced where the
-   corpus was *built* and nowhere it is *displayed*.
-3. **Two real leaks on the deep surface**, both trivial to suppress on a calibration route and
-   both currently rendered: `q={{ c.quality.value }}` (the raw rubric score, unlabelled and
-   unexplained) at `nwc-clip-review-deep.html.twig:26-27`, and `ep {{ c.episode.value }}` at
-   line 26. A third, the `Current:` incumbent box at lines 13-22, is *outside* the candidate list
-   — the list itself carries no `is_current` flag, so the incumbent is disclosed but not marked.
+   `data/build-clip-corpus.py:65`, capping a `preview_text` at line 144. What the deep template
+   actually prints is `full_text`, `context_before`, `context_after` — **untruncated**, at
+   `nwc-clip-review-deep.html.twig:201-203`, from unbounded `string_long` fields. The estate's
+   600-character bound is enforced where the corpus was *built* and nowhere it is *displayed*.
+3. **The rubric surface is now the largest thing a calibration route must hide**, and it grew:
+   `q={{ c.quality_display }}` on every candidate (`:63`), the per-term sub-score breakdown with
+   its *"These sub-scores account for @accounted of the stored q=@quality"* line (`:111`), and
+   `ep {{ current_clip.episode.value }}` plus `q={{ current_quality_display }}` on the incumbent
+   box (`:143-144`, `:167`). Excellent for a reviewer; fatal for a blind comparison.
 4. **No per-rater answer storage.** Nothing per-user exists beyond `ClipSuggestion.endorsers` and
    `LearnerSignal.signal_user`.
 5. **No progress or resume.** 30 learning points is a morning, not a page load.
 
-### (c) Needs new access control / policy — **specified, NOT built**
+### (c) Needs new access control / policy — **specified, NOT built**  *(re-verified on `origin/main`)*
 
 1. **A `grade calibration item` permission that does not imply `apply clip suggestion`.**
    Today the only clip-review capability of substance is held by 2 accounts.
-2. **Live-queue anti-self-review.** `ReviewDecisionService::apply()` never compares
-   `suggestion.author` to the acting user, and `endorse()` will let an author endorse their own
+2. **Live-queue anti-self-review.** `ReviewDecisionService::apply()` reads
+   `$suggestion->get('author')` **only to credit that author** with an applied clip
+   (`recordAppliedClip`) — it never compares them to the acting user. `endorse()` dedupes
+   existing endorsers but never excludes the author, so an author can still endorse their own
    suggestion. P79 solves this *for calibration* at build time; the live queue still needs it,
    and P75 §3.3.2 already specifies the guard that would fire on **every apply immediately** —
    the opposite of the ops#214 class of guard nobody has seen fire.
-3. **`lock clip review slot` is a declared permission with no route** — dead, and worth deleting
-   or wiring rather than leaving as apparent coverage.
-
----
+3. **`lock clip review slot` is a declared permission with no route.** Confirmed on
+   `origin/main`: declared at `nwc_clip_review.permissions.yml:36`, referenced by **0** routes.
+   Dead, and worth deleting or wiring rather than leaving as apparent coverage.
+4. **`ApplyDecisionForm` still prints the author to the decider** — `'#%d %s by %s — %s
+   endorsements%s'` with `$author->getAccountName()` — while `media-guild.yml` declares
+   `pairing.blind: true`. This is the counter-example §4.1 cites, and it is still live.
+5. **The off-list telemetry is still unmerged.** `origin/ops-338-choice-telemetry` is **not** an
+   ancestor of `origin/main`, so `ChoiceOutcome` / `choice_rank` and the
+   `shortlist`/`off_list`/`rejected`/`no_shortlist` outcomes are not in the deployed surface.
 
 ## 8. Formation, not chores
 

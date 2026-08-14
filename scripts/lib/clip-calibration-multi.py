@@ -250,12 +250,6 @@ def krippendorff_alpha(units, metric="interval"):
         def d2(c, k):
             return (c - k) ** 2
     else:                                   # ordinal
-        cum = {}
-        run = 0.0
-        for c in cats:
-            cum[c] = run + marg[c] / 2.0
-            run += marg[c]
-
         def d2(c, k):
             lo, hi = (c, k) if c <= k else (k, c)
             s = sum(marg[g] for g in cats if lo <= g <= hi)
@@ -886,9 +880,22 @@ def main():
     # about the machine is admissible, INCLUDING a bad one. A run that reported
     # DISCARD off an incoherent panel would have deleted the labels on the
     # strength of a measurement it did not take.
+    named = [("gate0", g0["verdict"]), ("gate1", g1v), ("gate1b", g1b["verdict"]),
+             ("gate2", g2v), ("gate3", rep["gate3_directional_bias"]["verdict"]),
+             ("gate3b", g3b["verdict"]), ("gate4", g4["verdict"])]
     armed = [g1v, g2v, rep["gate3_directional_bias"]["verdict"],
              g4["verdict"], g3b["verdict"], g1b["verdict"]]
     armed = [v for v in armed if not v.startswith("NOT ARMED")]
+
+    # Every gate's headline word, in one place. The OVERALL line reports the
+    # governing verdict only; without this a run where THREE gates said DISCARD
+    # and a run where one did are indistinguishable at a glance, and the
+    # difference is exactly what tells an operator whether the finding is broad
+    # or narrow.
+    rep["gate_verdicts"] = {n: v.split(" —")[0].split(" (")[0].strip()
+                            for n, v in named}
+    rep["verdict_counts"] = dict(collections.Counter(
+        rep["gate_verdicts"].values()))
 
     if g0_instrument_failure:
         rep["OVERALL"] = ("CANNOT VERIFY — INSTRUMENT FAILURE at Gate 0. The "

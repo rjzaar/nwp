@@ -559,7 +559,7 @@ _vhost_restore() {
 
     local work="$dir/.restored" webroot
     # certbot validates into the docroot nginx serves, not the declared parent.
-    webroot="$(vhost_roots_of "$dir/$src" | head -1)"
+    read -r webroot < <(vhost_roots_of "$dir/$src") || true
     [[ -n "$webroot" ]] || webroot="$decl"
 
     local r1=0 r2=0

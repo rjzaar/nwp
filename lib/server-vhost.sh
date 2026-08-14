@@ -122,10 +122,15 @@ vhost_split_stream() {
 }
 
 # vhost_fact <dir> <key>
+# `cmd | head -1` is a SIGPIPE race under `set -o pipefail` (ops#351): head
+# exits first and the writer's 141 becomes the pipeline's verdict, so the
+# branch is decided by timing. Read the first line from a process substitution
+# instead — `|| true` would discard the real verdict as well.
 vhost_fact() {
-    local dir="$1" key="$2"
+    local dir="$1" key="$2" line=""
     [ -f "$dir/.facts" ] || return 0
-    sed -n "s/^${key}=//p" "$dir/.facts" | head -1
+    read -r line < <(sed -n "s/^${key}=//p" "$dir/.facts") || true
+    printf '%s\n' "$line"
 }
 
 # vhost_reload_cmd <dir>
@@ -212,8 +217,10 @@ vhost_has_443() { grep -qE '^[[:space:]]*listen[[:space:]]+[^;]*443' "$1" 2>/dev
 
 # vhost_cert_of <file> — the first ssl_certificate path.
 vhost_cert_of() {
-    grep -oE '^[[:space:]]*ssl_certificate[[:space:]]+[^;]+;' "$1" 2>/dev/null \
-        | sed -E 's/^[[:space:]]*ssl_certificate[[:space:]]+//; s/;[[:space:]]*$//' | head -1
+    local line=""
+    read -r line < <(grep -oE '^[[:space:]]*ssl_certificate[[:space:]]+[^;]+;' "$1" 2>/dev/null \
+        | sed -E 's/^[[:space:]]*ssl_certificate[[:space:]]+//; s/;[[:space:]]*$//') || true
+    printf '%s\n' "$line"
 }
 
 # vhost_fallthrough_conf <dir>

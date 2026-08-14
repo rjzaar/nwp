@@ -303,6 +303,81 @@ _mr_fetch(){
   printf '%s' "$json"
 }
 
+# _mr_fetch_rebase <iid> → the MR object INCLUDING `rebase_in_progress`.
+#
+# GitLab omits that field from the ordinary MR read; it appears only when the
+# request asks for it. A rebase is ASYNCHRONOUS — `PUT /rebase` returns 202 and
+# the work happens on a sidekiq worker — so without this field there is no way to
+# tell "finished" from "not started yet", and a caller that polls the plain
+# object sees an unchanged head sha and concludes, wrongly, that nothing
+# happened.
+_mr_fetch_rebase(){
+  local iid="$1" proj json
+  proj=$(_mr_project) || return 1
+  json=$(_mr_get "/projects/$proj/merge_requests/$iid?include_rebase_in_progress=true") || return 1
+  [ -n "$json" ] || return 1
+  printf '%s' "$json"
+}
+
+_mr_source_branch(){ printf '%s' "$1" | _mr_jget source_branch; }
+_mr_target_branch(){ printf '%s' "$1" | _mr_jget target_branch; }
+_mr_merge_error(){   printf '%s' "$1" | _mr_jget merge_error; }
+_mr_rebase_in_progress(){ [ "$(printf '%s' "$1" | _mr_jget rebase_in_progress)" = "true" ]; }
+
+# _mr_local_testmerge <target-branch> <source-branch>
+#   rc 0 = the merge is CLEAN · 1 = a REPRODUCED conflict (paths on stdout)
+#   rc 2 = could not run the test at all
+#
+# WHY THIS EXISTS — CLAUDE.md, "this GitLab's detailed_merge_status goes stale":
+# the API reports `conflict` for branches that merge cleanly, because the value
+# is a cached computation that is not always recomputed when the target branch
+# moves. A conflict is therefore only a conflict once it has been REPRODUCED
+# against the actual bytes. This is that reproduction.
+#
+# `git merge-tree --write-tree` (git ≥ 2.38), NOT `git merge --no-commit --no-ff`
+# followed by `git merge --abort`. The standing order names the latter and the
+# INTENT is identical — a real merge of the real commits — but the mechanism
+# matters here: ~/nwp is a shared checkout that several sessions switch branches
+# in (recorded: "never commit in ~/nwp directly"), and the --no-commit form
+# mutates the caller's index and leaves a half-merged tree behind if anything
+# dies between the two commands. merge-tree does the same computation with no
+# worktree, no index and nothing to abort, so a triage command can never damage
+# the tree it was invoked from. Where merge-tree is unavailable this returns 2
+# — "I could not run the test" — and never a clean verdict it did not measure.
+_mr_local_testmerge(){
+  local target="$1" source="$2" out rc=0 t s
+  git rev-parse --git-dir >/dev/null 2>&1 || return 2
+  # Fetch so the comparison is against what the FORGE holds, not a stale local
+  # ref. A test-merge of yesterday's origin/main answers a question nobody asked.
+  git fetch -q origin "$target" "$source" >/dev/null 2>&1 || return 2
+  t=$(git rev-parse --verify --quiet "refs/remotes/origin/$target" 2>/dev/null) || return 2
+  s=$(git rev-parse --verify --quiet "refs/remotes/origin/$source" 2>/dev/null) || return 2
+  [ -n "$t" ] && [ -n "$s" ] || return 2
+  out=$(git merge-tree --write-tree --name-only "$t" "$s" 2>&1); rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) # First line is the merged tree oid; the rest are the conflicted paths.
+       printf '%s\n' "$out" | tail -n +2 | grep -v '^[[:space:]]*$' || true
+       return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# _mr_post_note <iid> <body> — post ONE note, unconditionally.
+#
+# Distinct from _mr_note_once, which is keyed on a marker so a CI job that runs
+# on every push does not spam the thread. A note a human (or an agent acting for
+# one) deliberately asked for must be posted every time it is asked for;
+# de-duplicating it would silently swallow a correction.
+_mr_post_note(){
+  local iid="$1" body="$2" proj payload
+  proj=$(_mr_project) || return 1
+  [ -n "$body" ] || return 1
+  payload=$(_mr_json body "$body")
+  _mr_api POST "/projects/$proj/merge_requests/$iid/notes" "$payload" >/dev/null || return 1
+  return 0
+}
+
 # _mr_changed_files <iid> → one repo-relative path per line.
 #
 # Uses /diffs (paginated, cheap) rather than /changes: /changes is deprecated and

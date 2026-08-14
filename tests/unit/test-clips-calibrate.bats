@@ -37,22 +37,33 @@
 #   1. `COLLUSION_EXACT = 0.98` -> `1.01`            (detector can never fire)
 #   2. the `g0_instrument_failure` branch moved BELOW the DISCARD branch in the
 #      overall-verdict chain                          (panel failure stops dominating)
-#   3. Gate 4's `need` forced to `1`                  (corroboration removed)
+#   3. Gate 4's `need = len(ctrl_ok) // 2 + 1` reverted to `(len(ctrl_ok) + 1)
+#      // 2` — the ORIGINAL shipped bug, found by cross-model review of !449
 #   4. the packet builder's repo-containment refusal `if dest == repo or
 #      dest.startswith(repo + os.sep):` changed to `if False:`
 #
 # and this file was run against the mutated code. Observed, verbatim:
 #
-#   1..13
+#   1..16
 #   not ok 2 three identical answer files are one opinion, not three
 #   not ok 5 a panel that did not resolve may not DISCARD the labels
-#   not ok 7 one rater who answered at random is NAMED, not obeyed
-#   not ok 12 the builder REFUSES to write corpus excerpts into the mirrored repo
+#   not ok 8 N=2: one rater's bad morning does NOT delete the label set
+#   not ok 9 N=2: the kill switch STILL fires when both raters agree the machine is wrong
+#   not ok 15 the builder REFUSES to write corpus excerpts into the mirrored repo
 #
-# FOUR failures of THIRTEEN tests, one per mutation. Tests 1, 3, 4, 6, 8, 9, 10,
-# 11 and 13 stayed green because they exercise paths none of the four mutations
-# touched — recorded rather than tidied away, because claiming thirteen failures
-# when four were observed is the same species of error this file exists to catch.
+# FIVE failures of SIXTEEN. Mutation 3 breaks TWO tests, which is the point of
+# having both: one proves the gate does not fire on a single dissenter, the
+# other proves it still fires on two, and a corroboration rule needs both or it
+# is only half observed.
+#
+# WHAT THIS ALSO SHOWED, and it is the reason the bug survived first review:
+# test 7 ("one rater who answered at random is NAMED, not obeyed") runs THREE
+# raters, and at N=3 the buggy `(N+1)//2` and the correct `N//2+1` BOTH evaluate
+# to 2. The defect was invisible at every panel size the original suite
+# exercised and bit only at N=2 — which is the size §6 actually designs for.
+# Tests 1, 3, 4, 6, 7, 10, 11, 12, 13, 14 and 16 stayed green under all four
+# mutations; recorded rather than tidied away, because claiming sixteen failures
+# when five were observed is the same species of error this file exists to catch.
 #
 # Mutation 4 was not merely detected, it left evidence: the mutated builder
 # actually wrote `docs/reports/nope/calibration-packet-ann.md` — 600-character
@@ -109,6 +120,21 @@ w("inc", inc)
 # three copies of ONE opinion
 o = noisy(77)
 for n in ("x1", "x2", "x3"): w(n, o)
+# --- the N=2 corroboration pair (cross-model review of !449) ---
+# `bea` agrees with the machine on EVERY control; `alf` has one bad morning and
+# is off by >=2 on exactly THREE of them. Under `(N+1)//2` this DISCARDED the
+# label set. Under a strict majority it must not.
+cl = sorted(ctrl)[:3]
+w("bea", truth)
+w("alf", {k: ((3 if v <= 1 else 0) if k in cl else v) for k, v in truth.items()})
+# and the same three items, where BOTH raters agree the machine is wrong --
+# independent noise elsewhere so they are not read as one submission
+for n, s in (("cy", 5), ("dee", 6)):
+    r = random.Random(s)
+    d = {k: ((3 if v <= 1 else 0) if k in cl else v) for k, v in truth.items()}
+    for k in r.sample([k for k in truth if k not in ctrl], 12):
+        d[k] = max(0, min(3, d[k] + r.choice([-1, 1])))
+    w(n, d)
 PY
 }
 
@@ -210,6 +236,34 @@ PY
     [[ "$output" == *'"outlier_raters"'* ]]
     [[ "$output" == *"rand"* ]]
     [[ "$output" == *"reported, NOT dropped; investigate the rater, not the labels"* ]]
+}
+
+# ── 7b. corroboration must be REAL at N=2, which is the size this designs for ─
+# Found by cross-model review of !449. `(N+1)//2` is 1 at N=2, so the shipped
+# gate had no corroboration at all at the panel size the proposal targets, while
+# three documents promised "a majority of raters".
+@test "N=2: one rater's bad morning does NOT delete the label set" {
+    run score "$W/answers-alf.json" "$W/answers-bea.json"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"corroboration_required_raters": 2'* ]]
+    [[ "$output" == *"strict majority of scoreable raters (floor(N/2)+1): 2 of 2"* ]]
+    [[ "$(gate gate4_controls_corroborated "$output")" == PASS* ]]
+    [[ "$(overall "$output")" != DISCARD* ]]
+    # the disagreeing rater is still counted, not erased
+    [[ "$output" == *'"alf": 3'* ]]
+}
+
+@test "N=2: the kill switch STILL fires when both raters agree the machine is wrong" {
+    run score "$W/answers-cy.json" "$W/answers-dee.json"
+    [ "$status" -eq 1 ]
+    [[ "$(gate gate4_controls_corroborated "$output")" == DISCARD* ]]
+    [[ "$output" == *"on which 2+ rater(s) disagree"* ]]
+}
+
+@test "N=1: strict majority is still one rater, so P78's gate is unchanged" {
+    run score "$W/answers-alf.json"
+    [[ "$output" == *"strict majority of scoreable raters (floor(N/2)+1): 1 of 1"* ]]
+    [[ "$(gate gate4_controls_corroborated "$output")" == DISCARD* ]]
 }
 
 # ── 8. fail-closed on partial input ──────────────────────────────────────────

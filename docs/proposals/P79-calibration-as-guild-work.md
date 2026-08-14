@@ -233,9 +233,17 @@ judge was certain is a fault, not noise.
 Handing that to a panel unchanged would mean **any one volunteer having a bad morning deletes
 3,309 labels.** The generalisation:
 
-- A control item counts toward the kill switch only when **a majority of scoreable raters** is
-  off by ≥ 2 grades on it (⌈N/2⌉; at N = 1 the majority is that one rater, so the gate is
-  byte-for-byte P78's). The limit stays **> 2 items → DISCARD**.
+- A control item counts toward the kill switch only when a **strict majority of scoreable
+  raters** is off by ≥ 2 grades on it — **⌊N/2⌋ + 1**, i.e. **2 of 2**, 2 of 3, 3 of 4. At N = 1
+  that is the one rater, so the gate is byte-for-byte P78's. The limit stays
+  **> 2 items → DISCARD**.
+
+  **⌈N/2⌉ is the wrong formula and it shipped once** (caught by cross-model review of !449). It
+  evaluates to **1** at N = 2, so a single rater's bad morning on three control items discarded
+  the whole label set while the other rater agreed with the machine on all 32 controls — no
+  corroboration whatever, **at exactly the panel size §6 designs for**, while this section, the
+  packet's own closing text and the member guide all promised "a majority". One of two is not a
+  majority. Red proof in §3.10 rows **M2a / M2b**.
 - **A rogue rater is still visible.** Per-rater severe counts are reported, and any rater whose
   count exceeds the panel median by ≥ 5 is named `OUTLIER-RATER` — **reported, never dropped.**
   Dropping a file to make a gate pass is the swallowed-verdict shape. The finding is about the
@@ -278,6 +286,16 @@ ones against a synthetic corpus-free fixture so they run on a CI runner that has
 | **G** | three raters who agree with each other and read `1↔2` the opposite way to the machine | **0.936 COHERENT** | DISCARD | **DISCARD** (machine 0.701 below lowest human; means 0.526 / 0.528 / 0.526 vs **−0.175**) | PASS / PASS | PASS | DISCARD · 1 |
 | **H₃₀** | as G, but only 30% of `1↔2` items flipped | **0.958 COHERENT** | **CANNOT VERIFY** (0.570, CI [0.414, 0.710] straddles 0.45) | **DISCARD** (gap 0.220) | PASS / PASS | PASS | **DISCARD · 1** |
 | **H₂₂** | as H₃₀, 22% flipped | 0.959 COHERENT | **PASS** (0.665) | **PASS** | PASS / PASS | PASS | PASS · 0 |
+| **M2a** | **N = 2**: one rater severe on 3 controls, the other agrees with the machine on all 32 | — | — | NOT ARMED | — / — | **PASS (0 corroborated)**, `alf: 3` still counted | PASS · 0 |
+| **M2b** | **N = 2**: **both** raters severe on the same 3 controls | — | — | NOT ARMED | — / — | **DISCARD (3 corroborated, "2+ rater(s)")** | DISCARD · 1 |
+
+**Rows M2a and M2b are the pair that matters for Gate 4**, and they were added after
+cross-model review found the shipped formula wrong. Under `⌈N/2⌉` row M2a returned
+`DISCARD — delete the label-set directory`, with `corroboration_required_raters: 1` and
+`severe per rater: {'alf': 3}` against a rater who had agreed with the machine on every one of
+the 32 controls. The two rows now bracket the gate: **it does not fire when one of two raters
+dissents, and it does fire when two of two do.** A corroboration gate that had only ever been
+seen to fire — or only ever seen to pass — would be exactly the hypothesis-not-a-gate shape.
 
 Six things this establishes that an untested instrument could not:
 

@@ -118,8 +118,8 @@ pl clips calibrate score                   # scores everyone who has handed in
    deletes thousands of machine labels in one step.
 
 **One rater's mistake cannot delete the label set.** The kill-switch items only count against the
-machine when a *majority* of raters disagrees. That protection exists only because there is more
-than one of you — which is, precisely, why you were asked.
+machine when a *strict majority* of raters disagrees — **both of two**, two of three. That
+protection exists only because there is more than one of you — which is, precisely, why you were asked.
 
 ---
 

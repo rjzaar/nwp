@@ -764,8 +764,20 @@ def main():
                          "pairs" % G4_MIN_CONTROL_PAIRS)
         g4["severe_items"] = []
     else:
-        need = 1 if len(ctrl_ok) == 1 else (len(ctrl_ok) + 1) // 2
+        # STRICT majority: floor(N/2) + 1. N=1 -> 1, N=2 -> 2, N=3 -> 2, N=4 -> 3.
+        #
+        # `(N + 1) // 2` is the WRONG formula here and it was shipped once. At
+        # N = 2 it evaluates to 1, so a single rater's bad morning on three
+        # control items DISCARDS the whole label set while the other rater
+        # agrees with the machine on every control — i.e. no corroboration at
+        # all, at exactly the panel size this proposal designs for. The promise
+        # made in P79 3.8, in the packet's own closing text and in the member
+        # guide is "a MAJORITY of raters", and one of two is not a majority.
+        need = len(ctrl_ok) // 2 + 1
         g4["corroboration_required_raters"] = need
+        g4["corroboration_rule"] = ("strict majority of scoreable raters "
+                                    "(floor(N/2)+1): %d of %d"
+                                    % (need, len(ctrl_ok)))
         sev_by_rater = collections.Counter()
         sev_count = collections.Counter()
         for r in ctrl_ok:

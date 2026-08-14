@@ -186,8 +186,8 @@ SOUND / UNSOUND / NEEDS-CONTEXT — never as a grade, because they were never a 
 question.
 
 **One rater's mistake cannot delete the label set.** A control item only counts against
-the machine when a majority of raters disagrees with it. That protection exists only
-because there is more than one of you.
+the machine when a STRICT majority of raters disagrees with it — both of two, two
+of three. That protection exists only because there is more than one of you.
 """
 
 

@@ -378,6 +378,241 @@ cmd_conf_drift() {
     nginx_parity_check "$target" "$PROJECT_ROOT" "$prefix"
 }
 
+################################################################################
+# Subcommand: vhost <server> <site> [--status|--restore] [--apply]  (ops#359)
+#
+# `pl server roots` DETECTS a site whose declared root no vhost serves
+# (UNREACHABLE-DECLARATION) and cannot act on it. On 2026-08-13 that gap was
+# closed by hand over ssh — a deliberate, recorded exception to the pl-first
+# standing order. This verb is the repayment. See lib/server-vhost.sh.
+################################################################################
+cmd_vhost() {
+    local target="" site="" mode="status" apply=0 arg
+    PROBE_CMD=""
+    for arg in "$@"; do
+        case "$arg" in
+            --status)      mode="status" ;;
+            --restore)     mode="restore" ;;
+            --apply)       apply=1 ;;
+            --probe-cmd=*) PROBE_CMD="${arg#--probe-cmd=}" ;;
+            -h|--help)     _vhost_usage; return 0 ;;
+            -*)            echo "Unknown option: $arg" >&2; return 2 ;;
+            *)             if [[ -z "$target" ]]; then target="$arg"
+                           elif [[ -z "$site" ]]; then site="$arg"
+                           else echo "Unexpected argument: $arg" >&2; return 2; fi ;;
+        esac
+    done
+    if [[ -z "$target" || -z "$site" ]]; then _vhost_usage >&2; return 2; fi
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/served-roots.sh"
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/server-vhost.sh"
+
+    local prefix
+    prefix=$(_resolve_probe_prefix "$target") || {
+        echo "CANNOT VERIFY: cannot resolve a destination for '${target}'" >&2; return 3; }
+
+    local capture
+    capture=$(vhost_probe "$prefix") || return 3
+
+    local dir; dir="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$dir'" RETURN
+    local incomplete=0
+    printf '%s\n' "$capture" | vhost_split_stream "$dir" 2>/dev/null || incomplete=1
+
+    # BLINDNESS GATE, before any verdict. A config directory we could not fully
+    # read cannot produce "no vhost serves it" — that is the sentence this verb
+    # exists to make actionable, and it must never be said blind.
+    if [[ $incomplete -eq 1 ]]; then
+        echo "CANNOT VERIFY: part of ${VHOST_CONF_DIR} on '${target}' was unreadable — refusing to grade"
+        return 3
+    fi
+    if [[ -z "$(vhost_all_files "$dir")" ]]; then
+        echo "CANNOT VERIFY: no nginx config files enumerated on '${target}' — this is NOT 'no vhosts'"
+        return 3
+    fi
+
+    # The site's DECLARED root, from the same inventory `pl server roots` reads.
+    local decl_path="" decl_domain="" entry n p d
+    served_roots_declarations "$target" "$NWP_DIR" "" || true
+    for entry in "${SR_DECL[@]:-}"; do
+        IFS='|' read -r n p d _ _ <<<"$entry"
+        if [[ "$n" == "$site" ]]; then decl_path="$p"; decl_domain="$d"; fi
+    done
+    if [[ -z "$decl_path" ]]; then
+        echo "CANNOT VERIFY: '${site}' declares no live root attributed to '${target}'."
+        echo "               Nothing to compare a vhost against. Check: pl server roots ${target}"
+        return 3
+    fi
+
+    case "$mode" in
+        status)  _vhost_status "$target" "$site" "$dir" "$decl_path" "$decl_domain" ;;
+        restore) _vhost_restore "$target" "$site" "$dir" "$decl_path" "$decl_domain" "$prefix" "$apply" ;;
+    esac
+}
+
+_vhost_usage() {
+    cat <<'USAGE'
+Usage: pl server vhost <server> <site> [--status|--restore] [--apply]
+
+  --status   (default) is a vhost actually serving the site's declared root?
+             which stashed copies exist? and which certificate would 443 fall
+             through to if there is none? READ-ONLY.
+  --restore  rebuild the vhost from a stashed copy, repairing GitLab-bundled
+             includes and a missing ACME challenge location. DRY-RUN by
+             default; --apply installs it, gated on `nginx -t`.
+USAGE
+}
+
+# ── status ──────────────────────────────────────────────────────────────────
+_vhost_status() {
+    local target="$1" site="$2" dir="$3" decl="$4" domain="$5"
+    local rel served=() stashes=() rc=0
+
+    printf 'vhost status: %s on %s\n' "$site" "$target"
+    printf '  declared root   %s\n' "$decl"
+    [[ -n "$domain" ]] && printf '  declared domain %s\n' "$domain"
+    printf '  nginx           %s (reload: %s)\n' \
+        "$([[ "$(vhost_fact "$dir" gitlab_embedded)" == yes ]] && echo 'GitLab-bundled' || echo 'standalone')" \
+        "$(vhost_reload_cmd "$dir")"
+
+    while IFS= read -r rel; do
+        [[ -n "$rel" ]] || continue
+        vhost_serves_root "$dir/$rel" "$decl" && served+=("$rel")
+    done < <(vhost_active_confs "$dir")
+
+    while IFS= read -r rel; do
+        [[ -n "$rel" ]] || continue
+        stashes+=("$rel")
+    done < <(vhost_stashes_for "$dir" "$site" "$decl")
+
+    if [[ ${#served[@]} -gt 0 ]]; then
+        for rel in "${served[@]}"; do
+            printf '  OK   SERVED           %s\n' "$VHOST_CONF_DIR/$rel"
+            printf '       serves           %s\n' "$(vhost_roots_of "$dir/$rel" | paste -sd' ' -)"
+            if vhost_has_443 "$dir/$rel"; then
+                printf '       443 cert         %s\n' "$(vhost_cert_of "$dir/$rel")"
+            else
+                printf '  WARN no 443 listener in this vhost — it serves plain HTTP only\n'
+                rc=1
+            fi
+            vhost_needs_acme "$dir/$rel" && {
+                printf '  WARN no ACME challenge location — certbot webroot renewal will fail,\n'
+                printf '       and the site goes down when the certificate expires\n'
+                rc=1
+            }
+        done
+    else
+        # THE INCIDENT SHAPE.
+        printf '  RED  NO VHOST SERVES IT  nothing loaded from %s serves %s\n' "$VHOST_CONF_DIR" "$decl"
+        local ft; ft="$(vhost_fallthrough_conf "$dir")"
+        if [[ -n "$ft" ]]; then
+            printf '       443 FALLS THROUGH to %s\n' "$VHOST_CONF_DIR/$ft"
+            printf '       serving certificate  %s\n' "$(vhost_cert_of "$dir/$ft")"
+            printf '       => a browser asking for %s is handed THAT certificate and refuses\n' \
+                "${domain:-this site}"
+        fi
+        rc=1
+    fi
+
+    if [[ ${#stashes[@]} -gt 0 ]]; then
+        for rel in "${stashes[@]}"; do
+            printf '  INFO STASHED (inert)  %s\n' "$VHOST_CONF_DIR/$rel"
+        done
+        [[ ${#served[@]} -eq 0 ]] && \
+            printf '       restore it with:  pl server vhost %s %s --restore\n' "$target" "$site"
+    elif [[ ${#served[@]} -eq 0 ]]; then
+        printf '       no stashed copy found — a restore has nothing to rebuild from\n'
+    fi
+    return $rc
+}
+
+# ── restore ─────────────────────────────────────────────────────────────────
+_vhost_restore() {
+    local target="$1" site="$2" dir="$3" decl="$4" domain="$5" prefix="$6" apply="$7"
+    local rel served=() stashes=()
+
+    while IFS= read -r rel; do
+        [[ -n "$rel" ]] || continue
+        vhost_serves_root "$dir/$rel" "$decl" && served+=("$rel")
+    done < <(vhost_active_confs "$dir")
+    if [[ ${#served[@]} -gt 0 ]]; then
+        echo "REFUSED: ${VHOST_CONF_DIR}/${served[0]} already serves ${decl} — a restore never"
+        echo "         overwrites a live config. Nothing to do."
+        return 1
+    fi
+
+    while IFS= read -r rel; do [[ -n "$rel" ]] && stashes+=("$rel"); done \
+        < <(vhost_stashes_for "$dir" "$site" "$decl")
+    if [[ ${#stashes[@]} -eq 0 ]]; then
+        echo "CANNOT VERIFY: no stashed vhost for '${site}' found in ${VHOST_CONF_DIR}"
+        echo "               A restore rebuilds from a stash; there is nothing to rebuild from."
+        return 3
+    fi
+    local src="${stashes[0]}"
+    if [[ ${#stashes[@]} -gt 1 ]]; then
+        echo "NOTE: ${#stashes[@]} stashed copies found; using the first: $src"
+        for rel in "${stashes[@]}"; do printf '      %s\n' "$VHOST_CONF_DIR/$rel"; done
+    fi
+
+    local work="$dir/.restored" webroot
+    # certbot validates into the docroot nginx serves, not the declared parent.
+    read -r webroot < <(vhost_roots_of "$dir/$src") || true
+    [[ -n "$webroot" ]] || webroot="$decl"
+
+    local r1=0 r2=0
+    vhost_repair_gitlab_includes "$dir/$src" > "$work.1" || r1=$?
+    vhost_repair_acme "$work.1" "$webroot" > "$work" || r2=$?
+    if [[ $r2 -eq 2 ]]; then
+        echo "REFUSED: cannot safely add the ACME challenge location (see above)."
+        echo "         Restore is not attempted — an edit made blind is how a config gets worse."
+        return 1
+    fi
+
+    local target_conf="$VHOST_CONF_DIR/${site}.conf"
+    printf 'vhost restore: %s on %s\n' "$site" "$target"
+    printf '  from stash    %s\n' "$VHOST_CONF_DIR/$src"
+    printf '  install as    %s\n' "$target_conf"
+    printf '  repairs applied:\n'
+    if [[ $r1 -eq 0 ]]; then
+        printf '    [x] GitLab-bundled includes repointed to /etc/nginx/ (the box has no /opt/gitlab)\n'
+    else
+        printf '    [ ] no GitLab-bundled includes to repoint\n'
+    fi
+    if [[ $r2 -eq 0 ]]; then
+        printf '    [x] ACME challenge location added to the port-80 block (root %s)\n' "$webroot"
+    else
+        printf '    [ ] ACME challenge location already present\n'
+    fi
+    printf '  diff (stash -> what would be installed):\n'
+    diff -u "$dir/$src" "$work" | sed 's/^/    /' || true
+
+    if [[ "$apply" -ne 1 ]]; then
+        printf '\n  DRY RUN — nothing was changed. Re-run with --apply to install.\n'
+        return 0
+    fi
+
+    local reload; reload="$(vhost_reload_cmd "$dir")"
+    printf '\n  APPLYING (nginx -t must pass, or the file is removed again)\n'
+    local script rc=0
+    script="$(vhost_apply_script "$target_conf" "$reload")"
+    if [[ "$prefix" == "LOCAL" ]]; then
+        bash -c "$script" < "$work" || rc=$?
+    else
+        # shellcheck disable=SC2086
+        $prefix "$script" < "$work" || rc=$?
+    fi
+    if [[ $rc -ne 0 ]]; then
+        echo "FAILED (rc=$rc) — the box is unchanged."
+        return 1
+    fi
+    printf '\n  ROLLBACK (the stash was copied, never moved, so this fully reverts it):\n'
+    printf '    %s "sudo rm %s && sudo nginx -t && %s"\n' "${prefix}" "$target_conf" "$reload"
+    return 0
+}
+
 cmd_roots() {
     local raw_out=0 target="" arg
     PROBE_CMD=""
@@ -1802,6 +2037,7 @@ case "$sub" in
     health)  cmd_health "$@" ;;
     forge)   cmd_forge "$@" ;;
     roots)   cmd_roots "$@" ;;
+    vhost)   cmd_vhost "$@" ;;
     backup)  cmd_backup "$@" ;;
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;
@@ -1833,6 +2069,20 @@ Subcommands:
                         against what NWP declares. Exit 1 = an undeclared root
                         or a declaration no gate can see (the ops#149 shape),
                         3 = CANNOT-VERIFY (never treated as clean).
+  vhost <name> <site>   Inspect or REBUILD one site's nginx vhost — the verb
+                        `roots` needed when it reported UNREACHABLE-DECLARATION
+                        and could only detect (ops#359).
+                          --status    (default) is a vhost serving the site's
+                                      declared root? which stashed copies exist?
+                                      and WHICH CERTIFICATE would 443 fall
+                                      through to if none does — the fall-through
+                                      that served a wrong cert for twelve days.
+                          --restore   rebuild from a stashed copy, repointing
+                                      GitLab-bundled includes and adding a
+                                      missing ACME challenge location.
+                                      DRY-RUN unless --apply; --apply is gated
+                                      on `nginx -t` and never overwrites an
+                                      existing conf. Prints the rollback.
   backup <name>         BOX-LEVEL disaster recovery (ADR-0025). Drives the
                         AI-free nwp-server agent ON the box to write an
                         encrypted restic archive of /etc, /usr/local, /root,

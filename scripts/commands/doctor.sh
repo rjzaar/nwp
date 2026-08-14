@@ -626,6 +626,44 @@ check_server_state() {
 }
 
 ################################################################################
+# Fleet engine-code currency (ops#360) — is any nwp host running stale main?
+#
+# WHY: the ai-host's checkout — the one the ARMED agent-loop executes from —
+# was measured 59 commits behind origin/main on 2026-08-12, and nothing
+# surfaced it. `pl fleet sync status` grades every sync-target host against
+# the FORGE's main (never this checkout's opinion of it); this check puts
+# that fact where the operator already looks. It only runs where the private
+# instance manifest is readable (the roles → hosts resolver); elsewhere it
+# says so instead of asserting a green it cannot measure.
+################################################################################
+check_fleet_sync() {
+    print_header "Checking Fleet Engine-Code Currency (pl fleet sync)"
+
+    local manifest="${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"
+    if [[ ! -f "$manifest" ]] || ! command -v yq >/dev/null 2>&1; then
+        print_info "no readable instance manifest on this machine — host currency is graded where the manifest lives (pl fleet sync status)"
+        return 0
+    fi
+
+    local out rc=0
+    out=$("$PROJECT_ROOT/pl" fleet sync status --quiet 2>&1) || rc=$?
+    case "$rc" in
+        0)
+            print_success "every sync-target host is on current origin/main"
+            return 0 ;;
+        2)
+            while IFS= read -r line; do [[ -n "$line" ]] && print_error "$line"; done <<< "$out"
+            print_error "CANNOT VERIFY host currency — an unreachable host is never 'up to date'"
+            print_hint "detail: pl fleet sync status   ·   provision: pl fleet sync install --host=<role>"
+            return 1 ;;
+        *)
+            while IFS= read -r line; do [[ -n "$line" ]] && print_error "$line"; done <<< "$out"
+            print_hint "settle a stale host now: pl fleet sync run --host=<role>"
+            return 1 ;;
+    esac
+}
+
+################################################################################
 # Mail alias coverage — every referenced address must be deliverable
 #
 # WHY: MX for nwpcode.org points at the box whose /etc/postfix/virtual is the
@@ -879,6 +917,9 @@ main() {
     echo ""
 
     check_server_state || total_errors=$((total_errors + $?))
+    echo ""
+
+    check_fleet_sync || total_errors=$((total_errors + $?))
     echo ""
 
     check_rotation_debt || total_errors=$((total_errors + $?))

@@ -101,6 +101,8 @@ ${BOLD}USAGE:${NC}
     pl fleet checkout [--json]
     pl fleet status [--to <ssh-host>]
     pl fleet schedule [--schedule "<cron>"] [--remove] [-y]
+    pl fleet sync install|remove|run|status [--host=<role>]
+                     [--schedule='*/15 * * * *'] [--dry-run] [--quiet]
 
 ${BOLD}WHY:${NC}
     The console host has no sites, so \`pl rag\` there sees an empty fleet. This
@@ -149,6 +151,19 @@ ${BOLD}EXAMPLES:${NC}
     pl fleet security                    # what the console will show, as a table
     pl fleet security --json | python3 -m json.tool   # every advisory in full
     pl fleet schedule                    # publish every 30 min from this host
+
+${BOLD}FLEET SYNC (ops#360 — engine-code propagation):${NC}
+    pl fleet sync status                 # is any nwp host running stale main?
+    pl fleet sync run --host=ai-host     # one supervised sync now (or bootstrap)
+    pl fleet sync install --host=ai-host # provision the */15 cron on that host
+    Targets are ROLES resolved via the private instance manifest, never
+    hostnames. Prod-reaching roles (verifier, signed-deploy, prod-cluster,
+    prod-agent, prod-au) and 'authoring' are REFUSED — prod receives code as
+    signed artifacts through its own path (ADR-0017/0028), and sessions
+    control the dev tree. The worker (scripts/fleet-sync-host.sh) is
+    fast-forward-only, verifies signatures (enforcing under
+    NWP_REQUIRE_SIGNED_COMMITS=1), health-checks what changed, reverts on
+    failure, and ledgers every outcome.
 EOF
 }
 
@@ -1216,6 +1231,255 @@ else:
 PY
 }
 
+# ---------------------------------------------------------------------------
+# pl fleet sync — automated engine-code propagation to nwp hosts (ops#360).
+#
+# On 2026-08-12 the ai-host's ~/nwp — the clone the ARMED agent-loop executes from —
+# was measured 59 commits behind origin/main. This family provisions ONE
+# reviewed worker (scripts/fleet-sync-host.sh) as a marked */15 cron on each
+# non-prod host, and makes "who is behind?" a first-class, fail-closed fact.
+#
+#   pl fleet sync install --host=<role> [--schedule='*/15 * * * *'] [--dry-run]
+#   pl fleet sync remove  --host=<role>
+#   pl fleet sync run     --host=<role>      one supervised sync now (also the
+#                                            bootstrap when the worker has not
+#                                            reached the host yet)
+#   pl fleet sync status  [--host=<role>] [--quiet]
+#
+# THE GUARD (ADR-0017/0028, CLAUDE.md "key off the canonical phase/role, never
+# a hostname list"): every verb that targets a host first resolves the ROLE
+# through the instance manifest and REFUSES when the role — or ANY role the
+# resolved host also holds — is prod-reaching (verifier, signed-deploy,
+# prod-cluster, prod-agent, prod-au). the verifier tier receives code as signed
+# artifacts through their own verification path, never through this. The
+# guard is inert today (no prod exists) and proven RED against a fixture
+# manifest in tests/unit/test-fleet-sync.bats, the estate's standard for
+# inert guards. `authoring` is refused too: sessions control the dev tree.
+# No readable manifest = CANNOT VERIFY = refusal, never a pass.
+# ---------------------------------------------------------------------------
+SYNC_CRON_BEGIN="# >>> nwp fleet sync (pl fleet sync) >>>"
+SYNC_CRON_END="# <<< nwp fleet sync <<<"
+SYNC_DENY_ROLES="verifier signed-deploy prod-cluster prod-agent prod-au"
+SYNC_DEFAULT_ROLES="ai-host ci-host"
+
+_sync_manifest() { printf '%s' "${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"; }
+
+_sync_role_hosts() { # $1 = role → hosts, space-separated (empty if unbound)
+    yq e ".roles.\"$1\" // [] | .[]" "$(_sync_manifest)" 2>/dev/null | tr '\n' ' '
+}
+
+# Resolve + guard a target role. Prints the bound host(s) on stdout.
+# Returns 2 (refusal) on: deny role, authoring, unresolvable manifest,
+# unbound role, or a host that ALSO holds a deny role.
+_sync_guard_role() {
+    local role="$1" manifest; manifest="$(_sync_manifest)"
+    if [ "$role" = "authoring" ]; then
+        print_error "REFUSED: --host=authoring — the dev workstation is out of scope for auto-sync; sessions control that tree (concurrent branches, worktrees)"
+        return 2
+    fi
+    local dr
+    for dr in $SYNC_DENY_ROLES; do
+        if [ "$role" = "$dr" ]; then
+            print_error "REFUSED: --host=$role is a prod-reaching role — prod hosts receive code as SIGNED ARTIFACTS via their own verification path (ADR-0017/0028), never via fleet sync"
+            return 2
+        fi
+    done
+    if [ ! -f "$manifest" ] || ! command -v yq >/dev/null 2>&1; then
+        print_error "CANNOT VERIFY: instance manifest unreadable ($manifest) or yq missing — cannot prove the target is not prod, refusing (fail closed)"
+        return 2
+    fi
+    local hosts; hosts="$(_sync_role_hosts "$role")"
+    if [ -z "${hosts// /}" ]; then
+        print_error "REFUSED: role '$role' is bound to no host in $manifest"
+        return 2
+    fi
+    local h dhosts dh
+    for dr in $SYNC_DENY_ROLES; do
+        dhosts="$(_sync_role_hosts "$dr")"
+        for h in $hosts; do
+            for dh in $dhosts; do
+                if [ "$h" = "$dh" ]; then
+                    print_error "REFUSED: host '$h' (role $role) is ALSO bound to prod-reaching role '$dr' — a multi-role box with a prod leg is never an auto-sync target"
+                    return 2
+                fi
+            done
+        done
+    done
+    printf '%s\n' "$hosts"
+}
+
+_sync_ssh_cmd() { # $1 = host → an ssh argv prefix
+    local c=""
+    if [ -f "$REPO_ROOT/lib/server-resolver.sh" ]; then
+        # shellcheck source=/dev/null
+        source "$REPO_ROOT/lib/server-resolver.sh" 2>/dev/null || true
+        declare -F get_server_ssh_command >/dev/null 2>&1 \
+            && c=$(get_server_ssh_command "$1" 2>/dev/null) || c=""
+    fi
+    printf '%s' "${c:-ssh -o BatchMode=yes -o ConnectTimeout=10 $1}"
+}
+
+_sync_remote_root() { # $1 = ssh cmd; where the target's checkout lives
+    # the remote loop breaks after the first hit, so no `| head` is needed —
+    # and under pipefail a head-truncated pipe is a sigpipe race (ops#351)
+    $1 'for d in "$HOME/nwp" /opt/nwp /srv/nwp; do [ -d "$d/.git" ] && { echo "$d"; break; }; done' 2>/dev/null
+}
+
+cmd_sync() {
+    local sub="${1:-status}"; shift || true
+    local ROLE="" SCHED='*/15 * * * *' DRY=false QUIET=false a
+    for a in "$@"; do case "$a" in
+        --host=*)     ROLE="${a#--host=}" ;;
+        --schedule=*) SCHED="${a#--schedule=}" ;;
+        --dry-run|-n) DRY=true ;;
+        --quiet|-q)   QUIET=true ;;
+        -h|--help)    show_help; return 0 ;;
+        *) print_error "REFUSED: unrecognised argument for 'pl fleet sync': $a"; return 2 ;;
+    esac; done
+
+    case "$sub" in
+    install|run)
+        [ -n "$ROLE" ] || { print_error "usage: pl fleet sync $sub --host=<role>"; return 2; }
+        local hosts; hosts=$(_sync_guard_role "$ROLE") || return 2
+        local h ssh_cmd root rc=0
+        for h in $hosts; do
+            ssh_cmd=$(_sync_ssh_cmd "$h")
+            root=$(_sync_remote_root "$ssh_cmd")
+            [ -n "$root" ] || { print_error "$h: no nwp checkout found (\$HOME/nwp, /opt/nwp, /srv/nwp) — clone it first"; rc=2; continue; }
+            if [ "$sub" = "run" ]; then
+                print_header "fleet sync — supervised run on $h ($ROLE)"
+                if $ssh_cmd "[ -f '$root/scripts/fleet-sync-host.sh' ]" 2>/dev/null; then
+                    $ssh_cmd "NWP_SYNC_ROLE=$ROLE bash '$root/scripts/fleet-sync-host.sh'" || rc=2
+                else
+                    # Bootstrap: the reviewed worker has not REACHED this host
+                    # yet (it arrives with the very pull it performs). Minimal
+                    # guarded ff-only pull, same refusals, loudly labelled.
+                    print_warning "$h: worker not present yet — BOOTSTRAP (minimal guarded ff-only pull; the worker takes over from the next sync)"
+                    $ssh_cmd "set -e
+                        cd '$root'
+                        b=\$(git rev-parse --abbrev-ref HEAD)
+                        [ \"\$b\" = main ] || { echo \"SKIPPED: on branch \$b, not main\"; exit 2; }
+                        [ -z \"\$(git status --porcelain -uno)\" ] || { echo 'SKIPPED: tree is dirty'; exit 2; }
+                        git fetch -q origin main
+                        from=\$(git rev-parse HEAD); to=\$(git rev-parse origin/main)
+                        git merge-base --is-ancestor \"\$from\" \"\$to\" || { echo 'REFUSED: diverged'; exit 2; }
+                        git merge --ff-only -q \"\$to\"
+                        echo \"BOOTSTRAP SYNCED: \${from:0:9} -> \${to:0:9}\"" || rc=2
+                fi
+                continue
+            fi
+            # install
+            local block="$SYNC_CRON_BEGIN
+$SCHED NWP_SYNC_ROLE=$ROLE $root/scripts/fleet-sync-host.sh >> $root/logs/fleet-sync-cron.log 2>&1
+$SYNC_CRON_END"
+            print_header "fleet sync — install on $h ($ROLE)"
+            printf '%s\n' "$block" | sed 's/^/  /'
+            if [ "$DRY" = true ]; then print_warning "--dry-run: nothing written"; continue; fi
+            if ! $ssh_cmd "[ -f '$root/scripts/fleet-sync-host.sh' ]" 2>/dev/null; then
+                print_error "$h: $root/scripts/fleet-sync-host.sh not present — run 'pl fleet sync run --host=$ROLE' once to bootstrap, then install"
+                rc=2; continue
+            fi
+            # idempotent marked-block rewrite (same idiom as pl secrets cron)
+            if $ssh_cmd "BLOCK=\$(cat <<'EOF'
+$block
+EOF
+)
+set -e
+cur=\$(crontab -l 2>/dev/null || true)
+new=\$(printf '%s\n' \"\$cur\" | awk 'BEGIN{s=1} /^# >>> nwp fleet sync/{s=0} s{print} /^# <<< nwp fleet sync/{s=1}')
+printf '%s\n%s\n' \"\$new\" \"\$BLOCK\" | grep -v '^\$' | crontab -"; then
+                print_success "installed on $h — schedule: $SCHED"
+                print_hint "verify: pl fleet sync status --host=$ROLE"
+            else
+                print_error "failed to install the cron block on $h"; rc=2
+            fi
+        done
+        return $rc
+        ;;
+    remove)
+        [ -n "$ROLE" ] || { print_error "usage: pl fleet sync remove --host=<role>"; return 2; }
+        # deliberately NOT the full guard: if a host BECAME prod-bound you must
+        # still be able to remove the cron. Only resolve the role.
+        command -v yq >/dev/null 2>&1 && [ -f "$(_sync_manifest)" ] \
+            || { print_error "CANNOT VERIFY: manifest unreadable — cannot resolve '$ROLE'"; return 2; }
+        local h ssh_cmd
+        for h in $(_sync_role_hosts "$ROLE"); do
+            ssh_cmd=$(_sync_ssh_cmd "$h")
+            if $ssh_cmd "cur=\$(crontab -l 2>/dev/null || true); printf '%s\n' \"\$cur\" | awk 'BEGIN{s=1} /^# >>> nwp fleet sync/{s=0} s{print} /^# <<< nwp fleet sync/{s=1}' | crontab -" 2>/dev/null; then
+                print_success "removed the fleet-sync cron block from $h"
+            else
+                print_error "could not rewrite crontab on $h"; return 2
+            fi
+        done
+        ;;
+    status)
+        local roles="${ROLE:-${NWP_FLEET_SYNC_ROLES:-}}"
+        if [ -z "$roles" ]; then
+            local cfgf; cfgf=$(_console_cfg_file)
+            [ -n "$cfgf" ] && command -v yq >/dev/null 2>&1 \
+                && roles=$(yq e '.settings.fleet.sync_roles // ""' "$cfgf" 2>/dev/null | grep -v '^null$' || true)
+            roles="${roles:-$SYNC_DEFAULT_ROLES}"
+        fi
+        command -v yq >/dev/null 2>&1 && [ -f "$(_sync_manifest)" ] \
+            || { print_error "CANNOT VERIFY: instance manifest unreadable — cannot resolve sync targets"; return 2; }
+        # the truth is the FORGE's main, not this checkout's opinion of it
+        local truth
+        truth=$(git -C "$REPO_ROOT" ls-remote origin refs/heads/main 2>/dev/null | cut -f1)
+        if [ -z "$truth" ]; then
+            print_error "CANNOT VERIFY: could not read origin's main from here — no host can be graded"
+            return 2
+        fi
+        [ "$QUIET" = true ] || print_header "fleet sync — engine-code currency per host (truth: main @ ${truth:0:9})"
+        local role h seen=" " rc=0 ssh_cmd info
+        for role in $roles; do
+            local skip_dr=false dr
+            for dr in $SYNC_DENY_ROLES authoring; do
+                [ "$role" = "$dr" ] && { print_warning "$role: excluded from sync by policy"; skip_dr=true; }
+            done
+            [ "$skip_dr" = true ] && continue
+            for h in $(_sync_role_hosts "$role"); do
+                case "$seen" in *" $h "*) continue ;; esac
+                seen="$seen$h "
+                ssh_cmd=$(_sync_ssh_cmd "$h")
+                info=$($ssh_cmd "for d in \"\$HOME/nwp\" /opt/nwp /srv/nwp; do [ -d \"\$d/.git\" ] && { root=\$d; break; }; done
+                    [ -n \"\${root:-}\" ] || { echo NOROOT; exit 0; }
+                    echo HEAD=\$(git -C \"\$root\" rev-parse HEAD 2>/dev/null)
+                    echo BRANCH=\$(git -C \"\$root\" rev-parse --abbrev-ref HEAD 2>/dev/null)
+                    echo BEHIND=\$(git -C \"\$root\" rev-list --count HEAD..$truth 2>/dev/null || echo unknown)
+                    echo STATE=\$(cat \"\$root/logs/fleet-sync-state.json\" 2>/dev/null | tr -d '\n')" 2>/dev/null) || info=""
+                if [ -z "$info" ]; then
+                    print_error "$h ($role): UNREACHABLE — CANNOT VERIFY (an unreachable host is never 'up to date')"
+                    rc=2; continue
+                fi
+                if [ "$info" = "NOROOT" ]; then
+                    print_error "$h ($role): no nwp checkout found"; rc=2; continue
+                fi
+                local hd st behind branch last
+                hd=$(printf '%s\n' "$info" | sed -n 's/^HEAD=//p')
+                branch=$(printf '%s\n' "$info" | sed -n 's/^BRANCH=//p')
+                behind=$(printf '%s\n' "$info" | sed -n 's/^BEHIND=//p')
+                st=$(printf '%s\n' "$info" | sed -n 's/^STATE=//p')
+                last=$(printf '%s' "$st" | python3 -c 'import json,sys
+try: d=json.load(sys.stdin); print(f"{d[\"result\"]} at {d[\"ts\"]}" + (" restart_pending="+",".join(d["restart_pending"]) if d.get("restart_pending") else ""))
+except Exception: print("no sync record")' 2>/dev/null || echo "no sync record")
+                if [ "$hd" = "$truth" ]; then
+                    [ "$QUIET" = true ] || print_success "$h ($role): CURRENT @ ${hd:0:9} — $last"
+                    case "$last" in *restart_pending*) print_warning "$h: a long-running service is still executing pre-pull code"; [ $rc -lt 1 ] && rc=1 ;; esac
+                else
+                    local bdesc="${behind:-?} commit(s)"
+                    [ "$behind" = "unknown" ] && bdesc="count unknown — host has not fetched current main"
+                    print_error "$h ($role): BEHIND ($bdesc; HEAD ${hd:0:9}, branch ${branch:-?}) — $last"
+                    print_hint "  settle now: pl fleet sync run --host=$role"
+                    [ $rc -lt 1 ] && rc=1
+                fi
+            done
+        done
+        return $rc
+        ;;
+    *) print_error "usage: pl fleet sync install|remove|run|status [--host=<role>]"; return 2 ;;
+    esac
+}
+
 main() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -1227,6 +1491,7 @@ main() {
         checkout) cmd_checkout "$@" ;;
         status)   cmd_status "$@" ;;
         schedule) cmd_schedule "$@" ;;
+        sync)     cmd_sync "$@" ;;
         *) print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
 }

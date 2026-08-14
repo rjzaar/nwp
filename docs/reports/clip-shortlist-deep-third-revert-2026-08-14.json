@@ -1,0 +1,79 @@
+{
+  "report": "SHORTLIST-16 deep-third census REVERT (ops#348 defect 4, ops#357)",
+  "date": "2026-08-14",
+  "rights": "METHOD AND COUNTS ONLY. The corpus is derivative-cleared-pending and password-gated; it lives on mini and no corpus text, excerpt, transcript, rationale or clip address appears in this repository (ADR-0039 — nwp/nwp is publicly mirrored).",
+  "artefact": {
+    "path": "mini:~/clip-pool/shortlist/SHORTLIST-16.jsonl",
+    "sha256_census_applied": "85b6b9b4e19ac9b43b88a3b7fa2d8c9178bda07f093bc4faa5f007d8a4b63595",
+    "sha256_after_revert": "5be1b185261fdd51f0f1cba8f3ec3ef44a2863f5b2e2cdb66327c1f6da101c3c",
+    "sha256_pre_census": "78a535c9b2c901220905f63a0b6291c41d48b9028ac04ce497d6ef0f22555675",
+    "backup": "mini:~/clip-pool/shortlist/SHORTLIST-16.jsonl.pre-d4revert.bak (sha verified before the write)",
+    "learning_points": 251,
+    "rows": 3950
+  },
+  "what_happened": {
+    "summary": "Every one of the 16 census partitions WAS adversarially verified, but the coordinating workflow serialised the verdicts inline with a 6,000-character truncation. One verdict survived the cut (d4-01 — a FAIL, excluded); the other fifteen were applied on an assertion. Written to disk and read back, 14 of those 15 were FAILs.",
+    "verdicts_file": "mini:~/clip-pool/work-d4verify/verdicts.json (sha256 1cd6a22b9eeb94b1c3ad153546205fc1d37112b77a619700baa5d58822379dd8; count asserted = 15 on read-back)",
+    "partitions_passed": ["d4-14"],
+    "partitions_failed_on_file_read": ["d4-02", "d4-03", "d4-04", "d4-05", "d4-06", "d4-07", "d4-08", "d4-09", "d4-10", "d4-11", "d4-12", "d4-13", "d4-15", "d4-16"],
+    "partitions_failed_first_round": ["d4-01"],
+    "score": "15 of 16 partitions failed adversarial verification",
+    "mechanism_in_the_two_fully_readable_failures": "incumbent bias: the displaced moment's LONGEST view (best_text) described as if it were its ONLY emittable view, an error that fired exclusively in KEEP_DEEP's favour (in d4-02, 9/9 mismatched duration figures sat in KEEP_DEEP reasons, 0 in SWAP reasons)",
+    "detail_loss": "for 13 of the 14 failed partitions only the pass/fail flag survived the truncation; their finding counts are recorded as null, and null is not zero"
+  },
+  "the_revert": {
+    "rule": "rejected judgements are not applied, in either direction — the treatment d4-01 already received",
+    "swaps_applied_by_census": 327,
+    "swaps_reverted": 303,
+    "swaps_standing_verified_d4_14": 24,
+    "d4_01_swaps_never_applied": 27,
+    "census_gate_refusals_unchanged": 35,
+    "restoration": "each reverted deep row restored byte-identical to the pre-census backup and verified field-for-field; completeness asserted against applied.json and the backup, never against a row's own marker"
+  },
+  "gate": {
+    "rule": "prove it can REFUSE before trusting it to pass",
+    "holes_found_in_the_previous_gate_by_corrupting_the_real_candidate": {
+      "H1": "the 420 s ceiling was decorative — it compared a SELF-DECLARED duration_s against 420; a row emitting a real 1,199.3 s window while declaring 180.0 passed GREEN. Now measured from the pool's own start/end, and the declared field must agree.",
+      "H2": "a swap from a rejected partition could stand — the gate had no notion of which partitions were verified",
+      "H3": "an unreverted swap could hide by stripping its own census_swap marker"
+    },
+    "red_proof": "12/12 deliberate corruptions refused, plus a start==0.0 control that must NOT be flagged (the previous red proof's own bug class); exits 2 CANNOT-VERIFY on an absent verdicts file, wrong verdict count, or unreadable clip",
+    "note": "the briefing predicted 'expect to find something similar' — it was found three times"
+  },
+  "measured_state": {
+    "rows_past_moment_rank_16": {"pre_census": 1254, "census": 927, "after_revert": 1230},
+    "rows_whose_moment_carries_2plus_source_agreement": {"pre_census": 1813, "census": 2129, "after_revert": 1837},
+    "rows_in_operator_band_120_240s": {"pre_census": 2601, "census": 2468, "after_revert": 2591},
+    "rows_under_60s": {"pre_census": 355, "census": 507, "after_revert": 366},
+    "rows_over_420s_measured": {"pre_census": 0, "census": 0, "after_revert": 0},
+    "addressable_rows": {"pre_census": 3938, "census": 3938, "after_revert": 3938},
+    "distinct_episodes": {"pre_census": 696, "census": 682, "after_revert": 696}
+  },
+  "survival_rate": {
+    "status": "WITHDRAWN, not revised",
+    "why": "the censused 31.0% [27.6, 34.7] rested on judgements of which 15/16 partitions failed adversarial verification, every examined failure in the direction of keeping the incumbent deep row; it is an over-estimate of unknown size",
+    "only_verified_figure": "d4-14: 16 of 40 contested rows kept (40%), 24 swapped — 40 rows, too few to generalise",
+    "honest_statement": "the survival rate of the deep third is UNKNOWN; both machine attempts to measure it (40-row sample, full census) were biased toward the incumbent"
+  },
+  "what_is_owed": {
+    "rows_awaiting_human_decision": 609,
+    "artefact": "mini:~/clip-pool/shortlist/contested-pairs.jsonl (sha256 6ad912d62ba9696557c1fc76d7770d6ca71a6aa8de5546564e45d435e73f38a0) — one object per contested deep row of the 15 rejected partitions: the kept row and the corroborated in-window alternate, each with address, duration and agreeing sources",
+    "designated_follow_up": "the nwc_clip_review UI — the human author sees both and chooses; the off-list telemetry records the choice as the first honest evaluation signal",
+    "policy": "SETTLED: no further machine judging rounds on these rows. The KEEP-vs-SWAP call is the fine-grained comparative pick the judge-consistency experiment measured as unreliable (set agreement 0.81, pick agreement 0.68, 95% CI [0.404, 0.950]).",
+    "checker": "contested-pairs verified against the artefact and pool (609/609, applied-then-reverted identity 303/303) by a checker with its own 6/6 red proof"
+  },
+  "orchestration_bug": {
+    "issue": "ops#357",
+    "defect": "verdicts existed only inline; the serialiser truncated at 6,000 characters silently; the applier read absence of a verdict as a pass",
+    "fixes": [
+      "verdicts are written to disk BEFORE they are acted on and read back with the count asserted",
+      "a serialiser that drops records must announce it",
+      "a partition with no readable verdict is NOT applied — fail closed, the same treatment the one readable FAIL received"
+    ]
+  },
+  "records": {
+    "verdicts": "mini:~/clip-pool/work-d4verify/verdicts.json",
+    "revert": "mini:~/clip-pool/work-d4revert/ (revert.py, regate.py, probe.py, probe-regate.log, reverted.json, D4-REVERT.json, measure.json, emit_contested.py, check_contested.py)",
+    "readme": "mini:~/clip-pool/shortlist/README.md — ADDENDUM 'Defect 4 REVERTED', with the census addendum's stale claims cross-referenced to it"
+  }
+}

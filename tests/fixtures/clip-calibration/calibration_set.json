@@ -1,0 +1,1742 @@
+[
+ {
+  "lp_id": "Z2.01",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 1",
+  "course_title": "Synthetic course 2",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 1.",
+  "lp_text": "Synthetic body prose for fixture learning point 1. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z2.01-1",
+    "blind_key": "C02",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 1. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 101
+   },
+   {
+    "label": "Z2.01-2",
+    "blind_key": "C03",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 1. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 101
+   },
+   {
+    "label": "Z2.01-3",
+    "blind_key": "C04",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 1. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 101
+   },
+   {
+    "label": "Z2.01-4",
+    "blind_key": "C05",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 1. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 101
+   }
+  ]
+ },
+ {
+  "lp_id": "Z3.02",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 2",
+  "course_title": "Synthetic course 3",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 2.",
+  "lp_text": "Synthetic body prose for fixture learning point 2. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z3.02-1",
+    "blind_key": "C03",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 2. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 102
+   },
+   {
+    "label": "Z3.02-2",
+    "blind_key": "C04",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 2. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 102
+   },
+   {
+    "label": "Z3.02-3",
+    "blind_key": "C05",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 2. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 102
+   },
+   {
+    "label": "Z3.02-4",
+    "blind_key": "C06",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 2. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 102
+   }
+  ]
+ },
+ {
+  "lp_id": "Z4.03",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 3",
+  "course_title": "Synthetic course 4",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 3.",
+  "lp_text": "Synthetic body prose for fixture learning point 3. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z4.03-1",
+    "blind_key": "C04",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 3. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 103
+   },
+   {
+    "label": "Z4.03-2",
+    "blind_key": "C05",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 3. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 103
+   },
+   {
+    "label": "Z4.03-3",
+    "blind_key": "C06",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 3. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 103
+   },
+   {
+    "label": "Z4.03-4",
+    "blind_key": "C07",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 3. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 103
+   }
+  ]
+ },
+ {
+  "lp_id": "Z5.04",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 4",
+  "course_title": "Synthetic course 5",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 4.",
+  "lp_text": "Synthetic body prose for fixture learning point 4. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z5.04-1",
+    "blind_key": "C05",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 4. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 104
+   },
+   {
+    "label": "Z5.04-2",
+    "blind_key": "C06",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 4. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 104
+   },
+   {
+    "label": "Z5.04-3",
+    "blind_key": "C07",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 4. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 104
+   },
+   {
+    "label": "Z5.04-4",
+    "blind_key": "C08",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 4. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 104
+   }
+  ]
+ },
+ {
+  "lp_id": "Z1.05",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 5",
+  "course_title": "Synthetic course 1",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 5.",
+  "lp_text": "Synthetic body prose for fixture learning point 5. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z1.05-1",
+    "blind_key": "C06",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 5. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 105
+   },
+   {
+    "label": "Z1.05-2",
+    "blind_key": "C07",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 5. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 105
+   },
+   {
+    "label": "Z1.05-3",
+    "blind_key": "C08",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 5. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 105
+   },
+   {
+    "label": "Z1.05-4",
+    "blind_key": "C09",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 5. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 105
+   }
+  ]
+ },
+ {
+  "lp_id": "Z2.06",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 6",
+  "course_title": "Synthetic course 2",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 6.",
+  "lp_text": "Synthetic body prose for fixture learning point 6. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z2.06-1",
+    "blind_key": "C07",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 6. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 106
+   },
+   {
+    "label": "Z2.06-2",
+    "blind_key": "C08",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 6. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 106
+   },
+   {
+    "label": "Z2.06-3",
+    "blind_key": "C09",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 6. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 106
+   },
+   {
+    "label": "Z2.06-4",
+    "blind_key": "C10",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 6. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 106
+   }
+  ]
+ },
+ {
+  "lp_id": "Z3.07",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 7",
+  "course_title": "Synthetic course 3",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 7.",
+  "lp_text": "Synthetic body prose for fixture learning point 7. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z3.07-1",
+    "blind_key": "C08",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 7. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 107
+   },
+   {
+    "label": "Z3.07-2",
+    "blind_key": "C09",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 7. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 107
+   },
+   {
+    "label": "Z3.07-3",
+    "blind_key": "C10",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 7. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 107
+   },
+   {
+    "label": "Z3.07-4",
+    "blind_key": "C11",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 7. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 107
+   }
+  ]
+ },
+ {
+  "lp_id": "Z4.08",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 8",
+  "course_title": "Synthetic course 4",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 8.",
+  "lp_text": "Synthetic body prose for fixture learning point 8. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z4.08-1",
+    "blind_key": "C09",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 8. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 108
+   },
+   {
+    "label": "Z4.08-2",
+    "blind_key": "C10",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 8. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 108
+   },
+   {
+    "label": "Z4.08-3",
+    "blind_key": "C11",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 8. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 108
+   },
+   {
+    "label": "Z4.08-4",
+    "blind_key": "C12",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 8. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 108
+   }
+  ]
+ },
+ {
+  "lp_id": "Z5.09",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 9",
+  "course_title": "Synthetic course 5",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 9.",
+  "lp_text": "Synthetic body prose for fixture learning point 9. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z5.09-1",
+    "blind_key": "C10",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 9. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 109
+   },
+   {
+    "label": "Z5.09-2",
+    "blind_key": "C11",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 9. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 109
+   },
+   {
+    "label": "Z5.09-3",
+    "blind_key": "C12",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 9. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 109
+   },
+   {
+    "label": "Z5.09-4",
+    "blind_key": "C13",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 9. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 109
+   }
+  ]
+ },
+ {
+  "lp_id": "Z1.10",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 10",
+  "course_title": "Synthetic course 1",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 10.",
+  "lp_text": "Synthetic body prose for fixture learning point 10. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z1.10-1",
+    "blind_key": "C11",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 10. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 110
+   },
+   {
+    "label": "Z1.10-2",
+    "blind_key": "C12",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 10. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 110
+   },
+   {
+    "label": "Z1.10-3",
+    "blind_key": "C13",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 10. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 110
+   },
+   {
+    "label": "Z1.10-4",
+    "blind_key": "C14",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 10. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 110
+   }
+  ]
+ },
+ {
+  "lp_id": "Z2.11",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 11",
+  "course_title": "Synthetic course 2",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 11.",
+  "lp_text": "Synthetic body prose for fixture learning point 11. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z2.11-1",
+    "blind_key": "C12",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 11. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 111
+   },
+   {
+    "label": "Z2.11-2",
+    "blind_key": "C13",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 11. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 111
+   },
+   {
+    "label": "Z2.11-3",
+    "blind_key": "C14",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 11. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 111
+   },
+   {
+    "label": "Z2.11-4",
+    "blind_key": "C15",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 11. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 111
+   }
+  ]
+ },
+ {
+  "lp_id": "Z3.12",
+  "stratum": "A-disagreement",
+  "lp_title": "Synthetic learning point 12",
+  "course_title": "Synthetic course 3",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 12.",
+  "lp_text": "Synthetic body prose for fixture learning point 12. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z3.12-1",
+    "blind_key": "C13",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 12. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 112
+   },
+   {
+    "label": "Z3.12-2",
+    "blind_key": "C14",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 12. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 112
+   },
+   {
+    "label": "Z3.12-3",
+    "blind_key": "C15",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 12. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 112
+   },
+   {
+    "label": "Z3.12-4",
+    "blind_key": "C16",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 12. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 112
+   }
+  ]
+ },
+ {
+  "lp_id": "Z4.13",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 13",
+  "course_title": "Synthetic course 4",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 13.",
+  "lp_text": "Synthetic body prose for fixture learning point 13. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z4.13-1",
+    "blind_key": "C14",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 13. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 113
+   },
+   {
+    "label": "Z4.13-2",
+    "blind_key": "C15",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 13. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 113
+   },
+   {
+    "label": "Z4.13-3",
+    "blind_key": "C16",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 13. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 113
+   },
+   {
+    "label": "Z4.13-4",
+    "blind_key": "C17",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 13. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 113
+   }
+  ]
+ },
+ {
+  "lp_id": "Z5.14",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 14",
+  "course_title": "Synthetic course 5",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 14.",
+  "lp_text": "Synthetic body prose for fixture learning point 14. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z5.14-1",
+    "blind_key": "C15",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 14. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 114
+   },
+   {
+    "label": "Z5.14-2",
+    "blind_key": "C16",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 14. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 114
+   },
+   {
+    "label": "Z5.14-3",
+    "blind_key": "C17",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 14. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 114
+   },
+   {
+    "label": "Z5.14-4",
+    "blind_key": "C18",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 14. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 114
+   }
+  ]
+ },
+ {
+  "lp_id": "Z1.15",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 15",
+  "course_title": "Synthetic course 1",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 15.",
+  "lp_text": "Synthetic body prose for fixture learning point 15. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z1.15-1",
+    "blind_key": "C16",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 15. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 115
+   },
+   {
+    "label": "Z1.15-2",
+    "blind_key": "C17",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 15. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 115
+   },
+   {
+    "label": "Z1.15-3",
+    "blind_key": "C18",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 15. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 115
+   },
+   {
+    "label": "Z1.15-4",
+    "blind_key": "C19",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 15. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 115
+   }
+  ]
+ },
+ {
+  "lp_id": "Z2.16",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 16",
+  "course_title": "Synthetic course 2",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 16.",
+  "lp_text": "Synthetic body prose for fixture learning point 16. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z2.16-1",
+    "blind_key": "C17",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 16. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 116
+   },
+   {
+    "label": "Z2.16-2",
+    "blind_key": "C18",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 16. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 116
+   },
+   {
+    "label": "Z2.16-3",
+    "blind_key": "C19",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 16. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 116
+   },
+   {
+    "label": "Z2.16-4",
+    "blind_key": "C20",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 16. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 116
+   }
+  ]
+ },
+ {
+  "lp_id": "Z3.17",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 17",
+  "course_title": "Synthetic course 3",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 17.",
+  "lp_text": "Synthetic body prose for fixture learning point 17. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z3.17-1",
+    "blind_key": "C18",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 17. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 117
+   },
+   {
+    "label": "Z3.17-2",
+    "blind_key": "C19",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 17. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 117
+   },
+   {
+    "label": "Z3.17-3",
+    "blind_key": "C20",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 17. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 117
+   },
+   {
+    "label": "Z3.17-4",
+    "blind_key": "C21",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 17. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 117
+   }
+  ]
+ },
+ {
+  "lp_id": "Z4.18",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 18",
+  "course_title": "Synthetic course 4",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 18.",
+  "lp_text": "Synthetic body prose for fixture learning point 18. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z4.18-1",
+    "blind_key": "C19",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 18. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 118
+   },
+   {
+    "label": "Z4.18-2",
+    "blind_key": "C20",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 18. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 118
+   },
+   {
+    "label": "Z4.18-3",
+    "blind_key": "C21",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 18. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 118
+   },
+   {
+    "label": "Z4.18-4",
+    "blind_key": "C22",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 18. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 118
+   }
+  ]
+ },
+ {
+  "lp_id": "Z5.19",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 19",
+  "course_title": "Synthetic course 5",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 19.",
+  "lp_text": "Synthetic body prose for fixture learning point 19. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z5.19-1",
+    "blind_key": "C20",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 19. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 119
+   },
+   {
+    "label": "Z5.19-2",
+    "blind_key": "C21",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 19. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 119
+   },
+   {
+    "label": "Z5.19-3",
+    "blind_key": "C22",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 19. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 119
+   },
+   {
+    "label": "Z5.19-4",
+    "blind_key": "C23",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 19. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 119
+   }
+  ]
+ },
+ {
+  "lp_id": "Z1.20",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 20",
+  "course_title": "Synthetic course 1",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 20.",
+  "lp_text": "Synthetic body prose for fixture learning point 20. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z1.20-1",
+    "blind_key": "C21",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 20. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 120
+   },
+   {
+    "label": "Z1.20-2",
+    "blind_key": "C22",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 20. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 120
+   },
+   {
+    "label": "Z1.20-3",
+    "blind_key": "C23",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 20. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 120
+   },
+   {
+    "label": "Z1.20-4",
+    "blind_key": "C24",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 20. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 120
+   }
+  ]
+ },
+ {
+  "lp_id": "Z2.21",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 21",
+  "course_title": "Synthetic course 2",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 21.",
+  "lp_text": "Synthetic body prose for fixture learning point 21. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z2.21-1",
+    "blind_key": "C22",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 21. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 121
+   },
+   {
+    "label": "Z2.21-2",
+    "blind_key": "C23",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 21. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 121
+   },
+   {
+    "label": "Z2.21-3",
+    "blind_key": "C24",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 21. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 121
+   },
+   {
+    "label": "Z2.21-4",
+    "blind_key": "C25",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 21. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 121
+   }
+  ]
+ },
+ {
+  "lp_id": "Z3.22",
+  "stratum": "B-low-confidence",
+  "lp_title": "Synthetic learning point 22",
+  "course_title": "Synthetic course 3",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 22.",
+  "lp_text": "Synthetic body prose for fixture learning point 22. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z3.22-1",
+    "blind_key": "C23",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 22. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 122
+   },
+   {
+    "label": "Z3.22-2",
+    "blind_key": "C24",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 22. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 122
+   },
+   {
+    "label": "Z3.22-3",
+    "blind_key": "C25",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 22. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "low",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 122
+   },
+   {
+    "label": "Z3.22-4",
+    "blind_key": "C26",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 22. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 122
+   }
+  ]
+ },
+ {
+  "lp_id": "Z4.23",
+  "stratum": "C-control-certain-hit",
+  "lp_title": "Synthetic learning point 23",
+  "course_title": "Synthetic course 4",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 23.",
+  "lp_text": "Synthetic body prose for fixture learning point 23. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z4.23-1",
+    "blind_key": "C24",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 23. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 123
+   },
+   {
+    "label": "Z4.23-2",
+    "blind_key": "C25",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 23. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 123
+   },
+   {
+    "label": "Z4.23-3",
+    "blind_key": "C26",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 23. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 123
+   },
+   {
+    "label": "Z4.23-4",
+    "blind_key": "C27",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 23. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 123
+   }
+  ]
+ },
+ {
+  "lp_id": "Z5.24",
+  "stratum": "C-control-certain-hit",
+  "lp_title": "Synthetic learning point 24",
+  "course_title": "Synthetic course 5",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 24.",
+  "lp_text": "Synthetic body prose for fixture learning point 24. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z5.24-1",
+    "blind_key": "C25",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 24. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 124
+   },
+   {
+    "label": "Z5.24-2",
+    "blind_key": "C26",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 24. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 124
+   },
+   {
+    "label": "Z5.24-3",
+    "blind_key": "C27",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 24. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 124
+   },
+   {
+    "label": "Z5.24-4",
+    "blind_key": "C28",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 24. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 124
+   }
+  ]
+ },
+ {
+  "lp_id": "Z1.25",
+  "stratum": "C-control-certain-hit",
+  "lp_title": "Synthetic learning point 25",
+  "course_title": "Synthetic course 1",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 25.",
+  "lp_text": "Synthetic body prose for fixture learning point 25. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z1.25-1",
+    "blind_key": "C26",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 25. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 125
+   },
+   {
+    "label": "Z1.25-2",
+    "blind_key": "C27",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 25. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 125
+   },
+   {
+    "label": "Z1.25-3",
+    "blind_key": "C28",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 25. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 125
+   },
+   {
+    "label": "Z1.25-4",
+    "blind_key": "C29",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 25. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 125
+   }
+  ]
+ },
+ {
+  "lp_id": "Z2.26",
+  "stratum": "C-control-certain-hit",
+  "lp_title": "Synthetic learning point 26",
+  "course_title": "Synthetic course 2",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 26.",
+  "lp_text": "Synthetic body prose for fixture learning point 26. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z2.26-1",
+    "blind_key": "C27",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 26. This fixture carries no corpus.",
+    "machine_grade": 3,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 126
+   },
+   {
+    "label": "Z2.26-2",
+    "blind_key": "C28",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 26. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 126
+   },
+   {
+    "label": "Z2.26-3",
+    "blind_key": "C29",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 26. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 126
+   },
+   {
+    "label": "Z2.26-4",
+    "blind_key": "C30",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 26. This fixture carries no corpus.",
+    "machine_grade": 2,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 126
+   }
+  ]
+ },
+ {
+  "lp_id": "Z3.27",
+  "stratum": "C-control-certain-miss",
+  "lp_title": "Synthetic learning point 27",
+  "course_title": "Synthetic course 3",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 27.",
+  "lp_text": "Synthetic body prose for fixture learning point 27. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z3.27-1",
+    "blind_key": "C28",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 27. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 127
+   },
+   {
+    "label": "Z3.27-2",
+    "blind_key": "C29",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 27. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 127
+   },
+   {
+    "label": "Z3.27-3",
+    "blind_key": "C30",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 27. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 127
+   },
+   {
+    "label": "Z3.27-4",
+    "blind_key": "C31",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 27. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 127
+   }
+  ]
+ },
+ {
+  "lp_id": "Z4.28",
+  "stratum": "C-control-certain-miss",
+  "lp_title": "Synthetic learning point 28",
+  "course_title": "Synthetic course 4",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 28.",
+  "lp_text": "Synthetic body prose for fixture learning point 28. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z4.28-1",
+    "blind_key": "C29",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 28. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 128
+   },
+   {
+    "label": "Z4.28-2",
+    "blind_key": "C30",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 28. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 128
+   },
+   {
+    "label": "Z4.28-3",
+    "blind_key": "C31",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 28. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 128
+   },
+   {
+    "label": "Z4.28-4",
+    "blind_key": "C32",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 28. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 128
+   }
+  ]
+ },
+ {
+  "lp_id": "Z5.29",
+  "stratum": "C-control-certain-miss",
+  "lp_title": "Synthetic learning point 29",
+  "course_title": "Synthetic course 5",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 29.",
+  "lp_text": "Synthetic body prose for fixture learning point 29. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z5.29-1",
+    "blind_key": "C30",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 29. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 129
+   },
+   {
+    "label": "Z5.29-2",
+    "blind_key": "C31",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 29. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 129
+   },
+   {
+    "label": "Z5.29-3",
+    "blind_key": "C32",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 29. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 129
+   },
+   {
+    "label": "Z5.29-4",
+    "blind_key": "C33",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 29. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 129
+   }
+  ]
+ },
+ {
+  "lp_id": "Z1.30",
+  "stratum": "C-control-certain-miss",
+  "lp_title": "Synthetic learning point 30",
+  "course_title": "Synthetic course 1",
+  "lp_summary": "A synthetic one-line summary for fixture learning point 30.",
+  "lp_text": "Synthetic body prose for fixture learning point 30. No corpus text appears in this file.",
+  "items": [
+   {
+    "label": "Z1.30-1",
+    "blind_key": "C31",
+    "duration_band": "15+ min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 1 of fixture point 30. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 1,
+    "ep": 130
+   },
+   {
+    "label": "Z1.30-2",
+    "blind_key": "C32",
+    "duration_band": "~3-5 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 2 of fixture point 30. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 2,
+    "ep": 130
+   },
+   {
+    "label": "Z1.30-3",
+    "blind_key": "C33",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 3 of fixture point 30. This fixture carries no corpus.",
+    "machine_grade": 1,
+    "machine_confidence": "medium",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "current",
+    "rank": 3,
+    "ep": 130
+   },
+   {
+    "label": "Z1.30-4",
+    "blind_key": "C34",
+    "duration_band": "~5-10 min",
+    "excerpt": "SYNTHETIC FIXTURE TEXT, item 4 of fixture point 30. This fixture carries no corpus.",
+    "machine_grade": 0,
+    "machine_confidence": "high",
+    "machine_rationale": "synthetic fixture rationale",
+    "ranker": "hybrid_p76",
+    "rank": 4,
+    "ep": 130
+   }
+  ]
+ }
+]

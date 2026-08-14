@@ -80,6 +80,11 @@ set -uo pipefail
 #   pl mr release <iid> --approved-by=<h> [--reason="..."]
 #                                           lift the hold, on the record
 #   pl mr guard  [<iid>] [--apply]          the sensitive-path gate (CI + local)
+#   pl mr rebase  <iid> [--wait=S] [--dry-run]
+#                                           onto the tip of the target branch —
+#                                           unsticks a red pipeline that is a
+#                                           COMPLETED run on a stale head
+#   pl mr note    <iid> "text" | - | stdin  comment on the MR (ops#356)
 #
 # Values-safe: the token is read from .secrets.yml by lib/gitlab-mr.sh and used
 # only inside a 0600 curl config — never printed, never in argv/ps/history.
@@ -485,6 +490,403 @@ cmd_ci(){
     *)        print_error "CANNOT VERIFY: unrecognised pipeline status '$pstatus'"
               return 2 ;;
   esac
+}
+
+################################################################################
+# _mr_report_read_failure <iid> — one honest classification of "I could not read
+# that MR", for the verbs that must RETURN a code rather than die(1).
+#
+# `_mr_die_read` above is the right shape for the read verbs, but it exits 1 for
+# every cause, which collapses "there is no such MR" (a definite answer) into
+# "the forge did not answer" (no answer at all). The verbs below distinguish
+# them, because the operator's next action differs completely.
+#
+# Prints the explanation; returns 1 for a definite negative, 2 for CANNOT VERIFY.
+################################################################################
+_mr_report_read_failure(){
+  local iid="$1" st; st="$(_mr_http_status)"
+  if ! _mr_project >/dev/null 2>&1; then
+    print_error "CANNOT VERIFY: cannot determine the GitLab project — \`pl mr\` derives"
+    print_info  "  it from the origin remote, so run this inside a checkout of the repo,"
+    print_info  "  or set NWP_MR_PROJECT=<id>. No request was made."
+    return 2
+  fi
+  case "$st" in
+    404) print_error "!$iid does not exist in $(_mr_project_human) — HTTP 404."
+         print_info  "  MR numbers are PER PROJECT and this directory resolves to"
+         print_info  "  $(_mr_project_human). You may mean another project's !$iid."
+         return 1 ;;
+    401) print_error "CANNOT VERIFY: HTTP 401 reading !$iid — the token was rejected."
+         return 2 ;;
+    403) print_error "CANNOT VERIFY: HTTP 403 reading !$iid — the token lacks rights here."
+         return 2 ;;
+    ''|000)
+         print_error "CANNOT VERIFY: could not reach the forge for !$iid (HTTP ${st:-none})."
+         print_info  "  A connection failure, not an authorisation one."
+         return 2 ;;
+    *)   print_error "CANNOT VERIFY: could not read !$iid (HTTP $st)."
+         return 2 ;;
+  esac
+}
+
+################################################################################
+# pl mr note <iid> — leave a comment on a merge request.
+#
+# THE GAP THIS CLOSES. `pl issue comment` has existed for months; its MR
+# equivalent did not, so a session that needed to record a correction ON THE MR
+# — which is where the reviewer is looking — had three options: hand-roll a curl
+# POST (the "step around the verb" the standing order forbids), put it in an ops
+# issue nobody reading the MR would see, or say nothing. It bit twice in two
+# days, on !431 and !441, and both times the correction went unrecorded.
+#
+# THE BODY COMES FROM STDIN. Deliberately the same idiom as `pl issue comment`,
+# and for a reason with a scar attached: `pl issue create` accepted `--desc` and
+# SILENTLY DISCARDED anything piped to it, so a heredoc-shaped description
+# vanished with a success message on top. An asymmetry between two verbs that
+# look alike is an invitation to lose text. A trailing argument still works for
+# a one-liner; stdin is for the multi-paragraph case, which is most of them.
+#
+# EXIT  0 posted · 1 refused (empty body, no such MR) · 2 CANNOT VERIFY
+################################################################################
+cmd_note(){
+  local iid="" body="" stdin_asked=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help)
+        printf 'usage: pl mr note <iid> "text"        (or pipe the body on stdin)\n'
+        printf '       pl mr note <iid> -             read the body from stdin, explicitly\n'
+        return 0 ;;
+      -)  stdin_asked=true; shift ;;
+      -*) die "unknown option: $1 (usage: pl mr note <iid> \"text\", or pipe it on stdin)" ;;
+      *)  if [ -z "$iid" ]; then iid="$1"; else body="${body:+$body }$1"; fi; shift ;;
+    esac
+  done
+  # ARGUMENT VALIDATION BEFORE THE MACHINE IS INSPECTED (the verify_restic
+  # lesson): whether "$iid" is a number is a property of the command; whether a
+  # token exists is a property of the host.
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr note <iid> \"text\"   (or pipe the body on stdin)"
+
+  # stdin wins only when no argument body was given, so `pl mr note 441 "x"` in a
+  # pipeline does not silently prefer the pipe — and neither does it silently
+  # discard it, which is the failure this idiom was copied to avoid.
+  if [ "$stdin_asked" = true ] || { [ -z "$body" ] && [ ! -t 0 ]; }; then
+    local piped; piped="$(cat)"
+    [ -n "$piped" ] && body="${body:+$body$'\n'}$piped"
+  fi
+  # An all-whitespace body is an empty body. A note nobody can read is not a
+  # record; posting it would put a green tick on a comment that says nothing.
+  if [ -z "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+    print_error "REFUSING: the note body is empty."
+    print_info  "  Pass it as an argument, or pipe it:"
+    print_info  "    pl mr note $iid \"one line\""
+    print_info  "    printf '%%s\\n' 'many lines' | pl mr note $iid"
+    return 1
+  fi
+
+  _mr_have_token || {
+    print_error "CANNOT VERIFY: no usable token (NWP_MR_TOKEN, or gitlab.api_token /"
+    print_error "  gitlab.ai_host_token in \$MR_SECRETS_FILE). No request was made."
+    return 2; }
+
+  # WHICH PROJECT, SAID OUT LOUD, BEFORE THE WRITE (ops#293). On 2026-08-06
+  # `pl mr release 80` run from the wrong directory wrote to a different
+  # project's !80 and printed SUCCESS. The MR is read first so a note can never
+  # land on an MR that only coincidentally shares a number.
+  local json; json=$(_mr_fetch "$iid") || { local rc=0; _mr_report_read_failure "$iid" || rc=$?; return "$rc"; }
+  print_info "project: $(_mr_project_human)  (resolved from this directory's git remote)"
+  print_info "!$iid — $(_mr_title "$json")"
+
+  _mr_post_note "$iid" "$body" || {
+    print_error "could not post the note (HTTP $(_mr_http_status)) — nothing was recorded."
+    return 2; }
+  print_success "note posted on !$iid ($(printf '%s' "$body" | grep -c '') line(s))"
+  print_info "$(_mr_web_url "$iid")"
+  return 0
+}
+
+################################################################################
+# pl mr rebase <iid> — move an MR onto the current tip of its target branch.
+#
+# THE GAP THIS CLOSES. A merge request whose target branch has moved is stuck
+# behind a COMPLETED pipeline, and a completed pipeline's result can never
+# change. !441 failed `lint:pipefail-sigpipe` on a head predating the very fix
+# for that lint, which had already merged to main; the same red result was
+# reported three times because there was nothing to read but a stale one.
+# Rebasing is a WRITE, so the read-only-reconnaissance exception does not cover
+# it, and until now the only routes were a hand-rolled `PUT /rebase` or a local
+# `git push --force` — both of them the shape the pl-first standing order exists
+# to retire.
+#
+# THE TWO FACTS THIS VERB CARRIES, so no session has to re-derive them:
+#
+#   1. THIS INSTANCE'S `detailed_merge_status` GOES STALE. It reports `conflict`
+#      for branches that merge cleanly, because it is a cached computation that
+#      is not always recomputed when the target moves (CLAUDE.md, verified
+#      2026-08-02). So a `conflict` here is never a refusal on its own: the
+#      rebase IS the recompute, and a conflict is only believed once a real
+#      local test-merge has REPRODUCED it. `checking` means ask again.
+#
+#   2. A REBASE CANCELS THE PIPELINE IT SUPERSEDES. It pushes a new head, which
+#      starts a fresh pipeline and cancels the running one. Saying so, and
+#      naming the NEW pipeline id rather than the old, is the whole difference
+#      between a report an operator can act on and the three confusing ones that
+#      preceded this verb.
+#
+# IT DOES NOT MERGE. Nothing here touches the merge endpoint; a bot may rebase
+# (it is exactly what a bot should be doing) and may not merge, and
+# `_mr_merge_actor_ok` in cmd_merge is untouched by this.
+#
+# EXIT  0 rebased (or already up to date) · 1 real failure (a REPRODUCED
+#       conflict, no such MR) · 2 CANNOT VERIFY · 3 not finished — still
+#       rebasing when the wait ran out
+################################################################################
+cmd_rebase(){
+  local iid="" dry=false wait_s="${NWP_MR_REBASE_TIMEOUT:-180}"
+  local poll="${NWP_MR_REBASE_POLL:-5}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry=true; shift ;;
+      --wait)    wait_s="${2:-}"; shift 2 ;;
+      --wait=*)  wait_s="${1#*=}"; shift ;;
+      -h|--help)
+        cat <<'EOF'
+usage: pl mr rebase <iid> [--wait=SECONDS] [--dry-run]
+
+  Rebase a merge request onto the current tip of its target branch, which is
+  what unsticks an MR whose red pipeline is a COMPLETED run on a stale head.
+
+  Never believes a `conflict` verdict on its own — this instance's
+  detailed_merge_status is a cached value that goes stale. A conflict is
+  reported only once a real local test-merge has reproduced it.
+
+  A rebase CANCELS the pipeline it supersedes; this reports the NEW pipeline id.
+
+  exit 0 rebased · 1 reproduced conflict / no such MR · 2 cannot verify
+       · 3 still rebasing when the wait ran out
+EOF
+        return 0 ;;
+      -*) die "unknown option: $1 (try: pl mr rebase --help)" ;;
+      *)  [ -z "$iid" ] && { iid="$1"; shift; } || die "unexpected arg: $1" ;;
+    esac
+  done
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr rebase <iid> [--wait=SECONDS] [--dry-run]"
+  [[ "$wait_s" =~ ^[0-9]+$ ]] || die "--wait wants a number of seconds"
+
+  _mr_have_token || {
+    print_error "CANNOT VERIFY: no usable token (NWP_MR_TOKEN, or gitlab.api_token /"
+    print_error "  gitlab.ai_host_token in \$MR_SECRETS_FILE). No request was made."
+    return 2; }
+  local proj
+  proj=$(_mr_project) || {
+    print_error "CANNOT VERIFY: cannot resolve the project (no origin remote?)."
+    return 2; }
+
+  local json rc=0
+  json=$(_mr_fetch "$iid") || { _mr_report_read_failure "$iid" || rc=$?; return "$rc"; }
+
+  local title state dms old_sha old_pid src tgt
+  title=$(_mr_title "$json");        state=$(_mr_state "$json")
+  dms=$(_mr_detailed_merge_status "$json")
+  old_sha=$(_mr_head_sha "$json");   old_pid=$(_mr_head_pipeline_id "$json")
+  src=$(_mr_source_branch "$json");  tgt=$(_mr_target_branch "$json")
+
+  print_header "!$iid — $title"
+  printf "  ${BOLD}%-16s${NC} %s\n" "project:" "$(_mr_project_human)"
+  printf "  ${BOLD}%-16s${NC} %s\n" "state:"   "$state"
+  printf "  ${BOLD}%-16s${NC} %s\n" "branches:" "${src:-?} → ${tgt:-?}"
+  printf "  ${BOLD}%-16s${NC} %s\n" "head sha:" "${old_sha:0:12}"
+  printf "  ${BOLD}%-16s${NC} %s\n" "merge status:" "${dms:-?}  (CACHED — see below)"
+  printf "  ${BOLD}%-16s${NC} %s\n" "pipeline now:" "${old_pid:-none}"
+
+  if [ "$state" != "opened" ]; then
+    echo
+    print_error "!$iid is $state, not open — there is nothing to rebase."
+    return 1
+  fi
+  [ -n "$src" ] && [ -n "$tgt" ] || {
+    echo
+    print_error "CANNOT VERIFY: could not read !$iid's source/target branches."
+    return 2; }
+
+  echo
+  case "$dms" in
+    conflict)
+      print_info "GitLab says 'conflict'. That is NOT a refusal here: on this instance"
+      print_info "  detailed_merge_status is a cached computation that goes stale, and"
+      print_info "  reports 'conflict' for branches that merge cleanly. The rebase below"
+      print_info "  IS the recompute; a conflict is believed only once REPRODUCED." ;;
+    checking|unchecked|preparing)
+      print_info "GitLab is still computing this MR's merge status ('$dms'). That means"
+      print_info "  ask again, not no — the rebase proceeds and settles it." ;;
+  esac
+  if _mr_is_draft "$json" || _mr_has_hold_label "$json"; then
+    print_warning "!$iid is HELD. A rebase does NOT release it, and it moves the head,"
+    print_warning "  so any release record bound to ${old_sha:0:12} is invalidated by design."
+  fi
+
+  # ── DOES THE HEAD HAVE TO MOVE AT ALL? MEASURED, NOT INFERRED ──────────────
+  #
+  # This is asked BEFORE the write, and it is what makes the poll loop below
+  # honest. `PUT /rebase` is asynchronous, so for the first second the MR still
+  # reports rebase_in_progress=false and the OLD head sha — indistinguishable, on
+  # the wire alone, from "there was nothing to rebase". The first cut of this verb
+  # inferred the latter and told the operator
+  #     "!441 is already up to date with main — head unchanged (c733a54f9615)"
+  # while the rebase it had just requested landed moments later as 9d32e469d656.
+  # So the question is settled against the refs the forge holds, not against a
+  # field that has not caught up yet.
+  local current_rc=0
+  _mr_branch_is_current "$tgt" "$src" || current_rc=$?
+  if [ "$current_rc" -eq 0 ]; then
+    echo
+    print_success "!$iid is ALREADY on the tip of $tgt — nothing to rebase."
+    print_info "Measured, not assumed: origin/$tgt is an ancestor of origin/$src."
+    print_info "Pipeline #${old_pid:-none} therefore stands as this MR's result. If it is"
+    print_info "red, the cause is on this branch — \`pl mr ci $iid\` says which job."
+    return 0
+  fi
+
+  if [ "$dry" = true ]; then
+    echo
+    print_header "DRY RUN — nothing was sent"
+    print_info "would: PUT /projects/$(_mr_project_human)/merge_requests/$iid/rebase"
+    print_info "would move !$iid from ${old_sha:0:12} onto the tip of $tgt"
+    print_info "would CANCEL pipeline #${old_pid:-none} and start a new one"
+    [ "$current_rc" -eq 2 ] && print_warning "could not measure locally whether the head needs to move (no fetchable
+  origin/$tgt or origin/$src). The real run would require an OBSERVED head
+  change before it reported success."
+    return 0
+  fi
+
+  echo
+  print_info "rebasing !$iid onto $tgt …"
+  print_warning "this pushes a NEW head, which CANCELS pipeline #${old_pid:-none}."
+  if ! _mr_api PUT "/projects/$proj/merge_requests/$iid/rebase" >/dev/null; then
+    local st; st="$(_mr_http_status)"
+    case "$st" in
+      403|401)
+        print_error "CANNOT VERIFY: HTTP $st — this token may not push to '$src', so the"
+        print_error "  rebase did not happen and nothing about mergeability was settled."
+        print_info  "  A rebase needs Developer with push access on the source branch." ;;
+      409)
+        print_error "CANNOT VERIFY: HTTP 409 — GitLab refused to start the rebase."
+        print_info  "  Usually another rebase is already running on this MR. Ask again." ;;
+      *)
+        print_error "CANNOT VERIFY: the rebase request failed (HTTP ${st:-none})." ;;
+    esac
+    return 2
+  fi
+
+  # THE REBASE IS ASYNCHRONOUS. `PUT /rebase` returns 202 Accepted and a sidekiq
+  # worker does the work, so the answer is in `rebase_in_progress`, not in the
+  # response body. Bounded by ATTEMPTS rather than elapsed time so the tests can
+  # drive it with poll=0 and no sleeping — a time-only bound turns poll=0 into
+  # "give up immediately", which is a different knob (the _mr_diff_ready lesson).
+  local max_rounds
+  if [ "$poll" -gt 0 ]; then max_rounds=$(( wait_s / poll + 1 ));
+  else max_rounds=$(( wait_s > 0 ? wait_s : 1 )); fi
+  # DONE means OBSERVED done. Three things end this loop, and "the head has not
+  # moved yet" is none of them: the head actually moved, the forge recorded an
+  # error, or the wait ran out (which is exit 3, "ask again", never success).
+  local rounds=0 rjson merr="" new_sha=""
+  while :; do
+    rounds=$((rounds + 1))
+    rjson=$(_mr_fetch_rebase "$iid") || {
+      print_error "CANNOT VERIFY: the rebase was accepted but !$iid could not be re-read"
+      print_error "  (HTTP $(_mr_http_status)) — its state is now unknown, not unchanged."
+      return 2; }
+    if ! _mr_rebase_in_progress "$rjson"; then
+      merr=$(_mr_merge_error "$rjson")
+      new_sha=$(_mr_head_sha "$rjson")
+      [ -n "$merr" ] && break
+      [ -n "$new_sha" ] && [ "$new_sha" != "$old_sha" ] && break
+    fi
+    if [ "$rounds" -ge "$max_rounds" ]; then
+      printf '\n' >&2
+      print_warning "!$iid: the rebase has not landed after ${wait_s}s — NOT finished."
+      print_info    "  The head is still ${old_sha:0:12}. GitLab does a rebase on a worker,"
+      print_info    "  so this is 'not yet', and it is deliberately NOT reported as 'already"
+      print_info    "  up to date' — that inference is what made this verb lie about !441."
+      print_info    "  Ask again: pl mr rebase $iid   ·   or read it: pl mr status $iid"
+      return 3
+    fi
+    [ "$poll" -gt 0 ] && { sleep "$poll"; printf '.' >&2; }
+  done
+  [ "$rounds" -gt 1 ] && printf '\n' >&2
+
+  # ── A CONFLICT CLAIM IS A HYPOTHESIS UNTIL IT IS REPRODUCED ────────────────
+  if [ -n "$merr" ]; then
+    echo
+    print_warning "GitLab reports a rebase failure on !$iid:"
+    printf '      %s\n' "$merr"
+    print_info "Not believed on its own. Reproducing it with a real local test-merge of"
+    print_info "  origin/$src into origin/$tgt …"
+    local paths trc=0
+    paths=$(_mr_local_testmerge "$tgt" "$src") || trc=$?
+    case "$trc" in
+      1) print_error "CONFLICT CONFIRMED — origin/$src does not merge into origin/$tgt."
+         [ -n "$paths" ] && { print_info "conflicting path(s):"; printf '    %s\n' $paths; }
+         print_hint "resolve it on the branch, push, and re-run: pl mr rebase $iid"
+         return 1 ;;
+      0) print_error "CANNOT VERIFY: the forge reports a conflict but a real local"
+         print_error "  test-merge of origin/$src into origin/$tgt is CLEAN. The two"
+         print_error "  disagree, which is exactly the stale-cache shape CLAUDE.md"
+         print_error "  records — so this is neither a conflict nor a clean bill."
+         print_hint "look by hand before acting: $(_mr_web_url "$iid")"
+         return 2 ;;
+      *) print_error "CANNOT VERIFY: the forge reports a conflict and the local"
+         print_error "  test-merge could NOT be run (no git checkout, or origin/$tgt /"
+         print_error "  origin/$src unfetchable). An unreproduced claim is not a verdict."
+         return 2 ;;
+    esac
+  fi
+
+  echo
+  if [ -z "$new_sha" ]; then
+    print_error "CANNOT VERIFY: the rebase finished but !$iid reports no head sha."
+    return 2
+  fi
+  if [ "$new_sha" = "$old_sha" ]; then
+    # Unreachable by the loop above, which only breaks on a CHANGED head or an
+    # error. Kept as a belt: if a future edit re-introduces the inference, this
+    # says CANNOT VERIFY rather than congratulating anyone.
+    print_error "CANNOT VERIFY: the loop exited with the head still ${old_sha:0:12}."
+    print_error "  An unchanged head is not evidence that the rebase finished."
+    return 2
+  fi
+  print_success "!$iid rebased onto $tgt: ${old_sha:0:12} → ${new_sha:0:12}"
+
+  # ── THE NEW PIPELINE, NOT THE OLD ONE ──────────────────────────────────────
+  # Getting this wrong is what produced three confusing reports on !441. The old
+  # pipeline is a completed run on a sha that no longer exists on this MR; its
+  # result can never change, and re-reading it is how a fixed MR keeps looking
+  # broken.
+  local new_pid="" prounds=0
+  while [ "$prounds" -lt 6 ]; do
+    prounds=$((prounds + 1))
+    local pjson; pjson=$(_mr_fetch "$iid") || break
+    new_pid=$(_mr_head_pipeline_id "$pjson")
+    [ -n "$new_pid" ] && [ "$new_pid" != "$old_pid" ] && break
+    new_pid=""
+    [ "$poll" -gt 0 ] && sleep "$poll"
+  done
+
+  echo
+  if [ -n "$old_pid" ]; then
+    print_warning "pipeline #$old_pid is SUPERSEDED — the rebase cancelled it. It is a"
+    print_warning "  completed run on ${old_sha:0:12}, a sha this MR no longer has, so its"
+    print_warning "  result can never change. Do not report it again."
+  fi
+  if [ -n "$new_pid" ]; then
+    print_success "NEW pipeline #$new_pid — this is the one to watch."
+    print_hint "  pl mr ci $iid"
+  else
+    print_warning "no new pipeline is visible yet. The rebase DID land (${new_sha:0:12});"
+    print_warning "  GitLab has simply not created the pipeline yet, which is 'not yet',"
+    print_warning "  not 'none'. Ask again: pl mr ci $iid"
+  fi
+  print_info "$(_mr_web_url "$iid")"
+  return 0
 }
 
 ################################################################################
@@ -1443,12 +1845,20 @@ main(){
     merge)       cmd_merge "$@" ;;
     status|show) cmd_status "$@" ;;
     ci)          cmd_ci "$@" ;;
+    rebase)      cmd_rebase "$@" ;;
+    note|comment) cmd_note "$@" ;;
     list|ls)     cmd_list "$@" ;;
     hold)        cmd_hold "$@" ;;
     release)     cmd_release "$@" ;;
     guard|gate)  cmd_guard "$@" ;;
     -h|--help|help)
-      cat <<EOF
+      # QUOTED heredoc. This block is pure prose — it interpolates nothing — and
+      # unquoted it EXECUTES anything in backticks. Writing "the same idiom as
+      # `pl issue comment`" in the ops#356 line ran that as a command
+      # substitution, which failed silently and printed a blank where the verb
+      # name should have been. Help text that runs commands is a bug waiting for
+      # a `$(...)` to be typed into it; quoting the delimiter ends the class.
+      cat <<'EOF'
 pl mr — create, merge, hold, release and guard merge requests
 
   pl mr create [--source=BRANCH] [--target=main] [--title=..]
@@ -1480,6 +1890,22 @@ pl mr — create, merge, hold, release and guard merge requests
                                    green is not a diagnosis.
                                    0 success · 1 failed · 2 cannot verify ·
                                    3 not finished
+  pl mr rebase <iid> [--wait=SECS] [--dry-run]
+                                   move it onto the tip of its target branch —
+                                   what unsticks an MR whose red pipeline is a
+                                   COMPLETED run on a stale head. Never believes
+                                   'conflict' on its own (this instance's merge
+                                   status is a cached value that goes stale); a
+                                   conflict is reported only once a real local
+                                   test-merge REPRODUCES it. Says that the old
+                                   pipeline is cancelled and names the NEW one.
+                                   0 rebased · 1 reproduced conflict · 2 cannot
+                                   verify · 3 still rebasing
+  pl mr note <iid> "text"          leave a comment on the MR. Body from stdin
+       (or pipe the body on stdin) when no argument is given, the same idiom as
+                                   `pl issue comment` — piped text is never
+                                   silently discarded.
+                                   0 posted · 1 refused · 2 cannot verify
   pl mr list                       every open MR: held? auto-merge armed?
   pl mr status <iid>               hold state, GitLab's own merge status,
                                    sensitive paths, release record

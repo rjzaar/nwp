@@ -2,7 +2,8 @@
 {% block title %}Audit — NWP Console{% endblock %}
 {% block content %}
 <h1>Audit log</h1>
-<p class="muted">Every action POST + auth event, newest first (jsonl on the console host).</p>
+<p class="muted">Every action POST + auth event, newest first (jsonl on the console host).
+  <a href="/help/audit">help</a></p>
 <table class="tbl">
   {% for e in entries %}
   <tr class="{{ 'audit-fail' if not e.ok else '' }}">

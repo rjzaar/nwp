@@ -11,6 +11,11 @@
   <button class="ghost tab-refresh" id="pane-refresh" title="refresh this pane">
     ⟳<span id="pane-spin" class="htmx-indicator">…</span>
   </button>
+  {# Contextual help ([feedback-2] "help topic should be clickable"): the href
+     follows the active pane — every pane id has a same-id /help section, and
+     tests/test_help.py fails if either half of that goes missing. #}
+  <a class="ghost tab-refresh" id="pane-help" href="/help" title="help for this pane"
+     aria-label="help for this pane">?</a>
 </nav>
 
 <div id="pane-body" class="pane-body"><p class="muted">loading…</p></div>
@@ -31,6 +36,8 @@ wired here by design — run those on the workstation. Heavy issue edits: <a hre
       var el = document.getElementById('tab-' + q);
       if (el) { el.classList.toggle('active', q === p); el.setAttribute('aria-selected', q === p); }
     });
+    var help = document.getElementById('pane-help');
+    if (help) { help.href = '/help/' + p; }
     try { localStorage.setItem(KEY, p); } catch (e) { /* private mode: no persistence */ }
   }
   function activePane() {

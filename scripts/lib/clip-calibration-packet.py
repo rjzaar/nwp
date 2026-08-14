@@ -46,12 +46,28 @@ RIGHTS (P78 6) — ENFORCED, NOT REQUESTED
 The `.md` carries <=600-character excerpts of a `derivative-cleared-pending`,
 password-gated corpus, and `nwp/nwp` is publicly mirrored (ADR-0039). This
 builder REFUSES to write a member-facing document anywhere inside the engine
-repository. The join map and the answers template carry no corpus text and are
-safe anywhere; they are written beside the document regardless.
+repository. The join map and the answers template carry no corpus TEXT — but the
+join map carries the withheld `lp_id`, so "no corpus text" is not the same as
+"safe to hand a rater". See the next section.
+
+TWO DESTINATIONS, AND THE JOIN MAP IS NOT ONE OF THE MEMBER'S
+------------------------------------------------------------
+Blinding has to be a property of the ARTEFACT, not of whoever remembers which
+files to send. The join map (`label -> {lp_id, blind_key}`) carries the very
+learning-point address the member-facing document withholds, so writing it
+beside that document leaves the blinding resting on distribution discipline:
+one `scp -r` of the packet directory and the withheld field goes with it.
+
+  --out       MEMBER-FACING.  calibration-packet-<rater>.md  +  answers-<rater>.json
+  --keys-out  OPERATOR-ONLY.  calibration-packet-<rater>.json  (the join map)
+
+`--keys-out` defaults to a SIBLING of `--out` (`<out>/../calibration-keys`),
+never a child, so handing someone the whole `--out` directory still discloses
+nothing. The builder refuses if the two resolve to the same place.
 
 Usage:
   clip-calibration-packet.py --cal=<calibration_set.json> --out=<DIR>
-                             --rater=<id> [--rater=<id> ...]
+                             [--keys-out=<DIR>] --rater=<id> [--rater=<id> ...]
                              [--exclusions=<json>] [--min-items=N] [--json]
 
   --exclusions  {"rater_id": ["A1.01", "B2.03"], ...}  learning points that
@@ -192,7 +208,7 @@ of three. That protection exists only because there is more than one of you.
 
 
 def main():
-    cal_path = out_dir = exc_path = None
+    cal_path = out_dir = exc_path = keys_dir = None
     raters, as_json = [], False
     min_items = MIN_ITEMS
     for a in sys.argv[1:]:
@@ -200,6 +216,8 @@ def main():
             cal_path = os.path.expanduser(a[6:])
         elif a.startswith("--out="):
             out_dir = os.path.expanduser(a[6:])
+        elif a.startswith("--keys-out="):
+            keys_dir = os.path.expanduser(a[11:])
         elif a.startswith("--rater="):
             raters.append(a[8:])
         elif a.startswith("--exclusions="):
@@ -223,11 +241,24 @@ def main():
     repo = os.path.realpath(os.path.join(os.path.dirname(
         os.path.abspath(__file__)), "..", ".."))
     dest = os.path.realpath(out_dir)
-    if dest == repo or dest.startswith(repo + os.sep):
-        die("REFUSED: %s is inside the engine repository (%s), which is publicly "
-            "mirrored (ADR-0039). A calibration packet carries <=%d-character "
-            "excerpts of a derivative-cleared-pending corpus and may not be "
-            "written there (P78 6). Write it under ~/dir." % (dest, repo, EXCERPT_CAP))
+    # SIBLING, never a child: handing someone the whole --out directory must
+    # disclose nothing, and a child directory travels with its parent.
+    keys = os.path.realpath(keys_dir) if keys_dir else \
+        os.path.realpath(os.path.join(dest, os.pardir, "calibration-keys"))
+    for label, d in (("--out", dest), ("--keys-out", keys)):
+        if d == repo or d.startswith(repo + os.sep):
+            die("REFUSED: %s %s is inside the engine repository (%s), which is "
+                "publicly mirrored (ADR-0039). A calibration packet carries "
+                "<=%d-character excerpts of a derivative-cleared-pending corpus, "
+                "and the join map carries the learning-point addresses the "
+                "packet withholds. Neither may be written there (P78 6). Write "
+                "them under ~/dir." % (label, d, repo, EXCERPT_CAP))
+    if keys == dest or keys.startswith(dest + os.sep):
+        die("REFUSED: --keys-out (%s) is inside --out (%s). The join map carries "
+            "the lp_id the member-facing document withholds, so keeping it under "
+            "the directory the member is handed makes the blinding a matter of "
+            "distribution discipline rather than a property of the artefact. "
+            "Point --keys-out somewhere the raters are never given." % (keys, dest))
 
     try:
         cal = json.load(open(cal_path))
@@ -249,8 +280,11 @@ def main():
                     "calibration set: %s" % (r, bad))
 
     os.makedirs(dest, exist_ok=True)
+    os.makedirs(keys, exist_ok=True)
     report = {"label_set": os.path.basename(os.path.dirname(
-        os.path.abspath(cal_path))), "out": dest, "raters": {}}
+        os.path.abspath(cal_path))),
+        "out_member_facing": dest, "keys_out_operator_only": keys,
+        "raters": {}}
 
     for rater in raters:
         exc = set(exclusions.get(rater, []))
@@ -314,7 +348,7 @@ def main():
                 % (rater, sorted(set(leaks))))
 
         md = os.path.join(dest, "calibration-packet-%s.md" % rater)
-        pj = os.path.join(dest, "calibration-packet-%s.json" % rater)
+        pj = os.path.join(keys, "calibration-packet-%s.json" % rater)
         aj = os.path.join(dest, "answers-%s.json" % rater)
         open(md, "w").write(blob)
         json.dump({"packet_version": 1, "rater_id": rater,
@@ -327,7 +361,7 @@ def main():
         report["raters"][rater] = {
             "learning_points": len(view), "judgements_asked": n_items,
             "control_items": ctrl, "excluded_lps": sorted(exc),
-            "document": os.path.basename(md), "join_map": os.path.basename(pj),
+            "document": os.path.basename(md), "join_map": pj,
             "answers_template": os.path.basename(aj),
             "chars": len(blob), "leaks": []}
 
@@ -336,7 +370,7 @@ def main():
         seeds = {r: report["raters"][r] for r in raters}
         orders = {}
         for r in raters:
-            j = json.load(open(os.path.join(dest,
+            j = json.load(open(os.path.join(keys,
                                             "calibration-packet-%s.json" % r)))
             orders[r] = tuple((v["lp_id"], v["blind_key"])
                               for _, v in sorted(j["items"].items()))

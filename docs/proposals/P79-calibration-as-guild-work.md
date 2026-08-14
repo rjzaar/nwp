@@ -355,6 +355,21 @@ number and title, media id, the source pool, the machine's grade, its rationale,
 and the catalogue's current `video:` block. **The un-blinding key never enters the packet at
 all** — the join is done offline by the scorer, against a file the rater never receives.
 
+**And the join map is not the member's file either.** Caught by cross-model review of !449: the
+map (`label → {lp_id, blind_key}`) carries the very catalogue address the document withholds, so
+writing it *beside* that document left the blinding resting on **distribution discipline** — one
+`scp -r` of the packet directory and the withheld field travels with it. Blinding is a property
+of the artefact or it is not a property at all. The builder now writes to two destinations:
+
+| flag | holds | who sees it |
+|---|---|---|
+| `--out` | `calibration-packet-<rater>.md`, `answers-<rater>.json` | **the member** |
+| `--keys-out` | `calibration-packet-<rater>.json` (the join map) | **the operator only** |
+
+`--keys-out` defaults to a **sibling** of `--out`, never a child, so handing someone the whole
+`--out` directory still discloses nothing. The builder refuses a keys directory nested inside
+`--out`, and refuses either one inside this repository.
+
 ### 4.2 Two new withholdings, which are also a PARITY FIX
 
 The packet also withholds the learning point's **catalogue address (`lp_id`)** and its **course

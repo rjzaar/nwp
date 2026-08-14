@@ -41,29 +41,38 @@
 #      // 2` — the ORIGINAL shipped bug, found by cross-model review of !449
 #   4. the packet builder's repo-containment refusal `if dest == repo or
 #      dest.startswith(repo + os.sep):` changed to `if False:`
+#   5. the join map written back beside the member's document — `pj =
+#      os.path.join(keys, ...)` reverted to `os.path.join(dest, ...)`
 #
 # and this file was run against the mutated code. Observed, verbatim:
 #
-#   1..16
+#   1..19
 #   not ok 2 three identical answer files are one opinion, not three
 #   not ok 5 a panel that did not resolve may not DISCARD the labels
 #   not ok 8 N=2: one rater's bad morning does NOT delete the label set
 #   not ok 9 N=2: the kill switch STILL fires when both raters agree the machine is wrong
+#   not ok 13 per-rater packets shuffle the order and the join recovers the same verdicts
+#   not ok 14 answers in a per-rater ordering with no join map are REFUSED, not guessed
 #   not ok 15 the builder REFUSES to write corpus excerpts into the mirrored repo
+#   not ok 16 the join map is written OUTSIDE the directory the member is handed
+#   not ok 17 the default keys directory is a SIBLING of --out, never a child
 #
-# FIVE failures of SIXTEEN. Mutation 3 breaks TWO tests, which is the point of
+# NINE failures of NINETEEN. Mutation 3 breaks TWO tests, which is the point of
 # having both: one proves the gate does not fire on a single dissenter, the
 # other proves it still fires on two, and a corroboration rule needs both or it
-# is only half observed.
+# is only half observed. Mutation 5 breaks FOUR — the two that assert the
+# separation directly (16, 17) and the two that read the map from where it is
+# supposed to be (13, 14).
 #
-# WHAT THIS ALSO SHOWED, and it is the reason the bug survived first review:
-# test 7 ("one rater who answered at random is NAMED, not obeyed") runs THREE
-# raters, and at N=3 the buggy `(N+1)//2` and the correct `N//2+1` BOTH evaluate
-# to 2. The defect was invisible at every panel size the original suite
+# WHAT THIS ALSO SHOWED, and it is the reason the Gate 4 bug survived first
+# review: test 7 ("one rater who answered at random is NAMED, not obeyed") runs
+# THREE raters, and at N=3 the buggy `(N+1)//2` and the correct `N//2+1` BOTH
+# evaluate to 2. The defect was invisible at every panel size the original suite
 # exercised and bit only at N=2 — which is the size §6 actually designs for.
-# Tests 1, 3, 4, 6, 7, 10, 11, 12, 13, 14 and 16 stayed green under all four
-# mutations; recorded rather than tidied away, because claiming sixteen failures
-# when five were observed is the same species of error this file exists to catch.
+# Tests 1, 3, 4, 6, 7, 10, 11, 12, 18 and 19 stayed green under all five
+# mutations; recorded rather than tidied away, because claiming nineteen
+# failures when nine were observed is the same species of error this file exists
+# to catch.
 #
 # Mutation 4 was not merely detected, it left evidence: the mutated builder
 # actually wrote `docs/reports/nope/calibration-packet-ann.md` — 600-character
@@ -282,8 +291,8 @@ PY
 
 # ── 9. the join, and the refusal when it is missing ──────────────────────────
 @test "per-rater packets shuffle the order and the join recovers the same verdicts" {
-    P="$BATS_TEST_TMPDIR/pk"
-    run python3 "$PACKET" --cal="$CAL" --out="$P" --rater=ann --rater=ben
+    P="$BATS_TEST_TMPDIR/pk/packets"; K="$BATS_TEST_TMPDIR/pk/calibration-keys"
+    run python3 "$PACKET" --cal="$CAL" --out="$P" --keys-out="$K" --rater=ann --rater=ben
     [ "$status" -eq 0 ]
     [[ "$output" == *'"distinct_orderings": 2'* ]]
     # the member-facing document must not carry a catalogue address or a machine opinion
@@ -291,34 +300,34 @@ PY
     [ "$output" = "0" ]
 
     # translate the machine's own grades into ann's local labels
-    python3 - "$CAL" "$P" <<'PY'
+    python3 - "$CAL" "$P" "$K" <<'PY'
 import json, sys
-cal = json.load(open(sys.argv[1])); P = sys.argv[2]
+cal = json.load(open(sys.argv[1])); P = sys.argv[2]; K = sys.argv[3]
 by = {(lp["lp_id"], it["blind_key"]): it["machine_grade"]
       for lp in cal for it in lp["items"]}
-pk = json.load(open(P + "/calibration-packet-ann.json"))
+pk = json.load(open(K + "/calibration-packet-ann.json"))
 json.dump({l: by[(v["lp_id"], v["blind_key"])] for l, v in pk["items"].items()},
           open(P + "/answers-ann.json", "w"), indent=1)
 PY
-    run python3 "$SCORE" --cal="$CAL" --packet-dir="$P" --boot=300 "$P/answers-ann.json"
+    run python3 "$SCORE" --cal="$CAL" --packet-dir="$K" --boot=300 "$P/answers-ann.json"
     [ "$status" -eq 0 ]
     [[ "$(overall "$output")" == PASS* ]]
 }
 
 @test "answers in a per-rater ordering with no join map are REFUSED, not guessed" {
-    P="$BATS_TEST_TMPDIR/pk2"
-    python3 "$PACKET" --cal="$CAL" --out="$P" --rater=ann >/dev/null
-    python3 - "$CAL" "$P" <<'PY'
+    P="$BATS_TEST_TMPDIR/pk2/packets"; K="$BATS_TEST_TMPDIR/pk2/calibration-keys"
+    python3 "$PACKET" --cal="$CAL" --out="$P" --keys-out="$K" --rater=ann >/dev/null
+    python3 - "$CAL" "$P" "$K" <<'PY'
 import json, sys
-cal = json.load(open(sys.argv[1])); P = sys.argv[2]
+cal = json.load(open(sys.argv[1])); P = sys.argv[2]; K = sys.argv[3]
 by = {(lp["lp_id"], it["blind_key"]): it["machine_grade"]
       for lp in cal for it in lp["items"]}
-pk = json.load(open(P + "/calibration-packet-ann.json"))
+pk = json.load(open(K + "/calibration-packet-ann.json"))
 json.dump({l: by[(v["lp_id"], v["blind_key"])] for l, v in pk["items"].items()},
           open(P + "/answers-ann.json", "w"), indent=1)
 PY
-    rm "$P/calibration-packet-ann.json"
-    run python3 "$SCORE" --cal="$CAL" --packet-dir="$P" "$P/answers-ann.json"
+    rm "$K/calibration-packet-ann.json"
+    run python3 "$SCORE" --cal="$CAL" --packet-dir="$K" "$P/answers-ann.json"
     [ "$status" -eq 2 ]
     [[ "$output" == *"Refusing to guess which candidate was graded"* ]]
 }
@@ -330,6 +339,44 @@ PY
     [[ "$output" == *"REFUSED"* ]]
     [[ "$output" == *"publicly mirrored"* ]]
     [ ! -d "$PROJECT_ROOT/docs/reports/nope" ]
+}
+
+# ── 10b. the join map is not the member's ───────────────────────────────────
+# Cross-model review of !449: the map carries the withheld lp_id, so writing it
+# beside the member's document leaves the blinding resting on distribution
+# discipline — one `scp -r` of the packet directory and the field goes with it.
+@test "the join map is written OUTSIDE the directory the member is handed" {
+    P="$BATS_TEST_TMPDIR/split/packets"
+    K="$BATS_TEST_TMPDIR/split/calibration-keys"
+    run python3 "$PACKET" --cal="$CAL" --out="$P" --keys-out="$K" --rater=ann
+    [ "$status" -eq 0 ]
+    # what the member gets
+    [ -f "$P/calibration-packet-ann.md" ]
+    [ -f "$P/answers-ann.json" ]
+    # the withheld address is NOT in there, in any file
+    [ ! -f "$P/calibration-packet-ann.json" ]
+    run grep -rlE 'Z[0-9]\.[0-9]{2}' "$P"
+    [ -z "$output" ]
+    # and it IS in the operator-only directory
+    [ -f "$K/calibration-packet-ann.json" ]
+    run grep -cE 'Z[0-9]\.[0-9]{2}' "$K/calibration-packet-ann.json"
+    [ "$output" -gt 0 ]
+}
+
+@test "the default keys directory is a SIBLING of --out, never a child" {
+    P="$BATS_TEST_TMPDIR/dflt/packets"
+    run python3 "$PACKET" --cal="$CAL" --out="$P" --rater=ann
+    [ "$status" -eq 0 ]
+    [ ! -f "$P/calibration-packet-ann.json" ]
+    [ -f "$BATS_TEST_TMPDIR/dflt/calibration-keys/calibration-packet-ann.json" ]
+}
+
+@test "a keys directory inside --out is REFUSED" {
+    P="$BATS_TEST_TMPDIR/bad/packets"
+    run python3 "$PACKET" --cal="$CAL" --out="$P" --keys-out="$P/keys" --rater=ann
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"is inside --out"* ]]
+    [[ "$output" == *"distribution discipline rather than a property of the artefact"* ]]
 }
 
 @test "anti-self-review exclusions that gut the control stratum REFUSE the packet" {

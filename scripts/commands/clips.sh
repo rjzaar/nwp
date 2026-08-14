@@ -55,7 +55,7 @@ set -uo pipefail
 #   pl clips sources
 #
 #   pl clips calibrate packet --rater=<id> [--rater=<id> ...] [--out=DIR]
-#                             [--exclusions=FILE]
+#                             [--keys-out=DIR] [--exclusions=FILE]
 #   pl clips calibrate score  <answers.json> [<answers.json> ...] [--boot=N]
 #   pl clips calibrate status
 #
@@ -72,8 +72,11 @@ set -uo pipefail
 #            presentation seed, so order effects are not correlated across the
 #            panel, and anti-self-review exclusions are applied at BUILD time —
 #            an item a rater must not judge is not in their packet at all.
-#            REFUSES to write member-facing excerpts inside this repository,
-#            which is publicly mirrored (ADR-0039 / P78 6).
+#            Writes to TWO places: --out holds what the member is handed, and
+#            --keys-out (a SIBLING, never a child) holds the join maps, which
+#            carry the lp_id the packet withholds. REFUSES to write either
+#            inside this repository, which is publicly mirrored (ADR-0039 /
+#            P78 6), and refuses --keys-out inside --out.
 #
 #   score    takes N answers files, joins each through its own packet, and runs
 #            the generalised gates. Gate 0 (panel coherence) is evaluated FIRST
@@ -165,7 +168,7 @@ CLIP_SIGPIPE_FILES="${NWP_CLIPS_SIGPIPE_FILES:-scripts/commands/secrets.sh scrip
 _err() { printf 'ERROR: %s\n' "$*" >&2; }
 
 usage() {
-    sed -n '3,119p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,122p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 cmd_sources() {
@@ -674,6 +677,10 @@ CAL_PACKET="$PROJECT_ROOT/scripts/lib/clip-calibration-packet.py"
 # excerpts (P78 6). Only the METHOD lives here.
 CAL_SET="${NWP_CLIPS_CAL_SET:-$CLIP_SCORER_DIR/calibration_set.json}"
 CAL_PANEL_DIR="${NWP_CLIPS_PANEL_DIR:-$CLIP_CAL_DIR/panel}"
+# The join maps live OUTSIDE the directory a member is handed. They carry the
+# lp_id the member-facing document withholds, so keeping them beside it would
+# make the blinding a matter of remembering which files to send.
+CAL_KEYS_DIR="${NWP_CLIPS_KEYS_DIR:-$CLIP_CAL_DIR/calibration-keys}"
 
 cmd_calibrate() {
     local sub="${1:-}"; shift || true
@@ -692,6 +699,7 @@ cmd_calibrate() {
                 esac
             done
             [ "$have_out" -eq 0 ] && args+=(--out="$CAL_PANEL_DIR")
+            case " $* " in *" --keys-out="*) ;; *) args+=(--keys-out="$CAL_KEYS_DIR") ;; esac
             python3 "$CAL_PACKET" "${args[@]}"
             ;;
         score)
@@ -700,7 +708,7 @@ cmd_calibrate() {
                 _err "no calibration set at $CAL_SET"
                 _err "CANNOT VERIFY: refusing to score answers against a set that is not here."
                 return 2; }
-            local -a sargs=(--cal="$CAL_SET" --packet-dir="$CAL_PANEL_DIR")
+            local -a sargs=(--cal="$CAL_SET" --packet-dir="$CAL_KEYS_DIR")
             local n=0
             for a in "$@"; do
                 case "$a" in
@@ -729,7 +737,8 @@ cmd_calibrate() {
             ;;
         status)
             printf '%-24s %s\n' "calibration set" "$CAL_SET"
-            printf '%-24s %s\n' "panel directory" "$CAL_PANEL_DIR"
+            printf '%-24s %s\n' "panel directory (members)" "$CAL_PANEL_DIR"
+            printf '%-24s %s\n' "join maps (operator)" "$CAL_KEYS_DIR"
             if [ ! -f "$CAL_SET" ]; then
                 printf '\nCANNOT VERIFY: the calibration set is not on this machine.\n' >&2
                 return 2
@@ -754,7 +763,7 @@ import json,sys
 try: d=json.load(open(sys.argv[1]))
 except Exception: print(-1); raise SystemExit
 print(sum(1 for v in d.values() if v is not None))' "$f" 2>/dev/null) || graded=-1
-                pk="$CAL_PANEL_DIR/calibration-packet-$rid.json"
+                pk="$CAL_KEYS_DIR/calibration-packet-$rid.json"
                 if [ -f "$pk" ]; then pk="present"; else
                     pk="MISSING — this rater CANNOT be scored"; rc=2
                 fi

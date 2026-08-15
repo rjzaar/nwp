@@ -32,6 +32,17 @@ Please delete options that are not relevant.
 - [ ] I have checked for security implications
 - [ ] I have updated dependencies if needed
 
+## Cross-model review (required for instrument-class work)
+
+<!-- Statistical/measurement instruments, security-relevant design, and many-item censuses
+     (ops#367, meta15 RC10): the reviewer runs on the OTHER model (Opus vs Fable) and
+     RE-RUNS the proofs itself — it never reads reports. A shared writer/checker bias is
+     invisible by construction; model diversity beats model tier. Fill exactly one line —
+     silence is not a valid state. -->
+
+- Cross-model review: <reviewer model — proofs re-run: which, result>
+- Cross-model review: not-applicable-because: <why this MR is not instrument-class>
+
 ## Testing Instructions
 
 Please describe the tests that you ran to verify your changes. Provide instructions so reviewers can reproduce.

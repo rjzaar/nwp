@@ -32,15 +32,16 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
+                     UploadFile, WebSocket)
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from . import (advisories, config, fleet_state, help, library, notify, overview,
-               parsers, quokka, scope as scope_mod, visuals, voice, walkthrough,
-               webauthn_flow)
+               parsers, quokka, scope as scope_mod, sessions as sessions_mod,
+               visuals, voice, walkthrough, webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -56,6 +57,7 @@ PANES = [
     ("review", "Review"),
     ("fleet", "Fleet"), ("issues", "Issues"), ("todo", "Todo"), ("demo", "Demo"),
     ("backups", "Backups"), ("ci", "CI"), ("quokka", "Quokka"), ("visuals", "Visuals"),
+    ("sessions", "Sessions"),
 ]
 
 # The ONLY routes allowed to carry no scope dependency: unauthenticated
@@ -922,6 +924,17 @@ def tab_counts(request: Request, sc: Scope = Depends(scoped("viewer"))):
     add("backups", lambda: (backups_txt, False))
     add("ci", lambda: ((lambda n: f"({n}▶)" if n else "")(parsers.ci_running_count(_gather_ci(sc)[0])), False))
     add("quokka", lambda: ("\U0001f7e2" if _quokka_alive() else "\U0001f4a4", False))
+
+    def _sessions_count():
+        # Owner-only, like the pane: everyone else's tab stays numberless.
+        if not _owner_gate(sc):
+            return "", False
+        d = sessions_mod.list_sessions()
+        # A broken tmux is an ALERT, not a zero — "I could not look" must
+        # never read as "no sessions" from the tab bar.
+        return (parsers.fmt_n_tab(len(d["sessions"])) if d["ok"] else ""), not d["ok"]
+
+    add("sessions", _sessions_count)
     return templates.TemplateResponse(request, "tab_counts.html", {"counts": counts})
 
 
@@ -2644,6 +2657,110 @@ def projects_del_member(request: Request, pid: str, member: str, sc: Scope = Dep
         return _projects_view(request, user, f"error: {e}")
     audit.append(sc.user, sc.global_role, "project.unassign", {"pid": pid, "member": member}, True, project=pid)
     return _projects_view(request, user, f"'{member}' removed from '{pid}'")
+
+
+# ---------------------------------------------------------------------------
+# Sessions — tmux on the console host, the operator's detach-safe window
+# ---------------------------------------------------------------------------
+# The console host is where long-running work should live so the
+# operator's laptop can drop off wifi freely; tmux is what survives, this tab
+# is the intermittent window onto it. A terminal is a SHELL ON THE AGENT HOST,
+# so the whole surface is owner-only — stricter than the action allowlist,
+# which exists precisely because operators were NOT supposed to get a shell.
+# Every entry point (pane, start, terminal page, websocket) re-checks the gate
+# server-side; the session NAME is the only user input and sessions_mod owns
+# its one validator. tests/test_sessions.py proves the refusals.
+def _owner_gate(sc: Scope) -> bool:
+    return sc.global_role == "owner" and sc.all_sites
+
+
+@app.get("/panes/sessions", response_class=HTMLResponse)
+def pane_sessions(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
+    if not _owner_gate(sc):
+        # The refusal pane, not a 403: same idiom as Review's scoped_out —
+        # a tab everyone can click must explain itself. No tmux runs at all.
+        return _pane(request, "pane_sessions.html",
+                     {"owner_only": True, "tmux": {"ok": False, "error": ""}, "sessions": []},
+                     sc, tab="sessions")
+    data = sessions_mod.list_sessions()
+    return _pane(request, "pane_sessions.html",
+                 {"owner_only": False, "tmux": data, "sessions": data["sessions"]},
+                 sc, tab="sessions",
+                 tab_count=parsers.fmt_n_tab(len(data["sessions"])) if data["ok"] else "",
+                 tab_alert=not data["ok"])
+
+
+@app.post("/sessions/new", response_class=HTMLResponse)
+def sessions_new(request: Request, name: str = Form(""), sc: Scope = Depends(scoped("viewer"))):
+    _guard_origin(request)
+    if not _owner_gate(sc):
+        audit.append(sc.user, sc.global_role, "sessions.denied",
+                     {"path": "/sessions/new"}, False)
+        raise HTTPException(status_code=403, detail="sessions are owner-only")
+    n = (name or "").strip()
+    if not sessions_mod.valid_name(n):
+        audit.append(sc.user, sc.global_role, "sessions.new",
+                     {"name": n[:64], "refused": "invalid name"}, False)
+        raise HTTPException(status_code=400,
+                            detail="invalid session name (letters, digits, - and _ only, max 32)")
+    r = sessions_mod.new_session(n)
+    audit.append(sc.user, sc.global_role, "sessions.new", {"name": n, "error": r["error"]}, r["ok"])
+    if not r["ok"]:
+        raise HTTPException(status_code=409, detail=r["error"] or "tmux refused")
+    return pane_sessions(request, sc=sc)
+
+
+@app.get("/sessions/term/{name}", response_class=HTMLResponse)
+def sessions_term(request: Request, name: str, sc: Scope = Depends(scoped("viewer"))):
+    """The full-page terminal (xterm.js) that opens the websocket below. A
+    page, not a pane: a terminal wants the whole screen, phone included."""
+    if not _owner_gate(sc):
+        raise HTTPException(status_code=403, detail="sessions are owner-only")
+    if not sessions_mod.valid_name(name):
+        raise HTTPException(status_code=400, detail="invalid session name")
+    return templates.TemplateResponse(
+        request, "term.html", {"user": _user_of(sc), "name": name})
+
+
+def _ws_owner(websocket: WebSocket) -> dict | None:
+    """The websocket gate: same signed cookie, same store checks as
+    current_user, plus an origin check (belt over SameSite=strict), plus the
+    owner requirement. Returns the user, or None = refuse. Runs BEFORE
+    accept() — asserted structurally in tests/test_sessions.py, because a
+    shell handed out first and checked second is a shell handed out."""
+    origin = websocket.headers.get("origin")
+    if origin and origin.rstrip("/") != config.ORIGIN.rstrip("/"):
+        return None
+    raw = websocket.cookies.get(config.SESSION_COOKIE)
+    if not raw:
+        return None
+    try:
+        sess = _signer.loads(raw, max_age=config.SESSION_MAX_AGE)
+    except BadSignature:
+        return None
+    name = sess.get("u")
+    u = store.get_user(name) if name else None
+    if not u or not u.get("credentials"):
+        return None
+    if u.get("role") != "owner":
+        return None
+    return {"name": name, "role": u["role"]}
+
+
+@app.websocket("/sessions/ws/{name}")
+async def sessions_ws(websocket: WebSocket, name: str):
+    user = _ws_owner(websocket)
+    if user is None or not sessions_mod.valid_name(name):
+        # 1008 = policy violation. Closed WITHOUT accept: no pty was forked,
+        # no byte of terminal output ever crossed this socket.
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    audit.append(user["name"], user["role"], "sessions.attach", {"name": name}, True)
+    try:
+        await sessions_mod.bridge(websocket, name)
+    finally:
+        audit.append(user["name"], user["role"], "sessions.detach", {"name": name}, True)
 
 
 # ---------------------------------------------------------------------------

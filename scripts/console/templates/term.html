@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} — NWP Console{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/vendor/xterm.css">
+<div class="termwrap">
+  <p class="muted termbar">tmux session <strong>{{ name }}</strong> on the console host
+    — closing this page detaches; the session keeps running.
+    <a href="/?tab=sessions">back to sessions</a></p>
+  <div id="term"></div>
+</div>
+<script src="/static/vendor/xterm.min.js"></script>
+<script src="/static/vendor/addon-fit.min.js"></script>
+<script>
+(function () {
+  var NAME = {{ name | tojson }};   // validated server-side: [A-Za-z0-9][A-Za-z0-9_-]{0,31}
+  var term = new Terminal({fontSize: 14, scrollback: 5000, theme: {background: '#10151c'}});
+  var fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('term'));
+
+  var ws = new WebSocket(
+    (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host +
+    '/sessions/ws/' + encodeURIComponent(NAME));
+  ws.binaryType = 'arraybuffer';
+
+  function sendSize() {
+    if (ws.readyState === 1) { ws.send('1' + JSON.stringify([term.cols, term.rows])); }
+  }
+  ws.onopen = function () { fit.fit(); sendSize(); term.focus(); };
+  ws.onmessage = function (e) { term.write(new Uint8Array(e.data)); };
+  ws.onclose = function () {
+    term.write('\r\n\x1b[33m[detached — the session keeps running on the host; ' +
+               'reopen it from the Sessions tab]\x1b[0m\r\n');
+  };
+  term.onData(function (d) { if (ws.readyState === 1) { ws.send('0' + d); } });
+  window.addEventListener('resize', function () { fit.fit(); sendSize(); });
+})();
+</script>
+{% endblock %}

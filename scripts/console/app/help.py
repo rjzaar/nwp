@@ -115,6 +115,12 @@ SECTIONS: tuple = (
                            "unreachable, and the other tabs are unaffected."),
                 ("Visuals", "The estate overview and four charts as subtabs, plus the "
                             "walkthrough jump-in page for the demo pair."),
+                ("Sessions", "tmux sessions on the console host: list them, start a named "
+                             "one, and join any of them in a real terminal. Owner-only, "
+                             "because a terminal is a shell on that host. The point is "
+                             "detach-safety — work started here keeps running when your "
+                             "laptop drops off wifi. Its own help section explains the "
+                             "workflow."),
             ),
             _t("Numbers in the tab bar refresh on load and then every 90 seconds. Each count "
                "is computed independently and best-effort: a feed that breaks loses its "
@@ -700,6 +706,44 @@ SECTIONS: tuple = (
                "is full at eight panes. If the Library says nothing has been published on "
                "this host, that is a publishing step nobody has run yet, not an empty "
                "corpus: the two are shown differently on purpose."),
+        ),
+    },
+    {
+        "id": "sessions",
+        "title": "Sessions — long-running work that survives your laptop",
+        "summary": "tmux on the console host; the tab is only the window onto it.",
+        "blocks": (
+            _t("The Sessions tab lists the tmux sessions on the console host, lets you "
+               "start a named one, and lets you join any of them in a real terminal in the "
+               "browser. The terminal is the intermittent part; the session is not — it "
+               "runs on the host, not on your laptop, so it survives the laptop sleeping, "
+               "roaming or dropping off wifi entirely."),
+            _d(
+                ("Start", "Type a name and press start. The name is the only thing you can "
+                          "type here: letters, digits, - and _, up to 32 characters. The "
+                          "session starts detached, with your shell, in your home "
+                          "directory on the console host."),
+                ("Join", "Opens the terminal attached to that session. Run what you like "
+                         "there — an agent, a build, `claude` — it is an ordinary shell "
+                         "inside tmux."),
+                ("Leave", "Close the page, lose the network, or detach with the tmux "
+                          "prefix and d. All three are the same event to the session: the "
+                          "window went away, the work did not."),
+                ("Rejoin", "Come back to the Sessions tab and join again — from this "
+                           "device or another one. You land exactly where the session is, "
+                           "scrollback and all."),
+                ("End", "Exit the shell inside the session (or `tmux kill-session` from "
+                        "the terminal). Closing the browser page never ends a session."),
+            ),
+            _t("The intended shape for long work: start a session here, kick the work off "
+               "inside it, close the laptop and walk away. Check in from the tab — phone "
+               "included — whenever you are back in range."),
+            _n("This tab is OWNER-only, and it is the one place the console hands out a "
+               "real shell on its host. Every list, start, join and detach is written to "
+               "the audit log; joining needs your signed session cookie on the websocket "
+               "itself, so an unauthenticated socket is refused before any terminal "
+               "exists. Everything runs on the console host over the mesh — no third "
+               "party, no cloud terminal, nothing leaves the tailnet."),
         ),
     },
     {

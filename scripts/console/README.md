@@ -233,6 +233,23 @@ Consumption (`app/fleet_state.py`, `NWP_CONSOLE_FLEET_STATE` /
 The Gotify RAG detector reads the same gatherer, so it works off published state
 with no changes of its own.
 
+## Sessions tab (owner-only tmux terminal on the console host)
+
+The Sessions tab lists the console host's tmux sessions, starts named ones, and
+attaches a real browser terminal (vendored xterm.js ↔ FastAPI websocket ↔ a
+local `tmux attach` pty — no third-party service, no extra daemon, no new
+port). Long-running operator work lives in tmux ON THE HOST and survives the
+laptop dropping wifi; the tab is only the intermittent window.
+
+Because a terminal is a shell on this host, the surface is **stricter than
+everything else here**: global-owner only, refused for operators; the websocket
+re-validates the signed session cookie + role + origin itself, before accept();
+the session *name* is the only user input and is regex-validated in one place
+(`app/sessions.py`); every attach/detach/start is audit-logged. The terminal
+JS is pinned + sha256-verified into `static/vendor/` by `fetch-xterm.sh` —
+never CDN-loaded. `tests/test_sessions.py` proves the refusals (including
+close-before-accept, structurally).
+
 ## Issues/CI panes token (operator-provisioned — never automated)
 
 The issues + CI panes call the GitLab API with the **walled bot token pattern**

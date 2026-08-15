@@ -272,3 +272,13 @@ details > summary { cursor: pointer; color: var(--muted); }
 .chip.codechip-revoked { border-color: var(--err);   color: var(--err); }
 .chip.codechip-expired { border-color: var(--muted); color: var(--muted); }
 .okline { color: var(--ok); }
+
+/* -- Sessions tab + terminal page (owner-only tmux window) ------------------ */
+.sessions-new { margin-top: 12px; gap: 6px; }
+.sessions-new input { background: var(--card2); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.joinlink { white-space: nowrap; font-weight: 600; }
+.termwrap { display: flex; flex-direction: column; height: calc(100vh - 120px); }
+.termbar { margin: 0 0 6px; }
+#term { flex: 1; min-height: 200px; background: #10151c;
+  border: 1px solid var(--line); border-radius: 8px; padding: 4px; }

@@ -1,0 +1,41 @@
+{% include "_tabcount.html" %}
+{% if owner_only %}
+<p class="err">Sessions are owner-only. This tab is a real terminal on the console
+host, which is stricter than every other surface here — ask the owner.</p>
+{% else %}
+<p class="muted">tmux sessions on the console host. Work here survives your laptop
+dropping wifi — close the lid freely, rejoin from this tab. See Help → Sessions.</p>
+{% if not tmux.ok %}
+<p class="err">Cannot read tmux on this host: {{ tmux.error }}</p>
+{% else %}
+  {% if sessions %}
+  <table class="tbl">
+    <tr><th>session</th><th>running</th><th>windows</th><th>created</th><th></th></tr>
+    {% for s in sessions %}
+    <tr>
+      <td><strong>{{ s.name }}</strong>{% if s.attached %} <span class="chip">attached</span>{% endif %}</td>
+      <td><code>{{ s.command }}</code></td>
+      <td>{{ s.windows }}</td>
+      <td class="muted"><time class="session-created" data-epoch="{{ s.created }}">{{ s.created }}</time></td>
+      <td><a class="joinlink" href="/sessions/term/{{ s.name }}">join ▶</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="ok">No tmux sessions on this host yet — start one below.</p>
+  {% endif %}
+{% endif %}
+<form hx-post="/sessions/new" hx-target="#pane-body" class="inline sessions-new">
+  <input name="name" placeholder="session name" required maxlength="32"
+         pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,31}"
+         title="letters, digits, - and _ only, max 32">
+  <button>start session</button>
+</form>
+<script>
+  // Render the created-epoch as local time; the server ships the raw number.
+  document.querySelectorAll('.session-created').forEach(function (el) {
+    var t = parseInt(el.dataset.epoch, 10);
+    if (t) { el.textContent = new Date(t * 1000).toLocaleString(); }
+  });
+</script>
+{% endif %}

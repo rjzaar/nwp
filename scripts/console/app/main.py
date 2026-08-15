@@ -743,6 +743,20 @@ def _walkthrough_site(sc: Scope) -> str:
     return sites[0] if sites else ""
 
 
+def _gather_join_requests(site: str, force: bool = False) -> dict:
+    """The join QUEUE (operator ruling 2026-08-15): `pl demo testers <site>
+    requests --json --tier=live`.
+
+    Same lazy/cached posture as the roster — it is a live drush read over ssh.
+    `force` bypasses the cache, and every write route below re-reads with
+    force=True so a newly decided request can never be hidden by a stale
+    snapshot.
+    """
+    res = run_pl_cached(config.NWP_ROOT, ["demo", "testers", site, "requests", "--json", "--tier=live"],
+                        timeout=config.PL_TIMEOUT, force=force)
+    return parsers.parse_join_requests_json(res["out"] + "\n" + res["err"])
+
+
 def _tester_of(testers: dict, account: str) -> dict | None:
     for a in testers.get("accounts", []) or []:
         if a.get("name") == account:
@@ -1799,6 +1813,118 @@ def action_walkthrough_go(
     else:
         target = walkthrough.jump_url(minted["url"], dest)
     return RedirectResponse(target, status_code=303)
+
+
+# -- the JOIN QUEUE: approve / reject / add (operator ruling 2026-08-15) -----
+#
+# THE ACCESS MODEL, in one sentence: approval IS the persistence decision — an
+# unapproved join never becomes an account, and an approved tester persists
+# through the nightly reset with their own password.
+#
+# WHO MAY APPROVE: operator, enforced server-side on BOTH axes by
+# `scoped("operator")` plus `_action_gate`. "The operator, and testers holding
+# admin rights" is expressed by giving that person a console account with the
+# operator role — the mechanism that already exists and is already capped by
+# effective_project_role. A separate tester-admin permission would be a second
+# policy answering the same question.
+#
+# The result routes are NON-REDACTABLE for the same reason the reveal and
+# sign-in-as-tester routes are: on success the response carries the tester's
+# password. It is never passed to audit.append().
+@app.get("/panes/demo/requests", response_class=HTMLResponse)
+def pane_demo_requests(request: Request, site: str = "", force: int = 0,
+                       sc: Scope = Depends(scoped("viewer"))):
+    site = _tester_site_or_404(site, sc)
+    requests_ = _gather_join_requests(site, force=bool(force))
+    return _pane(request, "_demo_requests.html", {"site": site, "requests": requests_}, sc,
+                 redactable=False)
+
+
+DEMO_JOIN_OPS = {"approve": "demo_join_approve", "reject": "demo_join_reject"}
+
+
+@app.post("/actions/demo_join", response_class=HTMLResponse)
+def action_demo_join(
+    request: Request,
+    site: str = Form(""),
+    op: str = Form(""),
+    request_id: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "request_id": request_id}
+    name = DEMO_JOIN_OPS.get(op)
+    if name is None:
+        audit.append(sc.user, sc.global_role, "action.demo_join",
+                     {"params": params, "rejected": f"unknown join op {op!r}"}, False,
+                     project=sc.project_id)
+        return _pane(request, "demo_join_result.html",
+                     {"label": "join decision", "site": site, "res": None, "action": None,
+                      "error": f"unknown join op {op!r}", "requests": None}, sc, redactable=False)
+    try:
+        argv, spec = build_action(name, params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, f"action.{name}",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_join_result.html",
+                     {"label": ACTIONS[name]["label"], "site": site, "res": None,
+                      "action": None, "error": str(e), "requests": None}, sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    # The audit line records WHAT ran and whether it succeeded. It must never
+    # carry the response body: on an approval that body contains a password.
+    audit.append(
+        sc.user, sc.global_role, f"action.{name}",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    action = parsers.parse_join_decision_json(res["out"] + "\n" + res["err"])
+    # DISCHARGE: re-read the queue this action touched, cache bypassed, and
+    # render THAT state — on success AND on refusal.
+    requests_ = _gather_join_requests(argv[2], force=True)
+    return _pane(request, "demo_join_result.html",
+                 {"label": spec["label"], "site": argv[2], "res": None,
+                  "action": action, "error": None, "requests": requests_},
+                 sc, redactable=False)
+
+
+@app.post("/actions/demo_tester_add", response_class=HTMLResponse)
+def action_demo_tester_add(
+    request: Request,
+    site: str = Form(""),
+    account: str = Form(""),
+    display_name: str = Form(""),
+    bundle: str = Form(""),
+    guild: str = Form(""),
+    level: str = Form(""),
+    admin: str = Form(""),
+    sc: Scope = Depends(scoped("operator")),
+):
+    _guard_origin(request)
+    params = {"site": site, "account": account, "display_name": display_name,
+              "bundle": bundle, "guild": guild, "level": level, "admin": admin}
+    try:
+        argv, spec = build_action("demo_tester_add", params, sorted(sc.demo_sites))
+    except ActionError as e:
+        audit.append(sc.user, sc.global_role, "action.demo_tester_add",
+                     {"params": params, "rejected": str(e)}, False, project=sc.project_id)
+        return _pane(request, "demo_join_result.html",
+                     {"label": "Add a tester", "site": site, "res": None, "action": None,
+                      "error": str(e), "requests": None}, sc, redactable=False)
+    _action_gate(sc, spec)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    audit.append(
+        sc.user, sc.global_role, "action.demo_tester_add",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"]}, res["rc"] == 0,
+        project=sc.project_id,
+    )
+    action = parsers.parse_join_decision_json(res["out"] + "\n" + res["err"])
+    res_view = dict(res, out=parsers.strip_ansi(res["out"])[-8000:],
+                    err=parsers.strip_ansi(res["err"])[-2000:])
+    return _pane(request, "demo_join_result.html",
+                 {"label": spec["label"], "site": argv[2], "res": res_view,
+                  "action": action, "error": None, "requests": None},
+                 sc, redactable=False)
 
 
 # ---------------------------------------------------------------------------

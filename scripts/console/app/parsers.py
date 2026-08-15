@@ -892,3 +892,118 @@ def parse_walkthrough_json(stdout: str) -> dict:
         "targets": targets,
         "raw": "",
     }
+
+
+# ---------------------------------------------------------------------------
+# The JOIN QUEUE and the approval result (operator ruling 2026-08-15)
+#
+# THE ACCESS MODEL, in one sentence: approval IS the persistence decision — an
+# unapproved join never becomes an account, and an approved tester persists
+# through the nightly reset with their own password.
+#
+# Everything here is fail-closed in the ops#281 direction: "nobody is waiting"
+# and "I could not read who is waiting" are different answers, and only one of
+# them is safe to act on. A person who asked to join and was never seen is the
+# failure these parsers exist to make impossible to render as health.
+# ---------------------------------------------------------------------------
+
+def parse_join_requests_json(stdout: str) -> dict:
+    """`pl demo testers <site> requests --json --tier=live`.
+
+    Pass-through of drush nwc:join-requests' contract, sanitised. ok:false —
+    including the exit-2 CANNOT VERIFY and the not_deployed document emitted
+    while the nwc profile MR is unmerged — carries its reason and must NEVER
+    collapse into an empty-but-healthy queue.
+    """
+    raw = strip_ansi(stdout or "")[-4000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "not_deployed": False,
+                "reason": "no JSON found in pl demo testers requests --json output "
+                          "(is the deployed pl older than the join-approval change?)",
+                "raw": raw, "requests": [], "counts": {}, "malformed_lines": 0}
+    if not data.get("ok"):
+        return {"ok": False,
+                "not_deployed": bool(data.get("not_deployed")),
+                "reason": str(data.get("reason", "join request store unreadable"))[:400],
+                "raw": raw, "requests": [], "counts": {}, "malformed_lines": 0}
+
+    counts = {}
+    raw_counts = data.get("counts", {}) if isinstance(data.get("counts"), dict) else {}
+    for k in ("pending", "approved", "rejected", "total"):
+        try:
+            counts[k] = int(raw_counts.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            counts[k] = 0
+
+    requests = []
+    for r in data.get("requests", []) or []:
+        if not isinstance(r, dict):
+            continue
+        requests.append({
+            "id": str(r.get("id", ""))[:64],
+            "ts": r.get("ts"),
+            "bundle": str(r.get("bundle", ""))[:64],
+            # The name the person asked to be known by — the only thing about
+            # them the request carries. No email, no real-name requirement.
+            "display_name": str(r.get("display_name", ""))[:100],
+            "note": str(r.get("note", ""))[:500],
+            "state": str(r.get("state", "pending"))[:16],
+            "decided_by": (str(r["decided_by"])[:64] if r.get("decided_by") else None),
+            "decided_at": r.get("decided_at"),
+            "account": (str(r["account"])[:80] if r.get("account") else None),
+        })
+
+    try:
+        malformed = int(data.get("malformed_lines", 0) or 0)
+    except (TypeError, ValueError):
+        malformed = 0
+
+    return {
+        "ok": True,
+        "store": str(data.get("store", ""))[:200],
+        "state_filter": str(data.get("state_filter", "pending"))[:16],
+        "counts": counts,
+        # NEVER swallowed. A line the store could not parse may be a request
+        # nobody will ever see, so the pane says the queue is not the whole
+        # truth rather than presenting it as complete.
+        "malformed_lines": malformed,
+        "requests": requests,
+    }
+
+
+def parse_join_decision_json(stdout: str) -> dict:
+    """An approve/reject/add outcome.
+
+    A typed refusal ({"ok":false,"refused":true,…}) renders its reason VERBATIM
+    — those reasons are the operationally important ones in this whole feature
+    ("the account was created BLOCKED and will be wiped tonight; do NOT tell
+    anybody they are approved"), and a summarised version of that is worse than
+    none.
+
+    `password` is a CREDENTIAL. It exists in the verb's stdout and in the
+    response body and in no cache, no audit line and no log — the caller must
+    render the result non-redactable and must not pass it to audit.append().
+    """
+    raw = strip_ansi(stdout or "")[-4000:]
+    data = extract_json(stdout)
+    if not isinstance(data, dict) or "ok" not in data:
+        return {"ok": False, "refused": False, "not_deployed": False,
+                "reason": "no JSON found in the verb's output "
+                          "(is the deployed pl older than the join-approval change?)",
+                "raw": raw}
+    out = {
+        "ok": bool(data.get("ok")),
+        "refused": bool(data.get("refused")),
+        "not_deployed": bool(data.get("not_deployed")),
+        "reason": str(data.get("reason", ""))[:600],
+        "request_id": str(data.get("request_id", ""))[:64],
+        "account": str(data.get("account", ""))[:80],
+        "display_name": str(data.get("display_name", ""))[:100],
+        "bundle": str(data.get("bundle", ""))[:64],
+        "state": str(data.get("state", ""))[:16],
+        "note": str(data.get("note", ""))[:300],
+    }
+    pw = data.get("password")
+    out["password"] = str(pw)[:64] if pw else ""
+    return out

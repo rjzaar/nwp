@@ -1,0 +1,68 @@
+{# The JOIN QUEUE for ONE demo site (operator ruling 2026-08-15).
+   Context: site, requests (parse_join_requests_json), can_act.
+
+   THE ACCESS MODEL, in one sentence: approval IS the persistence decision —
+   an unapproved join never becomes an account, and an approved tester
+   persists through the nightly reset with their own password.
+
+   Contract with the reader:
+     * this queue is the SITE's own answer, read through the pl wrapper;
+     * an unreadable store renders CANNOT VERIFY, never an empty queue
+       (ops#281) — "nobody is waiting" and "I could not look" are different
+       answers and only one is safe to act on;
+     * malformed lines are DECLARED, because a line the store could not parse
+       may be somebody whose request nobody will ever see;
+     * Approve is a real creation and says so on the button. #}
+{% if requests and requests.ok %}
+<p class="muted">pending: <strong>{{ requests.counts.pending }}</strong>
+   · approved: {{ requests.counts.approved }} · rejected: {{ requests.counts.rejected }}
+   <a class="chip" hx-get="/panes/demo/requests?site={{ site }}&force=1"
+      hx-target="#demo-requests-{{ site }}" role="button">⟳ re-read</a></p>
+{% if requests.malformed_lines %}
+<p class="err">{{ requests.malformed_lines }} line(s) in the request store could not be parsed —
+   this queue is NOT the whole truth. Somebody may have asked to join and not be listed here.</p>
+{% endif %}
+<table class="codetable">
+  <tr><th>request</th><th>name they gave</th><th>bundle</th><th>note</th><th>state</th>{% if can_act %}<th>decide</th>{% endif %}</tr>
+  {% for r in requests.requests %}
+  <tr>
+    <td class="muted">{{ r.id }}</td>
+    <td><strong>{{ r.display_name }}</strong></td>
+    <td>{{ r.bundle }}</td>
+    <td class="muted">{{ r.note }}</td>
+    <td>{{ r.state }}{% if r.account %} · {{ r.account }}{% endif %}</td>
+    {% if can_act and r.state == "pending" %}
+    <td>
+      <form hx-post="/actions/demo_join" hx-target="#demo-join-result-{{ site }}" style="display:inline">
+        <input type="hidden" name="site" value="{{ site }}">
+        <input type="hidden" name="op" value="approve">
+        <input type="hidden" name="request_id" value="{{ r.id }}">
+        <button class="primary"
+                hx-confirm="Approve {{ r.display_name }}? This CREATES their account and registers them as a tester, so they survive the nightly reset. Their password is shown ONCE on the next screen.">
+          Approve</button>
+      </form>
+      <form hx-post="/actions/demo_join" hx-target="#demo-join-result-{{ site }}" style="display:inline">
+        <input type="hidden" name="site" value="{{ site }}">
+        <input type="hidden" name="op" value="reject">
+        <input type="hidden" name="request_id" value="{{ r.id }}">
+        <button class="warn" hx-confirm="Reject {{ r.display_name }}? Nothing is created or destroyed — a join never made an account.">
+          Reject</button>
+      </form>
+    </td>
+    {% elif can_act %}<td class="muted">—</td>{% endif %}
+  </tr>
+  {% else %}
+  <tr><td colspan="{{ 6 if can_act else 5 }}" class="muted">nobody is waiting — this is a real measurement, not a failed read</td></tr>
+  {% endfor %}
+</table>
+<p class="muted">showing {{ requests.requests|length }} request(s) ({{ requests.state_filter }})
+   · a join records a request and creates NO account; approving is what creates the tester</p>
+<div id="demo-join-result-{{ site }}"></div>
+{% else %}
+<p class="err">CANNOT VERIFY the join queue for {{ site }}: {{ requests.reason if requests else "no queue data" }}</p>
+{% if requests and requests.not_deployed %}
+<p class="warnnote">The profile-side commands are not deployed yet — merge the nwp/nwc MR and deploy the profile to live {{ site }}, then re-read this panel.</p>
+{% endif %}
+<p class="muted">an unreadable queue must never look like an empty one — somebody may be waiting and unseen</p>
+{% if requests and requests.raw %}<details><summary>raw output</summary><pre>{{ requests.raw }}</pre></details>{% endif %}
+{% endif %}

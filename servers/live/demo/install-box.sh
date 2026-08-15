@@ -142,6 +142,26 @@ box "sudo mkdir -p '${STATE_DIR}/golden' '${STATE_DIR}/harvest/posted' /var/log/
 # runner; create it owned by the ssh user.
 box "sudo touch '${STATE_DIR}/last-reset' && sudo chown ${BOX_USER}:${BOX_USER} '${STATE_DIR}/last-reset'"
 
+# THE JOIN REQUEST STORE (operator ruling 2026-08-15). /demo/join records a
+# request here instead of minting an account, so this file is the ONLY record
+# that somebody asked to test — it must exist before the first visitor arrives.
+#
+# It is provisioned HERE, and owned by the WEB user, because ${STATE_DIR} is
+# root:root 0755: the site cannot create a file in it. That asymmetry is
+# deliberate on both sides — nwc_demo_access::isUsable() requires the file to
+# already exist and refuses every join if it does not, rather than writing
+# requests to a path nothing will ever read. So a missing provisioning step
+# shows up as loudly-refused joins, never as silently lost people.
+#
+# 0600 and web-owned: it names people who asked to join, and nothing but the
+# site needs to write it. It lives outside the site's database on purpose —
+# the nightly reset wipes that database, and a request submitted at 01:15
+# would otherwise be destroyed before anybody saw it.
+WEB_USER="${NWP_DEMO_WEB_USER:-www-data}"
+box "sudo touch '${STATE_DIR}/join-requests.jsonl' \
+     && sudo chown ${WEB_USER}:${WEB_USER} '${STATE_DIR}/join-requests.jsonl' \
+     && sudo chmod 0600 '${STATE_DIR}/join-requests.jsonl'"
+
 # logrotate: the box is small, keep the reset log bounded.
 box "printf '%s\n' '/var/log/nwp-demo/*.log {' '    weekly' '    rotate 8' '    compress' '    missingok' '    notifempty' '    copytruncate' '}' | sudo tee /etc/logrotate.d/nwp-demo >/dev/null && sudo chmod 0644 /etc/logrotate.d/nwp-demo"
 

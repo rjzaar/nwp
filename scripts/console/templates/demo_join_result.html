@@ -1,0 +1,40 @@
+{# Result of an approve/reject, or an add. Context: label, site, action
+   (parse_join_decision_json), error, res, requests.
+
+   NON-REDACTABLE, and deliberately so: on success this response carries the
+   tester's PASSWORD. It exists here, once, and in no cache, no audit line and
+   no log — the same credential discipline as the code-reveal and
+   sign-in-as-tester routes.
+
+   DISCHARGE (ops#327, structural): the queue the action just touched is
+   RE-READ and rendered below, on success AND on refusal. "Nothing changed" is
+   a result the operator sees, not one they have to infer. #}
+<h4>{{ label }} — {{ site }}</h4>
+{% if error %}
+<p class="err">{{ error }}</p>
+{% elif action and action.ok %}
+  {% if action.password %}
+  <p class="ok"><strong>{{ action.display_name or action.account }}</strong> is approved and can sign in now.</p>
+  <table class="codetable">
+    <tr><th>username</th><td><code>{{ action.account }}</code></td></tr>
+    <tr><th>password</th><td><code>{{ action.password }}</code></td></tr>
+  </table>
+  <p class="warnnote">This password is shown ONCE. It is not stored in the audit log, the demo
+     log or any cache — pass it to the tester before you leave this screen. They are now in the
+     tester registry, so they survive the nightly reset with this login.</p>
+  {% else %}
+  <p class="ok">{{ action.note or "done" }}{% if action.account %} — <code>{{ action.account }}</code>{% endif %}</p>
+  {% endif %}
+{% elif action %}
+<p class="err">REFUSED: {{ action.reason }}</p>
+{% if action.not_deployed %}
+<p class="warnnote">The profile-side commands are not deployed yet — merge the nwp/nwc MR and deploy the profile to live {{ site }}.</p>
+{% endif %}
+{% else %}
+<p class="err">CANNOT VERIFY — the verb returned nothing this console could read.</p>
+{% endif %}
+{% if res %}<details><summary>verb output ({{ res.secs }}s, rc={{ res.rc }})</summary><pre>{{ res.out }}{{ res.err }}</pre></details>{% endif %}
+{% if requests is not none %}
+<h5>the queue, re-read</h5>
+{% with requests = requests %}{% include "_demo_requests.html" %}{% endwith %}
+{% endif %}

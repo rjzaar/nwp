@@ -83,6 +83,42 @@
   {% endwith %}
   <div id="demo-codes-{{ d.site }}"></div>
 
+  {# --- the JOIN QUEUE (operator ruling 2026-08-15). Lazy for the same reason
+        the roster is: it is a live drush read over ssh. THE MODEL: a join
+        creates NO account — approving is what creates the tester and puts
+        them in the registry the nightly reset preserves. #}
+  <h4>Join requests</h4>
+  <div id="demo-requests-{{ d.site }}"
+       hx-get="/panes/demo/requests?site={{ d.site }}" hx-trigger="revealed once"
+       hx-swap="innerHTML">
+    <p class="muted">join queue loads when scrolled into view — read live from the site</p>
+  </div>
+
+  {% if can_act %}
+  <details class="actions">
+    <summary>Add a tester directly (no join request)</summary>
+    <form hx-post="/actions/demo_tester_add" hx-target="#demo-requests-{{ d.site }}">
+      <input type="hidden" name="site" value="{{ d.site }}">
+      <label>account <input name="account" required placeholder="Francis-1234"></label>
+      <label>name <input name="display_name" required placeholder="Rob Zaar"></label>
+      <label>bundle
+        <select name="bundle">
+          <option value="tester-member">Member</option>
+          <option value="tester-guild-leader">Guild leader</option>
+          <option value="tester-content-manager">Content manager</option>
+          <option value="tester-copyright-reviewer">Copyright reviewer</option>
+          <option value="tester-safeguarding-reviewer">Safeguarding reviewer</option>
+        </select></label>
+      <label>guild <input name="guild" placeholder="writers (optional seed key)"></label>
+      <label>level <input name="level" placeholder="0-10 (optional)"></label>
+      <label class="muted"><input type="checkbox" name="admin" value="1"> admin rights</label>
+      <button class="primary"
+              hx-confirm="Add this tester to {{ d.site }}'s registry? They will survive the nightly reset. The account must already exist on the site — this records WHO PERSISTS, it does not create a login.">
+        Add tester</button>
+    </form>
+  </details>
+  {% endif %}
+
   {# --- per-tester editor (ops#328 t3): lazy — the roster is a live drush
         read over ssh (~5-7 s), so it loads when revealed, not with the pane #}
   <h4>Testers</h4>

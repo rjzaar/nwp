@@ -267,7 +267,7 @@ SECTIONS: tuple = (
     {
         "id": "demo",
         "title": "Demo — the pane, control by control",
-        "summary": "Golden seal, invite codes, tester roster and editor, and the demo actions.",
+        "summary": "Golden seal, invite codes, the join queue, tester roster and editor, and the demo actions.",
         "blocks": (
             _t("One block per demo-tier site in scope. Everything here acts on the LIVE demo "
                "pair only — the tier that exists to be handed to outside testers — and every "
@@ -312,6 +312,43 @@ SECTIONS: tuple = (
                  "registry stores hashes only, so a code's plaintext survives only in the "
                  "invitation draft and the 0600 invite pack saved beside it."),
             ),
+            _t("JOIN REQUESTS — the queue of people who have asked to test, and the one "
+               "control that decides who exists at all. THE MODEL IN ONE SENTENCE: "
+               "approval IS the persistence decision. Somebody who enters a valid invite "
+               "code at /demo/join creates NO account — the join records a request and "
+               "nothing else — so an unapproved visitor cannot accumulate a login, and "
+               "there is nothing to wipe. Approving is what creates the account AND puts "
+               "them in the tester registry, which is the list the nightly reset "
+               "preserves. So an approved tester comes back tomorrow with their own "
+               "password; everyone else simply never existed."),
+            _d(
+                ("Approve", "Creates the tester and hands you their sign-in details. "
+                 "Under the hood it is deliberately ordered: the account is created "
+                 "BLOCKED, the registry is written and PROVEN, the payload is staged to "
+                 "the demo box, and only then is the account unblocked. If any step "
+                 "fails the whole approval is abandoned and says so — an account that "
+                 "was never registered is wiped tonight, so the refusal tells you not to "
+                 "tell anybody they are in."),
+                ("The password", "Shown ONCE, in the approval result, and stored nowhere "
+                 "— not in the audit log, not in the demo log, not in any cache. Pass it "
+                 "to the tester before you close the panel. If you lose it, approve is "
+                 "not repeatable; reset the account's password on the site instead."),
+                ("Reject", "Records the decision so the queue stops showing it. Nothing "
+                 "is created and nothing is destroyed, because a join never made an "
+                 "account in the first place."),
+                ("Add a tester", "The same registry write without a join request: give "
+                 "the account name, the name you want to see in the list, and a bundle. "
+                 "Use it for people you are setting up yourself. Optional guild, "
+                 "Sojourner level and admin rights."),
+                ("Malformed lines", "If the request store has lines the site could not "
+                 "parse, the count is shown. It means the queue is NOT the whole truth — "
+                 "somebody may have asked to join and not be listed."),
+            ),
+            _n("Who may approve: any console OPERATOR, in a project that carries the "
+               "site. That is how \u201cme or another tester with admin rights\u201d is "
+               "expressed \u2014 give that person a console account with the operator role. "
+               "There is deliberately no separate tester-admin permission, because a "
+               "policy expressed in two places is a policy that drifts."),
             _t("TESTERS — the fenced roster, read live from the site (a ~5-7 second read, so "
                "it loads when scrolled into view; ⟳ re-reads it). Only the synthetic "
                "@demo.invalid accounts are editable; real accounts are counted but not "

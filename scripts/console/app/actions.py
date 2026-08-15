@@ -32,6 +32,16 @@ TESTER_SEED_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 TESTER_GROUP_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 TESTER_LEVEL_MIN, TESTER_LEVEL_MAX = 1, 12
 
+# The join queue's request ids (`r-` + 12 hex from JoinRequestStore) and the
+# human name a tester is known by. The name is the ONE free-text field on this
+# whole surface, so it is validated tightly at the door rather than escaped at
+# every render: letters, marks, digits, spaces and ordinary name punctuation.
+JOIN_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# Anchored both ends, so a `<`, `;`, `/` or control character anywhere fails.
+# The value is .strip()ed before matching, so a trailing space cannot pass.
+DISPLAY_NAME_RE = re.compile(r"^[^\W\d_][\w .'\u2019-]{0,99}$", re.UNICODE)
+
+
 # Role bundles `pl demo codes issue` accepts (decisions §4.4 — sitemanager never).
 BUNDLES = (
     "tester-member",
@@ -131,6 +141,72 @@ def _valid_level(value) -> str:
     if not (TESTER_LEVEL_MIN <= n <= TESTER_LEVEL_MAX):
         raise ActionError(f"level must be {TESTER_LEVEL_MIN}..{TESTER_LEVEL_MAX}")
     return str(n)
+
+
+def _valid_request_id(value) -> str:
+    """A join request id. Named refusal, never a bare False — a caller's test
+    that only proves non-zero proves nothing about which rule fired."""
+    if not isinstance(value, str) or not JOIN_REQUEST_ID_RE.match(value):
+        raise ActionError("invalid join request id")
+    return value
+
+
+def _valid_display_name(value) -> str:
+    """The name a tester is known by, as the operator types it.
+
+    This is the only free text on the surface, and it lands in a file the reset
+    leg reads and a table the console renders, so it is bounded HERE. Refusing
+    at the door beats escaping at every render, and the registry library
+    revalidates it anyway — two independent checks, not one trusted one.
+    """
+    if not isinstance(value, str):
+        raise ActionError("invalid display name")
+    v = value.strip()
+    if not v or len(v) > 100 or not DISPLAY_NAME_RE.match(v):
+        raise ActionError(
+            "invalid display name — letters, digits, spaces, apostrophes, "
+            "dots and hyphens only, up to 100 characters"
+        )
+    return v
+
+
+def _valid_bundle(value) -> str:
+    """A tester bundle, from the literal allowlist.
+
+    `sitemanager` and `administrator` were DECIDED OUT and the apply-route
+    bundles mint accounts on the site's real application form, not here —
+    neither is representable, because the allowlist has no entry for them.
+    """
+    if not isinstance(value, str) or value not in BUNDLES:
+        raise ActionError(
+            "invalid bundle — must be one of: " + ", ".join(BUNDLES)
+        )
+    return value
+
+
+def _add_optionals(p: dict) -> list:
+    """The optional attributes of an added tester.
+
+    Absent means ABSENT: an empty guild must never become `--guild=`, which the
+    verb would then have to interpret. Every value is shape-checked here and
+    revalidated by the verb's library.
+    """
+    out = []
+    guild = (p.get("guild") or "").strip()
+    if guild:
+        if not TESTER_SEED_KEY_RE.match(guild):
+            raise ActionError("invalid guild seed key")
+        out.append(f"--guild={guild}")
+    level = str(p.get("level") or "").strip()
+    if level:
+        if not level.isdigit() or not (0 <= int(level) <= 10):
+            raise ActionError("invalid level — 0 to 10")
+        out.append(f"--level={int(level)}")
+    # A checkbox: any truthy form the browser sends means "grant it", but the
+    # flag itself is a fixed literal, never built from the value.
+    if str(p.get("admin") or "").strip().lower() in ("1", "true", "on", "yes"):
+        out.append("--admin")
+    return out
 
 
 def _build_tester_set_guild(p: dict, ds: list) -> list:
@@ -238,6 +314,62 @@ ACTIONS: dict = {
         # site to report demo_mode=true; the drush command refuses accounts
         # off the @demo.invalid fence and validates the real role set.
         "build": _build_tester_set_guild,
+    },
+    # -- the join queue (operator ruling 2026-08-15) ------------------------
+    #
+    # THE ACCESS MODEL, in one sentence: approval IS the persistence decision —
+    # an unapproved join never becomes an account, and an approved tester
+    # persists through the nightly reset with their own password.
+    #
+    # WHO MAY APPROVE: operator on BOTH axes. "the operator, and testers
+    # holding admin rights" is expressed by giving that person a console
+    # account with the operator role — the mechanism that already exists and
+    # is already capped by effective_project_role. A separate "tester admin"
+    # permission would be a second policy answering the same question, and a
+    # policy expressed twice is a policy that drifts.
+    "demo_join_approve": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Approve this join request (creates the tester)",
+        # Wraps `pl demo testers … approve`, which orchestrates: create the
+        # account BLOCKED, write the tester registry, stage the payload, and
+        # only THEN activate. The console never sees those steps individually
+        # — it sees one verb that either approved somebody or refused and said
+        # why, which is the only honest granularity for an operator.
+        "build": lambda p, ds: [
+            "demo", "testers", _valid_site(p.get("site", ""), ds), "approve",
+            _valid_request_id(p.get("request_id", "")), "--tier=live", "--json",
+        ],
+    },
+    "demo_join_reject": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Reject this join request",
+        # Creates nothing and destroys nothing: it records the decision so the
+        # queue stops showing it. Nobody had an account to remove, because a
+        # join never made one.
+        "build": lambda p, ds: [
+            "demo", "testers", _valid_site(p.get("site", ""), ds), "reject",
+            _valid_request_id(p.get("request_id", "")), "--tier=live", "--json",
+        ],
+    },
+    "demo_tester_add": {
+        "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
+        "label": "Add a tester to the registry",
+        # The operator's "I'd like to be able to add new testers to the list,
+        # ie setting their names". Writes the tester registry and re-stages the
+        # payload — so the person survives tonight's reset — without going
+        # through a join request at all.
+        "build": lambda p, ds: [
+            "demo", "testers", _valid_site(p.get("site", ""), ds), "add",
+            _valid_tester_account(p.get("account", "")),
+            _valid_display_name(p.get("display_name", "")),
+            _valid_bundle(p.get("bundle", "")),
+        ] + _add_optionals(p) + ["--tier=live", "--json"],
     },
     "demo_tester_set_level": {
         "min_role": "operator",

@@ -149,6 +149,23 @@ GOLDEN_DB="golden.db.sql.gz"
 GOLDEN_FILES="golden.files.tar.gz"
 STAMP_FILE="${STATE_DIR}/last-reset"
 HARVEST_DIR="${STATE_DIR}/harvest"
+
+# ---- Tester identity, the consumer half (ops#369) --------------------------
+# THIS HALF STORES NO PASSWORD. Testers reach ssd by SSO from nwd, so the login
+# the operator asked about lives entirely on the provider and there is nothing
+# here to preserve. What CAN break here is the BINDING: mdl_user.idnumber is a
+# UID lock onto the nwd account's uuid, and if the provider ever handed a
+# tester a NEW uuid their Moodle identity would fork — a second Moodle account,
+# no history, and the tester would say "it forgot me" even though their
+# password worked.
+#
+# So the provider's leg preserves the UUID (not the uid — the uid sequence
+# rewinds to the golden's high-water mark on every restore, the uuid does not),
+# and this half's job is to PROVE that held rather than assume it. The check
+# reads the provider's capture directly: both wrappers run as the same unix
+# user on the same box, so this needs no new transport, no token and no
+# widening of what the restricted key can do.
+NWD_TESTERS_CAPTURE="/var/lib/nwp-demo/nwd/testers/identity-latest.json"
 LOCK_FILE="/var/lock/ssd-demo-reset.lock"
 PAIR_LOCK_FILE="/var/lock/nwd-demo-reset.lock"
 LOG_FILE="/var/log/nwp-demo/ssd-demo-reset.log"
@@ -257,6 +274,7 @@ resolve_action() {
         status)       echo "status" ;;
         harvest)      echo "harvest" ;;
         harvest-post) echo "harvest-post" ;;
+        testers-uidlock) echo "testers-uidlock" ;;
         *)            echo "REFUSED" ;;
     esac
 }
@@ -268,7 +286,7 @@ if [[ "$ACTION" == "REFUSED" ]]; then
     cat >&2 <<EOF
 REFUSED: this key may only run the ssd demo reset.
 The command you sent was logged and NOT executed.
-Allowed action words: (empty)|nightly | reset | dry-run | status | harvest | harvest-post
+Allowed action words: (empty)|nightly | reset | dry-run | status | harvest | harvest-post | testers-uidlock
 (feedback-sync and feedback-status are nwd-only: Moodle forwards feedback at submit
 time, so there is no pending set and no /my/feedback return leg here.)
 EOF
@@ -303,6 +321,66 @@ cfg_scalar() {
 }
 
 ################################################################################
+# ops#369 — the UID-lock invariant, read-only.
+#
+# THE INVARIANT: every uuid the provider preserved is bound to AT MOST ONE
+# live Moodle user. Zero is fine and normal (a tester who has not visited the
+# courses side yet, or one whose Moodle account went with the wipe and will be
+# recreated by SSO on their next login — with the SAME uuid, which is the whole
+# point). TWO OR MORE is a forked identity and is the failure this exists to
+# catch.
+#
+# It deliberately does NOT check the username: the OIDC claim→field mapping is
+# the auth plugin's business and this wrapper does not get to have an opinion
+# about it. The uuid binding is the thing the provider's leg is responsible
+# for, so the uuid binding is the thing measured here. A check that asserts
+# something it cannot actually establish is worse than no check.
+#
+# Sets TESTERS_UIDLOCK_VERDICT: ok | forked | no-capture | unreadable.
+TESTERS_UIDLOCK_VERDICT="not-run"
+TESTERS_UIDLOCK_DETAIL=""
+
+testers_uidlock_check() {
+    if [[ ! -s "$NWD_TESTERS_CAPTURE" ]]; then
+        TESTERS_UIDLOCK_VERDICT="no-capture"
+        TESTERS_UIDLOCK_DETAIL="no provider capture at ${NWD_TESTERS_CAPTURE}"
+        return 0
+    fi
+    if ! jq -e '.version == 1 and (.testers|type=="array")' "$NWD_TESTERS_CAPTURE" >/dev/null 2>&1; then
+        TESTERS_UIDLOCK_VERDICT="unreadable"
+        TESTERS_UIDLOCK_DETAIL="provider capture is not a version-1 document"
+        return 1
+    fi
+
+    local checked=0 bound=0 unbound=0 forked=0 forked_names="" uuid name n
+    while IFS=$'\t' read -r uuid name; do
+        [[ "$uuid" =~ ^[0-9a-f-]{36}$ ]] || continue
+        checked=$(( checked + 1 ))
+        # A garbled count must never read as zero — the same rule [G4] follows.
+        n="$(sqlq "SELECT COUNT(*) FROM ${DB_PREFIX}user WHERE idnumber = '${uuid}' AND deleted = 0;" | tr -dc '0-9')"
+        if [[ -z "$n" ]]; then
+            TESTERS_UIDLOCK_VERDICT="unreadable"
+            TESTERS_UIDLOCK_DETAIL="the user table could not be counted for at least one uuid"
+            return 1
+        fi
+        case "$n" in
+            0) unbound=$(( unbound + 1 )) ;;
+            1) bound=$(( bound + 1 )) ;;
+            *) forked=$(( forked + 1 )); forked_names+="${name}(${n}) " ;;
+        esac
+    done < <(jq -r '.testers[] | [.uuid, .name] | @tsv' "$NWD_TESTERS_CAPTURE" 2>/dev/null)
+
+    TESTERS_UIDLOCK_DETAIL="checked=${checked} bound=${bound} unbound=${unbound} forked=${forked}"
+    if [[ "$forked" -gt 0 ]]; then
+        TESTERS_UIDLOCK_VERDICT="forked"
+        TESTERS_UIDLOCK_DETAIL+=" names=${forked_names}"
+        return 1
+    fi
+    TESTERS_UIDLOCK_VERDICT="ok"
+    return 0
+}
+
+################################################################################
 # status — read-only, no guards needed
 ################################################################################
 
@@ -318,6 +396,8 @@ if [[ "$ACTION" == "status" ]]; then
     fi
     echo "last reset:  $(cat "$STAMP_FILE" 2>/dev/null || echo none)"
     echo "demo_mode:   $(sqlq "SELECT value FROM ${DB_PREFIX}config WHERE name='nwp_demo_mode';" | tr -d '[:space:]' || true)"
+    testers_uidlock_check || true
+    echo "testers_uidlock: ${TESTERS_UIDLOCK_VERDICT}${TESTERS_UIDLOCK_DETAIL:+ (${TESTERS_UIDLOCK_DETAIL})}"
     echo "--- last 15 log lines ---"
     tail -n 15 "$LOG_FILE" 2>/dev/null || true
     exit 0
@@ -332,6 +412,16 @@ fi
 # the only record of a bad night one crashed pipe away from gone. The consumer
 # deduplicates by filename against what it has already posted.
 ################################################################################
+
+# ops#369 — the UID-lock invariant on its own, so it can be asked without a
+# reset and without the rest of `status`. Read-only; exit 1 when the invariant
+# is broken or cannot be measured, so a caller can grade it.
+if [[ "$ACTION" == "testers-uidlock" ]]; then
+    rc=0; testers_uidlock_check || rc=$?
+    log "testers-uidlock" "verdict=${TESTERS_UIDLOCK_VERDICT} ${TESTERS_UIDLOCK_DETAIL}"
+    echo "testers_uidlock: ${TESTERS_UIDLOCK_VERDICT}${TESTERS_UIDLOCK_DETAIL:+ (${TESTERS_UIDLOCK_DETAIL})}"
+    exit "$rc"
+fi
 
 if [[ "$ACTION" == "harvest" ]]; then
     if [[ ! -d "$HARVEST_DIR" ]]; then
@@ -827,12 +917,25 @@ fi
 # invite codes are a provider-side concept. Calling for either here would fail
 # on a host that has neither.
 
+# --- ops#369: the UID lock, after the restore ------------------------------
+# The provider preserved the uuids; this asserts no tester's Moodle identity
+# forked as a result. A fork is a degradation, not a fatal: the data is already
+# restored and the site is up, and what the operator needs is to be TOLD.
+DEGRADED_UIDLOCK=false
+testers_uidlock_check || DEGRADED_UIDLOCK=true
+log "testers-uidlock" "verdict=${TESTERS_UIDLOCK_VERDICT} ${TESTERS_UIDLOCK_DETAIL}"
+case "$TESTERS_UIDLOCK_VERDICT" in
+    ok)         echo "OK  UID lock intact (${TESTERS_UIDLOCK_DETAIL})" ;;
+    no-capture) echo "..  no provider tester capture on this box — UID lock not asserted (nwd's leg has not run here yet)." ;;
+    *)          echo "FAIL  UID lock: ${TESTERS_UIDLOCK_VERDICT} (${TESTERS_UIDLOCK_DETAIL}) — a tester's Moodle identity may have forked." ;;
+esac
+
 # --- smoke ------------------------------------------------------------------
 # Retried on purpose: the first request after a cache purge is a cold full
 # render, and on this small shared host that can 5xx once before the caches
 # warm. A single sample would report a healthy site as broken. Persistent
 # failure is real and degrades the exit status.
-DEGRADED=false
+DEGRADED="$DEGRADED_UIDLOCK"
 CODE=""
 for _ in $(seq 1 "$SMOKE_ATTEMPTS"); do
     CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DOMAIN}/" 2>/dev/null || echo 000)"

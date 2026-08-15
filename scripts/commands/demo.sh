@@ -3225,6 +3225,7 @@ _cmd_reset_paired_live_body() {
 # that will eventually stop the nightly.
 demo_nightly_via_key() {
     local site="$1" host_override="${2:-}" dry_run="${3:-false}" print_transport="${4:-false}"
+    local force="${5:-false}"
     local -a sshargs=()
     mapfile -t sshargs < <(demo_box_ssh_args "$site" "$host_override")
     (( ${#sshargs[@]} > 0 )) || {
@@ -3243,7 +3244,16 @@ demo_nightly_via_key() {
         return 0
     fi
 
+    # THREE action words, one transport. `nightly` is the scheduled word and is
+    # a no-op once today's reset has succeeded — which is right for cron and
+    # useless for anyone who has to PROVE what a reset does. `--force` sends the
+    # box's `reset` word instead: it overrides the box's daily stamp (never its
+    # minimum interval, its idle guard, its golden verification or its manifest
+    # — those are guarantees, not conveniences). Without it there was no pl
+    # route to the `reset` word at all, so the only way to re-run a nightly on
+    # demand was a raw ssh line, which is the idiom the standing order forbids.
     local action="nightly"
+    [[ "$force"   == "true" ]] && action="reset"
     [[ "$dry_run" == "true" ]] && action="dry-run"
 
     print_header "Nightly demo reset via the restricted key: $site (live)"
@@ -3450,7 +3460,7 @@ demo_ops_token_present() {
 cmd_nightly() {
     local site="$1" tier="$2" use_pair="${3:-false}"
     local via_key="${4:-false}" host_override="${5:-}" dry_run="${6:-false}"
-    local print_transport="${7:-false}"
+    local print_transport="${7:-false}" force="${8:-false}"
     local rc now
 
     # --via-key is a different NIGHTLY, not a different reset: it hands the wipe
@@ -3462,7 +3472,7 @@ cmd_nightly() {
             print_error "REFUSED: --via-key is a LIVE-tier transport (the restricted key reaches the live box)."
             return 2
         fi
-        demo_nightly_via_key "$site" "$host_override" "$dry_run" "$print_transport"
+        demo_nightly_via_key "$site" "$host_override" "$dry_run" "$print_transport" "$force"
         return $?
     fi
 
@@ -3693,7 +3703,7 @@ cmd_status_box() {
     # the text surface told the operator to redeploy for a block that half will
     # never emit.
     if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
-        NWP_DEMO_EXTRAS_PREBUILT="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER")" \
+        NWP_DEMO_EXTRAS_PREBUILT="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER" "$raw")" \
             demo_box_render_extras "$site" "$raw"
     else
         demo_box_render_extras "$site" "$raw"
@@ -3706,6 +3716,69 @@ cmd_status_box() {
 # CANNOT VERIFY. The return leg is hourly, so a newest event older than two
 # cycles is CANNOT VERIFY (stale return leg) — a stopped leg must never keep
 # reading as its last good run.
+# demo_box_render_testers <extras-json> — the ops#369 block.
+#
+# THREE STATES, THREE DIFFERENT ACTIONS, and the whole reason this is not one
+# line: "no roster is staged" (stage one), "the roster is staged and last
+# night's run carried the logins across" (nothing to do), and "the run did NOT
+# carry them across" (the testers named in the roster have to be given a login
+# again). Collapsing any two of those is how an operator comes to believe
+# testers are safe when they are not.
+demo_box_render_testers() {
+    local extras="$1"
+    echo ""
+    echo "  Tester logins across the nightly reset:"
+    local reported state reason
+    reported="$(jq -r '.testers.reported // "absent"' <<<"$extras")"
+    state="$(jq -r '.testers.state // "old-wrapper"' <<<"$extras")"
+    reason="$(jq -r '.testers.reason // "the box did not report tester persistence"' <<<"$extras")"
+    if [[ "$reported" != "true" ]]; then
+        # A wrapper we LOOKED at and found too old earns the redeploy hint. One
+        # we never read does not: "redeploy to fix a thing I did not measure"
+        # is an instruction that cannot come true (the ops#329 D6 lesson).
+        if [[ "$state" == "not-read" ]]; then
+            print_status "INFO" "not measured — ${reason}"
+        else
+            print_status "WARN" "NOT REPORTED — ${reason}"
+        fi
+        return 0
+    fi
+
+    local reg verdict detail ts lock preserved
+    reg="$(jq -r '.testers.registry // ""'  <<<"$extras")"
+    verdict="$(jq -r '.testers.verdict // "none"' <<<"$extras")"
+    detail="$(jq -r '.testers.detail // ""'  <<<"$extras")"
+    ts="$(jq -r '.testers.ts // ""'          <<<"$extras")"
+    lock="$(jq -r '.testers.uid_lock // ""'  <<<"$extras")"
+    preserved="$(jq -r '.testers.preserved'  <<<"$extras")"
+
+    case "$reg" in
+        "")            ;;
+        "NOT STAGED"*) print_status "WARN" "no tester registry staged — NO login survives a reset" ;;
+        "MALFORMED"*)  print_status "FAIL" "the staged tester registry is MALFORMED — NO login survives a reset" ;;
+        *STALE)        print_status "WARN" "registry: ${reg%% STALE} (STALE — re-stage: install-box.sh <site> --stage-testers)" ;;
+        *)             echo "    registry: ${reg}" ;;
+    esac
+
+    case "$verdict" in
+        none)     print_status "INFO" "the preservation leg has not run yet on this box" ;;
+        restored) print_status "OK"   "testers were preserved last night${detail:+ (${detail})}${ts:+ at ${ts}}" ;;
+        not-staged) ;;   # already said above; do not say it twice
+        *)
+            # EVERY other verdict means somebody has to ask for a login again.
+            print_status "FAIL" "TESTERS WERE NOT PRESERVED last night — ${verdict}${detail:+: ${detail}}"
+            print_hint  "Those testers must be given a login again. Check the box log for the named reason." ;;
+    esac
+    [[ "$preserved" == "true" || "$verdict" == "none" || "$verdict" == "not-staged" ]] || true
+
+    [[ -n "$lock" ]] && case "$lock" in
+        ok*)         print_status "OK"   "UID lock intact — ${lock}" ;;
+        no-capture*) print_status "INFO" "UID lock not asserted — ${lock}" ;;
+        *)           print_status "FAIL" "UID lock — ${lock} (a tester's Moodle identity may have forked)" ;;
+    esac
+    return 0
+}
+
 demo_box_render_extras() {
     local site="$1" raw="$2" extras
     if [[ -n "${NWP_DEMO_EXTRAS_PREBUILT:-}" ]]; then
@@ -3713,6 +3786,12 @@ demo_box_render_extras() {
     else
         extras="$(demo_box_extras_json "$raw")"
     fi
+
+    # ops#369 — tester identity persistence. Rendered FIRST, before the return
+    # leg and the backups, because it is the block an operator is most likely
+    # to be looking for: it answers "can the person I gave a login to still log
+    # in this morning?".
+    demo_box_render_testers "$extras"
 
     echo ""
     echo "  Return leg (hourly feedback-status, box's own log):"
@@ -3846,7 +3925,11 @@ cmd_seal_status() {
         # box-level facts and the pair provider's wrapper is their one
         # reporter — a by_design absence must never render as an error.
         if demo_pair_resolve "$site" 2>/dev/null && [[ "$site" != "$DEMO_PAIR_PROVIDER" ]]; then
-            extras="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER")"
+            # Still read THIS half's box status: the UID-lock verdict is the
+            # consumer's own fact and nobody else can report it.
+            local cons_raw=""
+            cons_raw="$(demo_box_reset_status "$site" 2>/dev/null)" || cons_raw=""
+            extras="$(demo_box_extras_by_design_json "$DEMO_PAIR_PROVIDER" "$cons_raw")"
         else
             local box_raw=""
             box_raw="$(demo_box_reset_status "$site" 2>/dev/null)" || box_raw=""
@@ -6246,7 +6329,7 @@ main() {
                       local _pg=""; [[ "$with_pair" == "no" ]] && _pg="skip"
                       cmd_reset "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run" "$_pg"
                   fi ;;
-        nightly)  cmd_nightly "$site" "$tier" "$use_pair" "$via_key" "$box_host" "$dry_run" "$print_transport" ;;
+        nightly)  cmd_nightly "$site" "$tier" "$use_pair" "$via_key" "$box_host" "$dry_run" "$print_transport" "$auto_yes" ;;
         status)   cmd_status "$site" "$tier" ;;
         seal-status) cmd_seal_status "$site" "$tier" ;;
         walkthrough) cmd_walkthrough "$site" "$tier" "$do_verify" ;;

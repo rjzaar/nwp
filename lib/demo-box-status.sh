@@ -346,10 +346,26 @@ demo_box_extras_json() {
     if [[ -z "$raw" ]]; then
         tt_json='{"reported":false,"state":"not-read","reason":"this half'"'"'s box status was not read, so tester persistence is UNKNOWN"}'
     else
+        # ONE PROCESS, NO PIPELINE — ops#351. The obvious spelling here is
+        # `sed -n 's/^k: //p' | head -1`, and under `set -o pipefail` (which
+        # `pl` sets and this lib inherits) that is a coin flip: `head` exits on
+        # the first line, the kernel kills `sed` with SIGPIPE, 141 becomes the
+        # pipeline's status, and `set -e` aborts on a read that actually
+        # SUCCEEDED. The race can only turn a match into an apparent no-match.
+        #
+        # That direction is why it mattered *here* in particular: this function
+        # is the one that reports whether testers were preserved. A status
+        # reader that can silently come back empty while looking fine is the
+        # same class as the `captured=0` bug this feature was built around —
+        # the last place it may live is the verdict path.
+        #
+        # `|| true` would have silenced the lint and kept the defect, so: awk
+        # does the match and the first-line stop in a single process, and the
+        # substitution's status is awk's own (0 whether or not it matched).
         local tt_reg tt_last tt_lock
-        tt_reg="$(printf '%s\n' "$raw" | sed -n 's/^testers_registry: //p' | head -1)"
-        tt_last="$(printf '%s\n' "$raw" | sed -n 's/^last_testers_preserved: //p' | head -1)"
-        tt_lock="$(printf '%s\n' "$raw" | sed -n 's/^testers_uidlock: //p' | head -1)"
+        tt_reg="$(awk  'sub(/^testers_registry: /,""){print; exit}'       <<<"$raw")"
+        tt_last="$(awk 'sub(/^last_testers_preserved: /,""){print; exit}' <<<"$raw")"
+        tt_lock="$(awk 'sub(/^testers_uidlock: /,""){print; exit}'        <<<"$raw")"
         if [[ -z "$tt_reg" && -z "$tt_last" && -z "$tt_lock" ]]; then
             tt_json='{"reported":false,"state":"old-wrapper","reason":"the deployed wrapper predates tester identity persistence (redeploy: bash servers/live/demo/install-box.sh <site> --no-key)"}'
         else

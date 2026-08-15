@@ -148,17 +148,54 @@ ul.plain li { padding: 2px 0; font-size: 13.5px; }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
 details > summary { cursor: pointer; color: var(--muted); }
 
-/* ---- full-screen tabs (top bar on wide screens, bottom nav on phones) ---- */
-.tabbar { display: flex; gap: 2px; align-items: stretch; position: sticky; top: 49px;
-  z-index: 4; background: var(--bg); border-bottom: 1px solid var(--line);
-  padding: 4px 0; overflow-x: auto; scrollbar-width: none; }
+/* ---- full-screen tabs (top bar on wide screens, bottom nav on phones) ----
+   SIZED TO A BUDGET, and the budget is a test. The tenth pane (Sessions)
+   overflowed this bar: 10 x 64px + gaps + the ⟳/? controls wanted 728px of
+   content in the 672px the desktop bar has at its narrowest (the phone
+   breakpoint is 700px and `main` carries 14px of padding a side). Worse,
+   `scrollbar-width: none` meant the overflow was completely unsignalled.
+   tests/test_tabbar_fit.py re-derives the arithmetic from these declarations
+   and from PANES, so an 11th tab goes red instead of going missing. Change
+   min-width / padding / gap / label font-size together, and re-run it. */
+.tabbar { display: flex; gap: 1px; align-items: stretch; position: sticky; top: 49px;
+  z-index: 4; border-bottom: 1px solid var(--line);
+  padding: 4px 0; overflow-x: auto;
+  /* The bar may scroll — it may not scroll invisibly. Two affordances,
+     because neither covers every platform on its own: a thin scrollbar
+     (desktop), and scroll shadows that fade in at whichever edge still has
+     tabs behind it (touch, where scrollbars are overlay-only and hidden at
+     rest). The shadows are pure CSS: the two `local` layers scroll WITH the
+     content and paint the page background over the shadow when you reach that
+     end, so nothing shows when everything fits. rgba() spells out --bg /
+     --accent because a gradient to `transparent` fades through black. */
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg) 40%, rgba(16, 21, 28, 0)),
+    linear-gradient(to left,  var(--bg) 40%, rgba(16, 21, 28, 0)),
+    linear-gradient(to right, rgba(77, 163, 255, .55), rgba(77, 163, 255, 0)),
+    linear-gradient(to left,  rgba(77, 163, 255, .55), rgba(77, 163, 255, 0));
+  background-repeat: no-repeat;
+  background-position: left center, right center, left center, right center;
+  background-size: 28px 100%, 28px 100%, 10px 100%, 10px 100%;
+  background-attachment: local, local, scroll, scroll; }
+.tabbar::-webkit-scrollbar { height: 4px; }
+.tabbar::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+.tabbar::-webkit-scrollbar-track { background: transparent; }
 .tab { display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 1px; flex: 1 1 0; min-width: 64px; border: none; background: transparent;
-  border-radius: 8px 8px 0 0; padding: 6px 4px; color: var(--muted); }
-.tab .tab-label { font-size: 13.5px; font-weight: 600; }
+  gap: 1px; flex: 1 1 0; min-width: 59px; border: none; background: transparent;
+  border-radius: 8px 8px 0 0; padding: 6px 2px; color: var(--muted); }
+/* min-width/padding/font-size are one decision: 59 - 2x2 = 55px of content, and
+   the longest label ("Sessions") measures 4.2141em => 50.6px at 12px. Tabs are
+   `flex: 1 1 0`, so this floor only bites at the very narrow end; at 1280px each
+   tab is ~116px wide. */
+.tab .tab-label { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .tab .tab-count { font-size: 11px; min-height: 14px; line-height: 14px; white-space: nowrap; }
 .tab.active { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
 .tab-refresh { flex: 0 0 auto; align-self: center; }
+/* button-only: the "?" help link is an <a> and takes no button padding, so
+   widening `.tab-refresh` would cost width twice over for no tap-target gain. */
+button.tab-refresh { padding: 6px 8px; }
 .alert-dot { color: var(--err); font-size: 10px; }
 .pane-body { padding-top: 12px; }
 @media (max-width: 700px) {

@@ -31,11 +31,27 @@ wired here by design — run those on the workstation. Heavy issue edits: <a hre
   var PANES = [{% for pane, label in panes %}'{{ pane }}'{{ "," if not loop.last }}{% endfor %}];
   var KEY = 'nwp-console-tab';
 
+  // On a phone the bar cannot show ten tabs at any readable size, so it
+  // scrolls (with the edge-fade affordance in style.css). Scroll the ACTIVE
+  // tab into view rather than leaving the operator on a pane whose tab is off
+  // the edge. Nudges the bar's own scrollLeft only — never scrollIntoView,
+  // which would move the page under a sticky bar.
+  function revealTab(el) {
+    var bar = document.getElementById('tabbar');
+    if (!bar || !el || !bar.clientWidth) { return; }
+    var left = el.offsetLeft, right = left + el.offsetWidth;
+    if (left < bar.scrollLeft) { bar.scrollLeft = Math.max(0, left - 8); }
+    else if (right > bar.scrollLeft + bar.clientWidth) {
+      bar.scrollLeft = right - bar.clientWidth + 8;
+    }
+  }
+
   function setActive(p) {
     PANES.forEach(function (q) {
       var el = document.getElementById('tab-' + q);
       if (el) { el.classList.toggle('active', q === p); el.setAttribute('aria-selected', q === p); }
     });
+    revealTab(document.getElementById('tab-' + p));
     var help = document.getElementById('pane-help');
     if (help) { help.href = '/help/' + p; }
     try { localStorage.setItem(KEY, p); } catch (e) { /* private mode: no persistence */ }

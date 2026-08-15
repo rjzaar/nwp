@@ -175,3 +175,11 @@ scripts/install-mini-runner.sh:live-internal-domain:50
 # (the v1 tile page's own wording, live on ssd) — the substring "mini" is not a
 # host reference. Path+line pinned; re-pin if the file shifts.
 scripts/demo/ssd-front-page-tiles.php:internal-bare-hostname:168
+
+# MR !456 vendored xterm.js: a minified identifier chain in the bundle (two
+# internal map-class assignments whose names end in "KeyMap") reads as a key
+# assignment to generic-api-key on gitleaks 8.30.0. Do NOT quote the matched
+# string here — the quote itself re-trips the rule (proven on pipeline 2343).
+# Vendored upstream artifact (pinned + sha-verified by fetch-xterm.sh), not a
+# credential. Path+line pinned; re-pin on any vendor bump.
+scripts/console/static/vendor/xterm.min.js:generic-api-key:1

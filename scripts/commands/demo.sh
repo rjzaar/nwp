@@ -59,6 +59,7 @@ source "$REPO_ROOT/lib/demo-clip-survival.sh"  # ops#338 clip-choice survival ch
 source "$REPO_ROOT/lib/demo-live-moodle.sh"  # Moodle half of the LIVE tier (ops#170)
 source "$REPO_ROOT/lib/demo-box-status.sh"   # the BOX's own reset record (ops#198)
 source "$REPO_ROOT/lib/demo-walkthrough.sh"  # walkthrough target catalogue (ops#328 t5)
+source "$REPO_ROOT/lib/tester-registry.sh"   # WHO SURVIVES THE RESET (approval lifecycle)
 source "$REPO_ROOT/lib/canonical.sh"     # canonical_get_phase — the PROD-PHASE guard
 source "$REPO_ROOT/lib/deploy-gate.sh"   # deploy_gate_require (live tier only)
 
@@ -273,6 +274,41 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   from). Fail-closed: an unreadable site or an
                                   undeployed drush command is exit 2 with a
                                   typed JSON reason, never an empty roster.
+    testers <site> requests [--state=pending|all|approved|rejected]
+                                  The JOIN QUEUE: who has asked to test and has
+                                  not been decided. A /demo/join enrolment
+                                  records a REQUEST and creates NO account —
+                                  approval is what creates the tester. Read
+                                  only; an unreadable store is exit 2 CANNOT
+                                  VERIFY, never an empty queue, and any
+                                  unparseable lines are counted so the queue
+                                  never claims to be the whole truth.
+    testers <site> approve <request-id> --tier=live
+                                  Approve a join request. ORDERED so a
+                                  half-finished approval cannot hurt anybody:
+                                  the account is created BLOCKED, the tester
+                                  registry is written and PROVEN, the payload
+                                  is staged to the box, and only THEN is the
+                                  account activated. Any step failing abandons
+                                  the whole approval and says so — an account
+                                  that was never registered is wiped tonight,
+                                  so the refusal tells you not to tell anybody
+                                  they are in. Prints the tester's password
+                                  ONCE; it is stored and logged nowhere.
+    testers <site> reject <request-id> --tier=live
+                                  Record a rejection. Creates nothing and
+                                  destroys nothing — a join never made an
+                                  account in the first place.
+    testers <site> add <account> <display-name> <bundle> [--guild=KEY] [--level=N] [--admin]
+                                  Add a tester to the registry directly, with
+                                  no join request. The registry is the
+                                  authority for WHO SURVIVES THE NIGHTLY RESET,
+                                  so this is what makes a person persist; it
+                                  does not create their login. Writes the
+                                  registry (declared-home guarded, ops#328 D1)
+                                  then re-stages the payload to the box — a
+                                  tester written here but never staged is a
+                                  tester the reset does not preserve.
     testers <site> set-guild <account> <seed-key> [--group-role=ID|member] [--remove]
                                   Per-tester editor write (ops#328 t3): wraps
                                   drush nwc:tester-set-guild. Guilds resolve by
@@ -4183,6 +4219,185 @@ cmd_testers_login() {
     return 0
 }
 
+################################################################################
+# JOIN REQUESTS AND APPROVAL (operator ruling 2026-08-15)
+#
+#   "It is only for those testers listed in the demo tab of nwpconsole. Also
+#    I'd like to be able to add new testers to the list... If anyone enroles
+#    through the join, and admin approves those logins then they are added to
+#    the testers list on nwpconsole."
+#
+# THE ACCESS MODEL, in one sentence: approval IS the persistence decision — an
+# unapproved join never becomes an account, and an approved tester persists
+# through the nightly reset with their own password.
+#
+# THE ORDER IS THE SAFETY PROPERTY. Approval spans two hosts: the account is
+# created on the demo box, the tester registry is written HERE (the declared
+# registry home), and the payload is staged back to the box. Either half can
+# fail, and the two directions are wildly asymmetric:
+#
+#   * a registry row with no account  — harmless. The reset leg counts it
+#     `absent`, which it treats as normal (a tester approved who has not
+#     appeared yet).
+#   * AN ACCOUNT WITH NO REGISTRY ROW — the worst outcome in this whole
+#     feature. Somebody has been told "you're approved", holds a working
+#     login, and is silently wiped tonight.
+#
+# So the account is created BLOCKED, the registry write is PROVEN, the payload
+# is STAGED, and only then is the account activated. A blocked account has
+# promised nobody anything, so the window in which a half-finished approval can
+# hurt a person is empty by construction rather than merely small.
+################################################################################
+
+# Re-stage the tester payload to the demo box. The registry on this host is not
+# what the reset reads — it reads /var/lib/nwp-demo/<site>/testers-payload.json.
+# A tester written here but never staged is a tester who is NOT preserved, so a
+# staging failure is as fatal to an approval as a registry failure.
+demo_testers_stage_payload() {
+    local site="$1"
+    local installer="${PROJECT_ROOT}/servers/live/demo/install-box.sh"
+    if [[ ! -f "$installer" ]]; then
+        echo "ERROR: cannot stage the tester payload — ${installer} is missing. The registry on this host is NOT what tonight's reset reads." >&2
+        return 2
+    fi
+    bash "$installer" "$site" --stage-testers --no-key
+}
+
+# pl demo testers <site> requests [--state=pending|all|approved|rejected]
+# READ ONLY. Never writes the registry, never activates anything.
+cmd_testers_requests() {
+    local site="$1" tier="$2"; shift 2
+    local state="pending" a
+    for a in "$@"; do
+        case "$a" in
+            --state=*) state="${a#*=}" ;;
+            *) demo_testers_refuse "unrecognised argument '${a}' for requests"; return 1 ;;
+        esac
+    done
+    case "$state" in
+        pending|all|approved|rejected) ;;
+        *) demo_testers_refuse "state '${state}' is not one of pending|all|approved|rejected"; return 1 ;;
+    esac
+    local out rc=0
+    out="$(demo_testers_drush "$site" "$tier" nwc:join-requests --state="$state" --format=json)" || rc=$?
+    demo_testers_emit "$site" "$tier" nwc:join-requests "$rc" "$out"
+}
+
+# pl demo testers <site> approve <request-id> --tier=live
+cmd_testers_approve() {
+    local site="$1" tier="$2"; shift 2
+    local id="${1:-}"; shift 2>/dev/null || true
+    [[ -n "$id" ]] || { demo_testers_refuse "Usage: pl demo testers ${site} approve <request-id> --tier=live"; return 1; }
+    [[ "$id" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { demo_testers_refuse "request id '${id}' has an invalid shape"; return 1; }
+    demo_testers_require_demo_mode "$site" "$tier" || return 1
+
+    # ---- STEP 1: create the account, BLOCKED. Nothing is promised yet. ----
+    local out rc=0
+    out="$(demo_testers_drush "$site" "$tier" nwc:join-approve "$id" --format=json)" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        demo_testers_emit "$site" "$tier" nwc:join-approve "$rc" "$out"
+        return $?
+    fi
+    local acct display bundle password
+    acct="$(jq -r '.account // empty' <<<"$out" 2>/dev/null)"
+    display="$(jq -r '.display_name // empty' <<<"$out" 2>/dev/null)"
+    bundle="$(jq -r '.bundle // empty' <<<"$out" 2>/dev/null)"
+    password="$(jq -r '.password // empty' <<<"$out" 2>/dev/null)"
+    if [[ -z "$acct" || -z "$display" || -z "$bundle" ]]; then
+        jq -n --arg r "CANNOT VERIFY: ${site} accepted the approval but returned no usable account/display/bundle — refusing to go further. Any account it created is BLOCKED and will be wiped by tonight's reset. Nobody has been approved." '{ok:false, reason:$r}'
+        return 2
+    fi
+
+    # ---- STEP 2: the registry. This is the persistence decision. ----
+    # If this fails, STOP. The account stays blocked and is wiped tonight,
+    # which is exactly right: it is not in the registry, so it must not survive.
+    tester_registry_add "$site" "$acct" "$display" "$bundle" \
+        --source=join-request --request="$id" || {
+        jq -n --arg a "$acct" --arg r "the tester registry could not be written — the approval is ABANDONED. '${acct}' was created BLOCKED on ${site} and will be wiped by tonight's reset. Do NOT tell anybody they are approved: nobody has been approved. Fix the registry and run approve again." \
+            '{ok:false, refused:true, account:$a, reason:$r}'
+        return 2
+    }
+
+    # ---- STEP 3: stage it to the box, or the reset never sees it. ----
+    if ! demo_testers_stage_payload "$site"; then
+        jq -n --arg a "$acct" --arg r "the tester payload could not be staged to the demo box — the approval is ABANDONED. '${acct}' is in this host's registry but the reset reads the BOX copy, so it would be wiped tonight. The account is still BLOCKED. Do NOT tell anybody they are approved. Fix staging, then run approve again." \
+            '{ok:false, refused:true, account:$a, reason:$r}'
+        return 2
+    fi
+
+    # ---- STEP 4: only now may the person sign in. ----
+    rc=0
+    out="$(demo_testers_drush "$site" "$tier" nwc:join-activate "$id" \
+            --account="$acct" --actor="${NWP_TESTER_ACTOR:-${USER:-unknown}}" --format=json)" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        jq -n --arg a "$acct" --arg r "the account could not be ACTIVATED, but it IS in the registry and staged — so it will survive tonight. Re-run approve, or activate it by hand. Until then '${acct}' cannot sign in." \
+            '{ok:false, refused:true, account:$a, reason:$r}'
+        return 2
+    fi
+
+    # The password is a CREDENTIAL: printed once, here, and nowhere else. The
+    # demo log records that an approval happened and for whom — never the value.
+    demo_log "$site" testers-approved "request=${id} account=${acct} tier=${tier}"
+    jq -n --arg a "$acct" --arg d "$display" --arg b "$bundle" --arg p "$password" --arg i "$id" \
+        '{ok:true, approved:true, request_id:$i, account:$a, display_name:$d,
+          bundle:$b, password:$p,
+          note:"the password is shown ONCE and is not stored or logged anywhere - pass it to the tester now"}'
+}
+
+# pl demo testers <site> reject <request-id> --tier=live
+cmd_testers_reject() {
+    local site="$1" tier="$2"; shift 2
+    local id="${1:-}"
+    [[ -n "$id" ]] || { demo_testers_refuse "Usage: pl demo testers ${site} reject <request-id> --tier=live"; return 1; }
+    [[ "$id" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { demo_testers_refuse "request id '${id}' has an invalid shape"; return 1; }
+    demo_testers_require_demo_mode "$site" "$tier" || return 1
+    local out rc=0
+    out="$(demo_testers_drush "$site" "$tier" nwc:join-reject "$id" \
+            --actor="${NWP_TESTER_ACTOR:-${USER:-unknown}}" --format=json)" || rc=$?
+    demo_log "$site" testers-rejected "request=${id} tier=${tier} rc=${rc}"
+    demo_testers_emit "$site" "$tier" nwc:join-reject "$rc" "$out"
+}
+
+# pl demo testers <site> add <account> <display-name> <bundle> [--guild= --level= --admin]
+#
+# The console's "add a tester" control. Registry FIRST and staging second, for
+# the same reason approve does it in that order — except that here there is no
+# account to create, so the registry IS the whole operation.
+cmd_testers_add() {
+    local site="$1" tier="$2"; shift 2
+    local acct="${1:-}" display="${2:-}" bundle="${3:-}"; shift 3 2>/dev/null || true
+    [[ -n "$acct" && -n "$display" && -n "$bundle" ]] || {
+        demo_testers_refuse "Usage: pl demo testers ${site} add <account> <display-name> <bundle> [--guild=KEY] [--level=N] [--admin] --tier=…"
+        return 1; }
+    local opts=() a
+    for a in "$@"; do
+        case "$a" in
+            --guild=*|--level=*|--admin) opts+=("$a") ;;
+            *) demo_testers_refuse "unrecognised argument '${a}' for add"; return 1 ;;
+        esac
+    done
+    # Validation lives in the library, once — never re-spelled here, because a
+    # second copy of "what a valid account looks like" is a copy that drifts
+    # away from the reset leg's regex, and a name the leg refuses is a tester
+    # it silently does not preserve.
+    tester_registry_add "$site" "$acct" "$display" "$bundle" --source=console-add \
+        ${opts[@]+"${opts[@]}"} || {
+        jq -n --arg r "the tester registry was NOT written — '${acct}' has NOT been added and would not survive tonight's reset." \
+            '{ok:false, refused:true, reason:$r}'
+        return 2
+    }
+    if ! demo_testers_stage_payload "$site"; then
+        jq -n --arg a "$acct" --arg r "'${acct}' is in this host's registry but the payload could NOT be staged to the demo box — the reset reads the BOX copy, so they would still be wiped tonight. Fix staging and re-run the add." \
+            '{ok:false, refused:true, account:$a, reason:$r}'
+        return 2
+    fi
+    demo_log "$site" testers-added "account=${acct} bundle=${bundle} tier=${tier}"
+    jq -n --arg a "$acct" --arg d "$display" --arg b "$bundle" \
+        '{ok:true, added:true, account:$a, display_name:$d, bundle:$b,
+          note:"written to the tester registry and staged - this account now survives the nightly reset"}'
+}
+
+
 cmd_testers() {
     local site="$1" tier="$2" remove="$3"; shift 3 || true
     local action="${1:-list}"; shift || true
@@ -4201,8 +4416,8 @@ cmd_testers() {
     done
 
     case "$action" in
-        list) ;;
-        set-guild|set-level|login)
+        list|requests) ;;
+        set-guild|set-level|login|approve|reject|add)
             # Writes name their tier — the ops#225/#173 rule, same wording as
             # every code verb. `login` is not a write to the roster, but it
             # MINTS A CREDENTIAL against a running site, and minting one for
@@ -4214,7 +4429,7 @@ cmd_testers() {
             demo_refuse_prod_phase "$site" "pl demo testers ${action}" || return $?
             ;;
         *)
-            print_error "Unknown testers action '${action}' (list|set-guild|set-level|login)"
+            print_error "Unknown testers action '${action}' (list|requests|set-guild|set-level|login|approve|reject|add)"
             return 1 ;;
     esac
 
@@ -4233,6 +4448,18 @@ cmd_testers() {
             fi
             printf '%s\n' "$out"
             ;;
+        requests)
+            cmd_testers_requests "$site" "$tier" "$@"
+            return $? ;;
+        approve)
+            cmd_testers_approve "$site" "$tier" "$@"
+            return $? ;;
+        reject)
+            cmd_testers_reject "$site" "$tier" "$@"
+            return $? ;;
+        add)
+            cmd_testers_add "$site" "$tier" "$@"
+            return $? ;;
         set-guild)
             local acct="${1:-}" key="${2:-}"; shift 2 2>/dev/null || true
             [[ -n "$acct" && -n "$key" ]] || {

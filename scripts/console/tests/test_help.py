@@ -545,3 +545,40 @@ def test_the_demo_help_actually_tells_a_tester_how_to_get_in():
     text = " ".join(_strings_of(s))
     for must in ("/demo/join", "code", "reset", "expir"):
         assert must in text, f"demo-tester help no longer mentions {must!r}"
+
+
+def test_the_demo_help_covers_the_join_queue_and_adding_a_tester():
+    """The operator's ask, pinned (ruling 2026-08-15): "I'd like to be able to
+    add new testers to the list… If anyone enroles through the join, and admin
+    approves those logins then they are added to the testers list".
+
+    Those are new CONTROLS on the Demo pane, and the pane's help is what the ?
+    button opens. A control with no help is a screen with no instructions —
+    the same gate `test_every_pane_in_the_tab_bar_has_its_own_help_section`
+    enforces one level up. Presence-of-words, not prose quality.
+    """
+    s = help_mod.get_section("demo")
+    assert s is not None, "no demo help section"
+    # Case-insensitive: this file's house style leads a topic in caps
+    # ("INVITE CODES", "TESTERS"), and the assertion is about coverage.
+    text = " ".join(_strings_of(s)).lower()
+    for must in ("join request", "approve", "reject", "add a tester"):
+        assert must in text, f"the demo help does not describe the {must!r} control"
+
+
+def test_the_demo_help_states_the_access_model_and_the_password_rule():
+    """Two facts an operator cannot safely use these controls without.
+
+    1. APPROVAL IS THE PERSISTENCE DECISION — approving is not a courtesy, it
+       is what makes somebody survive the nightly wipe. An operator who thinks
+       approve merely 'lets them in' will not understand why an unapproved
+       person vanishes.
+    2. The password is shown ONCE. An operator who closes the panel expecting
+       to find it later has stranded that tester.
+    """
+    text = " ".join(_strings_of(help_mod.get_section("demo"))).lower()
+    assert "no account" in text, \
+        "the demo help does not say that a join creates no account"
+    assert "approval is the persistence decision" in text, \
+        "the demo help does not state the access model"
+    assert "once" in text, "the demo help does not warn that the password is shown once"

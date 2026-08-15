@@ -333,6 +333,38 @@ cmd_status(){
   printf "  ${BOLD}%-16s${NC} %s\n" "HELD:"       "$held"
   printf "  ${BOLD}%-16s${NC} %s\n" "auto-merge:"  "$armed"
   printf "  ${BOLD}%-16s${NC} %s\n" "merge status:" "${dms:-?}"
+
+  # THE HEAD PIPELINE, always, right under merge status.
+  #
+  # `detailed_merge_status` does NOT account for CI unless the project requires
+  # a green pipeline to merge, so on this instance an MR whose pipeline just
+  # failed still reports `mergeable`. On 2026-08-16 that read cost a real
+  # cycle: nwp/nwc!104 was reported ready on the strength of this line while
+  # its standalone-tests job was red. Both facts answer different questions and
+  # neither substitutes for the other, so both are printed — and the pipeline
+  # one carries an explicit verdict rather than a bare status word, because
+  # "failed" sitting quietly in a table is exactly what got skimmed past.
+  local pstatus purl
+  pstatus=$(printf '%s' "$json" | _mr_jget 'head_pipeline.status')
+  purl=$(printf '%s' "$json" | _mr_jget 'head_pipeline.web_url')
+  case "$pstatus" in
+    success)
+      printf "  ${BOLD}%-16s${NC} %s\n" "pipeline:" "success — CI is green for this head" ;;
+    failed)
+      printf "  ${BOLD}%-16s${NC} %s\n" "pipeline:" "failed — NOT ready to merge (see: pl mr ci $iid)" ;;
+    canceled|skipped)
+      printf "  ${BOLD}%-16s${NC} %s\n" "pipeline:" "$pstatus — NOT ready: nothing proved this head" ;;
+    running|pending|created|waiting_for_resource|preparing|scheduled|manual)
+      printf "  ${BOLD}%-16s${NC} %s\n" "pipeline:" "$pstatus — still running, no verdict yet" ;;
+    "")
+      # An MR with no pipeline has been proven by nothing. Silence here is what
+      # let "mergeable" read as "ready"; fail-closed means saying so out loud.
+      printf "  ${BOLD}%-16s${NC} %s\n" "pipeline:" "no head pipeline — CANNOT VERIFY this head was tested" ;;
+    *)
+      printf "  ${BOLD}%-16s${NC} %s\n" "pipeline:" "$pstatus — unrecognised state, CANNOT VERIFY" ;;
+  esac
+  [ -n "$purl" ] && printf "  ${BOLD}%-16s${NC} %s\n" "" "$purl"
+
   printf "  ${BOLD}%-16s${NC} %s\n" "head sha:"   "${sha:0:12}"
   printf "  ${BOLD}%-16s${NC} %s\n" "labels:"     "${labels:-—}"
   printf "  ${BOLD}%-16s${NC} %s\n" "url:"        "$(_mr_web_url "$iid")"

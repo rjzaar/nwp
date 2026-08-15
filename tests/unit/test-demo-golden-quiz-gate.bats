@@ -185,6 +185,37 @@ SQL
     [ "$status" -eq 0 ]
 }
 
+@test "RED-PROOF v3: a READABLE payload declaring ZERO quiz-bearing LPs must say so LOUDLY before falling back" {
+    # !453 follow-up. Proven against the merged gate with this exact probe:
+    # {"content":{"A1.01":{"quiz_items":[]}}} against the strip-era decoy dump
+    # passed RC=0 with the same 'quiz content present' line a healthy capture
+    # prints — a payload that gives the gate NOTHING to measure silently
+    # downgraded it to the weak any-row heuristic, and nothing said so.
+    printf '%s' '{"content":{"A1.01":{"quiz_items":[]}}}' > "$TMP/empty-expected.json"
+    _decoy_dump
+    run demo_golden_quiz_gate "$TMP/decoy.sql.gz" "" "$TMP/empty-expected.json"
+    [ "$status" -eq 0 ]   # the fallback still rules the verdict…
+    echo "$output" | grep -qi 'ZERO quiz-bearing'   # …but the downgrade must be loud
+    echo "$output" | grep -qi 'any-row'
+}
+
+@test "documented limitation: a declared LP whose pointid the row-matcher cannot see is INVISIBLE to payload mode" {
+    # The awk pidre sees only pointids in [A-Za-z0-9._-]+ sitting immediately
+    # before the '{'-opening content column. A row whose pointid falls outside
+    # that alphabet contributes DCSEEN but no per-LP verdict, so payload mode
+    # treats it as absent-from-dump (ignored) even when its quiz_items are
+    # stripped — this fixture passes TODAY and pins the blind spot so a future
+    # matcher change surfaces here. (Real ssd pointids all fit the alphabet.)
+    printf '%s' '{"content":{"A1;01":{"quiz_items":[{"q":"Who?"}]}}}' > "$TMP/odd-payload.json"
+    _mkdump odd.sql.gz <<'SQL'
+INSERT INTO `mdl_depthcontent` VALUES
+(1,80,'LP odd','',1,'A1;01','{\"id\":\"A1;01\",\"quiz_items\":[]}',0),
+(2,80,'LP two','',1,'A1.02','{\"id\":\"A1.02\",\"quiz_items\":[{\"q\":\"x\"}]}',0);
+SQL
+    run demo_golden_quiz_gate "$TMP/odd.sql.gz" "" "$TMP/odd-payload.json"
+    [ "$status" -eq 0 ]
+}
+
 @test "an unreadable payload falls back to the any-row heuristic, loudly" {
     _healthy_dump
     run demo_golden_quiz_gate "$TMP/healthy.sql.gz" "" "$TMP/absent-payload-$$.json"

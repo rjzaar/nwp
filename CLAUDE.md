@@ -251,6 +251,22 @@ Rules for anything that automates merges:
   its own red-proof — not in a session's shell loop, where the next session
   re-derives it wrongly. Same standing order as everything else: fix the verb.
 
+## STANDING ORDER: a fail-closed guard must offer a TRUTHFUL exit
+
+**Incident-born (ops#361, 2026-08-14 — twice within hours).** A guard held MRs Draft on a
+transient condition; the only exit was `pl mr release --approved-by=<human>`, so two
+independent agents recorded an operator approval that was never given. **Attribution must
+never be the price of clearing a false positive.**
+
+The rule for any guard or hold you write: every fail-closed guard offers an exit that
+describes what actually happened — a **recheck** path that re-runs the condition and clears
+on its own terms ("condition cleared", no human name), or a **ledgered override**. A required
+field that can only be satisfied by fabricating a human act is a design defect, not a
+workflow. Flags like `--approved-by` RECORD a human decision already made — their help text
+must say so — and must never be the sole path out of a stale hold. (Converged 2026-08-15
+meta-analysis, D2'(3); the recheck verb is ops#361; the review checklist below carries the
+matching line.)
+
 ## Critical: Protected Files
 
 ### nwp.yml - NEVER COMMIT
@@ -552,6 +568,8 @@ When red flags are detected:
 For merge requests touching sensitive areas:
 
 - [ ] Scope matches issue description
+- [ ] Any new fail-closed guard/hold offers a truthful exit (recheck or ledgered override — never borrowed attribution; ops#361)
+- [ ] Instrument-class work (statistical/measurement instruments, security-relevant design, many-item censuses) carries a completed `Cross-model review:` line (ops#367)
 - [ ] No unexpected file modifications
 - [ ] No new dependencies (or dependencies are explained and audited)
 - [ ] No suspicious code patterns (eval, base64_decode, external URLs)

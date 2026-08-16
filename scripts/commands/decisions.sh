@@ -97,7 +97,10 @@ source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
 source "$PROJECT_ROOT/lib/impact.sh"
 
 DECISIONS_PROJECT="${NWP_OPS_PROJECT_ID:-21}"
-DECISIONS_LABEL="${NWP_DECISIONS_LABEL:-needs-decision}"
+# The tier labels are DECLARED ONCE, in lib/decision-labels.sh — see that file
+# for the six-spellings drift this exists to stop (ops#340 was invisible).
+source "$PROJECT_ROOT/lib/decision-labels.sh"
+DECISIONS_LABEL="${NWP_DECISIONS_LABEL:-$DECISION_LABEL_RED}"
 
 # NO LITERAL FALLBACK. The forge domain is operator-specific and the gitleaks
 # ruleset bans it from tracked files — correctly: a default that names the real
@@ -231,7 +234,7 @@ _dec_fetch_outside_count(){
     cfg=$(mktemp); chmod 600 "$cfg"
     printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
     total=$(curl -sS -f -K "$cfg" --get -o /dev/null -D - \
-        --data-urlencode "labels=decision::wanted" \
+        --data-urlencode "labels=${DECISION_LABEL_AMBER}" \
         --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
         --data-urlencode "state=opened" \
         --data-urlencode "per_page=1" \
@@ -277,7 +280,7 @@ _dec_fetch_outside(){
         # parsed as "no ambers" — the unreadable-renders-as-clean failure this
         # repo keeps re-learning (ops#281).
         curl -sS -f -K "$cfg" --get \
-            --data-urlencode "labels=decision::wanted" \
+            --data-urlencode "labels=${DECISION_LABEL_AMBER}" \
             --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
             --data-urlencode "state=opened" \
             --data-urlencode "per_page=100" \

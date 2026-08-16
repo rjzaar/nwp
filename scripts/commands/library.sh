@@ -149,17 +149,22 @@ _corpus_files() { # $1 root -> repo-relative paths, one per line
 }
 
 # --- site vocabulary ---------------------------------------------------------
-# Sources, unioned: --sites, $NWP_LIBRARY_SITES, nwp.yml `sites:` keys, sites/*/.
+# Sources, unioned: --sites, $NWP_LIBRARY_SITES, nwp.yml `sites:` keys, the last
+# fleet snapshot, and every sites/<name>/ that carries a `.nwp.yml`.
 # Deliberately NOT defaulted to a hardcoded list: a stale hardcoded vocabulary
 # would go quietly blind to a new site, which is the failure mode this whole
 # check exists to prevent.
 _site_vocab() { # $1 explicit csv, $2 root
-    local explicit="$1" root="$2" out=""
+    local explicit="$1" root="$2" out="" declared=""
     if [ -n "$explicit" ]; then printf '%s' "$explicit"; return 0; fi
     if [ -n "${NWP_LIBRARY_SITES:-}" ]; then printf '%s' "$NWP_LIBRARY_SITES"; return 0; fi
     local cfg; cfg=$(_console_cfg_file)
     if [ -n "$cfg" ] && command -v yq >/dev/null 2>&1; then
-        out=$(yq e '.sites | keys | .[]' "$cfg" 2>/dev/null | grep -vE '^(null|)$' | tr '\n' ',' || true)
+        # nwp.yml `sites:` is the OPERATOR'S OWN declaration of what a site is.
+        # Kept separately as well as unioned, because it outranks the filesystem
+        # heuristic below: `mg` is declared here and has no sites/mg/.nwp.yml.
+        declared=$(yq e '.sites | keys | .[]' "$cfg" 2>/dev/null | grep -vE '^(null|)$' | tr '\n' ',' || true)
+        out="$declared"
     fi
     # The last published fleet snapshot names every site `pl rag` graded, which
     # is the most complete list this machine has when nwp.yml is not readable.
@@ -180,12 +185,69 @@ for r in rows if isinstance(rows, list) else []:
 PY
 )"
     fi
+    # sites/ holds MORE than sites. Alongside the real ones it accumulates
+    # `vendor`, `latest`, `hidden`, `verify-test`, `<site>_moodledata` and
+    # timestamped scratch trees — and three of those are ordinary English words.
+    # Unioning every directory name in made the scanner read the sentence
+    #
+    #     "54 courses visible, 1 hidden, with no ..."   docs/overview/saint-school.md:68
+    #
+    # as a public doc naming the site `hidden`, and REFUSE the entire build. That
+    # is not the gate biting; it is the gate firing on a word. Measured
+    # 2026-08-16: it is why the library had never been published on either host.
+    #
+    # Every directory under sites/ is a CANDIDATE. It is the filter below, and
+    # only the filter below, that decides which of them is a site — one rule in
+    # one place, so the "why was this name dropped" answer is always the same.
     local d
     for d in "$root"/sites/*/; do
         [ -d "$d" ] || continue
         out="${out}$(basename "$d"),"
     done
-    printf '%s' "$(printf '%s' "$out" | tr ',' '\n' | grep -vE '^$' | sort -u | tr '\n' ',' | sed 's/,$//')"
+
+    # Filtering the directory source alone is NOT enough, and finding that out
+    # is the point of this block. `hidden` and `verify-test` also arrive via the
+    # fleet snapshot above, because `pl rag` graded them (the snapshot of
+    # 2026-08-16 04:02Z still lists both). So the drop is applied to the WHOLE
+    # union, and it is stated as a POSITIVE fact about this tree, never as an
+    # absence of evidence:
+    #
+    #   drop <name> iff  sites/<name>/ EXISTS and carries no .nwp.yml
+    #               AND  nwp.yml's `sites:` does not declare it
+    #
+    # Both clauses matter, and each has a live witness in this estate:
+    #   * `hidden`, `verify-test`, `latest`, `vendor`, `<site>_moodledata` —
+    #     directories with no .nwp.yml that nwp.yml never declared. Dropped.
+    #   * `mg` — declared in nwp.yml, sites/mg/ exists with no .nwp.yml. KEPT.
+    #     Without the second clause a real site would go unscanned, which is the
+    #     blindness this whole check exists to prevent.
+    #   * `ssc1` — named by the fleet feed, no directory here at all. KEPT: this
+    #     tree cannot disprove it, so it stays in and keeps being scanned for.
+    #
+    # The asymmetry is deliberate. The permissive direction (forget a name)
+    # requires positive evidence; the strict direction (keep scanning) does not.
+    #
+    # Remaining guards:
+    #   * library.py refuses any build whose vocabulary is missing a site the
+    #     manifest itself names, and refuses an empty vocabulary outright;
+    #   * every name dropped is NAMED on stderr, so this is auditable, not silent.
+    local name dropped="" kept=""
+    while read -r name; do
+        [ -n "$name" ] || continue
+        if [ -d "$root/sites/$name" ] && [ ! -f "$root/sites/$name/.nwp.yml" ] \
+           && [[ ",${declared}," != *",${name},"* ]]; then
+            dropped="${dropped}${name} "
+        else
+            kept="${kept}${name},"
+        fi
+    done <<< "$(printf '%s' "$out" | tr ',' '\n' | grep -vE '^$' | sort -u)"
+
+    if [ -n "$dropped" ]; then
+        # stderr: this function's stdout IS the vocabulary.
+        printf 'HINT: library: not sites (sites/<name>/ exists with no .nwp.yml), excluded from the site vocabulary: %s\n' \
+            "${dropped% }" >&2
+    fi
+    printf '%s' "$(printf '%s' "$kept" | sed 's/,$//')"
 }
 
 # --- verdicts ----------------------------------------------------------------

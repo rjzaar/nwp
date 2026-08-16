@@ -159,6 +159,62 @@ HARVEST_DIR="${STATE_DIR}/harvest"
 TESTERS_PAYLOAD="${STATE_DIR}/testers-payload.json"
 TESTERS_DIR="${STATE_DIR}/testers"
 TESTERS_CAPTURE="${TESTERS_DIR}/identity-latest.json"
+# ---- Guild MEMBERSHIP persistence (ops#376) ---------------------------------
+# MEMBERSHIP IS PART OF WHO A TESTER IS FOR TESTING. A tester who comes back
+# with their password but outside their guild cannot reach the thing they were
+# asked to test, so the login survived and the test did not.
+#
+# CONSENT IS NOT MEMBERSHIP AND IS DELIBERATELY NOT CARRIED HERE. Operator
+# ruling 2026-08-16, on being asked to extend this leg: "yes extend to guild
+# membership" — and explicitly NOT Article 9 consent. Consent is a legal record
+# with its own lifecycle (nwc_art9_consent: granted/withdrawn/stale, currency,
+# may_contribute, may_keep_formation) and it must move through that machinery,
+# never be re-asserted by a nightly maintenance script on the strength of a
+# reading taken a minute earlier. A reset that re-granted consent would be
+# manufacturing a legal fact. If a later session is tempted: the answer is no,
+# and this paragraph is why.
+#
+# SOJOURNER LEVEL IS ALSO NOT CARRIED, for a different reason: it is
+# PROGRESSION, not membership. `nwc:tester-set-level` recomputes it from
+# qualifying course completions, and the reset destroys those completions —
+# so restoring a level would mean asserting completions that no longer exist.
+# Membership is a fact about who someone is; level is a fact about what they
+# have done, and this leg only restores the first.
+TESTERS_GUILDS_CAPTURE="${TESTERS_DIR}/guilds-latest.json"
+# The site's OWN commands, exactly like FEEDBACK_SYNC_CMD below: one API, one
+# set of guarantees. `tester-set-guild` resolves a guild by
+# field_group_seed_key via nwc_guild_load_seed_group() — the MACHINE key, never
+# the mutable label, so the ADR-0029 label-rename hazard that left three
+# personas group-less in ops#218 does not exist on this path. It REFUSES an
+# unknown seed key and can only ever JOIN AN EXISTING GROUP: this leg therefore
+# cannot create, rename or resurrect a guild, and the golden's guild set stays
+# authoritative by construction rather than by our good behaviour.
+TESTERS_LIST_CMD="nwc:tester-list"
+TESTERS_SETGUILD_CMD="nwc:tester-set-guild"
+# ONE individual-scope role can be set per membership: --group-role sets the
+# role to EXACTLY THIS ID (measured off the deployed --help, 2026-08-16), so
+# repeated calls REPLACE rather than accumulate. Live testers hold up to four at
+# once (Benedict-0000: guild-admin, guild-mentor, guild-verifier, guild-endorsed
+# in each of eight guilds), so a choice has to be made and it is made HERE, once,
+# in the open:
+#
+#   PRECEDENCE, most-capable first. The role restored is always one the tester
+#   PROVABLY HELD seconds before the wipe, so this can never widen anybody's
+#   access; it only decides which of several held roles is the one that comes
+#   back. Most-capable wins because the extras are the ones whose absence costs
+#   least — a guild-admin demoted to guild-endorsed cannot run their guild at
+#   all, whereas an admin who has lost `endorsed` can still work.
+#
+#   EVERY DROPPED ROLE IS COUNTED AND NAMED. Silent partial restoration is the
+#   failure this whole feature exists to prevent, so `dropped_roles` is in the
+#   verdict and the names are in the log.
+#
+# The real fix is a multi-role setter on the nwc side; until it exists this is
+# a STATED limitation, not an unknown one (nwp/ops — see the MR).
+TESTERS_ROLE_PRECEDENCE="guild-admin guild-mentor guild-verifier guild-editor guild-endorsed guild-junior"
+# Roles group itself applies (the synchronized insider/outsider set). They are
+# typed refusals on the write side, so they must never be offered to it.
+TESTERS_ROLE_SYNTHETIC="guild-member guild-outsider guild-verified"
 # The @demo.invalid fence (RFC 6761, reserved — mail can never leave the box) is
 # the SAFETY NET, not the roster: NwcPrivacyDemoCommands fences every tester
 # write on it and so does this. The registry says who is preserved; the fence
@@ -344,6 +400,12 @@ if [[ "$ACTION" == "status" ]]; then
         echo "testers_registry: ${TS_N} tester(s) generated=${TS_GEN} staged_age=${TS_AGE}s${TS_STALE}"
     fi
     echo "last_testers_preserved: $(cat "${TESTERS_DIR}/last-verdict" 2>/dev/null || echo none)"
+    # ops#376 — the MEMBERSHIP half, on its own line. Two lines rather than one
+    # richer line because they are two different failures with two different
+    # remedies: "they cannot log in" and "they can log in but are out of their
+    # guild". A reader that only knows the old line still gets a true answer to
+    # the question it asks, which is what makes this additive.
+    echo "last_testers_guilds: $(cat "${TESTERS_DIR}/last-guilds" 2>/dev/null || echo none)"
 
     # ops#329 D4 — the return leg's last run, read from this box's OWN log
     # (the primary record; met's cron log is only the trigger transcript).
@@ -780,6 +842,15 @@ idle_ok() {
 TESTERS_VERDICT="not-run"
 TESTERS_DETAIL=""
 
+# ops#376 — the GUILD MEMBERSHIP half, kept in SEPARATE variables on purpose.
+# PARTIAL DEGRADATION IS THE REQUIREMENT: a membership that could not be carried
+# across must not cost the tester their login as well. Two verdicts means the
+# identity leg can succeed while the guild leg fails, and `status` says exactly
+# that instead of collapsing both into one word an operator cannot act on.
+GUILDS_VERDICT="not-run"
+GUILDS_DETAIL=""
+TESTERS_ROSTER=""
+
 # SQL-safe? The registry is a file this box does not author, so every account
 # name out of it is checked before it is ever interpolated into SQL. The set is
 # the same one `pl demo testers` validates on the way in.
@@ -841,6 +912,11 @@ testers_export() {
 
     mkdir -p "$TESTERS_DIR" 2>/dev/null || true
     chmod 0700 "$TESTERS_DIR" 2>/dev/null || true
+
+    # The validated roster, published for the ops#376 guild leg. It is EXACTLY
+    # the set this function already accepted — the membership export must never
+    # re-derive who is a tester, or the two legs could disagree about it.
+    TESTERS_ROSTER="$roster"
 
     local listed=0 captured=0 absent=0 rows="" name row
     while IFS= read -r name; do
@@ -1033,6 +1109,253 @@ testers_restore() {
 }
 
 ################################################################################
+# GUILD MEMBERSHIP PERSISTENCE (ops#376)
+#
+# The identity leg above answers "can they log in tomorrow". This one answers
+# "and can they still reach what they were asked to test". Both are needed:
+# a tester restored to the golden's guild set is a tester whose testing task
+# quietly reverted overnight.
+#
+# THE READ IS THE SITE'S OWN COMMAND, not SQL against the Group tables. `drush
+# nwc:tester-list --format=json` already returns, per fenced account, every
+# membership as {group_id, type, label, seed_key, roles[]} — the same document
+# `pl demo testers <site> list --json` renders. Reimplementing that as a join
+# over group_relationship here would be a second answer to "what is this
+# tester's membership", and a second answer is one that drifts.
+#
+# THE WRITE IS A DIFF, NOT A REPLAY. After the golden import the list is read
+# ONCE more and only the memberships the golden did NOT bring back are applied.
+# A blind replay would be up to 8 testers x 16 groups = 128 drush calls on a
+# 3.9 GB box that also serves GitLab and four other live sites; the diff is
+# typically zero or one. It is also more honest: `already=N` records what the
+# golden itself provided, which is not the same fact as "we restored it".
+#
+# WHAT THIS LEG CANNOT DO, stated rather than hidden:
+#   * interest groups. nwc:tester-set-guild addresses GUILD-type groups only —
+#     measured live: its refusal names nine known seed keys and the seven
+#     `*-ig` flexible_groups are not among them. IG memberships are counted as
+#     `groups_unsupported` and named in the log, never silently dropped.
+#   * more than one individual-scope role per membership — see
+#     TESTERS_ROLE_PRECEDENCE above. Dropped extras are counted and named.
+################################################################################
+
+# testers_guild_rows <tester-list-json> <roster> — one TSV row per restorable
+# membership: <account>\t<seed_key>\t<chosen-role|member>\t<dropped,roles>
+#
+# Filtering happens in ONE place (jq), against the roster the identity leg
+# already validated, so an account this box may not touch cannot enter the
+# capture by any route.
+testers_guild_rows() {
+    local listjson="$1" roster="$2"
+    jq -r --arg names "$roster" --arg prec "$TESTERS_ROLE_PRECEDENCE" \
+          --arg synth "$TESTERS_ROLE_SYNTHETIC" '
+        ($names   | split("\n") | map(select(length>0))) as $roster |
+        ($prec    | split(" ")) as $precedence |
+        ($synth   | split(" ")) as $synthetic |
+        .accounts[]?
+        | select(.name as $n | $roster | index($n))
+        | .name as $acct
+        | .guilds[]?
+        | select(.type == "guild")
+        | . as $g
+        # Individual-scope roles only: drop the roles group itself applies.
+        | ([ $g.roles[]? | select(. as $r | ($synthetic | index($r)) | not) ]) as $indiv
+        # Order by the declared precedence. A role we do not know is NOT
+        # silently ignored — it sorts last and is reported as dropped, because
+        # an unrecognised role is a fact about drift, not noise.
+        | ([ $precedence[] | select(. as $p | $indiv | index($p)) ]
+           + [ $indiv[] | select(. as $r | $precedence | index($r) | not) ]) as $ranked
+        | [ $acct,
+            $g.seed_key,
+            ($ranked[0] // "member"),
+            ($ranked[1:] | join(","))
+          ] | @tsv
+    ' <<<"$listjson" 2>/dev/null
+}
+
+# ---- PRE-WIPE MEMBERSHIP EXPORT ---------------------------------------------
+# Fail-OPEN for the reset and for the IDENTITY leg (this must never be able to
+# cost a tester their password), fail-LOUD for the report.
+testers_guilds_export() {
+    local roster="$1"
+
+    if [[ -z "${roster//[[:space:]]/}" ]]; then
+        GUILDS_VERDICT="no-testers"
+        GUILDS_DETAIL="the roster names nobody, so there is no membership to carry"
+        return 0
+    fi
+
+    local out rc=0
+    out="$(drush "$TESTERS_LIST_CMD" --format=json 2>&1)" || rc=$?
+
+    # An nwc too old to know the command is a NAMED gap with a real remedy, not
+    # a silent skip: without it every tester's guilds revert every night and
+    # nothing says so.
+    if grep -q 'is not defined' <<<"$out"; then
+        GUILDS_VERDICT="not-deployed"
+        GUILDS_DETAIL="${TESTERS_LIST_CMD} is not on this site — deploy the nwc profile"
+        log "testers-guilds-not-deployed" "cmd=${TESTERS_LIST_CMD}"
+        echo "FAIL  ${TESTERS_LIST_CMD} is not deployed here — guild memberships CANNOT be captured and will revert to the golden." >&2
+        return 1
+    fi
+    if (( rc != 0 )) || ! jq -e '.ok == true and (.accounts|type=="array")' <<<"$out" >/dev/null 2>&1; then
+        GUILDS_VERDICT="export-failed"
+        GUILDS_DETAIL="rc=${rc}; ${TESTERS_LIST_CMD} did not return a readable roster"
+        log "testers-guilds-export-failed" "rc=${rc}"
+        echo "FAIL  could not read guild memberships before the wipe — they are NOT preserved tonight." >&2
+        return 1
+    fi
+
+    # Interest groups: counted and named, never silently discarded. This leg's
+    # write API cannot address them, and an operator who is not told that will
+    # believe it can.
+    local ig_n ig_names
+    ig_names="$(jq -r --arg names "$roster" '
+        ($names | split("\n") | map(select(length>0))) as $roster |
+        [ .accounts[]? | select(.name as $n | $roster | index($n))
+          | .name as $a | .guilds[]? | select(.type != "guild")
+          | "\($a):\(.seed_key)" ] | join(" ")' <<<"$out" 2>/dev/null)"
+    ig_n="$(printf '%s' "$ig_names" | wc -w | tr -d ' ')"
+
+    # A zero here is a GENUINE zero, and it is genuine because the command
+    # reported ok:true above. That is why the capture goes through the site's
+    # own read command rather than a heuristic: "nobody is in a guild" and "I
+    # could not see who is in a guild" are told apart by the API saying which,
+    # not by a listed>0/captured==0 rule of thumb like the identity leg needs
+    # for its raw-SQL export.
+    local rows n_cap n_dropped
+    rows="$(testers_guild_rows "$out" "$roster")"
+    if ! jq -Rn --arg utc "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --arg rows "$rows" '
+            {version:1, captured_utc:$utc,
+             memberships: [ $rows | split("\n")[] | select(length>0) | split("\t")
+                            | {account:.[0], seed_key:.[1], role:.[2],
+                               dropped:(.[3] // "" | split(",") | map(select(length>0)))} ]}' \
+            >"${TESTERS_GUILDS_CAPTURE}.new" 2>/dev/null; then
+        GUILDS_VERDICT="export-failed"
+        GUILDS_DETAIL="could not write the membership capture"
+        log "testers-guilds-export-failed" "stage=write"
+        echo "FAIL  could not write the guild membership capture — memberships are NOT preserved tonight." >&2
+        return 1
+    fi
+    chmod 0600 "${TESTERS_GUILDS_CAPTURE}.new" 2>/dev/null || true
+    mv -f "${TESTERS_GUILDS_CAPTURE}.new" "$TESTERS_GUILDS_CAPTURE" 2>/dev/null || {
+        GUILDS_VERDICT="export-failed"
+        GUILDS_DETAIL="could not commit the membership capture"
+        log "testers-guilds-export-failed" "stage=rename"
+        echo "FAIL  could not commit the guild membership capture — memberships are NOT preserved tonight." >&2
+        return 1
+    }
+
+    n_cap="$(jq -r '.memberships | length' "$TESTERS_GUILDS_CAPTURE" 2>/dev/null || echo 0)"
+    n_dropped="$(jq -r '[.memberships[].dropped[]] | length' "$TESTERS_GUILDS_CAPTURE" 2>/dev/null || echo 0)"
+    GUILDS_VERDICT="captured"
+    GUILDS_DETAIL="memberships_captured=${n_cap} dropped_roles=${n_dropped} groups_unsupported=${ig_n}"
+    log "testers-guilds-exported" "$GUILDS_DETAIL"
+    echo "OK  guild memberships captured: ${n_cap} (roles beyond one per membership: ${n_dropped})"
+    if [[ "$n_dropped" -gt 0 ]]; then
+        log "testers-guilds-dropped-roles" \
+            "$(jq -r '[.memberships[] | select((.dropped|length)>0) | "\(.account):\(.seed_key):kept=\(.role):dropped=\(.dropped|join("+"))"] | join(" ")' "$TESTERS_GUILDS_CAPTURE" 2>/dev/null | cut -c1-400)"
+        echo "..  ${n_dropped} extra role(s) cannot be carried — one individual-scope role per membership is all the write API takes."
+        echo "..  Kept by precedence (${TESTERS_ROLE_PRECEDENCE% *}…); every dropped role is named in ${LOG_FILE}."
+    fi
+    if [[ "$ig_n" -gt 0 ]]; then
+        log "testers-guilds-unsupported" "count=${ig_n} names=$(scrub "$ig_names")"
+        echo "..  ${ig_n} interest-group membership(s) are outside this leg (nwc:tester-set-guild addresses guilds only): ${ig_names}"
+    fi
+    return 0
+}
+
+# ---- POST-IMPORT MEMBERSHIP RESTORE -----------------------------------------
+testers_guilds_restore() {
+    [[ -s "$TESTERS_GUILDS_CAPTURE" ]] || {
+        log "testers-guilds-restore-skipped" "no capture to restore"
+        return 0
+    }
+    jq -e '.version == 1 and (.memberships|type=="array")' "$TESTERS_GUILDS_CAPTURE" >/dev/null 2>&1 || {
+        GUILDS_VERDICT="capture-malformed"
+        GUILDS_DETAIL="the membership capture is unreadable"
+        log "testers-guilds-restore-failed" "capture unreadable"
+        echo "FAIL  the guild membership capture is unreadable — memberships were NOT restored." >&2
+        return 1
+    }
+
+    local want; want="$(jq -r '.memberships | length' "$TESTERS_GUILDS_CAPTURE" 2>/dev/null || echo 0)"
+    if [[ "$want" == "0" ]]; then
+        GUILDS_VERDICT="restored"
+        GUILDS_DETAIL="memberships_captured=0 memberships_present=0 memberships_restored=0 memberships_failed=0 dropped_roles=0"
+        log "testers-guilds-restored" "$GUILDS_DETAIL"
+        return 0
+    fi
+
+    # ONE post-import read: what did the golden already bring back?
+    local now_out rc=0
+    now_out="$(drush "$TESTERS_LIST_CMD" --format=json 2>&1)" || rc=$?
+    if (( rc != 0 )) || ! jq -e '.ok == true and (.accounts|type=="array")' <<<"$now_out" >/dev/null 2>&1; then
+        GUILDS_VERDICT="restore-blind"
+        GUILDS_DETAIL="memberships_captured=${want}; could not re-read memberships after the import"
+        log "testers-guilds-restore-blind" "rc=${rc} captured=${want}"
+        echo "FAIL  could not re-read guild memberships after the restore — CANNOT VERIFY which were carried across." >&2
+        return 1
+    fi
+
+    local present=0 restored=0 failed=0 acct key role dropped have failnames=""
+    while IFS=$'\t' read -r acct key role dropped; do
+        [[ -n "$acct" && -n "$key" ]] || continue
+        # Already there, with the right individual role? Then the GOLDEN
+        # provided it and this leg did nothing — recorded as `present`, never
+        # claimed as `restored`. Claiming credit for the golden's work is how a
+        # broken restore leg goes unnoticed for months.
+        have="$(jq -r --arg a "$acct" --arg k "$key" --arg synth "$TESTERS_ROLE_SYNTHETIC" '
+            ($synth | split(" ")) as $synthetic |
+            [ .accounts[]? | select(.name == $a) | .guilds[]? | select(.seed_key == $k)
+              | [ .roles[]? | select(. as $r | ($synthetic | index($r)) | not) ] ]
+            | if length == 0 then "ABSENT" else (.[0] | if length == 0 then "member" else join(",") end) end
+        ' <<<"$now_out" 2>/dev/null)" || have="ABSENT"
+        if [[ "$have" != "ABSENT" && ",${have}," == *",${role},"* ]]; then
+            present=$(( present + 1 )); continue
+        fi
+
+        local sg rcs=0
+        sg="$(drush "$TESTERS_SETGUILD_CMD" "$acct" "$key" "--group-role=${role}" 2>&1)" || rcs=$?
+        if (( rcs == 0 )) && jq -e '.ok == true' <<<"$sg" >/dev/null 2>&1; then
+            restored=$(( restored + 1 ))
+        else
+            failed=$(( failed + 1 ))
+            failnames+="${acct}:${key} "
+            # The reason matters and it is usually the interesting one: a guild
+            # the golden no longer has is refused BY THE API, which is exactly
+            # the golden-precedence guarantee doing its job.
+            log "testers-guilds-restore-failed" \
+                "acct=${acct} key=${key} role=${role} rc=${rcs} reason=$(scrub "$(jq -r '.reason // "unparsed"' <<<"$sg" 2>/dev/null || echo unparsed)")"
+        fi
+    done < <(jq -r '.memberships[] | [.account, .seed_key, .role, (.dropped|join(","))] | @tsv' \
+                 "$TESTERS_GUILDS_CAPTURE" 2>/dev/null)
+
+    local n_dropped
+    n_dropped="$(jq -r '[.memberships[].dropped[]] | length' "$TESTERS_GUILDS_CAPTURE" 2>/dev/null || echo 0)"
+    local detail="memberships_captured=${want} memberships_present=${present} memberships_restored=${restored} memberships_failed=${failed} dropped_roles=${n_dropped}"
+
+    if [[ "$failed" -gt 0 ]]; then
+        GUILDS_VERDICT="restore-degraded"; GUILDS_DETAIL="$detail"
+        log "testers-guilds-restore-degraded" "$detail names=$(scrub "$failnames")"
+        echo "FAIL  guild membership restore incomplete (${detail}) — not restored: ${failnames}" >&2
+        return 1
+    fi
+    # STICKY, exactly like the identity leg: only an export that reached
+    # `captured` may be upgraded to `restored`. A clean restore must not erase
+    # a capture that already reported a problem.
+    if [[ "$GUILDS_VERDICT" == "captured" ]]; then
+        GUILDS_VERDICT="restored"; GUILDS_DETAIL="$detail"
+        log "testers-guilds-restored" "$detail"
+        echo "OK  guild memberships carried across (${detail})."
+    else
+        GUILDS_DETAIL="${GUILDS_DETAIL} | restore: ${detail}"
+        echo "WARN  the membership restore ran, but the capture reported '${GUILDS_VERDICT}' — this run is NOT clean."
+    fi
+    return 0
+}
+
+################################################################################
 # Guards (run for dry-run too — a dry run is exactly "all guards, no wipe")
 ################################################################################
 
@@ -1198,6 +1521,13 @@ harvest || true
 # else, and seconds later it is gone.
 testers_export || true
 
+# Pre-wipe GUILD MEMBERSHIP export (ops#376). Sequenced immediately after the
+# identity export and, like it, fail-OPEN: `|| true` here is the partial-
+# degradation requirement in one character — a membership leg that failed must
+# not be able to abandon the identity leg that succeeded, nor stop the reset.
+# It reads the same live database, so it too must run before the drop.
+testers_guilds_export "$TESTERS_ROSTER" || true
+
 # Pre-wipe TESTER-FEEDBACK notice (fail-OPEN — nwp/ops#161, closable ops#315).
 #
 # The harvest above keeps the errors nobody reported. The reports testers DID
@@ -1283,6 +1613,13 @@ fi
 # rather than over the golden's.
 testers_restore || true
 
+# Post-import GUILD MEMBERSHIP restore (ops#376). AFTER testers_restore, which
+# is not an ordering preference: nwc:tester-set-guild joins an ACCOUNT to a
+# guild, so the account has to exist first. A tester the identity leg could not
+# restore therefore simply has no membership row to apply, and the API's own
+# "no such account" refusal counts as a named failure rather than a crash.
+testers_guilds_restore || true
+
 drush cr >/dev/null 2>&1 || log "cr-failed" "non-fatal"
 
 # Declared BEFORE the first thing that can set it: [G10] below and the smoke
@@ -1366,10 +1703,34 @@ case "$TESTERS_VERDICT" in
         echo "FAIL  tester identity preservation FAILED (${TESTERS_VERDICT}${TESTERS_DETAIL:+: ${TESTERS_DETAIL}})."
         echo "      Testers named by the registry may have to ask for a login again." ;;
 esac
-# The verdict is persisted separately from the reset stamp so `status` can
-# report it even when the run failed for an unrelated reason.
+# ops#376 — THE MEMBERSHIP HALF, GRADED SEPARATELY. Partial degradation is the
+# whole requirement: a run that carried every login across but lost a guild is
+# neither a clean run nor a lost-logins run, and reporting it as either would
+# send the operator to the wrong remedy. So it has its own case block, its own
+# verdict file and its own `status` line, and it degrades the run on its own.
+case "$GUILDS_VERDICT" in
+    restored|no-testers|not-run) ;;   # carried, nothing to carry, or the leg never reached (a failed reset)
+    captured)
+        # Captured and never restored: the restore leg did not reach its own
+        # verdict, i.e. it did not run. Same shape as the identity leg's
+        # `exported`, and it must never read as success either.
+        DEGRADED=true
+        log "testers-guilds-not-restored" "capture ran, restore did not — memberships were NOT carried across"
+        echo "FAIL  guild memberships were captured but NOT restored — testers are back in the golden's guilds only." ;;
+    *)
+        DEGRADED=true
+        log "testers-guilds-degraded" "verdict=${GUILDS_VERDICT} ${GUILDS_DETAIL}"
+        echo "FAIL  guild membership preservation FAILED (${GUILDS_VERDICT}${GUILDS_DETAIL:+: ${GUILDS_DETAIL}})."
+        echo "      The LOGINS are unaffected — check the identity verdict above; this is the membership half only." ;;
+esac
+
+# The verdicts are persisted separately from the reset stamp so `status` can
+# report them even when the run failed for an unrelated reason — and separately
+# from EACH OTHER so neither can overwrite the other's answer.
 { printf '%s|%s|%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TESTERS_VERDICT" "$TESTERS_DETAIL" \
     > "${TESTERS_DIR}/last-verdict" ; } 2>/dev/null || true
+{ printf '%s|%s|%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$GUILDS_VERDICT" "$GUILDS_DETAIL" \
+    > "${TESTERS_DIR}/last-guilds" ; } 2>/dev/null || true
 
 TOOK=$(( $(date +%s) - START ))
 

@@ -246,3 +246,175 @@ _stage_refusal() {   # $1 = roster JSON → the installer's stderr
   run grep -c "nwcdemo\\\\_%" "$WRAPPER"
   [ "$status" -eq 0 ]
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. GUILD MEMBERSHIP across the reset (ops#376)
+#
+# The extension the operator ordered: "yes extend to guild membership" — and
+# explicitly NOT Article 9 consent, which is a legal record with its own
+# lifecycle (nwc_art9_consent) and must move through that machinery.
+#
+# PROVEN RED ON LIVE FIRST, 2026-08-16. Andrew-6960 was put in the Theology
+# guild as guild-mentor, a real `pl demo nightly nwd --tier=live --via-key
+# --force` was run, and afterwards the account read back as
+# `sojourners[guild-member]` — the membership was gone while the identity half
+# reported restored=8 created=0 collided=0 failed=0 and both password hashes
+# were byte-identical. So the loss is real, it is membership-only, and it is
+# invisible to every check that existed before these.
+#
+# THE PROPERTY THAT MATTERS MOST HERE IS PARTIAL DEGRADATION: a membership that
+# could not be carried must never be reported as a lost login, and a login that
+# survived must never make a lost membership look fine.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_raw_guilds() {   # $1 = the last_testers_guilds: value
+  printf 'testers_registry: 8 tester(s) generated=2026-08-16T06:40:00Z staged_age=120s\nlast_testers_preserved: 2026-08-16T00:58:29Z|restored|restored=8 created=0 collided=0 failed=0\nlast_testers_guilds: %s\n' "$1"
+}
+
+@test "a restored membership leg reports carried:true with its counts" {
+  local raw; raw="$(_raw_guilds '2026-08-16T00:58:40Z|restored|memberships_captured=21 memberships_present=20 memberships_restored=1 memberships_failed=0 dropped_roles=0')"
+  run _lib "demo_box_extras_json '$raw' | jq -r '.testers.guilds.carried, .testers.guilds.memberships_restored, .testers.guilds.memberships_captured'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "true" ]]
+  [[ "${lines[1]}" == "1" ]]
+  [[ "${lines[2]}" == "21" ]]
+}
+
+@test "PARTIAL DEGRADATION: a failed membership leg does NOT drag the login verdict down" {
+  # The headline property. The identity half says restored; the guild half says
+  # degraded. Both must be readable, and neither may be inferred from the other.
+  local raw; raw="$(_raw_guilds '2026-08-16T00:58:40Z|restore-degraded|memberships_captured=21 memberships_present=18 memberships_restored=1 memberships_failed=2 dropped_roles=4')"
+  run _lib "demo_box_extras_json '$raw' | jq -r '.testers.preserved, .testers.guilds.carried, .testers.guilds.memberships_failed, .testers.guilds.dropped_roles'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "true"  ]]   # the LOGINS survived
+  [[ "${lines[1]}" == "false" ]]   # the MEMBERSHIPS did not
+  [[ "${lines[2]}" == "2" ]]
+  [[ "${lines[3]}" == "4" ]]
+}
+
+@test "PARTIAL DEGRADATION, the other way: lost logins do not silently mark memberships carried" {
+  local raw
+  raw="$(printf 'last_testers_preserved: 2026-08-16T00:58:29Z|export-blind|listed=8 captured=0\nlast_testers_guilds: 2026-08-16T00:58:40Z|restored|memberships_captured=0 memberships_present=0 memberships_restored=0 memberships_failed=0 dropped_roles=0\n')"
+  run _lib "demo_box_extras_json '$raw' | jq -r '.testers.preserved, .testers.guilds.carried'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "false" ]]
+  [[ "${lines[1]}" == "true"  ]]
+}
+
+@test "a captured-but-never-restored membership leg is NOT carried" {
+  # The `exported` shape, one leg over: the restore never reached its verdict,
+  # so it did not run. It must not read as success — this is the exact class
+  # that shipped green on live once already.
+  local raw; raw="$(_raw_guilds '2026-08-16T00:58:40Z|captured|memberships_captured=21 dropped_roles=4 groups_unsupported=7')"
+  run _lib "demo_box_extras_json '$raw' | jq -r '.testers.guilds.carried, .testers.guilds.verdict'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "false" ]]
+  [[ "${lines[1]}" == "captured" ]]
+}
+
+@test "an unrecognised membership verdict fails CLOSED" {
+  local raw; raw="$(_raw_guilds '2026-08-16T00:58:40Z|something-nobody-has-seen|x=1')"
+  run _lib "demo_box_extras_json '$raw' | jq -r '.testers.guilds.carried'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "false" ]]
+}
+
+@test "no tester in any guild is carried:true — a real zero, not a blind one" {
+  local raw; raw="$(_raw_guilds '2026-08-16T00:58:40Z|no-testers|the roster names nobody, so there is no membership to carry')"
+  run _lib "demo_box_extras_json '$raw' | jq -r '.testers.guilds.carried'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "true" ]]
+}
+
+@test "a wrapper too old to report memberships is NOT REPORTED, never carried" {
+  # RAW_OK predates ops#376: it carries the login line and no guild line.
+  run _lib "demo_box_extras_json '$RAW_OK' | jq -r '.testers.guilds.reported, .testers.guilds.carried'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "false" ]]
+  [[ "${lines[1]}" == "null"  ]]
+  run _lib "demo_box_extras_json '$RAW_OK' | jq -r '.testers.guilds.reason'"
+  [[ "$output" == *"redeploy"* ]]
+}
+
+@test "the Moodle half declares guilds BY DESIGN absent — and earns no redeploy nag" {
+  # ssd has no Group entities and never will, so "redeploy the wrapper to fix
+  # it" is an instruction that can never come true (the ops#329 D6 defect).
+  local raw='site:        ssd (ssd.example)
+testers_uidlock: ok (checked=8 bound=4 unbound=4 forked=0)'
+  run _lib "demo_box_extras_by_design_json nwd '$raw' | jq -r '.testers.guilds.by_design, .testers.guilds.reason, .testers.uid_lock'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "true" ]]
+  [[ "${lines[1]}" != *"install-box.sh"* ]]
+  [[ "${lines[1]}" == *"provider"* ]]
+  [[ "${lines[2]}" == "ok"* ]]   # the UID lock still survives the fold
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Wrapper-side membership invariants, read off the deployed source
+# ─────────────────────────────────────────────────────────────────────────────
+
+@test "the membership leg restores through the site's OWN API, never raw SQL on group tables" {
+  # nwc:tester-set-guild resolves by field_group_seed_key and REFUSES an unknown
+  # key, so it can only ever join an EXISTING guild. That is what makes the
+  # golden authoritative by construction. An INSERT into group_relationship
+  # would throw the guarantee away.
+  run grep -n 'TESTERS_SETGUILD_CMD="nwc:tester-set-guild"' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run bash -c "grep -vE '^[[:space:]]*#' '$WRAPPER' | grep -iE 'INSERT INTO (group_relationship|group_content)'"
+  [ "$status" -ne 0 ]
+}
+
+@test "the membership leg is fail-OPEN for the identity leg — it can never abandon it" {
+  # Both pre-wipe legs are `|| true`, and the guild one runs AFTER the identity
+  # one. A membership failure costing a tester their password would be strictly
+  # worse than the bug this whole feature fixes.
+  run grep -n 'testers_guilds_export "\$TESTERS_ROSTER" || true' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run grep -n 'testers_guilds_restore || true' "$WRAPPER"
+  [ "$status" -eq 0 ]
+}
+
+@test "the membership verdict is graded and persisted SEPARATELY from the login verdict" {
+  run grep -c 'last-guilds' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run grep -n 'case "\$GUILDS_VERDICT" in' "$WRAPPER"
+  [ "$status" -eq 0 ]
+}
+
+@test "a failed membership capture is STICKY — a clean restore cannot overwrite it" {
+  run grep -n 'GUILDS_VERDICT" == "captured"' "$WRAPPER"
+  [ "$status" -eq 0 ]
+}
+
+@test "the role precedence is declared ONCE and dropped roles are counted, never silent" {
+  run grep -n 'TESTERS_ROLE_PRECEDENCE="guild-admin guild-mentor guild-verifier guild-editor guild-endorsed guild-junior"' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run grep -n 'dropped_roles=' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run grep -n 'testers-guilds-dropped-roles' "$WRAPPER"
+  [ "$status" -eq 0 ]
+}
+
+@test "SOJOURNER LEVEL and ARTICLE 9 CONSENT are documented as deliberately NOT carried" {
+  # The operator ruled membership in and consent out. A later session that
+  # "helpfully" adds consent would be manufacturing a legal fact from a reading
+  # taken a minute earlier; level would mean asserting course completions the
+  # reset has just destroyed. Both refusals are load-bearing, so both are
+  # pinned here rather than left to prose nobody re-reads.
+  run grep -n 'NOT Article 9 consent' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run grep -n 'SOJOURNER LEVEL IS ALSO NOT CARRIED' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run bash -c "grep -vE '^[[:space:]]*#' '$WRAPPER' | grep -E 'nwc:tester-set-level|art9|nwc_art9_consent'"
+  [ "$status" -ne 0 ]
+}
+
+@test "interest-group memberships are counted and named, never silently dropped" {
+  # Measured live: nwc:tester-set-guild's refusal names nine guild seed keys and
+  # the seven *-ig flexible_groups are not among them. A limit nobody reports
+  # is a limit that reads as a feature.
+  run grep -n 'groups_unsupported=' "$WRAPPER"
+  [ "$status" -eq 0 ]
+  run grep -n 'testers-guilds-unsupported' "$WRAPPER"
+  [ "$status" -eq 0 ]
+}

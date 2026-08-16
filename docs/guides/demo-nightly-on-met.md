@@ -764,3 +764,179 @@ this up:
 bash servers/live/demo/install-box.sh nwd --no-key
 bash servers/live/demo/install-box.sh ssd --no-key
 ```
+
+---
+
+## 16. ops#376 — GUILD MEMBERSHIP across the reset
+
+The ops#369 leg (§ the `testers_*` functions in the nwd wrapper) carries a
+tester's **login** across the nightly wipe: username, mail, chosen password
+hash, status, roles, uuid. This section is the follow-up the operator ordered
+on 2026-08-16 — *"yes extend to guild membership"* — which carries their
+**guild memberships** across it too.
+
+**Why it is not optional.** A tester who comes back with their password but
+outside their guild cannot reach the thing they were asked to test. The login
+survived and the test did not, and nothing said so. Measured on live nwd
+2026-08-16: `Andrew-6960` was put in the Theology guild as `guild-mentor`, a
+real reset ran, and afterwards the account read back as
+`sojourners[guild-member]` — the membership silently reverted to the golden's
+while the identity half correctly reported
+`restored=8 created=0 collided=0 failed=0`.
+
+### 16.1 What is carried, and what is deliberately NOT
+
+| Fact | Carried? | Why |
+|---|---|---|
+| Guild membership (which guilds) | **yes** | Part of who a tester *is for testing*. |
+| One individual-scope group role per membership | **yes** | See the precedence rule in 16.3. |
+| Interest-group (`*-ig` `flexible_group`) membership | **no** — counted + named | `nwc:tester-set-guild` addresses **guild**-type groups only. Measured live: its refusal names nine guild seed keys and no `*-ig`. Reported as `groups_unsupported=N`. |
+| Sojourner level | **no** | It is **progression, not membership**. `nwc:tester-set-level` recomputes it from qualifying course completions, and the reset destroys those completions — restoring a level would mean asserting completions that no longer exist. |
+| **Article 9 consent** | **NO — and this is a ruling, not an oversight** | See 16.2. |
+
+### 16.2 ⚠ ARTICLE 9 CONSENT IS NOT MEMBERSHIP AND STAYS OUT
+
+The operator extended this leg to guild membership **and explicitly excluded
+Article 9 consent**. The distinction is written down here, in the wrapper, and
+in the tests, so that a later session does not "helpfully" close what looks
+like a gap:
+
+> **Membership is part of who a tester is for testing. Consent is a legal
+> record with its own lifecycle.**
+
+`nwc_art9_consent` carries granted / withdrawn / stale, a currency check, and
+the `may_contribute` / `may_keep_formation` derivations. It must move through
+*that* machinery. A nightly maintenance script re-asserting a consent state
+from a reading it took a minute earlier would be **manufacturing a legal
+fact** — the reset would be recording that somebody consented, on no authority
+but its own cache. If a tester's consent is lost to a reset, the correct
+remedy is that they consent again, through the consent flow, which is exactly
+what a consent flow is for.
+
+`tests/unit/test-demo-testers-persist.bats` pins this: it asserts the wrapper's
+non-comment lines contain no `art9`, no `nwc_art9_consent` and no
+`nwc:tester-set-level`. Adding either makes the suite red.
+
+### 16.3 The one-role limit, and the precedence rule
+
+`nwc:tester-set-guild --group-role=<id>` sets the membership's individual-scope
+role to **exactly that id** (measured off the deployed `--help`, 2026-08-16),
+so repeated calls *replace* rather than accumulate. Live testers hold up to
+four at once — `Benedict-0000` holds `guild-admin`, `guild-mentor`,
+`guild-verifier` and `guild-endorsed` in each of eight guilds.
+
+So a choice has to be made, and it is made **once, in the open**, as
+`TESTERS_ROLE_PRECEDENCE` in the wrapper:
+
+```
+guild-admin > guild-mentor > guild-verifier > guild-editor > guild-endorsed > guild-junior
+```
+
+Most-capable first. This **cannot widen anybody's access**: the role restored
+is always one the tester provably held seconds before the wipe, and the rule
+only decides which of several *held* roles comes back. Most-capable wins
+because the extras cost least — a `guild-admin` demoted to `guild-endorsed`
+cannot run their guild at all, whereas an admin who has lost `endorsed` can
+still work. A role the precedence list does not know sorts **last** and is
+reported as dropped: an unrecognised role is drift, not noise.
+
+**Every dropped role is counted and named**, in the verdict (`dropped_roles=N`)
+and by name in the box log:
+
+```
+testers-guilds-dropped-roles|Benedict-0000:coders:kept=guild-admin:dropped=guild-mentor+guild-verifier+guild-endorsed …
+```
+
+The real fix is a multi-role setter on the nwc side; until that exists this is
+a **stated** limitation rather than an unknown one.
+
+### 16.4 How it works
+
+* **Capture (pre-wipe)** — `drush nwc:tester-list --format=json`, the site's
+  **own** read command, the same document `pl demo testers <site> list --json`
+  renders. Not a join over `group_relationship`: a second answer to "what is
+  this tester's membership" is an answer that drifts.
+* **Restore (post-import)** — a **diff, not a replay**. The list is read once
+  more after the golden import and `nwc:tester-set-guild` is called only for
+  the memberships the golden did *not* bring back. A blind replay would be up
+  to 8 testers × 16 groups = 128 drush calls on a 3.9 GB box that also serves
+  GitLab and four other live sites. It is also more honest: `memberships_present=N`
+  records what the **golden** supplied, which is not the same fact as "we
+  restored it".
+* **Golden precedence is enforced by the API, not by our good behaviour.**
+  `nwc:tester-set-guild` resolves a guild by `field_group_seed_key` via
+  `nwc_guild_load_seed_group()` — the machine key, never the mutable label, so
+  the ADR-0029 label-rename hazard that left three personas group-less in
+  ops#218 does not exist on this path — and it **refuses an unknown seed key**.
+  This leg therefore cannot create, rename or resurrect a guild. A membership
+  whose guild the golden no longer has is a counted, named `memberships_failed`.
+
+### 16.5 PARTIAL DEGRADATION is the requirement
+
+A membership that could not be carried **must never cost the tester their
+login**, and a login that survived must never make a lost membership look
+fine. So the two legs have **separate verdicts, separate verdict files and
+separate status lines**:
+
+```
+last_testers_preserved: <utc>|restored|restored=8 created=0 collided=0 failed=0
+last_testers_guilds:    <utc>|restored|memberships_captured=34 memberships_present=33 memberships_restored=1 memberships_failed=0 dropped_roles=27
+```
+
+Both pre-wipe legs are `|| true`, and the guild leg runs *after* the identity
+leg. Both are graded independently in the exit block, and either can degrade
+the run on its own. Failure verdicts are **sticky** on both sides: only a
+capture that reached `captured` may be upgraded to `restored`.
+
+`pl demo status <site> --tier=live` renders them as two lines under
+*"Tester logins across the nightly reset"*. `carried` is true for exactly two
+verdicts (`restored`, `no-testers`); an unrecognised verdict, and a wrapper too
+old to report the line at all, both fail **closed**.
+
+On the Moodle half guilds are **declared absent by design** — `ssd` has no
+Group entities and never will — so it earns no "redeploy the wrapper" hint,
+which would be an instruction that can never come true (the ops#329 D6 defect).
+
+### 16.6 Proof captured 2026-08-16 (live nwd, both directions)
+
+```
+RED   (pre-change wrapper)
+  set-guild Andrew-6960 theology --group-role=guild-mentor
+  before: sojourners[guild-member] theology[guild-mentor,guild-member]
+  pl demo nightly nwd --tier=live --via-key --force        (72s)
+    testers-exported  listed=8 captured=8 absent=0 unlisted=0
+    testers-restored  restored=8 created=0 collided=0 failed=0
+  after:  sojourners[guild-member]                     ← membership GONE
+
+GREEN (this wrapper)
+  bash servers/live/demo/install-box.sh nwd --no-key   (wrapper only; golden NOT re-blessed)
+  set-guild Andrew-6960 theology --group-role=guild-mentor
+  pl demo nightly nwd --tier=live --via-key --force        (73s)
+    testers-exported        listed=8 captured=8 absent=0 unlisted=0
+    testers-guilds-exported memberships_captured=34 dropped_roles=27 groups_unsupported=21
+    testers-restored        restored=8 created=0 collided=0 failed=0
+    testers-guilds-restored memberships_captured=34 memberships_present=33
+                            memberships_restored=1 memberships_failed=0 dropped_roles=27
+  after:  sojourners[guild-member] theology[guild-mentor,guild-member]   ← BACK
+
+IDENTITY UNCHANGED across both runs (this is the partial-degradation control):
+  Andrew-6960    $2y$10$Bqpe7  c598a43b-de86-4d95-9492-93b1003705be
+  Benedict-0000  $2y$12$Fti3.  33992be8-162a-4e15-ad0b-bf4d2ae4a885
+```
+
+`memberships_present=33 / memberships_restored=1` is the diff doing its job:
+the golden supplied 33 of the 34 captured memberships and this leg applied
+exactly the one it did not have. The whole leg cost ~1s of the 73s reset.
+
+**CANNOT VERIFY, stated rather than glossed:** the `ssd` half was *not*
+exercised end-to-end here — the `ssd` restricted key lives on met, not on this
+workstation, so `pl demo status ssd --tier=live` could not read the box. What
+*is* proven is the fact `ssd`'s UID lock binds to: both testers' **uuids are
+byte-identical** before and after (above), so nothing could have forked. The
+ssd wrapper is untouched by this change.
+
+Redeploy to pick this up:
+
+```bash
+bash servers/live/demo/install-box.sh nwd --no-key
+```

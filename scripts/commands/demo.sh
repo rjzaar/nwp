@@ -3776,6 +3776,44 @@ demo_box_render_testers() {
         no-capture*) print_status "INFO" "UID lock not asserted — ${lock}" ;;
         *)           print_status "FAIL" "UID lock — ${lock} (a tester's Moodle identity may have forked)" ;;
     esac
+
+    # ops#376 — GUILD MEMBERSHIP, rendered as its OWN line under the same
+    # heading. It sits here rather than in its own block because an operator
+    # asking "is my tester still able to test tomorrow" needs both answers
+    # together; it stays a SEPARATE line because they are separate failures.
+    # A membership loss must never be reported as a login loss, and a login
+    # that survived must never make a lost membership look fine.
+    local g_reported g_verdict g_detail g_fail g_drop
+    g_reported="$(jq -r '.testers.guilds.reported // "absent"' <<<"$extras")"
+    if [[ "$g_reported" != "true" && "$(jq -r '.testers.guilds.by_design // false' <<<"$extras")" == "true" ]]; then
+        # DECLARED-ABSENT (the Moodle half has no guilds). Nothing to fix and
+        # nothing to wait for, so this must not carry the redeploy hint.
+        print_status "INFO" "guild membership not applicable — $(jq -r '.testers.guilds.reason' <<<"$extras")"
+        return 0
+    fi
+    if [[ "$g_reported" != "true" ]]; then
+        print_status "WARN" "guild membership NOT REPORTED — $(jq -r '.testers.guilds.reason // "the deployed wrapper predates guild membership persistence"' <<<"$extras")"
+        return 0
+    fi
+    g_verdict="$(jq -r '.testers.guilds.verdict' <<<"$extras")"
+    g_detail="$(jq -r '.testers.guilds.detail // ""' <<<"$extras")"
+    g_fail="$(jq -r '.testers.guilds.memberships_failed // 0' <<<"$extras")"
+    g_drop="$(jq -r '.testers.guilds.dropped_roles // 0' <<<"$extras")"
+    case "$g_verdict" in
+        none)       print_status "INFO" "the guild membership leg has not run yet on this box" ;;
+        no-testers) print_status "INFO" "no tester is in a guild — nothing to carry across" ;;
+        restored)   print_status "OK"   "guild memberships carried across${g_detail:+ (${g_detail})}" ;;
+        *)
+            print_status "FAIL" "GUILD MEMBERSHIPS WERE NOT CARRIED — ${g_verdict}${g_detail:+: ${g_detail}}"
+            print_hint  "Logins are graded on the line above; this is the membership half only." ;;
+    esac
+    # A dropped role is not a failure — it is the STATED one-role-per-membership
+    # limit doing what it says. It still has to be visible every time, or the
+    # limit becomes an unknown again.
+    [[ "$g_drop" =~ ^[0-9]+$ ]] && (( g_drop > 0 )) && \
+        print_status "WARN" "${g_drop} extra individual role(s) not carried — nwc:tester-set-guild sets ONE per membership (named in the box log)"
+    [[ "$g_fail" =~ ^[0-9]+$ ]] && (( g_fail > 0 )) && \
+        print_hint "  ${g_fail} membership(s) could not be re-applied — usually a guild the golden no longer has."
     return 0
 }
 

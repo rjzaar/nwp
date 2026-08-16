@@ -225,6 +225,15 @@ demo_box_extras_by_design_json() {
     local tt='{"reported":false,"state":"not-read","reason":"this half'"'"'s box status was not read, so tester persistence is UNKNOWN"}'
     if [[ -n "$raw" ]]; then
         tt="$(demo_box_extras_json "$raw" | jq -c '.testers')"
+        # ops#376 — GUILD MEMBERSHIP *IS* one of the by-design absences, and it
+        # is the opposite call from the UID lock two lines up. Guilds are a
+        # Drupal/Group concept that exists only on the provider half; the
+        # consumer's wrapper has no guild table to report on and never will.
+        # Left alone, the generic branch would tell an operator to redeploy the
+        # Moodle box to fix it — an instruction that can never come true, which
+        # is precisely the ops#329 D6 defect. Declared-absent, not missing.
+        tt="$(jq -c --arg reason "reported by the pair provider (${provider}), not by this half — guilds are a Drupal concept and this half has none" \
+              '.guilds = {reported:false, by_design:true, reason:$reason}' <<<"$tt")"
     fi
     jq -cn --arg reason "reported by the pair provider (${provider}), not by this half" \
            --argjson tt "$tt" \
@@ -362,10 +371,11 @@ demo_box_extras_json() {
         # `|| true` would have silenced the lint and kept the defect, so: awk
         # does the match and the first-line stop in a single process, and the
         # substitution's status is awk's own (0 whether or not it matched).
-        local tt_reg tt_last tt_lock
+        local tt_reg tt_last tt_lock tt_guilds
         tt_reg="$(awk  'sub(/^testers_registry: /,""){print; exit}'       <<<"$raw")"
         tt_last="$(awk 'sub(/^last_testers_preserved: /,""){print; exit}' <<<"$raw")"
         tt_lock="$(awk 'sub(/^testers_uidlock: /,""){print; exit}'        <<<"$raw")"
+        tt_guilds="$(awk 'sub(/^last_testers_guilds: /,""){print; exit}'  <<<"$raw")"
         if [[ -z "$tt_reg" && -z "$tt_last" && -z "$tt_lock" ]]; then
             tt_json='{"reported":false,"state":"old-wrapper","reason":"the deployed wrapper predates tester identity persistence (redeploy: bash servers/live/demo/install-box.sh <site> --no-key)"}'
         else
@@ -383,13 +393,53 @@ demo_box_extras_json() {
             # preserved.
             local tt_preserved=false
             [[ "$tt_verdict" == "restored" ]] && tt_preserved=true
+
+            # ops#376 — GUILD MEMBERSHIP, parsed into its OWN sub-document.
+            # PARTIAL DEGRADATION IS THE POINT: `.testers.preserved` above is
+            # about logins and stays true when a login survived, even if the
+            # membership did not. Folding the membership verdict into it would
+            # turn "you can log in but you are out of your guild" into "you
+            # cannot log in", which sends the operator to the wrong remedy —
+            # and folding it the other way would hide the loss entirely.
+            #
+            # Three states again, fail-closed in the same direction: a wrapper
+            # that does not report the line at all is `reported:false`, never
+            # `carried:true`, and `carried` is true for EXACTLY the verdicts
+            # that mean nothing was lost — `restored` and `no-testers`.
+            local tg_json
+            if [[ -z "$tt_guilds" ]]; then
+                tg_json='{"reported":false,"reason":"the deployed wrapper does not report guild membership persistence (redeploy: bash servers/live/demo/install-box.sh <site> --no-key)"}'
+            elif [[ "$tt_guilds" == "none" ]]; then
+                tg_json='{"reported":true,"verdict":"none","carried":false,"detail":"","ts":null}'
+            else
+                local tg_ts="${tt_guilds%%|*}" _grest="${tt_guilds#*|}"
+                local tg_verdict="${_grest%%|*}" tg_detail="${_grest#*|}"
+                local tg_carried=false
+                case "$tg_verdict" in restored|no-testers) tg_carried=true ;; esac
+                local tg_cap="" tg_res="" tg_fail="" tg_drop=""
+                [[ "$tg_detail" =~ memberships_captured=([0-9]+)  ]] && tg_cap="${BASH_REMATCH[1]}"
+                [[ "$tg_detail" =~ memberships_restored=([0-9]+)  ]] && tg_res="${BASH_REMATCH[1]}"
+                [[ "$tg_detail" =~ memberships_failed=([0-9]+)    ]] && tg_fail="${BASH_REMATCH[1]}"
+                [[ "$tg_detail" =~ dropped_roles=([0-9]+)         ]] && tg_drop="${BASH_REMATCH[1]}"
+                tg_json="$(jq -cn --arg verdict "$tg_verdict" --arg detail "$tg_detail" \
+                                 --arg ts "$tg_ts" --argjson carried "$tg_carried" \
+                                 --arg cap "$tg_cap" --arg res "$tg_res" \
+                                 --arg fail "$tg_fail" --arg drop "$tg_drop" \
+                    '{reported:true, verdict:$verdict, detail:$detail, ts:$ts, carried:$carried,
+                      memberships_captured:(($cap|tonumber?)  // null),
+                      memberships_restored:(($res|tonumber?)  // null),
+                      memberships_failed:(($fail|tonumber?)   // null),
+                      dropped_roles:(($drop|tonumber?)        // null)}')"
+            fi
+
             tt_json="$(jq -cn --arg reg "$tt_reg" --arg verdict "$tt_verdict" \
                              --arg detail "$tt_detail" --arg ts "$tt_ts" \
                              --arg lock "$tt_lock" --argjson preserved "$tt_preserved" \
+                             --argjson guilds "$tg_json" \
                 '{reported:true, state:"ok", registry:$reg, verdict:$verdict, detail:$detail,
                   ts:(if $ts == "" then null else $ts end),
                   uid_lock:(if $lock == "" then null else $lock end),
-                  preserved:$preserved}')"
+                  preserved:$preserved, guilds:$guilds}')"
         fi
     fi
 

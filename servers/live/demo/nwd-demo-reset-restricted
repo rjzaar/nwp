@@ -135,6 +135,40 @@ GOLDEN_FILES="golden.files.tar.gz"
 CODES_PAYLOAD="${STATE_DIR}/codes-payload.json"
 STAMP_FILE="${STATE_DIR}/last-reset"
 HARVEST_DIR="${STATE_DIR}/harvest"
+
+# ---- Tester identity persistence (ops#369) ---------------------------------
+# IDENTITY PERSISTS; CONTENT DOES NOT. A tester's login — username, mail,
+# password hash (the one THEY chose), status, roles and the uuid the ssd half's
+# UID lock is bound to — is carried across the wipe. Everything they AUTHORED
+# is destroyed with the rest, which is the feature.
+#
+# TWO FILES, TWO DIFFERENT KINDS OF FACT, and they must not be conflated:
+#
+#   TESTERS_PAYLOAD  WHO is a tester. The console's tester registry, staged to
+#                    this box exactly like the hashed invite-code payload
+#                    (install-box.sh --stage-testers). It is the SOLE AUTHORITY
+#                    on membership and it is READ FRESH FROM DISK on every
+#                    invocation — never cached, never compiled into this file.
+#                    It holds NO secrets: names only. root:root 0644.
+#   TESTERS_CAPTURE  WHAT their login currently is. Written by the pre-wipe
+#                    export from the LIVE database seconds before it is
+#                    dropped, which is the only place a password the tester set
+#                    themselves exists. It DOES hold password hashes, so its
+#                    directory is 0700 and owned by the user this wrapper runs
+#                    as, and no hash is ever printed or logged.
+TESTERS_PAYLOAD="${STATE_DIR}/testers-payload.json"
+TESTERS_DIR="${STATE_DIR}/testers"
+TESTERS_CAPTURE="${TESTERS_DIR}/identity-latest.json"
+# The @demo.invalid fence (RFC 6761, reserved — mail can never leave the box) is
+# the SAFETY NET, not the roster: NwcPrivacyDemoCommands fences every tester
+# write on it and so does this. The registry says who is preserved; the fence
+# says who may be touched at all. An account must satisfy BOTH.
+TESTERS_FENCE="demo.invalid"
+# A staged registry older than this is reported STALE. It is not a refusal —
+# a stale roster still preserves the testers it names, and refusing would turn
+# "the console did not re-stage" into "every tester lost tonight", which is the
+# wrong direction. It IS surfaced by `status`.
+TESTERS_STALE_AFTER=172800      # 48h
 LOCK_FILE="/var/lock/nwd-demo-reset.lock"
 LOG_FILE="/var/log/nwp-demo/nwd-demo-reset.log"
 
@@ -292,6 +326,24 @@ if [[ "$ACTION" == "status" ]]; then
         echo "golden:      MISSING"
     fi
     echo "last reset:  $(cat "$STAMP_FILE" 2>/dev/null || echo none)"
+
+    # ops#369 — TESTER IDENTITY PERSISTENCE. Three separate facts, never
+    # collapsed: is a roster staged, how old is it, and did last night's run
+    # actually carry the logins across. "No line at all" was the old answer to
+    # all three and it is the one answer a tester cannot act on.
+    if [[ ! -s "$TESTERS_PAYLOAD" ]]; then
+        echo "testers_registry: NOT STAGED — no login survives a reset"
+    elif ! jq -e '.version == 1 and (.testers|type=="array")' "$TESTERS_PAYLOAD" >/dev/null 2>&1; then
+        echo "testers_registry: MALFORMED — no login survives a reset"
+    else
+        TS_N="$(jq -r '.testers | length' "$TESTERS_PAYLOAD" 2>/dev/null || echo '?')"
+        TS_GEN="$(jq -r '.generated_utc // "?"' "$TESTERS_PAYLOAD" 2>/dev/null || echo '?')"
+        TS_AGE="$(( $(date +%s) - $(stat -c%Y "$TESTERS_PAYLOAD" 2>/dev/null || date +%s) ))"
+        TS_STALE=""
+        [[ "$TS_AGE" -gt "$TESTERS_STALE_AFTER" ]] && TS_STALE=" STALE"
+        echo "testers_registry: ${TS_N} tester(s) generated=${TS_GEN} staged_age=${TS_AGE}s${TS_STALE}"
+    fi
+    echo "last_testers_preserved: $(cat "${TESTERS_DIR}/last-verdict" 2>/dev/null || echo none)"
 
     # ops#329 D4 — the return leg's last run, read from this box's OWN log
     # (the primary record; met's cron log is only the trigger transcript).
@@ -691,6 +743,296 @@ idle_ok() {
 }
 
 ################################################################################
+# TESTER IDENTITY PERSISTENCE (ops#369)
+#
+# THE OPERATOR'S QUESTION, VERBATIM: "If I give someone a login and they change
+# the password does it survive to the next day?" Until this block it did not,
+# and the loss had two different shapes, both measured on live 2026-08-15:
+#
+#   * a tester WHO WAS IN THE GOLDEN kept their username and uuid but their
+#     chosen password reverted to whatever the golden held
+#     (Benedict-0000: $2y$12$IrJ4… before the reset, $2y$10$Wq9z… after);
+#   * a tester who joined AFTER the seal was erased outright — no row at all
+#     (tester_daytwo, uid 41, gone).
+#
+# So a tester had to ask for a new invite code every single day. The fix is a
+# pre-wipe EXPORT and a post-import RESTORE, in the same idiom as the harvest
+# and feedback-sync legs above.
+#
+# WHY NOT JUST BAKE TESTERS INTO THE GOLDEN: because then every password change
+# would need a re-bless of the golden, and the operator's phase-1 ruling is that
+# routine operation must not require one.
+#
+# COLLISION RULE — the uuid is the identity, the name is not:
+#   1. a restored user with the SAME UUID  → UPDATE it (this is the normal case;
+#      the golden brought the tester back and we are re-applying their password)
+#   2. no such uuid, but the name is TAKEN → REFUSE that tester and degrade the
+#      run. The golden's account wins: silently overwriting it could hand a
+#      tester somebody else's account, including an administrator's.
+#   3. neither → CREATE, carrying the original uuid so the ssd half's UID lock
+#      (mdl_user.idnumber = this uuid) still finds them.
+# uid is deliberately NOT preserved: after a restore Drupal's uid sequence
+# rewinds to the golden's high-water mark, so yesterday's uid 41 is tomorrow's
+# uid 41 for a DIFFERENT person. The uuid does not rewind.
+################################################################################
+
+# Set by testers_export / testers_restore, read by the exit-status block.
+TESTERS_VERDICT="not-run"
+TESTERS_DETAIL=""
+
+# SQL-safe? The registry is a file this box does not author, so every account
+# name out of it is checked before it is ever interpolated into SQL. The set is
+# the same one `pl demo testers` validates on the way in.
+testers_name_ok() {
+    [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$ ]]
+}
+
+# Read the staged registry FRESH and print one validated account name per line.
+# Exit: 0 = a roster (possibly empty), 1 = malformed, 2 = not staged.
+# Refusals are printed on stderr so the caller can log them; names on stdout.
+testers_roster() {
+    [[ -s "$TESTERS_PAYLOAD" ]] || return 2
+    jq -e '.version == 1 and (.testers | type == "array")' \
+        "$TESTERS_PAYLOAD" >/dev/null 2>&1 || return 1
+    local n bad=0
+    # An entry the write side marked pending must never be honoured here. The
+    # roster is BY DEFINITION the approved list — this is belt and braces, so a
+    # write-side bug surfaces as a loud refusal rather than as a stranger
+    # silently acquiring a persistent login.
+    while IFS= read -r n; do
+        if [[ "$(jq -r --arg n "$n" \
+                '.testers[] | select(.account == $n)
+                 | if (.approved == false or .status == "pending") then "no" else "yes" end' \
+                "$TESTERS_PAYLOAD" 2>/dev/null | head -1)" != "yes" ]]; then
+            echo "not-approved:${n}" >&2; bad=$(( bad + 1 )); continue
+        fi
+        if testers_name_ok "$n"; then
+            printf '%s\n' "$n"
+        else
+            echo "bad-name:$(scrub "$n")" >&2; bad=$(( bad + 1 ))
+        fi
+    done < <(jq -r '.testers[]? | .account // empty' "$TESTERS_PAYLOAD" 2>/dev/null)
+    [[ "$bad" -eq 0 ]]
+}
+
+# ---- PRE-WIPE EXPORT --------------------------------------------------------
+# Fail-OPEN for the reset (a broken export must never leave the demo down) and
+# fail-LOUD for the report: TESTERS_VERDICT is what stops the run being stamped
+# as clean. An unpreserved tester who believes they are preserved is worse than
+# a known gap.
+testers_export() {
+    local roster rrc=0
+    roster="$(testers_roster 2>/tmp/nwd-testers-refusals.$$)" || rrc=$?
+    local refusals; refusals="$(tr '\n' ' ' < /tmp/nwd-testers-refusals.$$ 2>/dev/null)"
+    rm -f /tmp/nwd-testers-refusals.$$
+
+    case "$rrc" in
+        2)  TESTERS_VERDICT="not-staged"
+            log "testers-registry-absent" "no roster at ${TESTERS_PAYLOAD} — NOTHING is preserved across this reset"
+            echo "WARN  no tester registry is staged on this box — no login will survive this reset."
+            echo "WARN  Stage it from the registry home: bash servers/live/demo/install-box.sh nwd --stage-testers"
+            return 0 ;;
+        1)  TESTERS_VERDICT="malformed"
+            TESTERS_DETAIL="registry unparseable"
+            log "testers-registry-malformed" "file=${TESTERS_PAYLOAD} — preserving NOTHING"
+            echo "FAIL  the staged tester registry is not a version-1 roster — NO tester identity is preserved tonight." >&2
+            return 1 ;;
+    esac
+
+    mkdir -p "$TESTERS_DIR" 2>/dev/null || true
+    chmod 0700 "$TESTERS_DIR" 2>/dev/null || true
+
+    local listed=0 captured=0 absent=0 rows="" name row
+    while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        listed=$(( listed + 1 ))
+        # The fence is applied IN the query: an account off @demo.invalid, or
+        # uid<=1, cannot be captured at all, whatever the registry says.
+        # Plain columns, NOT CONCAT_WS('\t', …): drush sqlq already emits real
+        # TAB-separated columns, whereas the '\t' in a CONCAT_WS reached MySQL
+        # as a literal backslash-t and the field split below silently produced
+        # one unsplit blob — every tester counted `absent` and preserved
+        # nothing, while the run still said "captured 0/9" as if that were an
+        # answer. Measured on live 2026-08-15; this comment is the fix's receipt.
+        row="$(drush sqlq "SELECT ufd.name, ufd.mail, u.uuid, ufd.pass, ufd.status
+                             FROM users_field_data ufd JOIN users u ON u.uid = ufd.uid
+                            WHERE ufd.uid > 1
+                              AND ufd.mail LIKE '%@${TESTERS_FENCE}'
+                              AND ufd.name = '${name}' LIMIT 1" 2>/dev/null | head -1)"
+        if [[ -z "$row" ]]; then
+            absent=$(( absent + 1 )); continue
+        fi
+        local rname rmail ruuid rpass rstatus rroles
+        IFS=$'\t' read -r rname rmail ruuid rpass rstatus <<<"$row"
+        [[ -n "$ruuid" && -n "$rpass" ]] || { absent=$(( absent + 1 )); continue; }
+        rroles="$(drush sqlq "SELECT roles_target_id FROM user__roles ur
+                                JOIN users_field_data ufd ON ufd.uid = ur.entity_id
+                               WHERE ufd.name = '${name}'" 2>/dev/null | tr '\n' ',' )"
+        rows+="$(jq -cn --arg n "$rname" --arg m "$rmail" --arg u "$ruuid" \
+                       --arg p "$rpass" --arg s "$rstatus" --arg r "${rroles%,}" \
+                    '{name:$n, mail:$m, uuid:$u, pass:$p, status:$s,
+                      roles:($r | split(",") | map(select(length>0)))}')"$'\n'
+        captured=$(( captured + 1 ))
+    done <<<"$roster"
+
+    # ANOMALY: a REAL tester account the registry does not name. Under the
+    # approval model there are no unapproved accounts, so this means either
+    # someone holds a login nobody approved or the registry has drifted behind
+    # the site. Named, counted, and it degrades the run.
+    #
+    # `demo_%` and `nwcdemo_%` are EXCLUDED and the exclusion is load-bearing,
+    # not a convenience: those are the seeded persona and matrix fixtures that
+    # `drush nwc:seed-demo` recreates on every reset (NwcPrivacyDemoCommands
+    # calls them the `persona` and `matrix` fences). They are furniture, not
+    # people, nobody approves them, and counting them here would make this
+    # check permanently red — which is the fastest way to teach an operator to
+    # ignore it. What is left is exactly the module's `redeemed` class: humans.
+    local unlisted_n=0 unlisted_names=""
+    unlisted_names="$(drush sqlq "SELECT name FROM users_field_data
+                                   WHERE uid > 1 AND mail LIKE '%@${TESTERS_FENCE}'
+                                     AND name NOT LIKE 'demo\_%' ESCAPE '\\\\'
+                                     AND name NOT LIKE 'nwcdemo\_%' ESCAPE '\\\\'" 2>/dev/null \
+                      | while IFS= read -r u; do
+                            [[ -n "$u" ]] || continue
+                            printf '%s\n' "$roster" | grep -qxF "$u" || printf '%s ' "$u"
+                        done)"
+    unlisted_n="$(printf '%s' "$unlisted_names" | wc -w | tr -d ' ')"
+
+    if ! jq -cs --arg utc "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+              '{version:1, captured_utc:$utc, testers:.}' \
+              >"${TESTERS_CAPTURE}.new" <<<"$rows" 2>/dev/null; then
+        TESTERS_VERDICT="export-failed"
+        TESTERS_DETAIL="could not write the capture"
+        log "testers-export-failed" "stage=write listed=${listed}"
+        echo "FAIL  could not write the tester identity capture — NO login is preserved tonight." >&2
+        return 1
+    fi
+    chmod 0600 "${TESTERS_CAPTURE}.new" 2>/dev/null || true
+    mv -f "${TESTERS_CAPTURE}.new" "$TESTERS_CAPTURE" 2>/dev/null || {
+        TESTERS_VERDICT="export-failed"
+        log "testers-export-failed" "stage=rename"
+        echo "FAIL  could not commit the tester identity capture — NO login is preserved tonight." >&2
+        return 1
+    }
+
+    # EVERY name listed and NOT ONE captured is not a roster of nine people who
+    # have never signed in — it is an export that is not working. This exact
+    # shape shipped and ran green on live once (the CONCAT_WS('\t') bug above):
+    # `captured=0/9` printed, the reset stamped itself OK, and every tester was
+    # wiped. A measurement that returns nothing for everyone must fail closed.
+    if [[ "$listed" -gt 0 && "$captured" -eq 0 ]]; then
+        TESTERS_VERDICT="export-blind"
+        TESTERS_DETAIL="listed=${listed} captured=0"
+        log "testers-export-blind" "listed=${listed} captured=0 — treating as CANNOT VERIFY, not as 'nobody is here'"
+        echo "FAIL  the registry names ${listed} tester(s) and NOT ONE could be read from the database." >&2
+        echo "      That is an export that cannot see, not a site with no testers. Nothing is preserved tonight." >&2
+        return 1
+    fi
+
+    TESTERS_VERDICT="exported"
+    TESTERS_DETAIL="listed=${listed} captured=${captured} absent=${absent} unlisted=${unlisted_n}"
+    log "testers-exported" "${TESTERS_DETAIL}${refusals:+ refused=${refusals}}"
+    echo "OK  tester identities captured: ${captured}/${listed} (no hash is printed or logged)"
+    [[ "$absent" -gt 0 ]] && \
+        echo "..  ${absent} registry entr(y|ies) have no account on this site yet — nothing to preserve for them."
+    if [[ "$unlisted_n" -gt 0 ]]; then
+        log "testers-unlisted-accounts" "count=${unlisted_n} names=$(scrub "$unlisted_names")"
+        echo "FAIL  ANOMALY: ${unlisted_n} fenced account(s) exist that the registry does not name: ${unlisted_names}"
+        echo "      Under the approval model no such account should exist. They are NOT preserved."
+        TESTERS_VERDICT="unlisted-accounts"
+        return 1
+    fi
+    [[ -n "$refusals" ]] && { TESTERS_VERDICT="registry-entries-refused"; TESTERS_DETAIL="$refusals"
+        echo "FAIL  registry entries refused (not preserved): ${refusals}" >&2; return 1; }
+    return 0
+}
+
+# ---- POST-IMPORT RESTORE ----------------------------------------------------
+testers_restore() {
+    [[ -s "$TESTERS_CAPTURE" ]] || { log "testers-restore-skipped" "no capture to restore"; return 0; }
+    jq -e '.version == 1 and (.testers|type=="array")' "$TESTERS_CAPTURE" >/dev/null 2>&1 || {
+        TESTERS_VERDICT="capture-malformed"
+        log "testers-restore-failed" "capture unreadable"
+        echo "FAIL  the tester identity capture is unreadable — testers were NOT restored." >&2
+        return 1
+    }
+
+    local updated=0 created=0 collided=0 failed=0 t
+    while IFS= read -r t; do
+        [[ -n "$t" ]] || continue
+        local name mail uuid pass status roles uid
+        name="$(jq -r '.name'   <<<"$t")"; mail="$(jq -r '.mail'   <<<"$t")"
+        uuid="$(jq -r '.uuid'   <<<"$t")"; pass="$(jq -r '.pass'   <<<"$t")"
+        status="$(jq -r '.status' <<<"$t")"
+        roles="$(jq -r '.roles[]?' <<<"$t" | tr '\n' ' ')"
+        testers_name_ok "$name" || { failed=$(( failed + 1 )); continue; }
+        [[ "$uuid" =~ ^[0-9a-f-]{36}$ && "$status" =~ ^[01]$ ]] || { failed=$(( failed + 1 )); continue; }
+
+        # (1) same uuid → the golden brought them back; re-apply their login.
+        uid="$(drush sqlq "SELECT uid FROM users WHERE uuid = '${uuid}' LIMIT 1" 2>/dev/null | tr -dc '0-9')"
+        if [[ -z "$uid" ]]; then
+            # (2) name taken by a DIFFERENT account → refuse, never clobber.
+            if [[ -n "$(drush sqlq "SELECT uid FROM users_field_data WHERE name = '${name}' LIMIT 1" 2>/dev/null | tr -dc '0-9')" ]]; then
+                collided=$(( collided + 1 ))
+                log "testers-restore-collision" "name=${name} — a DIFFERENT account already holds this name; not overwritten"
+                continue
+            fi
+            # (3) create, carrying the original uuid so ssd's UID lock still binds.
+            if ! drush user:create "$name" --mail="$mail" >/dev/null 2>&1; then
+                failed=$(( failed + 1 )); continue
+            fi
+            uid="$(drush sqlq "SELECT uid FROM users_field_data WHERE name = '${name}' LIMIT 1" 2>/dev/null | tr -dc '0-9')"
+            [[ -n "$uid" ]] || { failed=$(( failed + 1 )); continue; }
+            drush sqlq "UPDATE users SET uuid = '${uuid}' WHERE uid = ${uid}" >/dev/null 2>&1 || true
+            created=$(( created + 1 ))
+        else
+            updated=$(( updated + 1 ))
+        fi
+
+        # uid<=1 is never a tester. Belt and braces around a uuid collision with
+        # the site administrator: a console that hands out root while saying
+        # "this is your tester login" is the accident this line exists to stop.
+        [[ "$uid" -gt 1 ]] || { failed=$(( failed + 1 )); continue; }
+
+        # The password hash is written straight to the column ON PURPOSE: drush
+        # has no "set this bcrypt hash" verb, and re-hashing is not possible —
+        # the plaintext exists only in the tester's head. Restoring a hash IS
+        # what a restore is.
+        drush sqlq "UPDATE users_field_data SET pass = '${pass}', mail = '${mail}', status = ${status}
+                     WHERE uid = ${uid}" >/dev/null 2>&1 || failed=$(( failed + 1 ))
+        local r
+        for r in $roles; do
+            [[ "$r" =~ ^[a-z0-9_]{1,64}$ ]] || continue
+            [[ "$r" == "administrator" ]] && continue   # never carry admin across
+            drush user:role:add "$r" "$name" >/dev/null 2>&1 || true
+        done
+    done < <(jq -c '.testers[]' "$TESTERS_CAPTURE" 2>/dev/null)
+
+    local detail="restored=${updated} created=${created} collided=${collided} failed=${failed}"
+    if [[ "$collided" -gt 0 || "$failed" -gt 0 ]]; then
+        TESTERS_VERDICT="restore-degraded"; TESTERS_DETAIL="$detail"
+        log "testers-restore-degraded" "$detail"
+        echo "FAIL  tester restore incomplete (${detail}) — some testers must ask for a login again." >&2
+        return 1
+    fi
+    log "testers-restored" "$detail"
+    echo "OK  tester logins restored (${detail}) — chosen passwords carried across the wipe."
+    # A CLEAN RESTORE DOES NOT ERASE A DIRTY EXPORT. The two legs write the same
+    # variable, and a plain assignment here let a good restore overwrite the
+    # export's `unlisted-accounts` / `registry-entries-refused` verdict — so a
+    # run that had found an unapproved login reported itself fully preserved.
+    # Failure verdicts are STICKY: only an export that reached `exported` may be
+    # upgraded to `restored`.
+    if [[ "$TESTERS_VERDICT" == "exported" ]]; then
+        TESTERS_VERDICT="restored"; TESTERS_DETAIL="$detail"
+    else
+        TESTERS_DETAIL="${TESTERS_DETAIL} | restore: ${detail}"
+        echo "WARN  the restore itself succeeded, but the export reported '${TESTERS_VERDICT}' — this run is NOT clean."
+    fi
+    return 0
+}
+
+################################################################################
 # Guards (run for dry-run too — a dry run is exactly "all guards, no wipe")
 ################################################################################
 
@@ -846,6 +1188,16 @@ harvest() {
 }
 harvest || true
 
+# Pre-wipe TESTER IDENTITY export (ops#369). Fail-OPEN like the harvest: a
+# broken export must never leave the demo site down. It is NOT silent — the
+# verdict lands in TESTERS_VERDICT and the exit-status block below refuses to
+# stamp the run clean unless the identities were actually carried across.
+#
+# ORDER IS LOAD-BEARING: this reads the LIVE database, so it has to happen
+# before the database is dropped — the password a tester set exists nowhere
+# else, and seconds later it is gone.
+testers_export || true
+
 # Pre-wipe TESTER-FEEDBACK notice (fail-OPEN — nwp/ops#161, closable ops#315).
 #
 # The harvest above keeps the errors nobody reported. The reports testers DID
@@ -924,6 +1276,13 @@ else
     log "codes-not-staged" "codes revert to the golden snapshot"
 fi
 
+# Post-import TESTER IDENTITY restore (ops#369). AFTER the golden import and
+# AFTER nwc:seed-demo — seed-demo reasserts the persona/matrix accounts, so
+# restoring first would let it overwrite a tester's chosen password with the
+# seed's. Before `drush cr`, so the caches are rebuilt over the restored users
+# rather than over the golden's.
+testers_restore || true
+
 drush cr >/dev/null 2>&1 || log "cr-failed" "non-fatal"
 
 # Declared BEFORE the first thing that can set it: [G10] below and the smoke
@@ -983,6 +1342,34 @@ else
     log "reset-degraded" "http=${CODE} attempts=${SMOKE_ATTEMPTS}"
     echo "FAIL  https://${DOMAIN}/ still ${CODE} after ${SMOKE_ATTEMPTS} attempts."
 fi
+
+# ops#369 — TESTERS WERE NOT PRESERVED is a DEGRADATION, not a footnote.
+#
+# The reset itself succeeded: the site is up, the golden is back, the demo
+# works. What failed is the promise that a tester can come back tomorrow with
+# the password they chose. Silence there is the worst outcome available — a
+# tester who believes they are preserved and is not — so it degrades the run
+# exactly like a failed smoke check, and `status` carries the verdict forward
+# so `pl demo status` / `seal-status` can say "testers were not preserved last
+# night" instead of nothing.
+case "$TESTERS_VERDICT" in
+    restored|not-staged) ;;   # preserved, or nothing was ever declared to preserve
+    exported)
+        # Exported but never restored: the restore leg did not reach its own
+        # verdict, which means it did not run. Never let that read as success.
+        DEGRADED=true
+        log "testers-not-restored" "export ran, restore did not — logins were NOT carried across"
+        echo "FAIL  tester identities were captured but NOT restored — logins did not survive this reset." ;;
+    *)
+        DEGRADED=true
+        log "testers-degraded" "verdict=${TESTERS_VERDICT} ${TESTERS_DETAIL}"
+        echo "FAIL  tester identity preservation FAILED (${TESTERS_VERDICT}${TESTERS_DETAIL:+: ${TESTERS_DETAIL}})."
+        echo "      Testers named by the registry may have to ask for a login again." ;;
+esac
+# The verdict is persisted separately from the reset stamp so `status` can
+# report it even when the run failed for an unrelated reason.
+{ printf '%s|%s|%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TESTERS_VERDICT" "$TESTERS_DETAIL" \
+    > "${TESTERS_DIR}/last-verdict" ; } 2>/dev/null || true
 
 TOOK=$(( $(date +%s) - START ))
 

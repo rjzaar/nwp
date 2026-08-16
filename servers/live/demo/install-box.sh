@@ -20,6 +20,14 @@
 #                    side only — invite codes are an nwc_demo_access concept and
 #                    the Moodle half has none, so this REFUSES on ssd rather
 #                    than quietly doing nothing.
+#   --stage-testers  also (re)upload the TESTER REGISTRY (ops#369) — the roster
+#                    of approved testers whose login must survive the nightly
+#                    wipe. Names only; it carries no secret, and the password
+#                    hashes it leads to are captured on the box from the live
+#                    database and never leave it. THIS MUST BE RE-RUN WHENEVER
+#                    A TESTER IS APPROVED: the wrapper reads the BOX copy, so a
+#                    tester approved on the registry home but not staged here is
+#                    a tester whose login is erased on their first night.
 #   --no-key         skip the authorized_keys edit (wrapper/golden only)
 #
 # The authorized_keys edit is backed up first and verified afterwards: the
@@ -83,6 +91,7 @@ WRAPPER_SRC="${REPO_ROOT}/servers/live/demo/${WRAPPER_NAME}"
 WRAPPER_DST="/usr/local/bin/${WRAPPER_NAME}"
 GOLDEN_SRC="${NWP_ROOT}/sites/${DEMO_SITE}/demo-golden-live"
 CODES_SRC="${NWP_ROOT}/sites/${DEMO_SITE}/demo-codes.json"
+TESTERS_SRC="${NWP_ROOT}/sites/${DEMO_SITE}/demo-testers.json"
 STATE_DIR="/var/lib/nwp-demo/${DEMO_SITE}"
 LOG_FILE="/var/log/nwp-demo/${DEMO_SITE}-demo-reset.log"
 KEY_COMMENT="${DEMO_SITE}-demo-reset@met"
@@ -90,11 +99,12 @@ KEY_COMMENT="${DEMO_SITE}-demo-reset@met"
 # site. That is what makes one key unable to reach the other half.
 RESTRICTIONS="command=\"${WRAPPER_DST}\",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding"
 
-stage_golden=false; stage_codes=false; do_key=true
+stage_golden=false; stage_codes=false; stage_testers=false; do_key=true
 for a in "$@"; do
     case "$a" in
         --stage-golden) stage_golden=true ;;
         --stage-codes)  stage_codes=true ;;
+        --stage-testers) stage_testers=true ;;
         --no-key)       do_key=false ;;
         *) echo "Unknown option: $a" >&2; exit 1 ;;
     esac
@@ -107,6 +117,33 @@ done
 if [[ "$stage_codes" == "true" && "$DEMO_SITE" != "nwd" ]]; then
     echo "ERROR: --stage-codes is provider-side only; '${DEMO_SITE}' has no invite-code registry" >&2
     exit 1
+fi
+
+# ---- validate local inputs BEFORE touching the box -------------------------
+# ops#369. This used to sit down in step 4b, i.e. AFTER the wrapper had already
+# been scp'd and installed as root. That is the wrong order twice over: it does
+# real work on a live box on the way to discovering the operator's input was
+# unusable, and it made the refusal untestable without a reachable host. A
+# check on data we already hold belongs before the first byte leaves.
+if [[ "$stage_testers" == "true" ]]; then
+    [[ -f "$TESTERS_SRC" ]] || {
+        echo "ERROR: no tester registry at ${TESTERS_SRC}" >&2
+        echo "       It is written by the approval side on the registry home (registry_home: in servers/live/demo/registry-home.yml)." >&2
+        exit 1; }
+    # The wrapper fails closed on a malformed roster — it preserves NOTHING and
+    # reports the run failed — so a payload that cannot parse is a night with no
+    # logins. Cheaper to catch once, here, than every night on the box.
+    jq -e '.version == 1 and (.testers | type == "array")' "$TESTERS_SRC" >/dev/null 2>&1 || {
+        echo "ERROR: ${TESTERS_SRC} is not a version-1 tester roster — refusing to stage it." >&2; exit 1; }
+    TESTERS_N="$(jq -r '.testers | length' "$TESTERS_SRC")"
+    TESTERS_BAD="$(jq -r '[.testers[] | select((.account|type) != "string" or (.account|test("^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$") | not))] | length' "$TESTERS_SRC")"
+    [[ "$TESTERS_BAD" == "0" ]] || {
+        echo "ERROR: ${TESTERS_BAD} roster entr(y|ies) have an account name the wrapper will refuse — fix them before staging." >&2; exit 1; }
+    TESTERS_PENDING="$(jq -r '[.testers[] | select(.approved == false or .status == "pending")] | length' "$TESTERS_SRC")"
+    [[ "$TESTERS_PENDING" == "0" ]] || {
+        echo "ERROR: ${TESTERS_PENDING} roster entr(y|ies) are PENDING. The staged roster is by definition the APPROVED list;" >&2
+        echo "       the wrapper refuses pending entries and degrades the run. Keep pending requests out of this file." >&2
+        exit 1; }
 fi
 
 box() { ssh -i "$ADMIN_KEY" -o BatchMode=yes -o ConnectTimeout=20 "${BOX_USER}@${BOX_HOST}" "$@"; }
@@ -161,6 +198,12 @@ WEB_USER="${NWP_DEMO_WEB_USER:-www-data}"
 box "sudo touch '${STATE_DIR}/join-requests.jsonl' \
      && sudo chown ${WEB_USER}:${WEB_USER} '${STATE_DIR}/join-requests.jsonl' \
      && sudo chmod 0600 '${STATE_DIR}/join-requests.jsonl'"
+
+# ops#369 — the tester IDENTITY capture dir. It holds password hashes taken off
+# the live database seconds before the wipe, so it is 0700 and owned by the user
+# the wrapper runs as. It is deliberately NOT world-readable like the golden:
+# this box also serves four other live sites.
+box "sudo install -d -o ${BOX_USER} -g ${BOX_USER} -m 0700 '${STATE_DIR}/testers' && ls -ld '${STATE_DIR}/testers'"
 
 # logrotate: the box is small, keep the reset log bounded.
 box "printf '%s\n' '/var/log/nwp-demo/*.log {' '    weekly' '    rotate 8' '    compress' '    missingok' '    notifempty' '    copytruncate' '}' | sudo tee /etc/logrotate.d/nwp-demo >/dev/null && sudo chmod 0644 /etc/logrotate.d/nwp-demo"
@@ -225,6 +268,24 @@ if [[ "$stage_codes" == "true" ]]; then
     printf '   %s code(s) staged and read back from the box (sent %s)\n' "$staged_n" "$local_n"
 else
     say "4/5  Code payload staging SKIPPED (pass --stage-codes)"
+fi
+
+################################################################################
+if [[ "$stage_testers" == "true" ]]; then
+    say "4b/5  Staging the tester registry (names only — no secret leaves this host)"
+    # Read back and COMPARE, for the same reason --stage-codes does: a staging
+    # that quietly lands nothing is a night where every tester silently loses
+    # their login, and a bare remote count that is never compared cannot catch
+    # it. (Validation happened before we touched the box at all — see above.)
+    staged_t="$(jq -c '.' "$TESTERS_SRC" | box "cat > /tmp/testers-payload.json && sudo install -o root -g root -m 0644 /tmp/testers-payload.json '${STATE_DIR}/testers-payload.json' && rm -f /tmp/testers-payload.json && jq '.testers|length' '${STATE_DIR}/testers-payload.json'" | tr -d '\r\n')"
+    if [[ "$staged_t" != "$TESTERS_N" ]]; then
+        echo "ERROR: MISMATCH — sent ${TESTERS_N} tester(s), the box reports '${staged_t:-<nothing>}'." >&2
+        echo "       The staged roster is what decides whose login survives tonight; not trusting a partial write." >&2
+        exit 1
+    fi
+    printf '   %s tester(s) staged and read back from the box (sent %s)\n' "$staged_t" "$TESTERS_N"
+else
+    say "4b/5  Tester registry staging SKIPPED (pass --stage-testers)"
 fi
 
 ################################################################################

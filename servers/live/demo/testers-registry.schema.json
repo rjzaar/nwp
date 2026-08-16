@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nwpcode.org/contracts/demo_testers.registry.schema.json",
+  "title": "Demo tester registry (ops#369)",
+  "description": "The roster of APPROVED demo testers whose login must survive the nightly demo reset. Written by the approval side on the registry home (registry_home: in servers/live/demo/registry-home.yml) as sites/<site>/demo-testers.json, and staged to the demo box as /var/lib/nwp-demo/<site>/testers-payload.json by `install-box.sh <site> --stage-testers`. IT IS THE SOLE AUTHORITY ON MEMBERSHIP and it carries NO secret: names only. The password hash, mail, uuid, status and roles that actually get preserved are captured on the box from the LIVE database seconds before the wipe, because a password the tester chose themselves exists nowhere else. The reset wrapper reads this file FRESH from disk on every invocation and caches nothing.",
+  "type": "object",
+  "required": ["version", "testers"],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Anything else is CANNOT VERIFY: the wrapper preserves NOTHING and reports the run failed."
+    },
+    "generated_utc": {
+      "type": "string",
+      "description": "When the approval side generated this roster. Reported by the wrapper's `status` word; a staged payload older than 48h is flagged STALE (reported, never refused — refusing would turn 'nobody re-staged' into 'every tester lost tonight', which is the wrong direction)."
+    },
+    "site": { "type": "string", "description": "Advisory only; the wrapper's target is hard-wired [G2]." },
+    "testers": {
+      "type": "array",
+      "description": "The APPROVED list. Pending join requests must NEVER appear here — they live in the request store the read side never looks at.",
+      "items": {
+        "type": "object",
+        "required": ["account"],
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.@-]{0,79}$",
+            "description": "The EXACT Drupal username on the provider half. The only required field. An entry whose account fails this shape is refused, named, and degrades the run — the other entries are still preserved."
+          },
+          "approved": {
+            "description": "Optional. If present and false the entry is REFUSED and the run degrades. Belt and braces: the staged roster is by definition the approved list, so this exists only so a write-side bug surfaces loudly instead of a stranger silently acquiring a persistent login."
+          },
+          "status": {
+            "description": "Optional. The literal \"pending\" is refused exactly like approved:false."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "x-read-side-behaviour": {
+    "cache": "none — read fresh from disk on every reset",
+    "fence": "an account is only ever touched if uid > 1 AND mail is on @demo.invalid (RFC 6761). The registry says WHO is preserved; the fence says who may be touched at all. Both must hold.",
+    "preserved": ["username", "mail", "password hash", "status", "roles", "uuid"],
+    "not_preserved": "everything the tester AUTHORED — nodes, media, feedback, submissions, guild membership and Art.9 consent granted after the seal. That is the feature, not a gap (operator's phase-1 ruling: content temporary, machinery exercised).",
+    "uuid_is_the_identity": "uid is deliberately NOT preserved: after a restore Drupal's uid sequence rewinds to the golden's high-water mark, so yesterday's uid 41 is tomorrow's uid 41 for a different person. The uuid does not rewind, and it is what the ssd half's UID lock (mdl_user.idnumber) is bound to.",
+    "collision_rule": [
+      "same uuid already present after the restore -> UPDATE it (the normal case: the golden brought the tester back and the chosen password is re-applied)",
+      "no such uuid but the NAME is taken -> REFUSE that tester and degrade the run; the golden's account wins, because silently overwriting it could hand a tester somebody else's account, including an administrator's",
+      "neither -> CREATE, carrying the original uuid so the Moodle-side UID lock still binds"
+    ],
+    "drift": {
+      "registry names an account that does not exist on the site": "counted `absent`, NOT a failure — a tester approved who has not appeared yet is normal",
+      "a real (redeemed) fenced account the registry does NOT name": "ANOMALY — named, counted, and it DEGRADES the run. Under the approval model no unapproved account exists. The seeded `demo_*` (persona) and `nwcdemo_*` (matrix) fixtures are excluded, because nobody approves furniture and a permanently-red check is one an operator learns to ignore."
+    }
+  }
+}

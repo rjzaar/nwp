@@ -16,6 +16,11 @@ set -euo pipefail
 # Usage: ./stg2live.sh [OPTIONS] <sitename>
 ################################################################################
 
+# Where the live nginx vhosts live. Overridable ONLY so the vhost write path can
+# be exercised against a fixture directory instead of a live box (nwp/ops#373);
+# nothing in normal operation sets it.
+LIVE_VHOST_CONF_DIR="${NWP_LIVE_VHOST_CONF_DIR:-/etc/nginx/conf.d}"
+
 # Get script directory (from symlink location, not resolved target)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
@@ -866,9 +871,13 @@ setup_ssl_certificate() {
         fi
     fi
 
-    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -f /etc/nginx/conf.d/${base_name}.conf" 2>/dev/null; then
+    # NOTE (nwp/ops#373): the `rm -f` in this block is the ONE case where removing
+    # the file IS the restore — it is guarded by the test immediately below, so it
+    # only ever runs when there was no vhost here before we wrote one. The
+    # unguarded twin of it in update_nginx_ssl took a live site down twice.
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -f ${LIVE_VHOST_CONF_DIR}/${base_name}.conf" 2>/dev/null; then
         print_info "Writing HTTP-only nginx bootstrap config for ACME challenge..."
-        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee /etc/nginx/conf.d/${base_name}.conf > /dev/null" << ACMEEOF
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee ${LIVE_VHOST_CONF_DIR}/${base_name}.conf > /dev/null" << ACMEEOF
 server {
     listen 80;
     server_name ${domain};
@@ -878,8 +887,8 @@ server {
 }
 ACMEEOF
         if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix nginx -t" >/dev/null 2>&1; then
-            print_error "Bootstrap nginx config failed validation; removing"
-            ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix rm -f /etc/nginx/conf.d/${base_name}.conf" 2>/dev/null || true
+            print_error "Bootstrap nginx config failed validation; removing the file we just wrote (there was none before)"
+            ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix rm -f ${LIVE_VHOST_CONF_DIR}/${base_name}.conf" 2>/dev/null || true
             return 1
         fi
         ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix gitlab-ctl hup nginx" 2>/dev/null || \
@@ -889,9 +898,12 @@ ACMEEOF
     if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix certbot certonly --webroot -w $webroot -d $domain --non-interactive --agree-tos --email admin@nwpcode.org" 2>/dev/null; then
         print_status "OK" "SSL certificate obtained"
 
-        # Update nginx config to use SSL
+        # Update nginx config to use SSL. Its verdict IS this function's verdict
+        # — `update_nginx_ssl …; return 0` (nwp/ops#373) discarded the failure
+        # the function had just reported, one of the two places the deploy went
+        # green over a site with no vhost.
         update_nginx_ssl "$base_name" "$server_ip" "$ssh_user" "$domain"
-        return 0
+        return $?
     else
         print_status "WARN" "Could not obtain SSL certificate (may need manual setup)"
         return 1
@@ -975,25 +987,15 @@ resolve_site_php_version() {
     printf '%s' "$ver"
 }
 
-update_nginx_ssl() {
+# render_live_vhost <base_name> <domain> <php_ver>
+# PURE: prints the live vhost, writes nothing, reaches nothing. Split out of
+# update_nginx_ssl (nwp/ops#373) so the config can be rendered and diffed in a
+# fixture, and so the install path below has no column-1 `}` in it.
+render_live_vhost() {
     local base_name="$1"
-    local server_ip="$2"
-    local ssh_user="$3"
-    local domain="$4"
-
-    # PHP-FPM version for the fastcgi_pass — derived from the build, not hardcoded.
-    local php_ver
-    php_ver="$(resolve_site_php_version "$base_name")"
-
-    local sudo_prefix=""
-    if [ "$ssh_user" == "gitlab" ]; then
-        sudo_prefix="sudo"
-    fi
-
-    print_info "Updating nginx config for SSL..."
-
-    # Create updated nginx config with SSL
-    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee /etc/nginx/conf.d/${base_name}.conf > /dev/null" << EOF
+    local domain="$2"
+    local php_ver="$3"
+    cat << EOF
 server {
     listen 80;
     server_name ${domain};
@@ -1073,25 +1075,132 @@ server {
     }
 }
 EOF
+}
 
-    # Validate nginx config BEFORE reload. If broken, restore the snapshot's
-    # version of conf.d/<base_name>.conf and bail. Otherwise the reload could
-    # leave nginx unreloadable on next config change (sibling sites still
-    # work because they're in separate conf.d/ files, but it's a foot-gun).
-    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
-        "$sudo_prefix nginx -t" >/dev/null 2>&1; then
-        print_error "nginx -t failed AFTER writing conf.d/${base_name}.conf."
-        print_error "Removing the broken config so nginx remains reloadable."
-        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
-            "$sudo_prefix rm -f /etc/nginx/conf.d/${base_name}.conf" 2>/dev/null || true
+# live_vhost_install_script <conf> <snapshot> <sudo> <reload-cmd> <config-text>
+# PURE: prints the script the deploy runs on the box. Nothing is executed here,
+# which is what lets the whole write path be driven from a fixture directory
+# with a stub `nginx` (tests/unit/test-stg2live-vhost-restore.bats) — the
+# ops#359 "analysis is local and pure" rule applied to a WRITE.
+#
+# THE ORDER IS THE FIX (nwp/ops#373). SNAPSHOT, then write, then test, then —
+# only on a passing test — reload. On a failing test PUT THE SNAPSHOT BACK.
+# The code this replaces ran `rm -f` on the site's vhost, under a comment
+# promising a restore that was never written: a site whose config failed
+# validation was left with NO server block at all, so TLS fell through to the
+# alphabetically-first 443 block on the box and served another site's
+# certificate. Deleting a working config because its replacement failed
+# validation is strictly worse than leaving the working one in place.
+#
+# The config text is embedded in a QUOTED heredoc: nothing in it is expanded on
+# the remote, and nothing from argv reaches the remote command line.
+live_vhost_install_script() {
+    local conf="$1" snap="$2" sudo_prefix="$3" reload="$4" config="$5"
+    cat <<REMOTE
+set -u
+conf='${conf}'
+snap='${snap}'
+had_prev=0
+if ${sudo_prefix} test -f "\$conf"; then
+    ${sudo_prefix} cp -a -- "\$conf" "\$snap" || {
+        printf 'REFUSED: could not snapshot %s — not overwriting a vhost we cannot put back\n' "\$conf" >&2
+        exit 4
+    }
+    had_prev=1
+fi
+tmp=\$(mktemp) || exit 4
+cat > "\$tmp" <<'NWPLIVEVHOST'
+${config}
+NWPLIVEVHOST
+if [ ! -s "\$tmp" ] || ! grep -q 'server[[:space:]]*{' "\$tmp"; then
+    printf 'REFUSED: rendered vhost is empty or is not an nginx server block — %s left untouched\n' "\$conf" >&2
+    rm -f "\$tmp"
+    exit 4
+fi
+# -m only: the remote runs this under sudo, so the file lands root-owned anyway.
+# Asking for -o root -g root as well made the write fail (and, worse, fail HALF
+# DONE — the new bytes were in place and the error path did not put the old ones
+# back) anywhere the caller was not root. Found by the fixture, not by a box.
+if ! ${sudo_prefix} install -m 0644 "\$tmp" "\$conf"; then
+    printf 'FAILED: could not write %s\n' "\$conf" >&2
+    rm -f "\$tmp"
+    if [ "\$had_prev" = "1" ]; then
+        ${sudo_prefix} cp -a -- "\$snap" "\$conf" 2>/dev/null \\
+            && printf 'RESTORED: the previous %s is back in place\n' "\$conf"
+    fi
+    exit 4
+fi
+rm -f "\$tmp"
+if ! ${sudo_prefix} nginx -t 2>&1; then
+    if [ "\$had_prev" = "1" ]; then
+        ${sudo_prefix} cp -a -- "\$snap" "\$conf" \\
+            && printf 'RESTORED: nginx -t rejected the new vhost; the previous %s is back in place\n' "\$conf" \\
+            || printf 'FAILED: could not restore %s from %s — THE SITE HAS NO VHOST\n' "\$conf" "\$snap" >&2
+    else
+        ${sudo_prefix} rm -f "\$conf"
+        printf 'REMOVED: nginx -t rejected the new vhost and there was no previous vhost to restore — the box is as it was\n'
+    fi
+    if ${sudo_prefix} nginx -t >/dev/null 2>&1; then
+        printf 'nginx -t passes again; nginx was NOT reloaded, so the running config never changed\n'
+    else
+        printf 'WARNING: nginx -t STILL fails after the restore — the box needs attention: pl server vhost <server> <site> --status\n' >&2
+    fi
+    exit 2
+fi
+${reload} || {
+    printf 'FAILED: nginx -t passed but the reload failed — the new vhost is on disk and NOT serving\n' >&2
+    exit 3
+}
+printf 'APPLIED: %s installed, nginx -t passed, nginx reloaded\n' "\$conf"
+REMOTE
+}
+
+update_nginx_ssl() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local domain="$4"
+
+    # PHP-FPM version for the fastcgi_pass — derived from the build, not hardcoded.
+    local php_ver
+    php_ver="$(resolve_site_php_version "$base_name")"
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    local conf="${LIVE_VHOST_CONF_DIR}/${base_name}.conf"
+    # The snapshot deliberately does NOT end in .conf: nginx globs conf.d/*.conf
+    # at the top level only, so this file is INERT and can never serve a second
+    # copy of the site. It is also the name `pl server vhost <server> <site>
+    # --restore` already looks for (vhost_stashes_for, ops#359), so a later
+    # session can put it back through the verb.
+    local snap="${conf}.nwp-prev"
+
+    print_info "Updating nginx config for SSL..."
+
+    local config out rc
+    config="$(render_live_vhost "$base_name" "$domain" "$php_ver")"
+
+    out=$(live_vhost_install_script "$conf" "$snap" "$sudo_prefix" \
+            "${sudo_prefix} gitlab-ctl hup nginx 2>/dev/null || ${sudo_prefix} systemctl reload nginx" \
+            "$config" \
+          | ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "bash -s" 2>&1)
+    rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        # LOUD. This used to be a silent `rm -f` plus a return value the caller
+        # discarded, and the operator was told the deploy succeeded.
+        print_error "nginx vhost for ${base_name} was NOT installed (rc=${rc})."
+        [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/    /'
+        print_error "Check what is serving the site now:  pl server vhost <server> ${base_name} --status"
         return 1
     fi
 
-    # Reload nginx (GitLab's nginx)
-    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix gitlab-ctl hup nginx" 2>/dev/null || \
-        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix systemctl reload nginx" 2>/dev/null || true
-
+    [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/    /'
     print_status "OK" "Nginx SSL config updated"
+    return 0
 }
 
 # Full database deployment (orchestrates all steps)
@@ -1961,9 +2070,27 @@ deploy_to_live() {
     fi
 
     # Setup SSL certificate
+    #
+    # A FAILED SSL/VHOST STEP FAILS THE DEPLOY (nwp/ops#373). This was a WARN,
+    # and on 2026-08-15 `pl stg2live <site> --code-only --yes` printed
+    # `[✓] Deployment completed`, exited 0, and left the site serving HTTP 500
+    # behind another site's certificate — twice. Code and DB are already deployed at
+    # this point, so the honest verdict is "deployed, not fully published", and
+    # the operator has to be told rather than congratulated.
     print_header "SSL Certificate"
     if ! setup_ssl_certificate "$base_name" "$server_ip" "$ssh_user"; then
-        print_status "WARN" "SSL setup incomplete - site may not have HTTPS"
+        print_error "SSL/vhost step FAILED — the deploy is INCOMPLETE (code and DB are live, HTTPS is not)."
+        print_error "The site's previous vhost is restored if one existed; confirm what is serving it:"
+        print_error "  pl server vhost <server> ${base_name} --status"
+        print_error "  pl demo smoke ${base_name} --tier=live"
+        # TRUTHFUL EXIT (ops#361): the way out of this refusal is to RE-RUN it,
+        # not to assert that it is fine. The vhost step is idempotent — it
+        # snapshots, writes, tests, and puts the snapshot back — so a repeat
+        # deploy after the config is fixed clears this on its own terms. No
+        # override flag, and nothing here asks anyone to vouch for a condition
+        # they did not check.
+        print_error "Exit: fix the cause, then re-run the deploy — the vhost step is idempotent and re-checks itself."
+        return 1
     fi
 
     # Deploy production robots.txt

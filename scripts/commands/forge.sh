@@ -155,15 +155,15 @@ _api() { # method  path  [curl args…]
     local method="$1" path="$2"; shift 2
     _admin_token_present || return 2
     [ -n "$FORGE_API_HOST" ] || return 2
-    local cfg; cfg="$(mktemp)"; chmod 600 "$cfg"
-    # `header` in a curl config file: the value is read from the file, never
-    # passed on the command line.
-    { printf 'header = "PRIVATE-TOKEN: %s"\n' "$(head -1 "$ADMIN_TOKEN_FILE")"
-      printf 'silent\nshow-error\n'; } > "$cfg"
+    # `header` in a curl config: the value is read from the config, never passed
+    # on the command line. ops#374: the config is fed on STDIN, so it is never a
+    # file either — a shred after the call does not run when the process is
+    # killed mid-call. See lib/http.sh.
     local out rc
-    out="$(curl -K "$cfg" -X "$method" -w '\n%{http_code}' \
+    out="$({ printf 'header = "PRIVATE-TOKEN: %s"\n' "$(head -1 "$ADMIN_TOKEN_FILE")"
+             printf 'silent\nshow-error\n'; } \
+           | curl -K - -X "$method" -w '\n%{http_code}' \
            "https://${FORGE_API_HOST}/api/v4${path}" "$@" 2>&1)"; rc=$?
-    shred -u "$cfg" 2>/dev/null || rm -f "$cfg"
     printf '%s' "$out"
     return $rc
 }

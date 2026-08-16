@@ -261,29 +261,37 @@ _mr_project(){
 # _mr_api METHOD path [json-body] — body on stdout, HTTP status in MR_HTTP_STATUS.
 _mr_api(){
   local method="$1" path="$2" payload="${3:-}"
-  local host token cfg body_file="" raw
+  local host token body_file="" raw
   host=$(_mr_host); token=$(_mr_token)
   if [ -z "$token" ]; then
     MR_HTTP_STATUS="000"; printf '000' > "$MR_STATUS_FILE" 2>/dev/null || true
     return 1
   fi
-  cfg=$(mktemp); chmod 600 "$cfg"
-  {
+  # ops#374 — THE CONFIG IS NEVER A FILE.
+  # This function used to write the token into a 0600 mktemp config and `rm -f`
+  # it after curl returned. That rm is not reached when the process is killed
+  # mid-call, and 56 such files were found in /tmp holding a LIVE glpat- token,
+  # the oldest four days old; 50 of them landed on :00/:01/:30/:31, i.e. a
+  # half-hourly job cut off in flight. A trap would have narrowed the window but
+  # not closed it — SIGKILL, OOM and power loss run no handler. Feeding the
+  # config to curl on STDIN means there is no file to leak on ANY path.
+  if [ -n "$payload" ]; then
+    body_file=$(mktemp); chmod 600 "$body_file"; printf '%s' "$payload" > "$body_file"
+  fi
+  raw=$({
     printf 'silent\n'
     nwp_http_config_lines
     printf 'header = "PRIVATE-TOKEN: %s"\n' "$token"
     printf 'request = "%s"\n' "$method"
-    if [ -n "$payload" ]; then
-      body_file=$(mktemp); chmod 600 "$body_file"; printf '%s' "$payload" > "$body_file"
+    if [ -n "$body_file" ]; then
       printf 'header = "Content-Type: application/json"\n'
       printf 'data = "@%s"\n' "$body_file"
     fi
     printf 'write-out = "\\n%%{http_code}"\n'
     printf 'url = "https://%s/api/v4%s"\n' "$host" "$path"
-  } > "$cfg"
+  } | curl -K - 2>/dev/null)
   token=""
-  raw=$(curl -K "$cfg" 2>/dev/null)
-  rm -f "$cfg" ${body_file:+"$body_file"}
+  rm -f ${body_file:+"$body_file"}
   MR_HTTP_STATUS="${raw##*$'\n'}"
   printf '%s' "$MR_HTTP_STATUS" > "$MR_STATUS_FILE" 2>/dev/null || true
   printf '%s' "${raw%$'\n'*}"

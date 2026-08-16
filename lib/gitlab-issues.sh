@@ -83,16 +83,14 @@ _token_present(){
 
 # run an authenticated GET; prints the JSON body. token stays in a 0600 curl config.
 _api_get(){ # $1 = path (e.g. /projects/21/issues?...)
-  local host token cfg
+  local host token
   host=$(_host); token=$(_token)
-  cfg=$(mktemp); chmod 600 "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
   { printf 'silent\n'
     nwp_http_config_lines
     printf 'header = "PRIVATE-TOKEN: %s"\nurl = "https://%s/api/v4%s"\n' "$token" "$host" "$1"
-  } > "$cfg"
+  } | curl -K - 2>/dev/null
   token=""
-  curl -K "$cfg" 2>/dev/null
-  rm -f "$cfg"
 }
 
 ################################################################################
@@ -129,18 +127,16 @@ _api_get(){ # $1 = path (e.g. /projects/21/issues?...)
 # the default preference order. Prints the body; prints nothing if the key is
 # absent. Token stays inside a 0600 curl config, never in argv/ps/history.
 _api_get_as(){ # $1 = yq key expression (e.g. .gitlab.api_token)   $2 = path
-  local key="$1" path="$2" host token cfg
+  local key="$1" path="$2" host token
   token=$("$YQ" e "$key // \"\"" "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
   [ -n "$token" ] || return 1
   host=$(_host)
-  cfg=$(mktemp); chmod 600 "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
   { printf 'silent\n'
     nwp_http_config_lines
     printf 'header = "PRIVATE-TOKEN: %s"\nurl = "https://%s/api/v4%s"\n' "$token" "$host" "$path"
-  } > "$cfg"
+  } | curl -K - 2>/dev/null
   token=""
-  curl -K "$cfg" 2>/dev/null
-  rm -f "$cfg"
 }
 
 # _code_projects — the project ids an ops issue's implementing MR can live in.
@@ -227,24 +223,27 @@ issue_open_mrs(){ # $1 = issue iid
 # lands in argv / ps / shell history. token stays in the 0600 curl config too.
 _api_send(){ # $1=METHOD $2=path [$3=json-body]
   local method="$1" path="$2" payload="${3:-}"
-  local host token cfg body=""
+  local host token body=""
   host=$(_host); token=$(_token)
-  cfg=$(mktemp); chmod 600 "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+  # The BODY still needs a real file (curl's `data = "@…"`, and stdin is taken by
+  # the config), but it carries the JSON payload only — never a credential.
+  if [ -n "$payload" ]; then
+    body=$(mktemp); chmod 600 "$body"; printf '%s' "$payload" > "$body"
+  fi
   {
     printf 'silent\n'
     nwp_http_config_lines
     printf 'header = "PRIVATE-TOKEN: %s"\n' "$token"
     printf 'request = "%s"\n' "$method"
-    if [ -n "$payload" ]; then
-      body=$(mktemp); chmod 600 "$body"; printf '%s' "$payload" > "$body"
+    if [ -n "$body" ]; then
       printf 'header = "Content-Type: application/json"\n'
       printf 'data = "@%s"\n' "$body"
     fi
     printf 'url = "https://%s/api/v4%s"\n' "$host" "$path"
-  } > "$cfg"
+  } | curl -K - 2>/dev/null
   token=""
-  curl -K "$cfg" 2>/dev/null
-  rm -f "$cfg" ${body:+"$body"}
+  rm -f ${body:+"$body"}
 }
 
 # extract one scalar field from a GitLab JSON object response

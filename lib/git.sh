@@ -585,20 +585,16 @@ _gitlab_api_get() {
         return 1
     fi
 
-    cfg="$(mktemp)" || { GITLAB_API_STATUS="000"; return 1; }
-    chmod 600 "$cfg"
-    {
+    # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+    raw="$({
         printf 'silent\n'
         printf 'connect-timeout = 8\n'
         printf 'max-time = 20\n'
         printf 'header = "PRIVATE-TOKEN: %s"\n' "$token"
         printf 'write-out = "\\n%%{http_code}"\n'
         printf 'url = "%s%s"\n' "$api_url" "$path"
-    } > "$cfg"
+    } | curl -K - 2>/dev/null)"; rc=$?
     token=""
-
-    raw="$(curl -K "$cfg" 2>/dev/null)"; rc=$?
-    rm -f "$cfg"
 
     if [ "$rc" -ne 0 ]; then
         GITLAB_API_STATUS="000"

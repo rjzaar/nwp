@@ -198,20 +198,21 @@ _om_ops_host() {
 }
 # $1 = query string · $2 = "headers" to emit response headers instead of body.
 _om_api() {
-  local q="$1" want="${2:-body}" tok cfg host rc out
+  local q="$1" want="${2:-body}" tok cfgtext host rc out
   tok=$(_om_ops_token); host=$(_om_ops_host)
   [ -n "$tok" ] && [ -n "$host" ] || return 2
-  cfg=$(mktemp); chmod 600 "$cfg"
-  { printf 'silent\nshow-error\nfail\nconnect-timeout = 6\nmax-time = 15\n'
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+  cfgtext=$(
+    printf 'silent\nshow-error\nfail\nconnect-timeout = 6\nmax-time = 15\n'
     printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok"
-  } > "$cfg"
+  )
   tok=""
   if [ "$want" = headers ]; then
-    out=$(curl -K "$cfg" -D - -o /dev/null "https://${host}/api/v4/projects/${OM_OPS_PROJECT}/issues?${q}" 2>/dev/null); rc=$?
+    out=$(printf '%s\n' "$cfgtext" | curl -K - -D - -o /dev/null "https://${host}/api/v4/projects/${OM_OPS_PROJECT}/issues?${q}" 2>/dev/null); rc=$?
   else
-    out=$(curl -K "$cfg" "https://${host}/api/v4/projects/${OM_OPS_PROJECT}/issues?${q}" 2>/dev/null); rc=$?
+    out=$(printf '%s\n' "$cfgtext" | curl -K - "https://${host}/api/v4/projects/${OM_OPS_PROJECT}/issues?${q}" 2>/dev/null); rc=$?
   fi
-  rm -f "$cfg"
+  cfgtext=""
   printf '%s' "$out"
   return $rc
 }

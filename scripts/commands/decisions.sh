@@ -107,22 +107,20 @@ _dec_host(){
     yq e '.gitlab.server.domain // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$'
 }
 
-# Values-safe: the token is used only inside a 0600 curl config, never in argv.
+# Values-safe: the token is fed to curl as a config on STDIN — never in argv, and
+# (ops#374) never as a file that could outlive a killed process. See lib/http.sh.
 _dec_fetch(){
-    local tok cfg host
+    local tok host
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
-    curl -sS -K "$cfg" --get \
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -K - --get \
         --data-urlencode "labels=${DECISIONS_LABEL}" \
         --data-urlencode "state=opened" \
         --data-urlencode "per_page=100" \
         "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" 2>/dev/null
     local rc=$?
-    rm -f "$cfg"
     return $rc
 }
 
@@ -133,7 +131,7 @@ _dec_fetch(){
 # re-learning (ops#281 shape). With -f curl exits non-zero and the renderer
 # says CANNOT-READ instead.
 _dec_fetch_mrs_one(){
-    local proj="$1" out="$2" tok cfg host rc
+    local proj="$1" out="$2" tok host rc
     # Precedence is REVERSED from _dec_fetch, deliberately: the ops_note_token
     # is walled to nwp/ops and 404s on the MR projects, while the group bot
     # (api_token) reads them. Each fetch leads with the token that can see its
@@ -142,14 +140,11 @@ _dec_fetch_mrs_one(){
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
-    curl -sS -f -K "$cfg" --get \
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - --get \
         --data-urlencode "state=opened" \
         --data-urlencode "per_page=50" \
         "https://${host}/api/v4/projects/${proj//\//%2F}/merge_requests" > "$out" 2>/dev/null
     rc=$?
-    rm -f "$cfg"
     return $rc
 }
 
@@ -181,20 +176,17 @@ _dec_fetch_mrs(){
 # comment reads as a resolution, so a solved problem cannot silently keep
 # claiming to block a phase.
 _dec_fetch_note_one(){
-    local iid="$1" out="$2" tok cfg host rc
+    local iid="$1" out="$2" tok host rc
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
-    curl -sS -f -K "$cfg" --get \
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - --get \
         --data-urlencode "sort=desc" \
         --data-urlencode "order_by=created_at" \
         --data-urlencode "per_page=1" \
         "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}/notes" > "$out" 2>/dev/null
     rc=$?
-    rm -f "$cfg"
     return $rc
 }
 
@@ -223,21 +215,18 @@ except Exception: pass' 2>/dev/null); do
 # split is deliberate and DECLARED: this verb counts the others and says so in
 # the footer, and promoting one is a label edit, not new machinery.
 _dec_fetch_outside_count(){
-    local tok cfg host total
+    local tok host total
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
-    total=$(curl -sS -f -K "$cfg" --get -o /dev/null -D - \
+    total=$(printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - --get -o /dev/null -D - \
         --data-urlencode "labels=decision::wanted" \
         --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
         --data-urlencode "state=opened" \
         --data-urlencode "per_page=1" \
         "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" 2>/dev/null \
         | tr -d '\r' | awk -F': ' 'tolower($1)=="x-total"{print $2}')
-    rm -f "$cfg"
     [ -n "$total" ] || return 1
     printf '%s\n' "$total"
 }
@@ -264,19 +253,17 @@ _dec_fetch_outside_count(){
 # renderer compares the list against the tracker's X-Total and declares
 # "PARTIAL: showing N of M" rather than trimming silently.
 _dec_fetch_outside(){
-    local out="$1" tok cfg host rc=0 page=1 pagedir n
+    local out="$1" tok host rc=0 page=1 pagedir n
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
     pagedir=$(mktemp -d)
     while :; do
         # -f so a 404 from a walled token is an ERROR, never an empty list
         # parsed as "no ambers" — the unreadable-renders-as-clean failure this
         # repo keeps re-learning (ops#281).
-        curl -sS -f -K "$cfg" --get \
+        printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - --get \
             --data-urlencode "labels=decision::wanted" \
             --data-urlencode "not[labels]=${DECISIONS_LABEL}" \
             --data-urlencode "state=opened" \
@@ -305,7 +292,6 @@ for p in sorted(glob.glob(sys.argv[1] + "/page-*.json")):
     merged.extend(json.load(open(p)))
 json.dump(merged, open(sys.argv[2], "w"))' "$pagedir" "$out" 2>/dev/null || rc=1
     fi
-    rm -f "$cfg"
     rm -f "$pagedir"/page-*.json
     rmdir "$pagedir" 2>/dev/null || true
     return $rc
@@ -346,18 +332,16 @@ cmd_promote(){
     esac
     [ -n "$blockfile" ] && [ ! -f "$blockfile" ] && { print_error "no such file: $blockfile"; return 1; }
 
-    local tok host cfg
+    local tok host
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || { print_error "CANNOT-VERIFY: no GitLab token — nothing was promoted."; return 1; }
     host="$(_dec_host)"
     [ -n "$host" ] || { print_error "CANNOT-VERIFY: no gitlab.server.domain — nothing was promoted."; return 1; }
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
 
     local issue plan
-    issue=$(curl -sS -f -K "$cfg" \
+    issue=$(printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - \
         "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}" 2>/dev/null) \
-        || { rm -f "$cfg"; print_error "could not read nwp/ops#${iid} — nothing was promoted."; return 1; }
+        || { print_error "could not read nwp/ops#${iid} — nothing was promoted."; return 1; }
 
     plan=$(printf '%s' "$issue" | python3 -c '
 import json,sys
@@ -367,7 +351,7 @@ print(json.dumps({"description": i.get("description") or "",
                   "gate": sys.argv[1]}))' "$gate" \
         | python3 "$PROJECT_ROOT/scripts/lib/decisions-promote-plan.py" \
             ${blockfile:+--block-file="$blockfile"}) \
-        || { rm -f "$cfg"; print_error "planner refused — nothing was promoted."; return 1; }
+        || { print_error "planner refused — nothing was promoted."; return 1; }
 
     local already needs_label has_new scaffolded
     already=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["already_promoted"])')
@@ -376,12 +360,10 @@ print(json.dumps({"description": i.get("description") or "",
     scaffolded=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("scaffolded") is True)')
 
     if [ "$already" = "True" ]; then
-        rm -f "$cfg"
         print_status "OK" "nwp/ops#${iid} is already promoted (label + block present) — nothing to do."
         return 0
     fi
     if [ "$dryrun" = true ]; then
-        rm -f "$cfg"
         print_header "promote nwp/ops#${iid} — dry run"
         [ "$needs_label" = "True" ] && print_info "would add label: ${DECISIONS_LABEL}"
         if [ "$has_new" = "True" ]; then
@@ -408,11 +390,11 @@ if plan["needs_label"]:
 if plan["new_description"] is not None:
     out["description"] = plan["new_description"]
 print(json.dumps(out))' "$DECISIONS_LABEL" > "$payload"
-    resp=$(curl -sS -f -K "$cfg" -X PUT \
+    resp=$(printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - -X PUT \
         -H "Content-Type: application/json" --data @"$payload" \
         "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}" 2>/dev/null)
     local rc=$?
-    rm -f "$cfg" "$payload"
+    rm -f "$payload"
     if [ $rc -ne 0 ] || ! printf '%s' "$resp" | python3 -c '
 import json,sys
 i = json.load(sys.stdin)
@@ -445,20 +427,17 @@ sys.exit(0 if "needs-decision" in (i.get("labels") or []) else 1)'; then
 # notes could not be read => exit 2 CANNOT-VERIFY. An unreadable tracker must
 # never render as "no undischarged approvals".
 _sweep_fetch_notes_one(){ # iid out — ALL notes (100 cap), unlike _dec_fetch_note_one's latest-1
-    local iid="$1" out="$2" tok cfg host rc
+    local iid="$1" out="$2" tok host rc
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     [ -n "$tok" ] || return 2
     host="$(_dec_host)"
     [ -n "$host" ] || return 3
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
-    curl -sS -f -K "$cfg" --get \
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - --get \
         --data-urlencode "sort=asc" \
         --data-urlencode "order_by=created_at" \
         --data-urlencode "per_page=100" \
         "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${iid}/notes" > "$out" 2>/dev/null
     rc=$?
-    rm -f "$cfg"
     return $rc
 }
 
@@ -472,7 +451,7 @@ cmd_sweep_approved(){
         esac
     done
 
-    local tok host cfg
+    local tok host
     tok=$(yq e '.gitlab.ops_note_token // .gitlab.api_token // ""' "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
     if [ -z "$tok" ]; then
         print_error "CANNOT-VERIFY: no GitLab token, so the sweep could not look."
@@ -484,8 +463,6 @@ cmd_sweep_approved(){
         print_error "CANNOT-VERIFY: no gitlab.server.domain configured, so the sweep could not look."
         return 2
     fi
-    cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" > "$cfg"
 
     # The union of both decision labels, each paginated to a short page (same
     # bound + rationale as _dec_fetch_outside). Any failed page fails the WHOLE
@@ -495,14 +472,14 @@ cmd_sweep_approved(){
     for label in "$DECISIONS_LABEL" "decision::wanted"; do
         li=$((li+1)); page=1
         while :; do
-            if ! curl -sS -f -K "$cfg" --get \
+            if ! printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - --get \
                 --data-urlencode "labels=${label}" \
                 --data-urlencode "state=opened" \
                 --data-urlencode "per_page=100" \
                 --data-urlencode "page=${page}" \
                 "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues" \
                 > "$swdir/l${li}-p$(printf '%03d' "$page").json" 2>/dev/null; then
-                rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+                impact_rm_scratch "$swdir" >/dev/null
                 print_error "CANNOT-VERIFY: the '${label}' issue fetch failed — the sweep could not look."
                 return 2
             fi
@@ -511,7 +488,7 @@ d = json.load(open(sys.argv[1]))
 print(len(d) if isinstance(d, list) else -1)' \
                 "$swdir/l${li}-p$(printf '%03d' "$page").json" 2>/dev/null) || n=-1
             if [ "$n" -lt 0 ] 2>/dev/null; then
-                rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+                impact_rm_scratch "$swdir" >/dev/null
                 print_error "CANNOT-VERIFY: unparseable page from the tracker — the sweep could not look."
                 return 2
             fi
@@ -527,7 +504,7 @@ for p in sorted(glob.glob(sys.argv[1] + "/l*-p*.json")):
         if i.get("iid") not in seen:
             seen.add(i.get("iid")); merged.append(i)
 json.dump(merged, open(sys.argv[2], "w"))' "$swdir" "$swdir/issues.json" 2>/dev/null || {
-        rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+        impact_rm_scratch "$swdir" >/dev/null
         print_error "CANNOT-VERIFY: could not merge the fetched pages."
         return 2
     }
@@ -547,7 +524,7 @@ for i in json.load(open(sys.argv[1])): print(i["iid"])' "$swdir/issues.json" 2>/
     sweep_rc=$?
 
     if [ "$discharge" != true ]; then
-        rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+        impact_rm_scratch "$swdir" >/dev/null
         return $sweep_rc
     fi
 
@@ -567,7 +544,7 @@ for r in json.load(sys.stdin)["rows"]:
     local d_iid d_times d_when d_labels resp
     while IFS=$'\t' read -r d_iid d_times d_when d_labels; do
         [ -n "$d_iid" ] || continue
-        resp=$(curl -sS -f -K "$cfg" -X PUT \
+        resp=$(printf 'header = "PRIVATE-TOKEN: %s"\n' "$tok" | curl -sS -f -K - -X PUT \
             -H "Content-Type: application/json" \
             --data '{"remove_labels":"needs-decision,decision::wanted"}' \
             "https://${host}/api/v4/projects/${DECISIONS_PROJECT}/issues/${d_iid}" 2>/dev/null)
@@ -584,7 +561,7 @@ sys.exit(1 if ("needs-decision" in labels or "decision::wanted" in labels) else 
             "$now" "$d_iid" "$d_labels" "$d_times" "$d_when" >> "$ledger"
         print_status "OK" "discharged nwp/ops#${d_iid}: removed ${d_labels} (approved ${d_times}x, last ${d_when})"
     done <<< "$rows"
-    rm -f "$cfg"; impact_rm_scratch "$swdir" >/dev/null
+    impact_rm_scratch "$swdir" >/dev/null
     [ "$dfail" -gt 0 ] && return 1
     return $sweep_rc
 }

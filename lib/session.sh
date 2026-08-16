@@ -229,29 +229,27 @@ _sess_mr_host() {
 }
 
 _sess_mr_get() { # $1 = api path
-  local host token cfg rc
+  local host token rc
   host=$(_sess_mr_host); token=$(_sess_mr_token)
   [ -n "$host" ] && [ -n "$token" ] || return 2
-  cfg=$(mktemp); chmod 600 "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
   { printf 'silent\nconnect-timeout = 8\nmax-time = 25\n'
     printf 'header = "PRIVATE-TOKEN: %s"\nurl = "https://%s/api/v4%s"\n' "$token" "$host" "$1"
-  } > "$cfg"
+  } | curl -K - 2>/dev/null; rc=$?
   token=""
-  curl -K "$cfg" 2>/dev/null; rc=$?
-  rm -f "$cfg"; return $rc
+  return $rc
 }
 
 _sess_mr_put() { # $1 = api path
-  local host token cfg rc
+  local host token rc
   host=$(_sess_mr_host); token=$(_sess_mr_token)
   [ -n "$host" ] && [ -n "$token" ] || return 2
-  cfg=$(mktemp); chmod 600 "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
   { printf 'silent\nconnect-timeout = 8\nmax-time = 25\nrequest = "PUT"\n'
     printf 'header = "PRIVATE-TOKEN: %s"\nurl = "https://%s/api/v4%s"\n' "$token" "$host" "$1"
-  } > "$cfg"
+  } | curl -K - >/dev/null 2>&1; rc=$?
   token=""
-  curl -K "$cfg" >/dev/null 2>&1; rc=$?
-  rm -f "$cfg"; return $rc
+  return $rc
 }
 
 # ---- git -------------------------------------------------------------------

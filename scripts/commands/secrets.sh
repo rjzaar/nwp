@@ -1290,15 +1290,19 @@ cmd_whose(){
   val=$("$YQ" e ".$key // \"\"" "$SECRETS_FILE" 2>/dev/null)
   { [ -z "$val" ] || [ "$val" = "null" ]; } && die "$key is empty in .secrets.yml — not provisioned, nothing to query"
   print_header "Who owns $id?  → https://$host/api/v4/user"
-  # token via a 0600 curl config so it never lands in argv / ps / history
-  local cfg resp; cfg=$(mktemp); chmod 600 "$cfg"
-  printf 'silent\nmax-time = 10\nurl = "https://%s/api/v4/user"\nheader = "PRIVATE-TOKEN: %s"\n' "$host" "$val" > "$cfg"
-  val=""
-  resp=$(curl -K "$cfg" 2>/dev/null)
+  # token via a curl config so it never lands in argv / ps / history; ops#374:
+  # the config goes to curl on STDIN, so it is never a file either.
+  #
+  # NOTE the `val=""` that used to sit here has moved to the end of the function.
+  # It cleared the token BEFORE the project/group lookups below, which therefore
+  # went out unauthenticated and always 404'd on a private project — the reason
+  # `whose` so often fell back to the generic "Open project N" hint.
+  local resp
+  resp=$(printf 'silent\nmax-time = 10\nurl = "https://%s/api/v4/user"\nheader = "PRIVATE-TOKEN: %s"\n' "$host" "$val" | curl -K - 2>/dev/null)
   local uname nm uid
   uname=$("$YQ" e -p=json '.username // ""' <<<"$resp" 2>/dev/null | grep -v '^null$')
   if [ -z "$uname" ]; then
-    val=""; rm -f "$cfg"
+    val=""
     print_error "no user returned — the token is most likely REVOKED/expired (or host unreachable)."
     print_hint "If revoked there's nothing to find: just create a fresh token and run  pl secrets rotate $((idx+1))"
     return 0
@@ -1310,22 +1314,20 @@ cmd_whose(){
   case "$uname" in
     project_*_bot_*)
       rid="${uname#project_}"; rid="${rid%%_bot_*}"
-      printf 'silent\nmax-time = 10\nurl = "https://%s/api/v4/projects/%s"\nheader = "PRIVATE-TOKEN: %s"\n' "$host" "$rid" "$val" > "$cfg"
-      rpath=$("$YQ" e -p=json '.path_with_namespace // ""' <<<"$(curl -K "$cfg" 2>/dev/null)" 2>/dev/null | grep -v '^null$')
+      rpath=$("$YQ" e -p=json '.path_with_namespace // ""' <<<"$(printf 'silent\nmax-time = 10\nurl = "https://%s/api/v4/projects/%s"\nheader = "PRIVATE-TOKEN: %s"\n' "$host" "$rid" "$val" | curl -K - 2>/dev/null)" 2>/dev/null | grep -v '^null$')
       [ -n "$rpath" ] \
         && print_info "→ PROJECT access token (token name '$nm') on '$rpath'.  Rotate at:  https://$host/$rpath/-/settings/access_tokens" \
         || print_info "→ PROJECT access token (token name '$nm', project id $rid).  Open project $rid → Settings → Access Tokens" ;;
     group_*_bot_*)
       rid="${uname#group_}"; rid="${rid%%_bot_*}"
-      printf 'silent\nmax-time = 10\nurl = "https://%s/api/v4/groups/%s"\nheader = "PRIVATE-TOKEN: %s"\n' "$host" "$rid" "$val" > "$cfg"
-      rpath=$("$YQ" e -p=json '.full_path // ""' <<<"$(curl -K "$cfg" 2>/dev/null)" 2>/dev/null | grep -v '^null$')
+      rpath=$("$YQ" e -p=json '.full_path // ""' <<<"$(printf 'silent\nmax-time = 10\nurl = "https://%s/api/v4/groups/%s"\nheader = "PRIVATE-TOKEN: %s"\n' "$host" "$rid" "$val" | curl -K - 2>/dev/null)" 2>/dev/null | grep -v '^null$')
       [ -n "$rpath" ] \
         && print_info "→ GROUP access token (token name '$nm') on '$rpath'.  Rotate at:  https://$host/groups/$rpath/-/settings/access_tokens" \
         || print_info "→ GROUP access token (token name '$nm', group id $rid).  Open group $rid → Settings → Access Tokens" ;;
     *)
       print_info "→ PERSONAL token of '$uname' (token name '$nm').  Manage at:  https://$host/-/user_settings/personal_access_tokens" ;;
   esac
-  val=""; rm -f "$cfg"
+  val=""
 }
 
 ################################################################################
@@ -2066,9 +2068,8 @@ cmd_scaffold(){
 #          (one row per location) · --json (machine envelope)
 ################################################################################
 _audit_body(){ # url header-name value  -> response body (token only via 0600 cfg)
-  local cfg; cfg=$(mktemp); chmod 600 "$cfg"
-  printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\n' "$1" "$2" "$3" > "$cfg"
-  curl -K "$cfg" 2>/dev/null; rm -f "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+  printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\n' "$1" "$2" "$3" | curl -K - 2>/dev/null
 }
 
 # Same request, but the HTTP STATUS is not thrown away.
@@ -2109,10 +2110,10 @@ _audit_body(){ # url header-name value  -> response body (token only via 0600 cf
 # Status-first + "everything after the first newline" needs no encoding, no
 # global and no subshell escape: the code is exactly three digits on line 1.
 _audit_status_body(){ # url header-name value
-  local cfg out code; cfg=$(mktemp); chmod 600 "$cfg"
-  printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\nwrite-out = "\\n%%{http_code}"\n' \
-    "$1" "$2" "$3" > "$cfg"
-  out="$(curl -K "$cfg" 2>/dev/null)"; rm -f "$cfg"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+  local out code
+  out="$(printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\nwrite-out = "\\n%%{http_code}"\n' \
+    "$1" "$2" "$3" | curl -K - 2>/dev/null)"
   code="${out##*$'\n'}"                 # curl appends the status last…
   [[ "$code" =~ ^[0-9]{3}$ ]] || code="000"
   printf '%s\n%s' "$code" "${out%$'\n'*}"   # …we re-emit it FIRST.
@@ -2139,19 +2140,21 @@ _audit_code(){ # url full-header-prefix value [method] -> http_code only
   # nothing is created. That distinguishes "can create MRs" from "cannot" without
   # ever creating an MR. Never wire a method that mutates on an empty body here
   # (no DELETE — the resource in the URL would be the thing destroyed).
-  local cfg; cfg=$(mktemp); chmod 600 "$cfg"
-  printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s"\nheader = "%s %s"\n' "$1" "$2" "$3" > "$cfg"
+  # ops#374: config on stdin — a credential must never become a file. A shred
+  # after the call does not run when the process is killed. See lib/http.sh.
+  local cfgtext
+  cfgtext="$(printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s"\nheader = "%s %s"\n' "$1" "$2" "$3")"
   case "${4:-GET}" in
     GET|"") : ;;
     POST|PUT|PATCH|HEAD)
-      printf 'request = "%s"\n' "${4}" >> "$cfg"
+      cfgtext+=$'\n'"$(printf 'request = "%s"' "${4}")"
       # Explicitly empty body: this is what makes the probe non-mutating.
-      [ "$4" = "POST" ] || [ "$4" = "PUT" ] || [ "$4" = "PATCH" ] && printf 'data = ""\n' >> "$cfg"
+      [ "$4" = "POST" ] || [ "$4" = "PUT" ] || [ "$4" = "PATCH" ] && cfgtext+=$'\ndata = ""'
       ;;
-    *) rm -f "$cfg"; printf '000'; return 0 ;;
+    *) printf '000'; return 0 ;;
   esac
-  curl -K "$cfg" 2>/dev/null
-  shred -u "$cfg" 2>/dev/null || rm -f "$cfg"
+  printf '%s\n' "$cfgtext" | curl -K - 2>/dev/null
+  cfgtext=""
 }
 
 # Probe ONE value at its provider. Emits "LIVE<TAB>live_expires<TAB>note".
@@ -4146,6 +4149,105 @@ cmd_inject(){
 }
 
 ################################################################################
+# cmd_sweep_tmp — find and shred ORPHANED curl configs holding a credential.
+#
+# ops#374. The estate used to hand curl a 0600 config FILE and `rm -f` it after
+# the call. Killed mid-call, the rm never ran. Measured on the workstation
+# 2026-08-16: 81 such files in /tmp, the oldest four days old, each holding a
+# live token; 65 of them landed on :00/:01/:30/:31 — a half-hourly job cut off
+# in flight. The writers are fixed (the config now goes to curl on stdin, so
+# there is no file on any path), but the ALREADY-ORPHANED files still had to be
+# removed, and every other agent host runs the same code, so this is a verb
+# rather than a one-off shell line somebody has to reinvent per host.
+#
+# NEVER prints a credential — path, mtime and size only.
+# Dry-run by default; --apply shreds. Exit 1 when leaks remain unswept, so cron
+# can treat it as actionable.
+################################################################################
+cmd_sweep_tmp() {
+  local apply=0 dir="" min_age=120
+  while [ $# -gt 0 ]; do case "$1" in
+    --apply)     apply=1; shift ;;
+    --dir=*)     dir="${1#*=}"; shift ;;
+    --min-age=*) min_age="${1#*=}"; shift ;;
+    -h|--help)
+      cat <<EOF
+${BOLD}pl secrets sweep-tmp${NC} — shred orphaned curl configs that still hold a credential
+
+  pl secrets sweep-tmp             report what is there (writes nothing)
+  pl secrets sweep-tmp --apply     shred them
+  pl secrets sweep-tmp --dir=DIR   sweep DIR instead of \$TMPDIR//tmp
+  pl secrets sweep-tmp --min-age=N skip files younger than N seconds (default 120)
+
+Only files owned by you, mode 0600, that parse as a curl config carrying a
+credential header are touched. Nothing else in the directory is considered, and
+no value is ever printed.
+EOF
+      return 0 ;;
+    *) print_error "unknown flag: $1"; return 1 ;;
+  esac; done
+
+  local -a dirs=()
+  if [ -n "$dir" ]; then dirs=("$dir")
+  else
+    dirs=("${TMPDIR:-/tmp}")
+    [ "${TMPDIR:-/tmp}" != "/tmp" ] && dirs+=("/tmp")
+  fi
+
+  local me now found=0 swept=0 failed=0
+  me="$(id -un)"; now="$(date +%s)"
+
+  print_header "Orphaned credential configs"
+
+  local d f mtime age owner mode
+  for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    # Only the mktemp shapes the estate itself produces. A glob, not a recursive
+    # find: /tmp holds other people's data and this must not go wandering in it.
+    for f in "$d"/tmp.* "$d"/nwp-link.*; do
+      [ -f "$f" ] || continue
+      owner="$(stat -c '%U' "$f" 2>/dev/null)" || continue
+      mode="$(stat -c '%a' "$f" 2>/dev/null)"  || continue
+      [ "$owner" = "$me" ] || continue
+      [ "$mode" = "600" ]  || continue
+      # Must LOOK like a curl config carrying a credential. grep -q: the value
+      # is matched, never read out.
+      grep -qs '^header = "\(PRIVATE-TOKEN\|Authorization\)' "$f" || continue
+      mtime="$(stat -c '%Y' "$f" 2>/dev/null)" || continue
+      age=$(( now - mtime ))
+      # A young file may be a call still in flight from an unpatched process.
+      if [ "$age" -lt "$min_age" ]; then
+        print_info "skip (age ${age}s < ${min_age}s, may be in flight): $f"
+        continue
+      fi
+      found=$((found + 1))
+      if [ "$apply" -eq 1 ]; then
+        if shred -u "$f" 2>/dev/null || rm -f "$f" 2>/dev/null; then
+          swept=$((swept + 1))
+        else
+          failed=$((failed + 1)); print_error "could not remove: $f"
+        fi
+      else
+        printf '  %s  (%s bytes, %s)\n' "$f" \
+          "$(stat -c '%s' "$f" 2>/dev/null)" "$(stat -c '%y' "$f" 2>/dev/null | cut -d. -f1)"
+      fi
+    done
+  done
+
+  if [ "$found" -eq 0 ]; then
+    print_success "no orphaned credential configs found"
+    return 0
+  fi
+  if [ "$apply" -eq 1 ]; then
+    print_success "shredded $swept orphaned credential config(s)"
+    [ "$failed" -gt 0 ] && { print_error "$failed could not be removed"; return 1; }
+    return 0
+  fi
+  print_warning "$found orphaned credential config(s) still on disk — re-run with --apply to shred"
+  return 1
+}
+
+################################################################################
 # main
 ################################################################################
 sub="${1:-status}"; shift || true
@@ -4179,6 +4281,7 @@ case "$sub" in
   scan)           cmd_scan "$@" ;;
   scrub)          cmd_scrub "$@" ;;
   lint)           cmd_lint "$@" ;;
+  sweep-tmp|sweep) cmd_sweep_tmp "$@" ;;
   check)          # reuse the todo check
     source "$PROJECT_ROOT/lib/todo-checks.sh" 2>/dev/null
     export TODO_CHECKS_PROJECT_ROOT="$PROJECT_ROOT"
@@ -4189,6 +4292,7 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
 
   pl secrets status              list every secret + days-to-expiry
   pl secrets keys                show .secrets.yml STRUCTURE (key paths, status, len) — NO values
+  pl secrets sweep-tmp [--apply] shred orphaned curl configs still holding a credential (ops#374)
   pl secrets set <dotted.key>    store a value via hidden entry (never echoed/logged)
   pl secrets scaffold            create registry-declared keys missing from .secrets.yml (empty)
   pl secrets rotate <#|id>       guided/assisted rotation (hidden value entry; # from status).

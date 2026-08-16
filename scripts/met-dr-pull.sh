@@ -90,14 +90,13 @@ notify() { # msg
         return 0
     fi
     echo "$msg" > "$state_file"
-    local cfg; cfg="$(mktemp)"; chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$(cat "$TOKEN_FILE")" > "$cfg"
-    curl -sf --config "$cfg" --max-time 30 \
+    # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$(cat "$TOKEN_FILE")" \
+      | curl -sf --config - --max-time 30 \
         --data-urlencode "title=met-dr-pull FAILED: ${msg:0:120}" \
         --data-urlencode "description=$(hostname): $msg — see ~/logs/met-dr-pull.log. Route: ops#330." \
         "https://${GITLAB_HOST}/api/v4/projects/${OPS_LOG_PROJECT}/issues" >/dev/null \
         || log "WARN: could not post failure note to ops-log"
-    rm -f "$cfg"
 }
 
 clear_fail_state() { rm -f "$BASE/.last-status"; }

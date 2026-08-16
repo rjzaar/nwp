@@ -184,34 +184,38 @@ _nwp_http_classify() { # $1 = curl exit status
 # nwp_http_get <url> [extra curl-config line]...
 #
 # Performs an authenticated-or-not GET under the active budget and prints the
-# response body on stdout. Extra arguments are appended verbatim to a 0600 curl
-# config file, so credentials are passed as
+# response body on stdout. Extra arguments are appended verbatim to the curl
+# config, so credentials are passed as
 #     nwp_http_get "$url" "header = \"PRIVATE-TOKEN: $token\""
-# and never appear in argv / ps / shell history. The config is removed before
-# the function returns, on every path.
+# and never appear in argv / ps / shell history.
+#
+# ops#374 — THE CONFIG IS NEVER A FILE. It used to be a 0600 mktemp file removed
+# by an unprotected `rm -f` after the retry loop. That rm is not reached when the
+# process is killed, and this function's loop SLEEPS between attempts, so the
+# window it left open was the widest in the tree. 56 such configs were found in
+# /tmp holding a live glpat- token. A trap would not have closed it either —
+# SIGKILL and power loss run no handler. The config now goes to curl on STDIN,
+# so on every path, including the ones no handler can reach, there is no file.
 #
 # Returns 0 / 1 / 2 per the vocabulary at the top of this file. On rc 2 nothing
 # is printed — the caller MUST NOT read the empty output as "nothing found".
 nwp_http_get() {
     local url="$1"; shift
-    local attempts backoff i=0 rc=0 status cfg
+    local attempts backoff i=0 rc=0 status cfgtext line
     attempts=$(nwp_http_attempts)
     backoff="$NWP_HTTP_BACKOFF"
 
-    cfg=$(mktemp) || return "$NWP_HTTP_RC_UNREACHABLE"
-    chmod 600 "$cfg"
-    {
+    cfgtext=$(
         printf 'silent\nfail\nlocation\n'
         nwp_http_config_lines
-        local line
         for line in "$@"; do printf '%s\n' "$line"; done
         printf 'url = "%s"\n' "$url"
-    } > "$cfg"
+    )
 
     while :; do
         i=$((i + 1))
         status=0
-        curl -K "$cfg" 2>/dev/null || status=$?
+        printf '%s\n' "$cfgtext" | curl -K - 2>/dev/null || status=$?
         _nwp_http_classify "$status"; rc=$?
         # Retry only what a retry can fix: an unanswered call. An HTTP 401 will
         # be 401 again in two seconds, and re-probing an auth endpoint that is
@@ -223,7 +227,6 @@ nwp_http_get() {
         backoff=$((backoff * 2))
     done
 
-    rm -f "$cfg"
     return "$rc"
 }
 

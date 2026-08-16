@@ -104,27 +104,29 @@ die(){ print_error "$*"; exit 1; }
 usage(){ sed -n '3,/^####*$/{/^####*$/d;p}' "$0" | sed 's/^# \{0,1\}//'; }
 
 # ── Linode API (token only ever inside a 0600 curl config; never argv/ps) ─────
-CURLCFG=""   # set by require_token
+CURLCFG_TEXT=""   # set by require_token (ops#374: config text, never a file)
 require_token(){
   type get_infra_secret >/dev/null 2>&1 || die "lib/common.sh not loaded — cannot read secrets (fail-closed)"
   local token="${NWP_VERTEST_LINODE_TOKEN:-}"
   [ -n "$token" ] || token="$(get_infra_secret "linode.provision_token" "")"
   [ -n "$token" ] || die "no linode.provision_token in .secrets.yml — refusing (fail-closed; see pl secrets status)"
   mkdir -p "$STATE_DIR" "$LOGS"
-  CURLCFG="$STATE_DIR/api.curlcfg"
-  ( umask 077; printf 'header = "Authorization: Bearer %s"\n' "$token" > "$CURLCFG" )
+  # ops#374: this used to be written to $STATE_DIR/api.curlcfg — a LONG-LIVED
+  # 0600 credential file that outlived every run. The config is now held in
+  # memory and fed to curl on STDIN, so it never touches disk. See lib/http.sh.
+  CURLCFG_TEXT="$(printf 'header = "Authorization: Bearer %s"\n' "$token")"
   token=""
 }
 
 api(){ # $1=METHOD $2=/path [$3=json-body] → body on stdout
   local method="$1" path="$2" body="${3:-}"
-  local args=(-K "$CURLCFG" -s --max-time 60 -X "$method"
+  local args=(-K - -s --max-time 60 -X "$method"
               -H "Content-Type: application/json" "$API$path")
   [ -n "$body" ] && args+=(-d "$body")
-  curl "${args[@]}"
+  printf '%s\n' "$CURLCFG_TEXT" | curl "${args[@]}"
 }
 api_code(){ # $1=METHOD $2=/path → http status code only
-  curl -K "$CURLCFG" -s --max-time 60 -o /dev/null -w '%{http_code}' -X "$1" "$API$2"
+  printf '%s\n' "$CURLCFG_TEXT" | curl -K - -s --max-time 60 -o /dev/null -w '%{http_code}' -X "$1" "$API$2"
 }
 
 # ── disposable-ledger bookkeeping (record BEFORE anything else can fail) ──────

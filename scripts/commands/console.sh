@@ -158,15 +158,17 @@ _linode_curl() { # $1 method, $2 path, [$3 json payload]
     local yq_bin; yq_bin=$(command -v yq) || { print_error "yq required"; return 1; }
     local token; token=$("$yq_bin" e '.linode.api_token // ""' "$SECRETS_FILE" | grep -v '^null$')
     [ -n "$token" ] || { print_error "no linode.api_token in $SECRETS_FILE"; return 1; }
-    local cfg; cfg=$(mktemp); chmod 600 "$cfg"
-    printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$token" > "$cfg"
+    # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+    local cfgtext
+    cfgtext=$(printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$token")
+    token=""
     local rc=0
     if [ -n "$payload" ]; then
-        curl -sS -K "$cfg" -X "$method" "https://api.linode.com/v4${path}" -d "$payload" || rc=$?
+        printf '%s\n' "$cfgtext" | curl -sS -K - -X "$method" "https://api.linode.com/v4${path}" -d "$payload" || rc=$?
     else
-        curl -sS -K "$cfg" -X "$method" "https://api.linode.com/v4${path}" || rc=$?
+        printf '%s\n' "$cfgtext" | curl -sS -K - -X "$method" "https://api.linode.com/v4${path}" || rc=$?
     fi
-    rm -f "$cfg"
+    cfgtext=""
     return $rc
 }
 

@@ -135,16 +135,13 @@ link_probe_authed() {
     [ -n "$yq_bin" ] || { echo "000"; return 1; }
     local val; val="$("$yq_bin" e ".$key // \"\"" "$SECRETS_FILE" 2>/dev/null)"
     if [ -z "$val" ] || [ "$val" = "null" ]; then echo "000"; return 2; fi
-    local cfg; cfg="$(mktemp "${TMPDIR:-/tmp}/nwp-link.XXXXXX")" || { echo "000"; return 1; }
-    chmod 600 "$cfg"
-    {
+    # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+    local code; code="$({
         printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\n'
         printf 'request = "%s"\nurl = "%s"\nheader = "%s: %s"\n' "$method" "$url" "$hdr" "$val"
         [ -n "$body" ] && printf 'data = "%s"\n' "$body"
-    } > "$cfg"
+    } | curl -K - 2>/dev/null || echo 000)"
     val=""   # drop the secret from memory immediately
-    local code; code="$(curl -K "$cfg" 2>/dev/null || echo 000)"
-    rm -f "$cfg"
     echo "${code:-000}"
 }
 
@@ -332,16 +329,16 @@ link_verify() {
         local tokkey; tokkey="${BEARER_TOKEN_KEY:-link.${pair_id}.${TIER}.probe_access_token}"
         local body_file code yq_bin; yq_bin="$(command -v yq || true)"
         body_file="$(mktemp)"; chmod 600 "$body_file"
-        # (see link_probe_authed; here we need the body, so a parallel 0600 cfg.)
-        local valcfg; valcfg="$(mktemp)"; chmod 600 "$valcfg"
+        # (see link_probe_authed; here we need the body, so the response is
+        # written to body_file while the config — which carries the bearer
+        # token — is piped to curl on stdin and never becomes a file. ops#374.)
         local tval=""
         if [ -n "$yq_bin" ] && [ -f "$SECRETS_FILE" ]; then
             tval="$("$yq_bin" e ".$tokkey // \"\"" "$SECRETS_FILE" 2>/dev/null || true)"
         fi
         if [ -n "$tval" ] && [ "$tval" != "null" ] && command -v curl >/dev/null 2>&1; then
-            printf 'silent\noutput = "%s"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s/oauth/userinfo"\nheader = "Authorization: Bearer %s"\n' \
-                "$body_file" "$PROVIDER_BASE" "$tval" > "$valcfg"; tval=""
-            code="$(curl -K "$valcfg" 2>/dev/null || echo 000)"
+            code="$(printf 'silent\noutput = "%s"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s/oauth/userinfo"\nheader = "Authorization: Bearer %s"\n' \
+                "$body_file" "$PROVIDER_BASE" "$tval" | curl -K - 2>/dev/null || echo 000)"; tval=""
             if [ "$code" = "200" ] && [ -n "$yq_bin" ]; then
                 sub_val="$("$yq_bin" e -p=json '.sub // ""' "$body_file" 2>/dev/null | grep -v '^null$' || true)"
                 sub_source="live userinfo ($code)"
@@ -351,7 +348,7 @@ link_verify() {
         else
             skip "  live userinfo fetch" "no bearer probe token at '$tokkey'"
         fi
-        rm -f "$body_file" "$valcfg"
+        rm -f "$body_file"
     fi
 
     if [ -n "$sub_val" ]; then

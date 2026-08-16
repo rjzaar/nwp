@@ -242,19 +242,20 @@ _sess_json_quote() {
 _sess_mr_api_put_json()  { _sess_mr_api_send PUT  "$1" "$2"; }
 _sess_mr_api_post_json() { _sess_mr_api_send POST "$1" "$2"; }
 _sess_mr_api_send() { # $1=METHOD $2=path $3=json
-  local method="$1" path="$2" payload="$3" host token cfg body rc
+  local method="$1" path="$2" payload="$3" host token body rc
   host=$(_sess_mr_host); token=$(_sess_mr_token)
   [ -n "$host" ] && [ -n "$token" ] || return 2
-  cfg=$(mktemp); chmod 600 "$cfg"; body=$(mktemp); chmod 600 "$body"
+  # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+  # The body stays a file (curl `data = "@…"` needs one); it holds no credential.
+  body=$(mktemp); chmod 600 "$body"
   printf '%s' "$payload" > "$body"
   { printf 'silent\nconnect-timeout = 8\nmax-time = 25\n'
     printf 'request = "%s"\n' "$method"
     printf 'header = "PRIVATE-TOKEN: %s"\nheader = "Content-Type: application/json"\n' "$token"
     printf 'data = "@%s"\nurl = "https://%s/api/v4%s"\n' "$body" "$host" "$path"
-  } > "$cfg"
+  } | curl -K - >/dev/null 2>&1; rc=$?
   token=""
-  curl -K "$cfg" >/dev/null 2>&1; rc=$?
-  rm -f "$cfg" "$body"; return $rc
+  rm -f "$body"; return $rc
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

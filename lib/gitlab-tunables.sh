@@ -119,7 +119,13 @@ gitlab_tunables_ci_busy() {
     # job, not to be a second approval gate; refusing on "I could not look"
     # would strand the verb on any host without forge credentials.
     [ -n "$host" ] && [ -n "$cfg" ] && [ -r "$cfg" ] || return 1
-    n=$(curl -sS -K "$cfg" \
+    # ops#374: `-K -` with the config redirected in, so curl never opens a
+    # credential path itself. NOTE this config is OPERATOR-SUPPLIED via
+    # NWP_GLCURL_CFG, which has NO producer anywhere in this tree — so the
+    # `[ -r "$cfg" ]` guard above never passes and this check is currently
+    # INERT. Flagged, not fixed here: making it live is a behaviour change to a
+    # CI-busy guard and belongs in its own MR.
+    n=$(curl -sS -K - < "$cfg" \
         "https://$host/api/v4/projects/9/pipelines?status=running&per_page=5" \
         -o - 2>/dev/null | grep -c '"id"') || return 1
     [ "${n:-0}" -gt 0 ]

@@ -468,17 +468,19 @@ fi
 # The token never appears in argv.
 linode_api_request() {
     local token="$1" method="$2" path="$3" payload="${4:-}"
-    local cfg body="" out rc
+    local body="" out rc
 
-    cfg=$(mktemp) || return 1
-    chmod 600 "$cfg"
-    {
+    # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
+    # The body stays a file (curl `data = "@…"` needs one); it holds no credential.
+    if [ -n "$payload" ]; then
+        body=$(mktemp); chmod 600 "$body"; printf '%s' "$payload" > "$body"
+    fi
+    out=$({
         printf 'silent\n'
         nwp_http_config_lines
         printf 'header = "Authorization: Bearer %s"\n' "$token"
         printf 'request = "%s"\n' "$method"
-        if [ -n "$payload" ]; then
-            body=$(mktemp); chmod 600 "$body"; printf '%s' "$payload" > "$body"
+        if [ -n "$body" ]; then
             printf 'header = "Content-Type: application/json"\n'
             printf 'data = "@%s"\n' "$body"
         fi
@@ -486,11 +488,9 @@ linode_api_request() {
         # request. Split off below; never printed to the caller.
         printf 'write-out = "\\nNWPHTTP:%%{http_code}"\n'
         printf 'url = "https://api.linode.com%s"\n' "$path"
-    } > "$cfg"
+    } | curl -K - 2>/dev/null); rc=$?
     token=""
-
-    out=$(curl -K "$cfg" 2>/dev/null); rc=$?
-    rm -f "$cfg" ${body:+"$body"}
+    rm -f ${body:+"$body"}
 
     # curl failed outright: no status was ever received. Say so explicitly
     # rather than emitting a sentinel that would read as a real answer.

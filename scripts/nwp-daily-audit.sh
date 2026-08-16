@@ -499,19 +499,16 @@ post_issue() {
     local preamble
     preamble="host: $(hostname)"$'\n'"time: $(date -u +%Y-%m-%dT%H:%M:%SZ)"$'\n'"producer: $(provenance)"$'\n\n'
 
-    local cfg; cfg="$(mktemp)"; chmod 600 "$cfg"
-    printf 'header = "PRIVATE-TOKEN: %s"\n' "$(cat "$AUDIT_TOKEN_FILE")" > "$cfg"
-
+    # ops#374: config on stdin — a credential must never become a file (see lib/http.sh).
     local resp
-    if ! resp="$(curl -sS --fail-with-body -X POST -K "$cfg" \
+    if ! resp="$(printf 'header = "PRIVATE-TOKEN: %s"\n' "$(cat "$AUDIT_TOKEN_FILE")" \
+        | curl -sS --fail-with-body -X POST -K - \
         --data-urlencode "title=${title}" \
         --data-urlencode "description=${preamble}${body}" \
         "${API}" 2>&1)"; then
-        rm -f "$cfg"
         log "NOTIFY-FAIL: POST rejected: $resp"
         return 1
     fi
-    rm -f "$cfg"
     log "posted: $title"
     return 0
 }

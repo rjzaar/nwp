@@ -4,10 +4,21 @@ This directory contains proposal documents for **NWP core** features and
 enhancements.
 
 > **NWP-only.** Site-specific work (mass times, cathnet, ss faith formation
-> app, avc workflow, etc.) lives in each site's own
-> `sites/<name>/docs/proposals/` directory under its own per-project
-> numbering scheme. Run `pl proposals` to aggregate the full picture across
-> NWP and every site.
+> app, avc workflow, etc.) lives inside each site's own tree under its own
+> per-project numbering scheme, in one of two shapes:
+>
+> ```
+> sites/<site>/<env>/html/profiles/custom/<profile>/docs/proposals/   # profile repos
+> sites/<site>/<env>/docs/proposals/                                  # sites with no profile repo
+> ```
+>
+> where `<env>` is `dev` or `stg`. **`sites/<name>/docs/proposals/` — the path
+> this file used to give — exists for no site and never has.** It was also the
+> path `pl proposals --sites` searched, which is why that command listed nothing
+> at all until 2026-08-16 while 200 files holding 55 distinct proposals sat in
+> the directories above. Run `pl proposals` to aggregate the full picture across
+> NWP and every site; `dev` and `stg` hold copies of the same proposals, so it
+> collapses the duplicates and `dev` wins.
 
 ---
 
@@ -24,13 +35,21 @@ NWP uses three prefix series in this directory:
 Per-project local schemes (each site is its own namespace, numbering
 restarts at 01):
 
-| Prefix | Project | Path |
+Paths below are the `dev` copy; each has an identical `stg` twin, which
+`pl proposals` collapses.
+
+| Prefix | Project | Layout |
 |--------|---------|---|
-| **A##** | AVC | `sites/avc/docs/proposals/` |
-| **S##** | Sacred Sources (ss) | `sites/ss/docs/proposals/` |
-| **M##** | Mass Times (mt) | `sites/mt/docs/proposals/` |
-| **C##** | CathNet | `sites/cathnet/docs/proposals/` |
-| **D##** | Directory Search (dir1) | `sites/dir1/docs/proposals/` *(none yet)* |
+| **A##** | AV Commons | profile repo |
+| **S##** | Sacred Sources | flat (some under `…/proposals/private/`) |
+| **M##** | Mass Times | flat |
+| **C##** | CathNet | flat |
+| **D##** | Directory Search | *(none yet — no proposals directory exists)* |
+| **P##/F##** | Commons platform | profile repo (two sites share one profile) |
+
+where **profile repo** is
+`sites/<site>/<env>/html/profiles/custom/<profile>/docs/proposals/` and
+**flat** is `sites/<site>/<env>/docs/proposals/`.
 
 NWP proposals may **reference** site-specific proposals by their per-project
 ID, but no NWP proposal carries site-specific design content. The split is
@@ -43,6 +62,11 @@ strict: NWP core stays generic; sites carry their own specifics.
 On 2026-04-08 the NWP F-series was made consecutive and several proposals
 were moved into per-project schemes. Old IDs are retained as aliases inside
 each renamed file's header.
+
+> **The `New location` paths below are a historical record of that move, not
+> current paths.** They are left as written on 2026-04-08. Per-site proposals
+> have since moved into the per-environment trees listed at the top of this
+> file; `pl proposals --site=<name>` is the reliable way to locate one today.
 
 | Old ID | New location | Reason |
 |---|---|---|
@@ -166,14 +190,19 @@ for the live picture.
 
 Use `pl proposals` to aggregate everything below into one view.
 
-| Site | Proposals dir | Notes |
-|---|---|---|
-| AVC | `sites/avc/docs/proposals/` | A01 (Guild multi-verification), A02 (Workflow system), A03 (OAuth2/Guild sync) |
-| Sacred Sources | `sites/ss/docs/proposals/` | S01 (Faith Formation app, in progress) |
-| Mass Times | `sites/mt/docs/proposals/` | M01 (Scraper & Display), M02 (Site creation) |
-| CathNet | `sites/cathnet/docs/proposals/` | C01 (ACMC), C02 (NLP QA), C02a (Synthesis amendment), C03 (Neo4j KG) |
-| Directory Search | `sites/dir1/docs/proposals/` | None yet |
-| benedicta.art | `sites/ba/docs/proposals/` | None yet |
+Counts are what `pl proposals --sites` lists after collapsing the `dev`/`stg`
+duplicates (measured 2026-08-16: 125 rows across 6 sites, 55 distinct
+proposal IDs, from 200 files on disk).
+
+| Project | Layout | Count | Notes |
+|---|---|---|---|
+| AV Commons | profile repo | 35 | A01 (Guild multi-verification), A02 (Workflow system), A03 (OAuth2/Guild sync) |
+| Commons platform | profile repo | 33 | two sites share one profile, so this set is listed twice — once per site |
+| Sacred Sources | flat | 15 | S01 (Faith Formation app, in progress); 8 sit under `…/proposals/private/` |
+| CathNet | flat | 6 | C01 (ACMC), C02 (NLP QA), C02a (Synthesis amendment), C03 (Neo4j KG) |
+| Mass Times | flat | 3 | M01 (Scraper & Display), M02 (Site creation) |
+| Directory Search | — | 0 | no proposals directory exists |
+| benedicta.art | — | 0 | no proposals directory exists |
 
 ---
 

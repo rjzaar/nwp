@@ -121,7 +121,11 @@ EOF
 # actually gets installed rather than on a restatement of it.
 host_guard_matches() {
     local snippet="$1" host="$2" re
-    re="$(printf '%s\n' "$snippet" | sed -n 's/.*!~\* "\(.*\)".*/\1/p' | head -1)"
+    # No `… | head -1`. Under `set -o pipefail` head closes the pipe, the writer
+    # takes SIGPIPE (141), and THAT becomes the pipeline's status — so the branch
+    # below would be decided by timing rather than by content (ops#351). awk does
+    # its own first-match-then-stop and exits 0 either way.
+    re="$(awk 'match($0, /!~\* "[^"]*"/) { print substr($0, RSTART + 5, RLENGTH - 6); exit }' <<<"$snippet")"
     [ -n "$re" ] || return 2
     local rc=1
     shopt -s nocasematch
@@ -180,9 +184,15 @@ fi
 EOF
 }
 
-# host_guard_fact <facts-file> <key>  -> the value, or empty.
+# host_guard_fact <facts-file> <key>  -> the first value for <key>, or empty.
+#
+# Pipe-free ON PURPOSE. `sed -n 's/^k=//p' f | head -1` looks equivalent and is
+# not: head closes the pipe after one line, sed dies of SIGPIPE, and under
+# `set -o pipefail` the caller reads 141 as the verdict (ops#351). awk stops at
+# the first hit by itself and exits 0 whether or not the key was found — absence
+# is reported as an empty value, which is a fact, not a failure.
 host_guard_fact() {
-    sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1
+    awk -v k="$2" 'index($0, k "=") == 1 { print substr($0, length(k) + 2); exit }' "$1" 2>/dev/null
 }
 
 # host_guard_host_of_url <url>  -> the hostname, stripped of scheme/port/path.
@@ -215,10 +225,10 @@ host_guard_verdict() {
     fi
 
     local real_host real_code bogus_host bogus_code
-    real_host="$(sed -n 's/^real_host=//p'  "$f" | head -1)"
-    real_code="$(sed -n 's/^real_code=//p'  "$f" | head -1)"
-    bogus_host="$(sed -n 's/^bogus_host=//p' "$f" | head -1)"
-    bogus_code="$(sed -n 's/^bogus_code=//p' "$f" | head -1)"
+    real_host="$(host_guard_fact "$f" real_host)"
+    real_code="$(host_guard_fact "$f" real_code)"
+    bogus_host="$(host_guard_fact "$f" bogus_host)"
+    bogus_code="$(host_guard_fact "$f" bogus_code)"
 
     if [ -z "$real_code" ] || [ -z "$bogus_code" ]; then
         echo "CANNOT VERIFY: a probe did not report a status code — refusing to grade"

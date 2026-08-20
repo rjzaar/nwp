@@ -229,6 +229,94 @@ EOF
 }
 
 ################################################################################
+# ops#351 — no verdict may be decided by a SIGPIPE race.
+#
+# CI caught this in the first cut of this file: every fact was read with
+# `sed -n 's/^k=//p' "$f" | head -1`. head closes the pipe after one line, sed
+# dies of SIGPIPE, and under `set -o pipefail` the caller sees 141 — so which
+# branch ran depended on whether sed had finished writing. These run the real
+# functions under errexit+pipefail, which is the shell the CI lint is defending.
+################################################################################
+
+@test "ops#351: the verdict survives errexit+pipefail (no SIGPIPE race)" {
+  local f; f="$(_facts_promiscuous)"
+  run bash -c "set -euo pipefail
+    source '${REPO_ROOT}/lib/server-host-guard.sh'
+    host_guard_verdict '$f'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"PROMISCUOUS"* ]]
+}
+
+# THE DETERMINISTIC ONE. The three tests around it use the small fixture and,
+# measured, do NOT reproduce the bug: sed finishes writing four lines before head
+# closes the pipe, so `sed | head -1` returned 0 on 5 runs out of 5. A test that
+# cannot fail is not a gate (ops#214), so this one makes the writer outrun the
+# reader. Measured against the ORIGINAL `sed -n … | head -1` implementation:
+# rc=141 on 3 runs out of 3. Against the awk implementation: rc=0, 3 of 3.
+@test "ops#351 RED PROOF: a fact read from a LARGE capture survives errexit+pipefail" {
+  {
+    echo "NWPHOSTGUARD v1"
+    # Enough matching lines that the writer is still going when head -1 quits.
+    for _ in $(seq 1 20000); do echo "real_host=forge.example.com"; done
+    echo "real_code=200"
+    echo "bogus_host=nwp-host-guard-probe.invalid"
+    echo "bogus_code=200"
+  } > "${TMP}/big.facts"
+
+  run bash -c "set -euo pipefail
+    source '${REPO_ROOT}/lib/server-host-guard.sh'
+    v=\"\$(host_guard_fact '${TMP}/big.facts' real_host)\"
+    printf 'v=[%s]\n' \"\$v\"
+    echo REACHED_END"
+  [ "$status" -eq 0 ]
+  [ "$status" -ne 141 ]
+  [[ "$output" == *"v=[forge.example.com]"* ]]
+  [[ "$output" == *"REACHED_END"* ]]
+}
+
+@test "ops#351 RED PROOF: the full verdict survives a LARGE capture under pipefail" {
+  {
+    echo "NWPHOSTGUARD v1"
+    echo "real_host=forge.example.com"
+    echo "real_code=200"
+    echo "bogus_host=nwp-host-guard-probe.invalid"
+    echo "bogus_code=200"
+    # Trailing bulk: whatever the reader stops at, the writer has more to say.
+    for _ in $(seq 1 20000); do echo "real_host=forge.example.com"; done
+  } > "${TMP}/big2.facts"
+
+  run bash -c "set -euo pipefail
+    source '${REPO_ROOT}/lib/server-host-guard.sh'
+    host_guard_verdict '${TMP}/big2.facts'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"PROMISCUOUS"* ]]
+}
+
+@test "ops#351: fact extraction survives errexit+pipefail, and a MISSING key is empty not fatal" {
+  local f; f="$(_facts_promiscuous)"
+  run bash -c "set -euo pipefail
+    source '${REPO_ROOT}/lib/server-host-guard.sh'
+    printf 'got=[%s]\n' \"\$(host_guard_fact '$f' real_host)\"
+    printf 'absent=[%s]\n' \"\$(host_guard_fact '$f' no_such_key)\"
+    echo REACHED_END"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"got=[forge.example.com]"* ]]
+  [[ "$output" == *"absent=[]"* ]]
+  [[ "$output" == *"REACHED_END"* ]]
+}
+
+@test "ops#351: host_guard_matches survives errexit+pipefail" {
+  run bash -c "set -euo pipefail
+    source '${REPO_ROOT}/lib/server-host-guard.sh'
+    snip=\"\$(host_guard_render forge.example.com)\"
+    host_guard_matches \"\$snip\" forge.example.com && echo ADMITTED
+    host_guard_matches \"\$snip\" stranger.example.net || echo REJECTED"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ADMITTED"* ]]
+  [[ "$output" == *"REJECTED"* ]]
+}
+
+################################################################################
 # The gitlab.rb route. Editing /var/opt/gitlab/nginx/conf/ is CLOBBERED by
 # `gitlab-ctl reconfigure`; the durable seat is gitlab.rb.
 ################################################################################

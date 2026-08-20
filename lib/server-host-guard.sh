@@ -154,14 +154,48 @@ host_guard_probe_script() {
     cat <<EOF
 set -u
 printf 'NWPHOSTGUARD v1\n'
-printf 'real_host=%s\n' '${real}'
 printf 'bogus_host=%s\n' '${bogus}'
-c=\$(curl -s -o /dev/null -w '%{http_code}' -k --max-time 15 \\
-      -H 'Host: ${real}' https://127.0.0.1/ 2>/dev/null || printf '000')
-printf 'real_code=%s\n' "\$c"
-c=\$(curl -s -o /dev/null -w '%{http_code}' -k --max-time 15 \\
-      -H 'Host: ${bogus}' https://127.0.0.1/ 2>/dev/null || printf '000')
-printf 'bogus_code=%s\n' "\$c"
+
+# THE CONTROL HOST IS DECIDED ON THE BOX, NOT BY THE CALLER.
+#
+# The control probe answers "is this box up at all?", so it has to use a name
+# the box actually serves. The caller only knows the INVENTORY's apex domain,
+# which on a real forge box is the bare zone while GitLab answers to a
+# subdomain of it — so once the guard was seated the control probe was itself
+# refused, and a correctly guarded box graded CANNOT VERIFY ("did not answer
+# for its own name"). Measured 2026-08-20, second miss of the morning.
+#
+# gitlab.rb is right here, so ask it. The caller's value is only a fallback.
+REAL=''
+if sudo -n test -r /etc/gitlab/gitlab.rb 2>/dev/null; then
+  U=\$(sudo -n sed -n "s/^ *external_url *['\"]\\([^'\"]*\\)['\"].*/\\1/p" /etc/gitlab/gitlab.rb 2>/dev/null | tail -1)
+  U=\${U#*://}; U=\${U%%/*}; U=\${U%%:*}
+  REAL="\$U"
+fi
+[ -n "\$REAL" ] || REAL='${real}'
+printf 'real_host=%s\n' "\$REAL"
+
+# A host with no curl cannot be probed, and must not look like a guarded one.
+# Named explicitly so the verdict says CANNOT VERIFY instead of inventing a code
+# (the "host-blind branch" shape: \`command -v x || return 0\`).
+if ! command -v curl >/dev/null 2>&1; then
+  printf 'real_code=NOCURL\n'
+  printf 'bogus_code=NOCURL\n'
+else
+  # NO \`|| printf '000'\` HERE. curl's -w already emits 000 when the transfer
+  # fails, and it ALSO exits non-zero — so the fallback appended a second 000
+  # and produced '000000', which matched no branch and graded a correctly
+  # guarded box as PROMISCUOUS. Measured on the live box 2026-08-20 immediately
+  # after the first --apply. Let -w be the single source of the code.
+  c=\$(curl -s -o /dev/null -w '%{http_code}' -k --max-time 15 \\
+        -H "Host: \$REAL" https://127.0.0.1/ 2>/dev/null) || true
+  [ -n "\$c" ] || c=000
+  printf 'real_code=%s\n' "\$c"
+  c=\$(curl -s -o /dev/null -w '%{http_code}' -k --max-time 15 \\
+        -H 'Host: ${bogus}' https://127.0.0.1/ 2>/dev/null) || true
+  [ -n "\$c" ] || c=000
+  printf 'bogus_code=%s\n' "\$c"
+fi
 
 # Which nginx is this? MEASURED, never inferred from the host's name.
 if [ -d /opt/gitlab ]; then printf 'gitlab_embedded=yes\n'; else printf 'gitlab_embedded=no\n'; fi
@@ -234,6 +268,20 @@ host_guard_verdict() {
         echo "CANNOT VERIFY: a probe did not report a status code — refusing to grade"
         return 3
     fi
+
+    # A code must be exactly three digits or it is not a code. Belt and braces
+    # after the live 2026-08-20 miss: a malformed '000000' fell through every
+    # branch and landed on the PROMISCUOUS default, grading a correctly guarded
+    # box as wide open. An unparseable measurement is a measurement we do not
+    # have, and the only honest verdict for that is CANNOT VERIFY.
+    local c
+    for c in "$real_code" "$bogus_code"; do
+        if ! [[ "$c" =~ ^[0-9]{3}$ ]]; then
+            echo "CANNOT VERIFY: the probe reported '${c}', which is not an HTTP status code."
+            echo "               Refusing to grade a box on a measurement that did not parse."
+            return 3
+        fi
+    done
 
     # The control. If the box did not answer for its OWN name, nothing can be
     # concluded about what it does for a stranger's: a closed connection then

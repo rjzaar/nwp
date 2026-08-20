@@ -132,6 +132,91 @@ EOF
 }
 
 ################################################################################
+# THE LIVE MISS, 2026-08-20. The guard was applied to the real box and WORKED —
+# externally measured, an unknown Host went from 200/17647 bytes to 000/0 bytes —
+# and the verb's own re-probe still announced PROMISCUOUS.
+#
+# Cause: the probe ran `curl -w '%{http_code}' … || printf '000'`. On a closed
+# connection curl BOTH prints 000 via -w AND exits non-zero, so the fallback
+# appended a second one and the fact became '000000'. That matched neither the
+# "000" nor the "444" branch and fell through to the PROMISCUOUS default.
+#
+# Two defects, so two tests: the probe must not double-append, and the verdict
+# must refuse to grade anything that is not a status code rather than defaulting
+# to the alarming answer.
+################################################################################
+
+@test "a malformed status code is CANNOT VERIFY, never PROMISCUOUS (live miss 2026-08-20)" {
+  cat > "${TMP}/facts" <<'EOF'
+NWPHOSTGUARD v1
+real_host=forge.example.com
+real_code=200
+bogus_host=nwp-host-guard-probe.invalid
+bogus_code=000000
+EOF
+  run host_guard_verdict "${TMP}/facts"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" != *"PROMISCUOUS"* ]]
+}
+
+@test "a non-numeric status code is CANNOT VERIFY, never graded" {
+  cat > "${TMP}/facts" <<'EOF'
+NWPHOSTGUARD v1
+real_host=forge.example.com
+real_code=200
+bogus_host=nwp-host-guard-probe.invalid
+bogus_code=NOCURL
+EOF
+  run host_guard_verdict "${TMP}/facts"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+}
+
+@test "the probe decides its control host ON THE BOX, not from the caller's inventory" {
+  run host_guard_probe_script some-inventory-apex.example.com
+  [ "$status" -eq 0 ]
+  # It must read gitlab.rb for external_url rather than trusting the argument …
+  [[ "$output" == *"external_url"* ]]
+  # … and the argument survives only as a fallback.
+  [[ "$output" == *"REAL='some-inventory-apex.example.com'"* ]]
+}
+
+@test "the probe script's remote variables are NOT expanded locally (heredoc escaping)" {
+  # The script is built with an UNQUOTED heredoc so the caller's values can be
+  # interpolated. That makes every remote variable one missing backslash away
+  # from being expanded here and shipped empty — which happened: `-H "Host: $REAL"`
+  # went out as `-H "Host: "` and the capture came back with no banner at all.
+  run host_guard_probe_script forge.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'Host: $REAL'* ]]
+  [[ "$output" != *'Host: "'*'" https'* ]] || [[ "$output" == *'$REAL'* ]]
+  # Nothing may ship as an empty Host header.
+  [[ "$output" != *'-H "Host: " '* ]]
+}
+
+@test "a box with no curl reports NOCURL, so it cannot pass as guarded" {
+  run host_guard_probe_script forge.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NOCURL"* ]]
+  [[ "$output" == *"command -v curl"* ]]
+}
+
+@test "the probe never appends a fallback code alongside curl's own -w output" {
+  run host_guard_probe_script forge.example.com
+  [ "$status" -eq 0 ]
+  # CODE only. The comment above the fix quotes the broken idiom on purpose, so
+  # a naive grep over the whole script matches the warning against it and fails
+  # for the wrong reason — which it did on first writing.
+  local code
+  code="$(printf '%s\n' "$output" | grep -v '^[[:space:]]*#')"
+  [[ "$code" != *"|| printf '000'"* ]]
+  # And the real assertion: curl's exit status is discarded, -w is the only
+  # source of the code.
+  [[ "$code" == *") || true"* ]]
+}
+
+################################################################################
 # RENDERING — what actually gets installed, and which hosts survive it.
 ################################################################################
 

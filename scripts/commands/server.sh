@@ -453,6 +453,231 @@ cmd_vhost() {
     esac
 }
 
+################################################################################
+# host-guard — does this box serve the application to ANY Host header?
+# nwp/ops#381. See lib/server-host-guard.sh for the incident this exists for.
+################################################################################
+cmd_host_guard() {
+    local target="" apply=0 arg
+    local -a extra_allow=()
+    PROBE_CMD=""
+    for arg in "$@"; do
+        case "$arg" in
+            --status)      apply=0 ;;
+            --apply)       apply=1 ;;
+            --allow=*)     extra_allow+=("${arg#--allow=}") ;;
+            --probe-cmd=*) PROBE_CMD="${arg#--probe-cmd=}" ;;
+            -h|--help)     _host_guard_usage; return 0 ;;
+            -*)            echo "Unknown option: $arg" >&2; return 2 ;;
+            *)             if [[ -z "$target" ]]; then target="$arg"
+                           else echo "Unexpected argument: $arg" >&2; return 2; fi ;;
+        esac
+    done
+    if [[ -z "$target" ]]; then _host_guard_usage >&2; return 2; fi
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/server-host-guard.sh"
+
+    local prefix
+    prefix=$(_resolve_probe_prefix "$target") || {
+        echo "CANNOT VERIFY: cannot resolve a destination for '${target}'" >&2; return 3; }
+
+    # The name the box is SUPPOSED to answer to, from the tracked inventory.
+    local declared_domain
+    declared_domain="$(get_server_domain "$target" 2>/dev/null || true)"
+
+    local facts; facts="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$facts'" RETURN
+
+    local probe_real="${declared_domain:-localhost}"
+    if ! host_run "$prefix" "$(host_guard_probe_script "$probe_real")" > "$facts" 2>/dev/null; then
+        echo "CANNOT VERIFY: the host-guard probe did not run on '${target}'"
+        echo "               — this is NOT 'the box is guarded'."
+        return 3
+    fi
+
+    # GitLab's own name is the allowlist's whole content: the guard sits INSIDE
+    # GitLab's server block, reached only by requests that already failed to
+    # match every other vhost's server_name. Prefer what the BOX says over what
+    # the inventory says — the inventory is known to drift (ops#381 item 3).
+    local ext_url ext_host
+    ext_url="$(host_guard_fact "$facts" gitlab_external_url)"
+    ext_host="$(host_guard_host_of_url "$ext_url")"
+
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  pl server host-guard — ${target}"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo
+    printf '  %-22s %s\n' "declared domain" "${declared_domain:-<none in inventory>}"
+    printf '  %-22s %s\n' "gitlab external_url" "${ext_host:-<unreadable>}"
+    printf '  %-22s %s\n' "guard declared" "$(host_guard_fact "$facts" guard_declared)"
+    echo
+
+    local verdict rc=0
+    verdict="$(host_guard_verdict "$facts")" || rc=$?
+    printf '%s\n' "$verdict" | sed 's/^/  /'
+    echo
+
+    if [[ $rc -eq 3 ]]; then
+        return 3
+    fi
+
+    # STATUS mode stops here, whatever the verdict. Read-only is the default.
+    if [[ $apply -eq 0 ]]; then
+        if [[ $rc -eq 1 ]]; then
+            echo "  To close it:  pl server host-guard ${target} --apply"
+            echo "  (dry-run is the default; --apply is the only thing that writes)"
+        fi
+        return $rc
+    fi
+
+    ############################################################################
+    # APPLY
+    ############################################################################
+    if [[ $rc -eq 0 ]]; then
+        echo "  Already guarded — nothing to apply."
+        return 0
+    fi
+
+    if [[ "$(host_guard_fact "$facts" gitlab_embedded)" != "yes" ]]; then
+        echo "REFUSING: '${target}' has no /opt/gitlab. This verb seats the guard in"
+        echo "          gitlab.rb's custom_gitlab_server_config, which does not exist"
+        echo "          here. A plain-nginx box needs a default_server catch-all"
+        echo "          instead — a different repair, not this one."
+        return 2
+    fi
+    if [[ "$(host_guard_fact "$facts" gitlab_rb_readable)" != "yes" ]]; then
+        echo "CANNOT VERIFY: /etc/gitlab/gitlab.rb is not readable on '${target}',"
+        echo "               so the guard's seat cannot be inspected. Refusing to write"
+        echo "               into a file whose current contents are unknown."
+        return 3
+    fi
+    if [[ -z "$ext_host" ]]; then
+        echo "CANNOT VERIFY: could not read external_url from gitlab.rb on '${target}'."
+        echo "               Refusing to render an allowlist by guessing the hostname —"
+        echo "               a wrong guess here 444s the box off the internet."
+        return 3
+    fi
+
+    local snippet
+    snippet="$(host_guard_render "$ext_host" "${extra_allow[@]}")" || return 2
+
+    echo "  Guard to install (seat: /etc/gitlab/nwp-host-guard.conf):"
+    echo "  ─────────────────────────────────────────────────────────"
+    printf '%s\n' "$snippet" | sed 's/^/    /'
+    echo "  ─────────────────────────────────────────────────────────"
+    echo "  gitlab.rb: $(host_guard_gitlab_rb_line /etc/gitlab/nwp-host-guard.conf)"
+    echo
+
+    if ! _host_guard_confirm "$target"; then
+        echo "  Aborted. Nothing was written."
+        return 1
+    fi
+
+    local apply_script
+    apply_script="$(_host_guard_apply_script "$snippet")"
+    if ! host_run "$prefix" "$apply_script"; then
+        echo "APPLY FAILED on '${target}'. nginx config was NOT reloaded if the"
+        echo "syntax check failed — check the output above." >&2
+        return 1
+    fi
+
+    # RE-PROBE. The apply is not believed because it exited 0; it is believed
+    # because the box now refuses an unknown Host. ops#214: a check that has
+    # never been proven to fail is not a check, and an apply that was never
+    # re-measured is not an apply.
+    echo
+    echo "  Re-probing to PROVE the guard bites …"
+    local facts2; facts2="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$facts' '$facts2'" RETURN
+    if ! host_run "$prefix" "$(host_guard_probe_script "$probe_real")" > "$facts2" 2>/dev/null; then
+        echo "  CANNOT VERIFY: the re-probe did not run. The guard may or may not be"
+        echo "                 live — check by hand before believing this succeeded."
+        return 3
+    fi
+    local rc2=0
+    verdict="$(host_guard_verdict "$facts2")" || rc2=$?
+    printf '%s\n' "$verdict" | sed 's/^/  /'
+    return $rc2
+}
+
+# The apply, as a single remote script: write the seat, declare it in gitlab.rb
+# (idempotently), syntax-check, and only then reconfigure.
+_host_guard_apply_script() {
+    local snippet="$1"
+    cat <<EOF
+set -eu
+SEAT=/etc/gitlab/nwp-host-guard.conf
+RB=/etc/gitlab/gitlab.rb
+STAMP=\$(date -u +%Y%m%dT%H%M%SZ)
+
+# Back up gitlab.rb before touching it. Old value recorded, rollback possible.
+sudo -n cp -a "\$RB" "\${RB}.bak-hostguard-\${STAMP}"
+printf 'backup=%s\n' "\${RB}.bak-hostguard-\${STAMP}"
+
+sudo -n tee "\$SEAT" >/dev/null <<'GUARDEOF'
+${snippet}
+GUARDEOF
+sudo -n chmod 0644 "\$SEAT"
+
+# Declare it once. Re-running must not stack duplicate assignments.
+if ! sudo -n grep -q 'nwp-host-guard.conf' "\$RB"; then
+  printf '\n# NWP-HOST-GUARD v1 — nwp/ops#381. Managed by \`pl server host-guard\`.\n' | sudo -n tee -a "\$RB" >/dev/null
+  printf "nginx['custom_gitlab_server_config'] = File.read('%s')\n" "\$SEAT" | sudo -n tee -a "\$RB" >/dev/null
+fi
+
+sudo -n gitlab-ctl reconfigure >/dev/null 2>&1 || {
+  printf 'reconfigure_failed=yes\n'; exit 1; }
+
+# Syntax-check the GENERATED config before it is trusted.
+sudo -n /opt/gitlab/embedded/sbin/nginx -p /var/opt/gitlab/nginx -t 2>&1 | tail -3
+printf 'applied=yes\n'
+EOF
+}
+
+# The typed live confirm. Writing nginx config on a box serving real HTTP is not
+# something to do on a y/N reflex.
+_host_guard_confirm() {
+    local target="$1" answer=""
+    if [[ -n "${NWP_ASSUME_YES:-}" ]]; then return 0; fi
+    echo "  This writes nginx config on '${target}' and runs gitlab-ctl reconfigure."
+    printf "  Type the server name to proceed: "
+    read -r answer </dev/tty 2>/dev/null || return 1
+    [[ "$answer" == "$target" ]]
+}
+
+_host_guard_usage() {
+    cat <<'USAGE'
+Usage: pl server host-guard <server> [--status|--apply] [--allow=<host>]...
+
+  Does this box serve the whole application to a Host header it has never
+  heard of? If it does, every hostname on earth pointed at its IP gets an
+  application to crawl — including a stranger's DANGLING DNS record.
+
+  --status   (default) probe and grade. READ-ONLY.
+             exit 0 = GUARDED · 1 = PROMISCUOUS · 3 = CANNOT VERIFY
+  --apply    seat the guard, then RE-PROBE to prove it bites. An apply that
+             was never re-measured is not an apply.
+  --allow=   admit an extra Host beyond GitLab's own external_url. Repeatable.
+
+WHERE THE GUARD SITS. In gitlab.rb's nginx['custom_gitlab_server_config'],
+which chef splices into GitLab's server block. NOT in
+/var/opt/gitlab/nginx/conf/ — that is generated, and the next
+`gitlab-ctl reconfigure` silently reverts anything written there.
+
+WHY NOT A default_server CATCH-ALL. nginx allows one default_server per
+listen address and GitLab's block already claims it; taking it away means
+editing chef-generated config. Guarding from inside the block avoids that,
+and leaves sibling vhosts with explicit server_name untouched.
+
+nwp/ops#381 — 2026-08-19/20, a vulnerability scan aimed at a third party's
+dangling DNS record served 13.1 GB off our GitLab in one morning and tripped
+the provider's outbound traffic-rate alarm.
+USAGE
+}
+
 _vhost_usage() {
     cat <<'USAGE'
 Usage: pl server vhost <server> <site> [--status|--restore] [--apply]
@@ -2038,6 +2263,7 @@ case "$sub" in
     forge)   cmd_forge "$@" ;;
     roots)   cmd_roots "$@" ;;
     vhost)   cmd_vhost "$@" ;;
+    host-guard) cmd_host_guard "$@" ;;
     backup)  cmd_backup "$@" ;;
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;

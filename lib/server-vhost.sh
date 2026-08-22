@@ -577,7 +577,12 @@ vhost_is_generated_bootstrap() {
     # A bootstrap names no certificate. If this one does, it is not a bootstrap.
     grep -q 'ssl_certificate' "$f" 2>/dev/null && return 1
     # …and it must be the bootstrap for the name we are about to serve.
-    vhost_server_names_of "$f" | grep -qx "$domain" || return 1
+    # NOT `vhost_server_names_of "$f" | grep -qx "$domain"` (ops#351): under
+    # `set -o pipefail` grep -q exits on the first match, the writer takes
+    # SIGPIPE, and 141 becomes the pipeline's verdict — so a genuine match
+    # would intermittently read as "not this domain" and the stage-1 → stage-2
+    # handoff would refuse itself, by timing. Same hazard vhost_fact documents.
+    grep -qx "$domain" < <(vhost_server_names_of "$f") || return 1
     return 0
 }
 

@@ -250,6 +250,51 @@ JS is pinned + sha256-verified into `static/vendor/` by `fetch-xterm.sh` —
 never CDN-loaded. `tests/test_sessions.py` proves the refusals (including
 close-before-accept, structurally).
 
+## Settings tab (owner-only, and deliberately read-only) — ops#383
+
+One tab holding the estate's most important **declared facts**: merge authority
+(ops#385), review mode (ADR-0037), each site's canonical phase (ops#33), the
+merge queue, and how fresh this console's own feeds are.
+
+It is a **window, not a control panel, and that is the design**. Every fact on
+it is declared in exactly one place already, and CLAUDE.md's standing order on
+`approvers:` says where a second place ends: *"a policy expressed in several
+places is a policy that drifts"* — which is why there is no `pl mr review-mode
+set`, and why ops#385 specifies "no console toggle, no env var, no CLI flag".
+So each block renders the value **and names the file that declares it**.
+`tests/test_settings_pane.py` fails if `pane_settings.html` grows a form, an
+input, a select or an htmx write attribute, and if any write-shaped `/settings*`
+route appears.
+
+Every block is in one of **three** states, never two:
+
+| state | meaning |
+|---|---|
+| declared | the source was read and says something |
+| `NOT DECLARED` | the source was read and declares nothing — a real answer (no merge authority granted means *a human merges*) |
+| `CANNOT VERIFY` | we could not look — always with the verb's own reason, never an empty table and never a default that looks like a decision |
+
+Owner-only, and the only tab that is **hidden** rather than shown-and-refused
+(`OWNER_ONLY_PANES` in `app/main.py` drives both the tab bar and the route):
+estate governance has no per-project subset to show a member. `/panes/settings`
+is a 403 with an audited `settings.denied` row.
+
+**What it reads.** `pl mr authority --json` (merge authority), `pl mr review-mode`
+(text — the verb has no `--json`; parsed in `app/settings.py`, and an
+unrecognised mode reads as the fail-closed `team`), `pl mr ready --json` (merge
+queue), and the **published fleet snapshot** for the phase table — this host
+holds no sites, so `pl canonical show` here would report on an empty tree, and
+riding the fleet feed means the phase table inherits its provenance and says
+when it is stale.
+
+**Tab-bar geometry.** Settings is the eleventh tab, and eleven is the last that
+fits: `static/style.css` was re-sized (min-width 59→55px, tab padding 2→1px,
+label 12→11.5px, ⟳ padding 8→6px) to 667px of content in the 672px the desktop
+bar has at its narrowest. `tests/test_tabbar_fit.py` re-derives that arithmetic
+from the CSS and from `PANES` and proves a **twelfth** would not fit (723px), so
+the next pane is a structural change — an overflow menu or a grouped bar — not
+another 4px shaved off.
+
 ## Issues/CI panes token (operator-provisioned — never automated)
 
 The issues + CI panes call the GitLab API with the **walled bot token pattern**
@@ -408,6 +453,8 @@ scripts/console/
   app/            FastAPI app (main.py) + pure modules:
                   authz.py (roles) actions.py (allowlist) parsers.py store.py
                   fleet_state.py (published-snapshot consumption + provenance)
+                  settings.py (declared-fact VIEWS for the Settings pane —
+                               imports no runner/subprocess: it cannot act)
                   runner.py (only process spawner) gitlab_api.py webauthn_flow.py
                   notify.py (Gotify push: fail-open client + pure detectors)
                   runner.py (spawns `pl`) gitlab_api.py webauthn_flow.py
@@ -489,6 +536,17 @@ The switch is honoured only by that test module; it does not exist in the app.
   (`pl demo golden <site> --tier=live --with-pair`, ~4–6 min) stays a
   workstation verb in tranche 1 — it is longer than the console's synchronous
   action budget and is designed as an async job in ops#328 tranche 2.
+- **Two of the Settings pane's five blocks cannot read anything yet, and say
+  so.** `pl mr authority --json` (ops#385) and `pl mr ready --json` are being
+  built by other streams; measured 2026-08-22, neither verb exists in this
+  tree. Both blocks therefore render `CANNOT VERIFY` with the verb's own error
+  text — which is the honest state and is visibly different from "no authority
+  is granted" / "nothing is queued". The argv for each is declared once, in
+  `app/settings.py`, so wiring them up when the verbs land is one place to
+  look. The parsers accept the field names ops#385 specifies for the
+  `merge_authority:` block (`granted_to`, `granted_by`, `granted_on`, `ref`,
+  `scope`); if the verb ships a different JSON shape, that module is where it
+  is reconciled.
 - The fleet view is only as current as the last `pl fleet publish`. It always
   says which host produced it and how old it is, and shouts once that is past
   `NWP_CONSOLE_FLEET_MAX_AGE` — but a dead publisher means stale numbers, so

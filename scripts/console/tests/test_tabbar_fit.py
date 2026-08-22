@@ -77,6 +77,7 @@ LABEL_EM = {
     "Quokka": 3.9161,
     "Visuals": 3.5150,
     "Sessions": 4.2141,
+    "Settings": 4.1020,
 }
 LABEL_SAFETY = 1.05
 

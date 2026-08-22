@@ -1,0 +1,250 @@
+{#
+  Settings — the estate's DECLARED FACTS, rendered read-only (ops#383).
+
+  THERE IS NOTHING TO CLICK HERE, ON PURPOSE. Every fact on this pane is
+  declared in exactly one place already; a switch here would be a second one,
+  and CLAUDE.md's standing order on `approvers:` says plainly where that ends:
+  "a policy expressed in several places is a policy that drifts". ops#385 says
+  the same of merge authority — "no console toggle, no env var, no CLI flag".
+  So each block shows the value, and beside it the file the value comes from.
+
+  tests/test_settings_pane.py fails if this file grows a form, an input, a
+  select or an htmx write attribute — it greps for the literal markup, which
+  is why even this comment spells them out in prose. If you are here to add a
+  control, the change belongs in the registry, not in this template.
+
+  THREE STATES PER BLOCK, NEVER TWO:
+    declared      · read, and it says something
+    NOT DECLARED  · read, and it declares nothing (a real answer)
+    CANNOT VERIFY · could not look — always with the reason, never as an
+                    empty table and never as a default
+#}
+{% include "_tabcount.html" %}
+
+<p class="muted small">
+  These are <strong>declared facts</strong>, shown with the file that declares them.
+  This pane never sets one — each value has exactly one home, and a second place to
+  change it is how a policy drifts out of agreement with itself.
+</p>
+
+{# ---------------------------------------------------------------- 1. merge authority #}
+<div class="card">
+  <div class="card-head"><h2>Merge authority</h2>
+    <span class="muted small mono">{{ authority.where }}</span></div>
+
+  {% if authority.state == 'unavailable' %}
+    <p class="err"><strong>CANNOT VERIFY</strong> — this console could not read the grant.</p>
+    <p class="muted small mono">{{ authority.reason }}</p>
+    <p class="muted small">
+      Could-not-look is not the same as nothing-granted, so nothing is claimed here either
+      way. Until this reads, assume the standing invariant: <strong>a machine never merges,
+      a human merges</strong>.
+    </p>
+
+  {% elif authority.state == 'not-declared' %}
+    <p><span class="chip">NOT DECLARED</span> — no standing merge authority is granted.</p>
+    <p class="muted small">
+      This is the normal, safe state and not an error: <strong>a human merges</strong>.
+      Every merge verb refuses a bot token whose forge-verified identity is a machine.
+    </p>
+
+  {% else %}
+    <p>
+      <span class="chip {{ 'warnchip' if authority.fails_closed else 'codechip-live' }}">GRANTED</span>
+      to <strong class="mono">{{ authority.granted_to }}</strong>
+      {%- if authority.granted_by %}, by <span class="mono">{{ authority.granted_by }}</span>{% endif %}
+      {%- if authority.granted_on %} on <span class="mono">{{ authority.granted_on }}</span>{% endif %}
+      {%- if authority.ref %} · <span class="mono">{{ authority.ref }}</span>{% endif %}
+    </p>
+    {% if authority.scope %}<p class="small"><strong>Scope:</strong> {{ authority.scope }}</p>{% endif %}
+    {% if authority.bounds %}
+    <ul class="small">{% for b in authority.bounds %}<li>{{ b }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% for w in authority.warnings %}
+    <p class="err small">{{ w }}</p>
+    {% endfor %}
+    <p class="muted small">
+      A grant is a bound, not a blessing: it is mechanical, and it is checked per MR.
+      To change it, edit <span class="mono">{{ authority.where }}</span> — this pane only reads it.
+    </p>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- 2. review mode #}
+<div class="card">
+  <div class="card-head"><h2>Review mode</h2>
+    <span class="muted small mono">{{ review.where }}</span></div>
+
+  {% if review.state == 'unavailable' %}
+    <p class="err"><strong>CANNOT VERIFY</strong> — this console could not read the review policy.</p>
+    <p class="muted small mono">{{ review.reason }}</p>
+    <p class="muted small">
+      An unreadable policy reads as <strong>team</strong> (two reviewers), the stricter
+      direction — that is a fail-closed default, not a decision anyone made.
+    </p>
+
+  {% else %}
+    <p>
+      <span class="chip {{ 'warnchip' if review.state == 'not-declared' else '' }}">{{ review.mode | upper }}</span>
+      {% if review.state == 'not-declared' %}
+        — reported as <strong>NOT DECLARED</strong>: no readable registry and no projection,
+        so this is the fail-closed default rather than a policy someone chose.
+      {% elif review.mode == 'solo' %}
+        — one reviewer. Clicking <em>Merge</em> on the MR page is the whole approval.
+      {% else %}
+        — two reviewers. A sensitive-path MR is held as Draft until somebody who is not its
+        author records a release bound to the head commit.
+      {% endif %}
+    </p>
+    <table class="tbl small">
+      <tr><td class="muted">derived from</td><td class="mono">{{ review.source or '—' }}</td></tr>
+      <tr><td class="muted">projection (what CI reads)</td><td class="mono">{{ review.projection or '—' }}</td></tr>
+    </table>
+    {% if review.drift %}
+    <p class="err">
+      <strong>DRIFT</strong> — the registry and the tracked projection disagree, so CI is
+      enforcing a different policy from the one declared. Settle it on the workstation with
+      <span class="mono">pl mr review-mode sync</span> and commit the projection.
+    </p>
+    {% endif %}
+    <p class="muted small">
+      The mode is DERIVED from the number of names in <span class="mono">approvers:</span> —
+      adding the second name is the entire switch. There is deliberately no
+      <span class="mono">set</span> verb, and no toggle here.
+    </p>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- 3. canonical phase per site #}
+<div class="card">
+  <div class="card-head"><h2>Canonical phase per site</h2>
+    <span class="muted small mono">{{ phases.where }}</span></div>
+
+  {% if phases.state == 'unavailable' %}
+    <p class="err"><strong>CANNOT VERIFY</strong> — no phase table could be read on this host.</p>
+    <p class="muted small mono">{{ phases.reason }}</p>
+    <p class="muted small">
+      This console holds no sites; the phase table travels in the published fleet snapshot
+      (<span class="mono">pl fleet publish</span>). With no snapshot, nothing is claimed about
+      any site's phase — including whether any site is prod.
+    </p>
+
+  {% else %}
+    <p class="muted small">
+      {{ phases.counts.declared }} declared · {{ phases.counts.default }} defaulted to (dev)
+      {%- if phases.counts.unknown %} · {{ phases.counts.unknown }} not carried by this feed{% endif %}
+      {%- if phases.prov.age_human %} · snapshot {{ phases.prov.age_human }} old
+      {%- if phases.prov.stale %} <span class="err">(STALE)</span>{% endif %}{% endif %}
+    </p>
+    <table class="tbl">
+      {% for r in phases.rows %}
+      <tr>
+        <td><strong>{{ r.site }}</strong></td>
+        <td>
+          {% if not r.known %}
+            <span class="chip warnchip">{{ r.display }}</span>
+          {% elif r.invalid %}
+            <span class="chip warnchip">{{ r.display }}</span>
+          {% elif r.prod %}
+            <span class="chip rag-chip-red">prod</span>
+          {% elif r.declared %}
+            <span class="chip codechip-live">{{ r.display }}</span>
+          {% else %}
+            <span class="chip">{{ r.display }}</span>
+          {% endif %}
+        </td>
+        <td class="muted small">
+          {% if not r.known %}this feed carries no phase for this site
+          {% elif r.invalid %}unparseable — every guard fails closed for this site
+          {% elif not r.declared %}default, never explicitly set
+          {% else %}explicitly set{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">
+      Guards key off this phase and never off a site's name. Change one on the workstation:
+      <span class="mono">pl canonical set &lt;site&gt; &lt;phase&gt;</span> — it is ledgered there,
+      which is why it is not doable here.
+    </p>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- 4. the merge queue #}
+<div class="card">
+  <div class="card-head"><h2>Merge queue</h2>
+    <span class="muted small mono">{{ queue.cmd }}</span></div>
+
+  {% if queue.state == 'unavailable' %}
+    <p class="err"><strong>CANNOT VERIFY</strong> — the merge queue could not be read here.</p>
+    <p class="muted small mono">{{ queue.reason }}</p>
+    <p class="muted small">
+      So this is not a claim that the queue is empty. The open MRs the console can see
+      unaided are on the <strong>Review</strong> tab, which reads a different source.
+    </p>
+
+  {% elif not queue.rows %}
+    <p class="muted">
+      The queue answered: <strong>0 open merge requests</strong>. That is a measurement,
+      not an absence of one.
+    </p>
+
+  {% else %}
+    <p class="muted small">{{ queue.rows | length }} open · {{ queue.ready_count }} ready</p>
+    <table class="tbl">
+      {% for m in queue.rows %}
+      <tr>
+        <td>
+          {% if m.ready is none %}
+            <span class="chip warnchip">readiness not reported</span>
+          {% elif m.ready %}
+            <span class="chip codechip-live">ready</span>
+          {% else %}
+            <span class="chip">not ready</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="mono muted small">{{ m.project }}!{{ m.iid }}</span>
+          {% if m.url %}<a href="{{ m.url }}">{{ m.title }}</a>{% else %}{{ m.title }}{% endif %}
+          {% if m.draft %}<span class="chip">draft</span>{% endif %}
+          {% if m.blockers %}
+          <div class="muted small">{{ m.blockers | join(' · ') }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">
+      A merge happens on the MR page. Nothing on this host merges anything — the console
+      runs on the AI/dev tier and holds a bot token.
+    </p>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- 5. freshness of this console's own feeds #}
+<div class="card">
+  <div class="card-head"><h2>Freshness of what this console serves</h2>
+    <span class="muted small">this host holds no sites and no docs — everything here was published to it</span></div>
+  <table class="tbl">
+    {% for f in freshness %}
+    <tr>
+      <td><strong>{{ f.name }}</strong></td>
+      <td>
+        {% if not f.present %}
+          <span class="chip warnchip">never published here</span>
+        {% elif f.stale %}
+          <span class="chip rag-chip-amber">{{ f.age_human }} old — STALE</span>
+        {% else %}
+          <span class="chip codechip-live">{{ f.age_human }} old</span>
+        {% endif %}
+      </td>
+      <td class="muted small">
+        {{ f.what }}
+        {%- if f.present and f.host %} · from {{ f.host }}{% endif %}
+        {%- if f.present and f.max_age_human %} · stale after {{ f.max_age_human }}{% endif %}
+        {%- if not f.present and f.note %} · {{ f.note }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>

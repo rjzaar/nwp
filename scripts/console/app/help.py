@@ -89,7 +89,7 @@ SECTIONS: tuple = (
     {
         "id": "panes",
         "title": "The tab bar — a map",
-        "summary": "Nine panes in tab order; each has its own help section below.",
+        "summary": "Eleven panes in tab order; each has its own help section below.",
         "blocks": (
             _t("The tab bar is the whole UI: one full-screen pane at a time, in this order. "
                "Each pane has its own section further down this page — tap a name in the "
@@ -121,6 +121,12 @@ SECTIONS: tuple = (
                              "detach-safety — work started here keeps running when your "
                              "laptop drops off wifi. Its own help section explains the "
                              "workflow."),
+                ("Settings", "The estate's declared facts, read-only: merge authority, "
+                             "review mode, each site's canonical phase, the merge queue, "
+                             "and how fresh this console's own feeds are. Owner-only, and "
+                             "the only tab that is hidden rather than refused — there is "
+                             "no scoped subset of 'who may merge'. Nothing on it can be "
+                             "changed from here, and its own section says why."),
             ),
             _t("Numbers in the tab bar refresh on load and then every 90 seconds. Each count "
                "is computed independently and best-effort: a feed that breaks loses its "
@@ -781,6 +787,66 @@ SECTIONS: tuple = (
                "itself, so an unauthenticated socket is refused before any terminal "
                "exists. Everything runs on the console host over the mesh — no third "
                "party, no cloud terminal, nothing leaves the tailnet."),
+        ),
+    },
+    {
+        "id": "settings",
+        "title": "Settings — the declared facts, and where each one lives",
+        "summary": "A window onto the rules in force. Read-only, on purpose.",
+        "blocks": (
+            _t("The Settings tab answers one question — what are the rules right now — and "
+               "it answers it by reading, never by holding. Every value on it is declared "
+               "somewhere else, and the pane shows that somewhere else beside the value. "
+               "There is nothing to click."),
+            _t("That is a deliberate design and not an omission. Each of these facts has "
+               "exactly ONE home; a switch here would be a second one, and a policy that "
+               "can be set in two places drifts out of agreement with itself. It is the "
+               "same reasoning that leaves `pl mr review-mode` with no `set` subcommand: "
+               "the mode is derived from who is listed as an approver, so adding the "
+               "second name IS the change, and there is nowhere else to make it."),
+            _d(
+                ("Merge authority",
+                 "Whether a machine holds standing authority to merge, to what bound, and "
+                 "under which ops reference. Declared in the `merge_authority:` block of "
+                 "private/secrets-registry.yml. NOT DECLARED here is the normal state and "
+                 "means a human merges."),
+                ("Review mode",
+                 "solo or team, DERIVED from the number of names in `approvers:` in "
+                 "private/secrets-registry.yml. The pane also shows the projection — the "
+                 "tracked file CI reads, because CI cannot read the private registry — and "
+                 "shouts DRIFT when the two disagree, which means CI is enforcing a policy "
+                 "the registry does not agree with."),
+                ("Canonical phase",
+                 "dev, live or prod per site, from nwp.yml, changed with "
+                 "`pl canonical set` on the workstation (which ledgers the transition — "
+                 "that is why it is not doable from here). Guards key off this phase and "
+                 "never off a site's name."),
+                ("Merge queue",
+                 "Open merge requests with their readiness. The Review tab reads a "
+                 "different source for the same queue, so if one of them cannot see it, "
+                 "the other still might."),
+                ("Freshness",
+                 "How old the fleet snapshot and the library bundle on this host are. This "
+                 "console holds no sites and no documents — everything it serves was "
+                 "published to it — so the age of those two artefacts bounds how much any "
+                 "other pane can be trusted."),
+            ),
+            _t("Each block is in one of three states, and the difference between the last "
+               "two is the point of the pane. “Declared” means the source was read and it "
+               "says something. “NOT DECLARED” means the source was read and declares "
+               "nothing — a real answer. “CANNOT VERIFY” means the console could not look, "
+               "and it always prints why."),
+            _n("A blank space would collapse those last two into each other, so nothing "
+               "here renders as empty. In particular an unreadable merge queue never shows "
+               "as an empty queue, an unreadable review policy reads as the stricter "
+               "`team` and says that it is a fail-closed default rather than somebody's "
+               "decision, and an absent fleet snapshot means no claim is made about any "
+               "site's phase — including whether any site is prod."),
+            _n("Owner-only. This is the one tab that is hidden from the tab bar rather "
+               "than shown-and-refused: unlike the fleet or the demo tier, estate "
+               "governance has no per-project subset to show a member, so there is nothing "
+               "for a scoped reader to see here. The URL refuses them too, and the refusal "
+               "is written to the audit log."),
         ),
     },
     {

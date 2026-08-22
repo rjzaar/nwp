@@ -41,7 +41,8 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from . import (advisories, config, fleet_state, help, library, notify, overview,
                parsers, quokka, scope as scope_mod, sessions as sessions_mod,
-               visuals, voice, walkthrough, webauthn_flow)
+               settings as settings_mod, visuals, voice, walkthrough,
+               webauthn_flow)
 from .actions import ACTIONS, ActionError, build_action
 from .authz import PROJECT_ROLES, project_role_allows, role_allows
 from .gitlab_api import GitLab
@@ -57,8 +58,16 @@ PANES = [
     ("review", "Review"),
     ("fleet", "Fleet"), ("issues", "Issues"), ("todo", "Todo"), ("demo", "Demo"),
     ("backups", "Backups"), ("ci", "CI"), ("quokka", "Quokka"), ("visuals", "Visuals"),
-    ("sessions", "Sessions"),
+    ("sessions", "Sessions"), ("settings", "Settings"),
 ]
+
+# Panes an owner sees and nobody else does — hidden from the tab bar AND
+# refused at their URL, from this ONE list, because a tab that is merely
+# unlisted is not owner-only. Sessions is deliberately NOT here: its tab is
+# visible to everyone and explains its own refusal, which is right for a
+# surface people will look for. Settings shows estate-wide governance (who may
+# merge, which sites are prod) that has no scoped subset, so it is hidden.
+OWNER_ONLY_PANES = frozenset({"settings"})
 
 # The ONLY routes allowed to carry no scope dependency: unauthenticated
 # surfaces (health/login/enrol/PWA/static) plus the fail-closed landing page a
@@ -423,12 +432,23 @@ def login_verify(request: Request, payload: dict):
 # ---------------------------------------------------------------------------
 # dashboard + panes
 # ---------------------------------------------------------------------------
+def _panes_for(sc: Scope) -> list:
+    """The tab bar this caller gets. ONE filter, applied to the list the
+    template loops over AND to the pane list its script can activate — they
+    are the same loop, so they cannot disagree about who sees what. The route
+    behind each hidden tab refuses independently (defence in depth: hiding a
+    tab is presentation, not authorisation)."""
+    if _owner_gate(sc):
+        return list(PANES)
+    return [(p, label) for p, label in PANES if p not in OWNER_ONLY_PANES]
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, sc: Scope = Depends(scoped("viewer"))):
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"user": _user_of(sc), "gitlab_url": gitlab.web_url(), "panes": PANES,
+        {"user": _user_of(sc), "gitlab_url": gitlab.web_url(), "panes": _panes_for(sc),
          "can_act": sc.can("operator"), "scope": sc},
     )
 
@@ -949,6 +969,24 @@ def tab_counts(request: Request, sc: Scope = Depends(scoped("viewer"))):
         return (parsers.fmt_n_tab(len(d["sessions"])) if d["ok"] else ""), not d["ok"]
 
     add("sessions", _sessions_count)
+
+    def _settings_count():
+        # Owner-only, like the pane and the tab itself. ONE read, not the whole
+        # pane: the review mode is a local file read, and drift in it means CI
+        # is enforcing a policy the registry does not agree with — which is
+        # worth a dot on the bar rather than only inside a pane nobody opened.
+        # "No merge authority is granted" is deliberately NOT an alert: it is
+        # the normal, safe state.
+        if not _owner_gate(sc):
+            return "", False
+        review = settings_mod.parse_review_mode(
+            run_pl_cached(config.NWP_ROOT, settings_mod.REVIEW_MODE_ARGV,
+                          ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT))
+        if review["state"] == settings_mod.UNAVAILABLE:
+            return "", True          # cannot read the policy = alert, never a mode
+        return f"({review['mode']})", bool(review["drift"])
+
+    add("settings", _settings_count)
     return templates.TemplateResponse(request, "tab_counts.html", {"counts": counts})
 
 
@@ -2887,6 +2925,75 @@ async def sessions_ws(websocket: WebSocket, name: str):
         await sessions_mod.bridge(websocket, name)
     finally:
         audit.append(user["name"], user["role"], "sessions.detach", {"name": name}, True)
+
+
+# ---------------------------------------------------------------------------
+# Settings — the declared facts, rendered read-only (ops#383)
+# ---------------------------------------------------------------------------
+# The operator asked for "the most important settings" on one tab. What that
+# turns into on THIS estate is a window, not a control panel: every fact here
+# is declared in exactly one place already (`merge_authority:` and
+# `approvers:` in the secrets registry, `canonical:` in nwp.yml), and CLAUDE.md
+# is explicit that a second place to set a policy is how policy drifts — which
+# is why there is deliberately no `pl mr review-mode set` and why ops#385 says
+# "no console toggle". So this pane RENDERS, names the declaration site, and
+# offers no form at all. tests/test_settings_pane.py asserts that absence.
+#
+# Owner-only and stricter than Sessions: hidden from the tab bar (via
+# OWNER_ONLY_PANES) and refused at its URL with an audited denial. There is no
+# scoped subset of "who may merge the estate's MRs" to hand a project member.
+def _gather_settings(sc: Scope, force: bool = False) -> dict:
+    """Every feed the Settings pane shows, gathered behind the owner gate.
+
+    Each read is INDEPENDENT and fails on its own terms: a verb that does not
+    exist yet (`pl mr authority`, `pl mr ready`) leaves its own block saying
+    CANNOT VERIFY with the verb's error text, and never takes the pane down or
+    silences a neighbour. That is the whole point of the pane — it is the
+    place an operator comes to find out what the rules currently are, so "I
+    could not tell you" has to be sayable.
+    """
+    if not _owner_gate(sc):                    # belt: the route refuses first
+        raise HTTPException(status_code=403, detail="settings are owner-only")
+
+    def read(argv):
+        return run_pl_cached(config.NWP_ROOT, argv, ttl=config.PANE_CACHE_TTL,
+                             timeout=config.PL_TIMEOUT, force=force)
+
+    authority = settings_mod.parse_authority(read(settings_mod.AUTHORITY_ARGV))
+    review = settings_mod.parse_review_mode(read(settings_mod.REVIEW_MODE_ARGV))
+    queue = settings_mod.queue_view(read(settings_mod.QUEUE_ARGV))
+    # The phase table rides the SAME published fleet feed as the Fleet pane —
+    # this host holds no sites, so `pl canonical show` here would report on an
+    # empty tree. Reusing the feed also means the phase table inherits its
+    # provenance: a stale snapshot is a stale phase table, and says so.
+    rag, _res, prov = _gather_rag(sc, force=force)
+    phases = settings_mod.phases_view(rag, prov)
+    try:
+        lib_prov = library.provenance(library.load_for(config.DATA_DIR, "full"),
+                                      config.LIBRARY_MAX_AGE)
+    except Exception:  # noqa: BLE001 — a corrupt bundle is an absent bundle here
+        lib_prov = {"snapshot_present": False, "source": "local",
+                    "note": "the library bundle on this host could not be read"}
+    return {
+        "authority": authority, "review": review, "phases": phases, "queue": queue,
+        "freshness": settings_mod.freshness_view(fleet_prov=prov, library_prov=lib_prov),
+        "registry": settings_mod.REGISTRY,
+        "alert": settings_mod.alert(authority, review, phases),
+    }
+
+
+@app.get("/panes/settings", response_class=HTMLResponse)
+def pane_settings(request: Request, force: int = 0, sc: Scope = Depends(scoped("viewer"))):
+    if not _owner_gate(sc):
+        # A 403, not a refusal pane: unlike Sessions, this tab was never
+        # rendered for them, so a request for it is either a stale tab or
+        # somebody trying the URL. Both are worth an audit row.
+        audit.append(sc.user, sc.global_role, "settings.denied",
+                     {"path": "/panes/settings"}, False)
+        raise HTTPException(status_code=403, detail="settings are owner-only")
+    ctx = _gather_settings(sc, force=bool(force))
+    return _pane(request, "pane_settings.html", ctx, sc,
+                 tab="settings", tab_alert=bool(ctx["alert"]))
 
 
 # ---------------------------------------------------------------------------

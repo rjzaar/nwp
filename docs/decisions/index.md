@@ -67,6 +67,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0037](0037-review-mode-follows-approvers.md) | Review mode follows `approvers:` — one reviewer today, two when there are two | 2026-08-06 | Accepted (renumbered from a duplicate 0032, 2026-08-09, nwp/ops#319) |
 | [0038](0038-forge-box-identity-scheme.md) | Forge-box identity scheme — named scoped keys, and a bounded forge-admin credential tier | 2026-08-10 | **Proposed** (nwp/ops#331) — Linux plane implemented & installed (`nwp-forge-ops` full control, `nwp-forge-probe` jailed read-only, root break-glass out-of-band); application plane SPECIFIED, awaiting the operator's PAT mint. Narrowly amends 0004's tier rule for the forge instance ONLY |
 | [0039](0039-instance-state-in-private-overlay-repos.md) | Instance names and instance state live in private overlay repos; the engine ships only the sample pair | 2026-08-10 | Accepted — amends 0036's "tracked = in the engine repo" premise to "tracked = in *a reviewed* repo, resolved by search path" (nwp/ops#326) |
+| [0040](0040-bounded-standing-merge-authority.md) | Bounded standing merge authority — a machine may merge inside a measured bound (no sensitive path, no CLAUDE.md, no prod-phase site) | 2026-08-22 | Accepted — narrows, does not withdraw, 0037's "a machine never merges" (nwp/ops#385) |
 
 ## Rejected Proposals
 

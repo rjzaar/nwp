@@ -254,6 +254,8 @@ work that should be allowed, that is the operator's call to make by amending
 `merge_authority:` with a new recorded scope, **not** a special case you add to a
 verb, an env var you introduce, or a `--force` you reach for.
 
+See [ADR-0040](docs/decisions/0040-bounded-standing-merge-authority.md).
+
 ## STANDING ORDER: a check that has never been proven to fail is not a check
 
 **Recorded 2026-08-02, after one night found SIX of them.** Before you believe a

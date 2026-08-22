@@ -292,6 +292,64 @@ tracker and a clean one must never render the same.
 Related verb: `pl issue ls --project=all` gives the same combined queue on the
 command line.
 
+### Merge-queue readiness feed — `pl mr ready --json`
+
+Any pane that offers a **Merge** button should ask this first. `pl mr ready`
+answers, per open MR, *would clicking this succeed right now, and if not,
+exactly why* — the operator's stated pain being *"I don't want to click, fail,
+paste the fail, wait for you to fix it."* It is a **read** verb: it merges
+nothing, retries nothing and holds nothing.
+
+```
+pl mr ready                 # the whole open queue, as a table
+pl mr ready 469 --json      # one MR, machine-readable
+```
+
+Schema `nwp.mr.ready/1`, versioned in the document itself and **additive-only**
+within a version (same discipline as `nwp.fleet-state` above — a consumer that
+does not know a new field ignores it; a breaking change moves the `/N`). The
+full field list is in the header docblock of `scripts/commands/mr.sh`; the
+shape is:
+
+```jsonc
+{
+  "schema": "nwp.mr.ready/1",
+  "generated": "2026-08-22T13:53:46Z",
+  "project": "nwp/nwp",
+  "review_mode": "solo", "review_mode_source": "registry",
+  "exit": 1,
+  "counts": {"ready": 7, "blocked": 2, "cannot_verify": 0, "total": 9},
+  "merge_requests": [{
+    "iid": 469, "title": "…", "author": "…", "state": "opened",
+    "source_branch": "ops-382", "target_branch": "main",
+    "head_sha": "8c253c63…", "url": "https://…/merge_requests/469",
+    "verdict": "READY",              // READY | BLOCKED | CANNOT-VERIFY
+    "blockers":   [{"cause": "ci-failed", "detail": "…", "recheck": "pl mr ci 466"}],
+    "advisories": [{"cause": "stale-merge-cache", "detail": "…"}],
+    "checks": { "merge_status": {…}, "pipeline": {…}, "hold": {…},
+                "review_marker": {…}, "review_mode": {…} }
+  }]
+}
+```
+
+**Three rules for the consumer, and they are the whole point:**
+
+1. **`CANNOT-VERIFY` is not a failure and it is not a pass.** It means a check
+   could not be *taken* — the API did not answer, a pipeline could not be read,
+   the review mode is not declared. Render it **AMBER**, never green, and never
+   fold it into `blocked`. `exit` is `2` whenever any MR is in that state, and
+   `2` dominates `1` dominates `0`.
+2. **Show `blockers[].recheck` next to the cause.** Every blocker carries a
+   command that re-runs its own condition and clears on its own terms. None of
+   them is an approval flag, and a pane must never offer `--approved-by` as the
+   way out of a stale hold (ops#361).
+3. **A `READY` verdict is not permission to merge for you.** A machine never
+   merges (`_mr_merge_actor_ok`); `READY` means *the operator's* click will
+   land.
+
+`advisories` are non-blocking observations — a stale `conflict` in GitLab's own
+cache, an armed auto-merge — and must not turn a row red.
+
 ## Quokka voice (talk to Quokka, Quokka talks back)
 
 Both legs run **on the console host**. No cloud speech API is called anywhere,

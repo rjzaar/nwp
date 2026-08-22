@@ -88,6 +88,18 @@ _mr_have_yq(){ [ -n "$YQ" ] && [ -x "$YQ" ]; }
 # Explicit on purpose: the yq expression this replaces wrote
 # `(strenv(R) == "true")`, and quietly turning that field into the STRING "true"
 # would be a type change hidden inside a bug fix.
+#
+# THREE MORE SUFFIXES were added for `pl mr ready` (ops#383), whose output is a
+# NESTED document consumed by another program. They exist so that building it
+# still goes through this one argv-safe constructor rather than a second,
+# string-concatenating JSON writer living in a command file — the shape that
+# produces `"title": "he said "hi""` the first time a title contains a quote:
+#   key:json  the value is ALREADY valid JSON (an object or array) and is
+#             spliced in; invalid JSON is a hard error, never a silent "".
+#   key:list  a newline-separated value becomes an array of strings (empty
+#             input → []). One blank line is not one empty element.
+#   key:num   an integer becomes a JSON number; anything else becomes null,
+#             because "" is not a count and 0 is not "I did not measure".
 _mr_json(){
     python3 -c 'import json,sys
 a = sys.argv[1:]
@@ -96,6 +108,13 @@ for i in range(0, len(a) - 1, 2):
     k, v = a[i], a[i + 1]
     if k.endswith(":bool"):
         out[k[:-5]] = (v == "true")
+    elif k.endswith(":json"):
+        out[k[:-5]] = json.loads(v)
+    elif k.endswith(":list"):
+        out[k[:-5]] = [x for x in v.split("\n") if x.strip() != ""]
+    elif k.endswith(":num"):
+        try: out[k[:-4]] = int(v)
+        except (TypeError, ValueError): out[k[:-4]] = None
     else:
         out[k] = v
 print(json.dumps(out))' "$@"
@@ -390,11 +409,121 @@ _mr_local_testmerge(){
   out=$(git merge-tree --write-tree --name-only "$t" "$s" 2>&1); rc=$?
   case "$rc" in
     0) return 0 ;;
-    1) # First line is the merged tree oid; the rest are the conflicted paths.
-       printf '%s\n' "$out" | tail -n +2 | grep -v '^[[:space:]]*$' || true
+    1) # THE SHAPE OF `git merge-tree --write-tree --name-only` OUTPUT:
+       #
+       #     <merged tree oid>
+       #     scripts/commands/server.sh          ← the conflicted paths
+       #                                         ← a BLANK LINE terminates them
+       #     Auto-merging scripts/commands/server.sh          ← informational
+       #     CONFLICT (content): Merge conflict in scripts/…  ← informational
+       #
+       # `tail -n +2` alone therefore returned git's COMMENTARY as though it were
+       # more conflicted paths. Measured while reproducing !469's real conflict on
+       # 2026-08-22: one path came back as nine "paths", and `pl mr ready` printed
+       #   "conflicts in — scripts/commands/server.sh Auto-merging
+       #    scripts/commands/server.sh CONFLICT (content): Merge conflict in …"
+       # A field whose job is to NAME THE CAUSE must contain only the cause; prose
+       # padding is how a reader learns to skip the field that matters.
+       #
+       # awk with a flag, not `awk …{exit}` or `sed /^$/q`: an early-exiting reader
+       # at the tail of a pipeline is the lint:pipefail-sigpipe shape (ops#343).
+       # This one reads to EOF and can never be killed mid-write.
+       printf '%s\n' "$out" | awk 'NR==1 {next} /^[[:space:]]*$/ {stop=1} !stop {print}'
        return 1 ;;
     *) return 2 ;;
   esac
+}
+
+# _mr_merge_verdict <detailed_merge_status> <target-branch> <source-branch>
+#   → "<verdict>\t<method>\t<detail>" on stdout, always rc 0.
+#
+#   verdict  clean    the branches merge — MEASURED, or claimed by the forge
+#                     when the measurement could not be taken
+#            conflict a REPRODUCED conflict; detail = the conflicted paths
+#            unknown  could not be settled either way — the caller must treat
+#                     this as CANNOT VERIFY, never as clean
+#   method   local-test-merge | forge | none
+#   detail   conflicted paths, or the word `stale-cache` when the forge said
+#            `conflict` and the reproduction says otherwise
+#
+# WHY IT IS A FUNCTION AND NOT AN `if` IN THE CALLER. CLAUDE.md's merge-automation
+# rule — "never trust `conflict` on its own", "`checking` means retry, not
+# failure" — has been re-derived in `cmd_merge` and again in `cmd_rebase`, each
+# time as a slightly different case statement. `pl mr ready` would have been the
+# third. One implementation of the rule is one place for it to be wrong, and one
+# place for a test to prove it right.
+#
+# THE ORDER OF AUTHORITY IS THE POINT. A reproduction outranks the cached field
+# in BOTH directions: `conflict` + a clean merge-tree is the documented stale
+# cache (verified 2026-08-02), and `mergeable` + a reproduced conflict is a cache
+# that has gone stale the other way. The forge's word is used only where no
+# measurement could be taken, and then only when it is the POSITIVE, specific
+# `mergeable` — `checking`, `unchecked` and `preparing` are not verdicts at all,
+# so with no reproduction they yield `unknown`.
+_mr_merge_verdict(){
+  local dms="${1:-}" target="${2:-}" source="${3:-}" out rc=0
+  out=$(_mr_local_testmerge "$target" "$source") || rc=$?
+  case "$rc" in
+    0) if [ "$dms" = "conflict" ]; then
+         printf 'clean\tlocal-test-merge\tstale-cache'
+       else
+         printf 'clean\tlocal-test-merge\t'
+       fi ;;
+    1) # `|` joins the paths, NOT a space: a path may contain a space and the
+       #  caller has to split this back into a list. git quotes any path that
+       #  could contain a `|`, so the separator cannot appear inside a member.
+       printf 'conflict\tlocal-test-merge\t%s' "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|*$//')" ;;
+    *) case "$dms" in
+         mergeable) printf 'clean\tforge\t' ;;
+         *)         printf 'unknown\tnone\t%s' "${dms:-unreadable}" ;;
+       esac ;;
+  esac
+}
+
+# _mr_open_iids → the iid of every OPEN merge request, one per line.
+# rc 0 = read (may legitimately be empty) · 1 = COULD NOT READ.
+#
+# The return code is load-bearing for the same reason it is in
+# `_mr_changed_files`: an unreadable list and an empty queue must not be the
+# same answer. A readiness report over zero MRs because the API 401'd is the
+# vacuous pass this estate keeps finding.
+_mr_open_iids(){
+  local proj json
+  proj=$(_mr_project) || return 1
+  json=$(_mr_get "/projects/$proj/merge_requests?state=opened&per_page=100&order_by=created_at&sort=desc") || return 1
+  [ -n "$json" ] || return 1
+  printf '%s' "$json" | python3 -c 'import json,sys
+try: rows = json.load(sys.stdin)
+except Exception: sys.exit(1)
+if not isinstance(rows, list): sys.exit(1)
+for r in rows:
+    v = r.get("iid")
+    if v is not None: print(v)'
+}
+
+# _mr_commit_messages <iid> → every commit message in the MR, one per line
+# (newlines inside a message are flattened to spaces).
+# rc 0 = read · 1 = COULD NOT READ.
+#
+# WHY THE API AND NOT `git log`. The REVIEW: marker may sit in the MR title or in
+# ANY commit subject in the range (scripts/ci/review-marker-gate.sh). In CI the
+# range is a local one; here it is not — `pl mr ready` runs over the whole queue
+# from whatever branch the operator happens to be on, and most of those branches
+# are not checked out. Reading the range from local refs would report "no marker"
+# for every MR whose branch this checkout has never fetched: a false BLOCKED, and
+# the sort that trains people to ignore the verb.
+_mr_commit_messages(){
+  local iid="$1" proj json
+  proj=$(_mr_project) || return 1
+  json=$(_mr_get "/projects/$proj/merge_requests/$iid/commits?per_page=100") || return 1
+  [ -n "$json" ] || return 1
+  printf '%s' "$json" | python3 -c 'import json,sys
+try: rows = json.load(sys.stdin)
+except Exception: sys.exit(1)
+if not isinstance(rows, list): sys.exit(1)
+for r in rows:
+    m = r.get("message") or r.get("title") or ""
+    print(" ".join(m.split("\n")))'
 }
 
 # _mr_post_note <iid> <body> — post ONE note, unconditionally.
@@ -715,6 +844,17 @@ _mr_head_sha(){ printf '%s' "$1" | _mr_jget sha; }
 _mr_state(){    printf '%s' "$1" | _mr_jget state; }
 _mr_detailed_merge_status(){ printf '%s' "$1" | _mr_jget detailed_merge_status; }
 _mr_head_pipeline_id(){ printf '%s' "$1" | _mr_jget 'head_pipeline.id'; }
+
+# _mr_head_pipeline_sha <mr-json> → the commit the head pipeline actually RAN ON.
+#
+# NOT the same fact as `sha`, and the difference is the whole of check 2 in
+# `pl mr ready`: GitLab keeps `head_pipeline` pointing at the newest pipeline it
+# knows about for the MR, which after a force-push or during the seconds before a
+# new pipeline is created is a run over a SUPERSEDED commit. A green tick from
+# that run says the old bytes passed. Merging the new bytes on the strength of it
+# is exactly the "check that has never been proven to fail" shape: a measurement
+# taken of something other than the thing being merged.
+_mr_head_pipeline_sha(){ printf '%s' "$1" | _mr_jget 'head_pipeline.sha'; }
 
 # _mr_pipeline <pipeline-id> → the pipeline JSON, or rc 1.
 _mr_pipeline(){

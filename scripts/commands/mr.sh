@@ -922,6 +922,566 @@ cmd_list(){
 }
 
 ################################################################################
+# pl mr ready — WOULD CLICKING MERGE SUCCEED RIGHT NOW, AND IF NOT, WHY?
+#
+# ── THE PAIN THIS EXISTS FOR ──────────────────────────────────────────────────
+#
+#   "I don't want to click, fail, paste the fail, wait for you to fix it etc.
+#    I want to give you the queue and you get it all working."   (operator)
+#
+# The operator's merge click is the approval (solo review mode), so the click is
+# the ONE moment his attention is required. Every click that fails spends that
+# attention on triage instead — and the estate already had, separately, every
+# fact needed to predict the failure. `pl mr list` shows a hold state and a
+# cached merge word. `pl mr status` shows one MR. `pl mr ci` shows one pipeline.
+# Nothing answered the actual question, over the whole queue, in one command.
+#
+# So this verb makes the prediction, per MR, and NAMES THE CAUSE when the answer
+# is no. It is a READ verb: it writes nothing, merges nothing, retries nothing.
+#
+# ── THE FIVE CHECKS, AND WHY EACH IS MEASURED THE WAY IT IS ───────────────────
+#
+# 1. MERGE STATUS — and `conflict` is never believed on its own.
+#    CLAUDE.md, verified 2026-08-02: this instance's `detailed_merge_status` is a
+#    CACHED computation that is not always recomputed when the target branch
+#    moves, and it reports `conflict` for branches that merge cleanly. Only a
+#    REPRODUCED conflict is a conflict, so `_mr_merge_verdict` settles it with a
+#    real merge of the real commits (`git merge-tree --write-tree` against the
+#    refs the FORGE holds). `checking`/`unchecked`/`preparing` are not verdicts —
+#    they mean ask again — so with no reproduction they yield `unknown`, which is
+#    CANNOT-VERIFY and never READY.
+#
+# 2. THE PIPELINE ON THE CURRENT HEAD SHA — not on an older one.
+#    `head_pipeline` keeps pointing at the newest pipeline GitLab knows about,
+#    which after a force-push is a run over SUPERSEDED bytes. A green tick there
+#    says the old commit passed. This compares the pipeline's own `sha` with the
+#    MR's `sha` and BLOCKS when they differ, however green the run.
+#
+# 3. DRAFT / HOLD, and whether the hold is STALE.
+#    A `hold::` label plus Draft is the D13 mechanism. The condition behind it is
+#    re-evaluated here, so a hold left standing after its reason evaporated (the
+#    estate moved to solo review; the sensitive path was dropped from the diff; a
+#    release was recorded) is reported as `held-stale` rather than as a wall.
+#
+# 4. THE SENSITIVE-PATH REVIEW MARKER.
+#    `scripts/ci/review-marker-gate.sh` fails an MR that touches a CLAUDE.md
+#    sensitive path with no `REVIEW:` in the title or in any commit subject. That
+#    is a red pipeline the operator would otherwise discover by clicking. It is
+#    cheap to predict, so it is predicted.
+#
+# 5. REVIEW MODE, and what is owed under it.
+#    `_mr_review_mode` — the single reader of `approvers:`. Solo owes nothing but
+#    the click. Team owes a release record bound to THIS head. A mode that could
+#    not be READ is CANNOT-VERIFY, never solo: "I could not read the policy" must
+#    never look like a decision somebody made.
+#
+# ── FAIL CLOSED, IN THE DIRECTION THAT COSTS A CLICK, NOT A MERGE ─────────────
+#
+# Three verdicts, and the third is not a rounding of the other two:
+#   READY          every check measured, every check passed
+#   BLOCKED        a named, reproduced cause — with a recheck that clears it
+#   CANNOT-VERIFY  a check could not be TAKEN. "I could not look" and "there is
+#                  nothing there" are opposite facts (CLAUDE.md). Grade AMBER.
+# Exit: 0 all READY · 1 at least one BLOCKED · 2 at least one CANNOT-VERIFY.
+# 2 dominates 1 dominates 0, so an unreachable API can never total to success.
+#
+# ── TRUTHFUL EXITS (ops#361) ─────────────────────────────────────────────────
+# Every blocker carries a `recheck` that RE-RUNS THE CONDITION and clears on its
+# own terms. None of them is `--approved-by`. A blocker whose only exit were a
+# human attestation would be the ops#361 defect — an agent fabricating an
+# operator approval to clear a stale hold — rebuilt inside the verb written to
+# stop the operator being handed avoidable work.
+#
+# ── THE JSON CONTRACT ─────────────────────────────────────────────────────────
+# `--json` emits ONE object. The console Settings pane consumes it, so the schema
+# is versioned in the document itself and additive-only within a version:
+#
+#   {
+#     "schema": "nwp.mr.ready/1",       version string; a BREAKING change bumps
+#                                       the /N, additive fields do not
+#     "generated": "<ISO-8601 UTC>",
+#     "project": "nwp/nwp",             human form, never URL-encoded
+#     "review_mode": "solo"|"team",
+#     "review_mode_source": "env"|"registry"|"projection"|"fallback",
+#     "exit": 0|1|2,                    the process's own exit code
+#     "counts": {"ready":N,"blocked":N,"cannot_verify":N,"total":N},
+#     "merge_requests": [ {
+#        "iid": 469, "title": "...", "author": "...", "state": "opened",
+#        "source_branch": "...", "target_branch": "main",
+#        "head_sha": "<40 hex>", "url": "https://...",
+#        "verdict": "READY"|"BLOCKED"|"CANNOT-VERIFY",
+#        "blockers":   [ {"cause":"<stable-word>","detail":"...","recheck":"pl ..."} ],
+#        "advisories": [ {"cause":"<stable-word>","detail":"..."} ],
+#        "checks": {
+#          "merge_status": {"verdict":"ok"|"blocked"|"cannot-verify",
+#                           "forge_value":"<detailed_merge_status>",
+#                           "reproduced":"clean"|"conflict"|"unknown",
+#                           "method":"local-test-merge"|"forge"|"none",
+#                           "conflicted_paths":[...]},
+#          "pipeline":     {"verdict":..., "id":N|null, "status":"...",
+#                           "sha":"...", "on_head_sha":true|false,
+#                           "failed_jobs":[...]},
+#          "hold":         {"verdict":..., "draft":bool, "hold_label":bool,
+#                           "stale":bool},
+#          "review_marker":{"verdict":..., "sensitive_paths":[...],
+#                           "marker":"title"|"commit"|"none"|"n/a"},
+#          "review_mode":  {"verdict":..., "mode":"...", "source":"...",
+#                           "owed":"<text>"|""}
+#        } } ]
+#   }
+#
+# `cause` words are the machine handle and are STABLE:
+#   no-such-mr · api-unreadable · not-open · conflict · merge-status-unknown
+#   no-pipeline · pipeline-superseded · pipeline-unreadable · ci-failed
+#   ci-running · ci-canceled · ci-blocked · ci-status-unknown · draft
+#   held · held-stale · diff-unreadable · commits-unreadable
+#   review-marker-missing · release-record-missing · notes-unreadable
+#   review-mode-not-declared
+#
+# THE HUMAN VIEW IS RENDERED FROM THE SAME JSON. Not a parallel formatter: a
+# second renderer is a second place for the verdict to be stated, free to
+# disagree with the first, and the estate has the scars (`.nwp-review-mode` vs
+# `approvers:`). What you read is what the pane reads.
+################################################################################
+
+NWP_MR_READY_SCHEMA="nwp.mr.ready/1"
+
+# _ready_rec <cause> <detail> [<recheck>] — one blocker/advisory record.
+_ready_rec(){
+  if [ $# -ge 3 ]; then _mr_json cause "$1" detail "$2" recheck "$3"
+  else                  _mr_json cause "$1" detail "$2"; fi
+}
+
+# _ready_arr <json-object>... — the objects as a JSON array.
+_ready_arr(){
+  local out="" o
+  for o in "$@"; do [ -n "$o" ] || continue; out="${out:+$out,}$o"; done
+  printf '[%s]' "$out"
+}
+
+# _ready_assess <iid> → the per-MR JSON object on stdout.
+# rc 0 = READY · 1 = BLOCKED · 2 = CANNOT-VERIFY.
+#
+# ONE function, one verdict, no printing: everything the operator and the console
+# see is derived from what this returns. It is also why the tests can drive every
+# branch from a stubbed wire response.
+_ready_assess(){
+  local iid="$1"
+  local -a blockers=() advisories=()
+  local cannot=false blocked=false
+
+  local json st
+  if ! json=$(_mr_fetch "$iid"); then
+    st="$(_mr_http_status)"
+    if [ "$st" = "404" ]; then
+      # A definite answer: there is no such MR here. Not the same as silence.
+      _mr_json iid:num "$iid" title "" author "" state "" \
+        source_branch "" target_branch "" head_sha "" url "$(_mr_web_url "$iid")" \
+        verdict "BLOCKED" \
+        blockers:json "$(_ready_arr "$(_ready_rec no-such-mr \
+          "HTTP 404 — no !$iid in $(_mr_project_human). MR numbers are per project." \
+          "pl mr ready $iid  (from a checkout of the right project)")")" \
+        advisories:json '[]' checks:json '{}'
+      return 1
+    fi
+    _mr_json iid:num "$iid" title "" author "" state "" \
+      source_branch "" target_branch "" head_sha "" url "$(_mr_web_url "$iid")" \
+      verdict "CANNOT-VERIFY" \
+      blockers:json "$(_ready_arr "$(_ready_rec api-unreadable \
+        "could not read !$iid from the forge (HTTP ${st:-none}) — this is 'I could not look', not 'nothing is wrong'" \
+        "pl mr ready $iid")")" \
+      advisories:json '[]' checks:json '{}'
+    return 2
+  fi
+
+  local title author state dms sha src tgt
+  title=$(_mr_title "$json");  author=$(_mr_author "$json"); state=$(_mr_state "$json")
+  dms=$(_mr_detailed_merge_status "$json"); sha=$(_mr_head_sha "$json")
+  src=$(_mr_source_branch "$json"); tgt=$(_mr_target_branch "$json")
+
+  if [ "$state" != "opened" ]; then
+    _mr_json iid:num "$iid" title "$title" author "$author" state "$state" \
+      source_branch "$src" target_branch "$tgt" head_sha "$sha" url "$(_mr_web_url "$iid")" \
+      verdict "BLOCKED" \
+      blockers:json "$(_ready_arr "$(_ready_rec not-open \
+        "!$iid is $state, not open — there is nothing to merge" "pl mr status $iid")")" \
+      advisories:json '[]' checks:json '{}'
+    return 1
+  fi
+
+  # ── CHECK 1 · MERGE STATUS, settled by reproduction ────────────────────────
+  local mv mmethod mdetail mverdict="ok" cpaths=""
+  IFS=$'\t' read -r mv mmethod mdetail < <(_mr_merge_verdict "$dms" "$tgt" "$src")
+  case "$mv" in
+    clean)
+      if [ "$mdetail" = "stale-cache" ]; then
+        advisories+=("$(_ready_rec stale-merge-cache \
+          "GitLab's cached detailed_merge_status says 'conflict'; a real merge of origin/$tgt x origin/$src is CLEAN. The cache is stale — the documented defect on this instance (CLAUDE.md, verified 2026-08-02).")")
+      fi ;;
+    conflict)
+      mverdict="blocked"; blocked=true
+      cpaths=$(printf '%s' "$mdetail" | tr '|' '\n')
+      blockers+=("$(_ready_rec conflict \
+        "a REPRODUCED conflict (not the cached word): merging origin/$src into origin/$tgt conflicts in — $(printf '%s' "${mdetail:-unnamed paths}" | sed 's/|/, /g')" \
+        "pl mr rebase $iid")") ;;
+    *)
+      mverdict="cannot-verify"; cannot=true
+      blockers+=("$(_ready_rec merge-status-unknown \
+        "the forge says '${dms:-?}', which means ask again rather than no, and the local reproduction could not be run (no fetchable origin/$tgt or origin/$src). Not settled either way." \
+        "pl mr ready $iid")") ;;
+  esac
+
+  # ── CHECK 2 · THE PIPELINE, ON THE CURRENT HEAD SHA ────────────────────────
+  local pid psha pstatus pverdict="ok" on_head="true" failed_names=""
+  pid=$(_mr_head_pipeline_id "$json")
+  if [ -z "$pid" ]; then
+    pverdict="blocked"; blocked=true; on_head="false"; pstatus="none"
+    blockers+=("$(_ready_rec no-pipeline \
+      "no pipeline has run for head ${sha:0:12}. This project has a .gitlab-ci.yml, so an MR with no pipeline is one whose CI has not started — a green tick cannot be inherited from an earlier commit." \
+      "pl mr ready $iid")")
+  else
+    local pjson
+    if ! pjson=$(_mr_pipeline "$pid"); then
+      pverdict="cannot-verify"; cannot=true; pstatus=""; psha=""
+      blockers+=("$(_ready_rec pipeline-unreadable \
+        "pipeline #$pid could not be read (HTTP $(_mr_http_status)) — its result is unknown, which is not the same as green." \
+        "pl mr ci $iid")")
+    else
+      pstatus=$(printf '%s' "$pjson" | _mr_jget status)
+      psha=$(printf '%s' "$pjson" | _mr_jget sha)
+      [ -n "$psha" ] || psha=$(_mr_head_pipeline_sha "$json")
+      if [ -n "$psha" ] && [ -n "$sha" ] && [ "$psha" != "$sha" ]; then
+        # THE SUPERSEDED-GREEN CASE. Checked BEFORE the status, because a green
+        # run on the wrong commit is the one this check exists for.
+        pverdict="blocked"; blocked=true; on_head="false"
+        blockers+=("$(_ready_rec pipeline-superseded \
+          "pipeline #$pid is '${pstatus:-?}' but it ran on ${psha:0:12}, and this MR's head is ${sha:0:12}. That result is about superseded bytes; it says nothing about what would merge." \
+          "pl mr ready $iid")")
+      else
+        case "$pstatus" in
+          success) ;;
+          failed)
+            pverdict="blocked"; blocked=true
+            local fj frc=0
+            fj=$(_mr_failed_jobs "$pid") || frc=$?
+            if [ "$frc" -ne 0 ]; then
+              cannot=true; pverdict="cannot-verify"
+              blockers+=("$(_ready_rec ci-status-unknown \
+                "pipeline #$pid is failed but its job list could not be read, so the blocking job cannot be named." \
+                "pl mr ci $iid")")
+            else
+              failed_names=$(printf '%s' "$fj" | cut -f2)
+              blockers+=("$(_ready_rec ci-failed \
+                "pipeline #$pid FAILED on head ${sha:0:12} — blocking job(s): $(printf '%s' "$failed_names" | tr '\n' ' ' | sed 's/ *$//')" \
+                "pl mr ci $iid")")
+            fi ;;
+          running|pending|created|preparing|waiting_for_resource|scheduled)
+            pverdict="blocked"; blocked=true
+            blockers+=("$(_ready_rec ci-running \
+              "pipeline #$pid is still '$pstatus' on head ${sha:0:12}. Not a failure and not a pass — a merge now would be a merge on an unmeasured result." \
+              "pl mr ready $iid")") ;;
+          canceled)
+            pverdict="blocked"; blocked=true
+            blockers+=("$(_ready_rec ci-canceled \
+              "pipeline #$pid was CANCELED on head ${sha:0:12} — no verdict was ever produced. A cancelled run is not a green one." \
+              "pl mr ci $iid")") ;;
+          manual|blocked_status|blocked)
+            pverdict="blocked"; blocked=true
+            blockers+=("$(_ready_rec ci-blocked \
+              "pipeline #$pid is '$pstatus' — it is waiting on a manual job and has produced no final verdict." \
+              "pl mr ci $iid")") ;;
+          *)
+            pverdict="cannot-verify"; cannot=true
+            blockers+=("$(_ready_rec ci-status-unknown \
+              "pipeline #$pid reports status '${pstatus:-empty}', which this verb does not recognise. Refusing to grade an unrecognised status as a pass." \
+              "pl mr ci $iid")") ;;
+        esac
+      fi
+    fi
+  fi
+
+  # ── WHAT DOES IT TOUCH (feeds checks 3, 4 and 5) ───────────────────────────
+  local sens="" srrc=0 sverdict="ok" marker="n/a"
+  sens=$(_mr_sensitive_paths "$iid") || srrc=$?
+  if [ "$srrc" -ne 0 ]; then
+    sverdict="cannot-verify"; cannot=true
+    blockers+=("$(_ready_rec diff-unreadable \
+      "could not read what !$iid changes, so its sensitive-path class is UNKNOWN — never 'nothing sensitive'." \
+      "pl mr guard $iid")")
+  fi
+
+  # ── CHECK 4 · THE REVIEW: MARKER (only if a sensitive path is touched) ─────
+  if [ "$srrc" -eq 0 ] && [ -n "$sens" ]; then
+    local msgs mrc=0 hay
+    msgs=$(_mr_commit_messages "$iid") || mrc=$?
+    if [ "$mrc" -ne 0 ]; then
+      sverdict="cannot-verify"; cannot=true
+      blockers+=("$(_ready_rec commits-unreadable \
+        "!$iid touches a CLAUDE.md sensitive path, and its commit list could not be read — so whether a REVIEW: marker exists is unknown." \
+        "pl mr ready $iid")")
+    else
+      # Here-strings, NOT a pipe into `grep -q`: under `pipefail` an early-exiting
+      # reader promotes the writer's SIGPIPE to 141 and the match reads as a MISS
+      # (lint:pipefail-sigpipe, ops#343/#351). A false "no REVIEW: marker" on a
+      # correctly-marked MR is exactly the wasted click this verb removes.
+      if grep -q 'REVIEW:' <<<"$title"; then
+        marker="title"
+      elif [ -n "$msgs" ] && grep -q 'REVIEW:' <<<"$msgs"; then
+        marker="commit"
+      else
+        marker="none"; sverdict="blocked"; blocked=true
+        blockers+=("$(_ready_rec review-marker-missing \
+          "touches $(printf '%s\n' "$sens" | grep -c .) CLAUDE.md sensitive path(s) with no REVIEW: marker in the title or any commit subject. security:review FAILS this in CI — the click would land on a red pipeline." \
+          "pl mr ready $iid  (after prefixing the title with 'REVIEW:')")")
+      fi
+    fi
+  fi
+
+  # ── CHECK 5 · REVIEW MODE, AND WHAT IS OWED ───────────────────────────────
+  local mode mode_src rmverdict="ok" owed="" approver="" released=false
+  mode=$(_mr_review_mode); mode_src=$(_mr_review_mode_source)
+  if [ "$mode_src" = "fallback" ]; then
+    rmverdict="cannot-verify"; cannot=true
+    blockers+=("$(_ready_rec review-mode-not-declared \
+      "the review mode is NOT DECLARED — no readable approvers: registry and no .nwp-review-mode projection. What is owed on this MR cannot be stated, and an unreadable policy must never look like a decision." \
+      "pl mr review-mode")")
+  elif [ "$mode" = "team" ] && [ "$srrc" -eq 0 ] && [ -n "$sens" ]; then
+    local rrc=0
+    approver=$(_mr_release_record "$iid" "$sha" "$author") || rrc=$?
+    case "$rrc" in
+      0) released=true; owed="released by @$approver for head ${sha:0:12}" ;;
+      2) rmverdict="cannot-verify"; cannot=true
+         owed="unknown — the notes API could not be read"
+         blockers+=("$(_ready_rec notes-unreadable \
+           "team review mode, sensitive paths touched, and the notes API could not be read (HTTP $(_mr_http_status)) — so whether a release exists is unknown. 'Could not look' is not 'no release exists'." \
+           "pl mr status $iid")") ;;
+      *) rmverdict="blocked"; blocked=true
+         owed="a release record bound to head ${sha:0:12}, from somebody other than @$author"
+         blockers+=("$(_ready_rec release-record-missing \
+           "team review mode (approvers: names more than one human) and this MR touches a sensitive path, so a second pair of eyes is owed for THIS head. No such record exists." \
+           "pl mr guard $iid")") ;;
+    esac
+  elif [ "$mode" = "solo" ]; then
+    owed="nothing — your Merge click on the MR page IS the approval"
+  fi
+
+  # ── CHECK 3 · DRAFT / HOLD, AND WHETHER THE HOLD IS STALE ─────────────────
+  #
+  # Evaluated LAST because staleness is a question about the checks above: a
+  # hold is stale exactly when the condition that set it no longer obtains.
+  local is_draft=false has_label=false hverdict="ok" stale=false
+  _mr_is_draft "$json" && is_draft=true
+  _mr_has_hold_label "$json" && has_label=true
+  if [ "$is_draft" = true ] || [ "$has_label" = true ]; then
+    local condition_holds=false
+    if [ "$srrc" -ne 0 ]; then
+      # Cannot tell whether the reason still applies. Not stale, not current.
+      condition_holds=true
+    elif [ -n "$sens" ] && [ "$mode" = "team" ] && [ "$released" = false ]; then
+      condition_holds=true
+    fi
+    if [ "$is_draft" = false ]; then
+      # A hold:: label with no Draft: `pl mr guard` will RE-APPLY the Draft on the
+      # next pipeline (that is what makes a manual hold durable), so this is a
+      # blocker even though the forge would accept a merge this second.
+      hverdict="blocked"; blocked=true
+      blockers+=("$(_ready_rec held \
+        "a hold:: label is set but Draft is not — the standing hold is recorded and pl mr guard re-applies the Draft on the next pipeline." \
+        "pl mr guard $iid")")
+    elif [ "$has_label" = false ]; then
+      hverdict="blocked"; blocked=true
+      blockers+=("$(_ready_rec draft \
+        "marked Draft with no hold:: label — an author's own Draft, not a guard hold. GitLab refuses a merge with 405 while it stands." \
+        "pl mr ready $iid  (after Mark as ready on the MR page)")")
+    elif [ "$condition_holds" = true ]; then
+      hverdict="blocked"; blocked=true
+      blockers+=("$(_ready_rec held \
+        "HELD as Draft by the sensitive-path guard, and the condition still obtains." \
+        "pl mr guard $iid")")
+    else
+      hverdict="blocked"; blocked=true; stale=true
+      blockers+=("$(_ready_rec held-stale \
+        "HELD as Draft, but the condition that set the hold NO LONGER OBTAINS (review mode is $mode$([ -n "$sens" ] || printf '%s' "; the diff touches no sensitive path")$([ "$released" = true ] && printf '%s' "; a release is recorded for this head")). This is a stale hold, not a live one — clearing it must not cost anybody an attestation they never made (ops#361)." \
+        "pl mr guard $iid")")
+    fi
+  fi
+
+  # ── ADVISORY: auto-merge armed ────────────────────────────────────────────
+  if _mr_auto_merge_armed "$json"; then
+    advisories+=("$(_ready_rec auto-merge-armed \
+      "merge_when_pipeline_succeeds is ARMED on this MR — it would merge itself the moment CI goes green, with nobody clicking. That is the 2026-08-01 incident shape.")")
+  fi
+
+  local verdict="READY" rc=0
+  if [ "$cannot" = true ]; then verdict="CANNOT-VERIFY"; rc=2
+  elif [ "$blocked" = true ]; then verdict="BLOCKED"; rc=1; fi
+
+  local checks
+  checks=$(_mr_json \
+    merge_status:json "$(_mr_json verdict "$mverdict" forge_value "${dms:-}" \
+        reproduced "$mv" method "$mmethod" conflicted_paths:list "${cpaths:-}")" \
+    pipeline:json "$(_mr_json verdict "$pverdict" id:num "${pid:-}" status "${pstatus:-}" \
+        sha "${psha:-}" on_head_sha:bool "$on_head" failed_jobs:list "${failed_names:-}")" \
+    hold:json "$(_mr_json verdict "$hverdict" draft:bool "$is_draft" \
+        hold_label:bool "$has_label" stale:bool "$stale")" \
+    review_marker:json "$(_mr_json verdict "$sverdict" sensitive_paths:list "${sens:-}" marker "$marker")" \
+    review_mode:json "$(_mr_json verdict "$rmverdict" mode "$mode" source "$mode_src" owed "$owed")")
+
+  _mr_json iid:num "$iid" title "$title" author "$author" state "$state" \
+    source_branch "$src" target_branch "$tgt" head_sha "$sha" url "$(_mr_web_url "$iid")" \
+    verdict "$verdict" \
+    blockers:json "$(_ready_arr "${blockers[@]+"${blockers[@]}"}")" \
+    advisories:json "$(_ready_arr "${advisories[@]+"${advisories[@]}"}")" \
+    checks:json "$checks"
+  return "$rc"
+}
+
+cmd_ready(){
+  local as_json=false; local -a want=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json)    as_json=true; shift ;;
+      -h|--help)
+        cat <<'EOF'
+usage: pl mr ready [<iid>...] [--json]
+
+  Would clicking Merge succeed right now — and if not, exactly why. With no
+  arguments it reports on EVERY open merge request in this project.
+
+  Five checks per MR, all measured rather than assumed:
+    1. merge status  — a `conflict` is only believed once a real merge of the
+                       real commits REPRODUCES it (this instance's cached value
+                       goes stale); `checking`/`unchecked` mean ask again
+    2. pipeline      — on the CURRENT head sha. A green run on a superseded
+                       commit is not readiness, and is reported as such
+    3. draft / hold  — including whether a standing hold has gone STALE
+    4. REVIEW: marker— a sensitive-path MR without one fails CI; predicted here
+    5. review mode   — solo owes the click; team owes a release for this head
+
+  It writes NOTHING: no merge, no retry, no hold, no note.
+
+  Every BLOCKED verdict names a `recheck:` command that re-runs the condition
+  and clears on its own terms. None of them is an approval flag (ops#361).
+
+  --json  one object, schema `nwp.mr.ready/1`, documented in the header of
+          scripts/commands/mr.sh. The human view above is rendered FROM it.
+
+  exit 0 every MR READY · 1 at least one BLOCKED · 2 at least one
+       CANNOT-VERIFY (a check could not be taken — grade AMBER, never a pass)
+EOF
+        return 0 ;;
+      -*) die "unknown option: $1 (try: pl mr ready --help)" ;;
+      *)  [[ "$1" =~ ^!?[0-9]+$ ]] || die "not an MR number: $1"
+          want+=("${1#!}"); shift ;;
+    esac
+  done
+
+  _mr_have_token || {
+    print_error "CANNOT VERIFY: no usable token (NWP_MR_TOKEN, or gitlab.api_token /"
+    print_error "  gitlab.ai_host_token in \$MR_SECRETS_FILE). No request was made, so"
+    print_error "  nothing here is a statement about the queue."
+    return 2; }
+  _mr_host_ok || {
+    print_error "CANNOT VERIFY: the forge host could not be determined. Every call would"
+    print_error "  dial a placeholder and return HTTP 000 — a network failure, not a verdict."
+    return 2; }
+  _mr_project >/dev/null 2>&1 || {
+    print_error "CANNOT VERIFY: cannot resolve the project (no origin remote?)."
+    return 2; }
+
+  if [ "${#want[@]}" -eq 0 ]; then
+    local listed lrc=0
+    listed=$(_mr_open_iids) || lrc=$?
+    if [ "$lrc" -ne 0 ]; then
+      print_error "CANNOT VERIFY: the open merge-request list could not be read (HTTP"
+      print_error "  $(_mr_http_status)). An unreadable queue is not an empty queue."
+      return 2
+    fi
+    while IFS= read -r i; do [ -n "$i" ] && want+=("$i"); done <<<"$listed"
+  fi
+
+  local -a recs=()
+  local n_ready=0 n_blocked=0 n_cannot=0 iid rc
+  for iid in "${want[@]+"${want[@]}"}"; do
+    rc=0
+    recs+=("$(_ready_assess "$iid")") || rc=$?
+    case "$rc" in
+      0) n_ready=$((n_ready + 1)) ;;
+      1) n_blocked=$((n_blocked + 1)) ;;
+      *) n_cannot=$((n_cannot + 1)) ;;
+    esac
+  done
+
+  # 2 dominates 1 dominates 0: an unreachable API can never total to success.
+  local exit_rc=0
+  [ "$n_blocked" -gt 0 ] && exit_rc=1
+  [ "$n_cannot" -gt 0 ] && exit_rc=2
+
+  local doc
+  doc=$(_mr_json \
+    schema "$NWP_MR_READY_SCHEMA" \
+    generated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    project "$(_mr_project_human)" \
+    review_mode "$(_mr_review_mode)" \
+    review_mode_source "$(_mr_review_mode_source)" \
+    exit:num "$exit_rc" \
+    counts:json "$(_mr_json ready:num "$n_ready" blocked:num "$n_blocked" \
+                     cannot_verify:num "$n_cannot" total:num "${#want[@]}")" \
+    merge_requests:json "$(_ready_arr "${recs[@]+"${recs[@]}"}")")
+
+  if [ "$as_json" = true ]; then
+    printf '%s\n' "$doc"
+    return "$exit_rc"
+  fi
+
+  print_header "merge-request queue readiness — would clicking Merge succeed?"
+  _ready_render <<<"$doc"
+
+  # Said once, at the end, and it is not a blocker: it is the invariant.
+  local me; me=$(_mr_token_user 2>/dev/null || true)
+  if [ -n "$me" ] && _mr_handle_is_bot "$me"; then
+    print_info "this token is the bot @$me — a machine never merges. READY means the"
+    print_info "  click is yours to make and it will land."
+  fi
+  return "$exit_rc"
+}
+
+# _ready_render — the human view, rendered FROM the JSON document on stdin.
+# Deliberately not a second formatter reading the same variables: two renderers
+# are two places for a verdict to be stated and to disagree.
+_ready_render(){
+  BOLD="$BOLD" NC="$NC" RED="$RED" GREEN="$GREEN" YELLOW="$YELLOW" DIM="$DIM" \
+  python3 -c '
+import json, os, sys
+B=os.environ.get("BOLD",""); N=os.environ.get("NC","")
+R=os.environ.get("RED",""); G=os.environ.get("GREEN","")
+Y=os.environ.get("YELLOW",""); D=os.environ.get("DIM","")
+d=json.load(sys.stdin)
+col={"READY":G,"BLOCKED":R,"CANNOT-VERIFY":Y}
+print("  %sproject%s %s    %sreview mode%s %s (%s)    %sas of%s %s" % (
+    B,N,d["project"], B,N,d["review_mode"],d["review_mode_source"], B,N,d["generated"]))
+print("")
+for m in d["merge_requests"]:
+    v=m["verdict"]
+    print("  %s!%-5s%s %s%-14s%s %.60s" % (B,m["iid"],N,col.get(v,""),v,N,m["title"]))
+    for b in m["blockers"]:
+        print("        %s- %s%s  %s" % (R if v=="BLOCKED" else Y, b["cause"], N, b["detail"]))
+        if b.get("recheck"):
+            print("          %srecheck:%s %s" % (D,N,b["recheck"]))
+    for a in m["advisories"]:
+        print("        %s~ %s%s  %s" % (Y,a["cause"],N,a["detail"]))
+    if v=="READY":
+        print("          %s%s%s" % (D,m["url"],N))
+c=d["counts"]
+print("")
+print("  %s%d READY%s · %s%d BLOCKED%s · %s%d CANNOT-VERIFY%s  (of %d)" % (
+    G,c["ready"],N, R,c["blocked"],N, Y,c["cannot_verify"],N, c["total"]))
+if c["cannot_verify"]:
+    print("  %sCANNOT-VERIFY is not a pass.%s A check could not be TAKEN; grade it AMBER." % (Y,N))
+'
+}
+
+################################################################################
 # pl mr hold <iid> --reason="..."
 ################################################################################
 cmd_hold(){
@@ -1848,6 +2408,7 @@ main(){
     rebase)      cmd_rebase "$@" ;;
     note|comment) cmd_note "$@" ;;
     list|ls)     cmd_list "$@" ;;
+    ready)       cmd_ready "$@" ;;
     hold)        cmd_hold "$@" ;;
     release)     cmd_release "$@" ;;
     guard|gate)  cmd_guard "$@" ;;
@@ -1906,6 +2467,17 @@ pl mr — create, merge, hold, release and guard merge requests
                                    `pl issue comment` — piped text is never
                                    silently discarded.
                                    0 posted · 1 refused · 2 cannot verify
+  pl mr ready [<iid>...] [--json]  WOULD CLICKING MERGE SUCCEED, and if not why.
+                                   The whole open queue by default. Five checks
+                                   per MR: merge status (a `conflict` believed
+                                   only once REPRODUCED), the pipeline ON THE
+                                   CURRENT HEAD SHA, draft/hold (incl. stale
+                                   holds), the REVIEW: marker a sensitive-path
+                                   MR needs to pass CI, and what the review mode
+                                   owes. Writes nothing. Every BLOCKED names a
+                                   `recheck:` that clears on its own terms.
+                                   0 all READY · 1 some BLOCKED · 2 some
+                                   CANNOT-VERIFY (never counted as a pass)
   pl mr list                       every open MR: held? auto-merge armed?
   pl mr status <iid>               hold state, GitLab's own merge status,
                                    sensitive paths, release record

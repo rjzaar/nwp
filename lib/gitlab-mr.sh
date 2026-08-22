@@ -1015,7 +1015,14 @@ _mr_merge_actor_ok(){
 # Reported, never enforced here: this note says what is true, and "not recorded"
 # is a truthful thing to say.
 _mr_cross_model_review_state(){
-  local iid="$1" json desc line
+  # `line` is INITIALISED, not merely declared. `local … line` leaves it unset,
+  # and every caller of this library runs under `set -u`, so the ordinary case —
+  # an MR with no cross-model review line, i.e. the loop below matching nothing —
+  # died with "line: unbound variable" on the read at the end. It still answered
+  # "not recorded" (the failed expansion left it empty), so the bug showed up
+  # only as noise on stderr and was invisible wherever the caller redirects it,
+  # which _mr_post_merge_attribution does. Found by giving the field a writer.
+  local iid="$1" json desc line=""
   json=$(_mr_fetch "$iid" 2>/dev/null) || { printf 'unknown (the MR could not be read)'; return 0; }
   desc=$(printf '%s' "$json" | _mr_jget 'description')
   # Read line by line rather than `grep -m1 | sed | cut`: three early-exiting

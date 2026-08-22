@@ -548,6 +548,125 @@ _mr_report_read_failure(){
 #
 # EXIT  0 posted · 1 refused (empty body, no such MR) · 2 CANNOT VERIFY
 ################################################################################
+################################################################################
+# pl mr cross-model <iid> "<line>" — record an ops#367 cross-model review ON THE
+# MR, where the machinery already looks for it.
+#
+# THE GAP THIS CLOSES, and it is ops#385's own. `_mr_cross_model_review_state`
+# reads the `Cross-model review:` line out of the MR DESCRIPTION, and every
+# machine-merge attribution note quotes it. Nothing could write it. The only
+# routes were a hand-rolled `PUT /merge_requests/:iid` or clicking Edit in a
+# browser — the first is exactly the idiom the pl-first standing order exists to
+# retire, and the second is not available to an agent at all. So a field the
+# merge machinery CITES had no supported way to be set, which is how a feature
+# acquires a step only one session knows how to perform.
+#
+# A description edit is a WRITE, so the read-only-reconnaissance exception does
+# not cover it.
+#
+# IDEMPOTENT, AND IT REPLACES RATHER THAN ACCUMULATES. Re-running with a
+# corrected verdict must leave ONE line, not a pile of contradicting ones — a
+# reader that finds the first match would otherwise report a stale verdict
+# forever (`_mr_cross_model_review_state` breaks on the first match).
+#
+# IT DOES NOT MERGE, HOLD OR RELEASE. It records a review that happened; it
+# grants nothing. In particular it is NOT an approval and must never be read as
+# one — ops#361 is the standing warning about attribution that gets borrowed.
+#
+# EXIT  0 recorded (or already identical) · 1 refused · 2 CANNOT VERIFY
+################################################################################
+cmd_cross_model(){
+  local iid="" line=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help)
+        printf 'usage: pl mr cross-model <iid> "<reviewer>, <date> — <what was checked>; verdict …"\n'
+        printf '\n'
+        printf 'Records an ops#367 cross-model review line in the MR DESCRIPTION, which is\n'
+        printf 'where the merge machinery reads it from. Re-running REPLACES the line.\n'
+        printf 'It records a review that happened. It is NOT an approval and grants nothing.\n'
+        return 0 ;;
+      -*) die "unknown option: $1 (usage: pl mr cross-model <iid> \"<text>\")" ;;
+      *)  if [ -z "$iid" ]; then iid="$1"; else line="${line:+$line }$1"; fi; shift ;;
+    esac
+  done
+  # Argument shape first — a property of the command, not of the host.
+  [[ "$iid" =~ ^[0-9]+$ ]] || die "usage: pl mr cross-model <iid> \"<text>\""
+  if [ -z "$(printf '%s' "$line" | tr -d '[:space:]')" ]; then
+    print_error "REFUSING: an empty cross-model review line records nothing."
+    print_info  "  pl mr cross-model $iid \"Fable, $(date +%F) — N red-proofs reproduced; verdict …\""
+    return 1
+  fi
+  # The reader matches on this prefix, so the verb owns it rather than trusting
+  # the caller to remember it. Passing the prefix in must not double it.
+  case "$line" in
+    [Cc]ross-[Mm]odel[[:space:]][Rr]eview:*) line="${line#*[Rr]eview:}"; line="${line# }" ;;
+  esac
+
+  _mr_have_token || {
+    print_error "CANNOT VERIFY: no usable token (NWP_MR_TOKEN, or gitlab.api_token /"
+    print_error "  gitlab.ai_host_token in \$MR_SECRETS_FILE). No request was made."
+    return 2; }
+
+  local proj; proj=$(_mr_project) || { print_error "cannot resolve the project"; return 2; }
+  # WHICH PROJECT, SAID OUT LOUD, BEFORE THE WRITE (ops#293) — the `pl mr
+  # release 80` incident wrote to a different project's !80 and printed SUCCESS.
+  local json; json=$(_mr_fetch "$iid") || { local rc=0; _mr_report_read_failure "$iid" || rc=$?; return "$rc"; }
+  print_info "project: $(_mr_project_human)  (resolved from this directory's git remote)"
+  print_info "!$iid — $(_mr_title "$json")"
+
+  local desc; desc=$(printf '%s' "$json" | _mr_jget 'description')
+  # An unreadable description is NOT an empty one: overwriting it with a single
+  # line would destroy the MR's body. Fail closed.
+  if [ -z "$desc" ]; then
+    print_error "CANNOT VERIFY: !$iid's description came back empty."
+    print_error "  An empty read and an empty description are the same answer here, and"
+    print_error "  appending to the wrong one would DESTROY the body. Nothing was written."
+    return 2
+  fi
+
+  local marker="Cross-model review: $line"
+  local out="" ln found=false changed=false
+  while IFS= read -r ln; do
+    case "$ln" in
+      *[Cc]ross-[Mm]odel[[:space:]][Rr]eview:*)
+        found=true
+        [ "$ln" = "$marker" ] || changed=true
+        out="${out}${marker}"$'\n' ;;
+      *) out="${out}${ln}"$'\n' ;;
+    esac
+  done < <(printf '%s\n' "$desc")
+
+  if [ "$found" = false ]; then
+    out="${out}"$'\n'"${marker}"$'\n'
+    changed=true
+  fi
+  if [ "$changed" = false ]; then
+    print_success "!$iid already records exactly this cross-model review — nothing to change"
+    print_info "$(_mr_web_url "$iid")"
+    return 0
+  fi
+
+  local payload; payload=$(_mr_json description "$out") \
+    || { print_error "could not build the update body — nothing was written"; return 2; }
+  _mr_api PUT "/projects/$proj/merge_requests/$iid" "$payload" >/dev/null || {
+    print_error "could not update the description (HTTP $(_mr_http_status)) — nothing was recorded."
+    return 2; }
+
+  # VERIFY BY READING IT BACK. "The API returned 200" is not "the line is there";
+  # this estate's rule is that a check which never observes the thing it claims
+  # is not a check.
+  local state; state=$(_mr_cross_model_review_state "$iid")
+  if [ "$state" = "not recorded" ] || [ -z "$state" ]; then
+    print_error "the write reported success but !$iid still records no cross-model review"
+    return 2
+  fi
+  print_success "!$iid records: Cross-model review: $state"
+  print_info "This records a review. It is NOT an approval and does not release any hold."
+  print_info "$(_mr_web_url "$iid")"
+  return 0
+}
+
 cmd_note(){
   local iid="" body="" stdin_asked=false
   while [ $# -gt 0 ]; do
@@ -1915,6 +2034,7 @@ main(){
     ci)          cmd_ci "$@" ;;
     rebase)      cmd_rebase "$@" ;;
     note|comment) cmd_note "$@" ;;
+    cross-model|cross-model-review) cmd_cross_model "$@" ;;
     list|ls)     cmd_list "$@" ;;
     hold)        cmd_hold "$@" ;;
     release)     cmd_release "$@" ;;
@@ -1974,6 +2094,15 @@ pl mr — create, merge, hold, release and guard merge requests
                                    `pl issue comment` — piped text is never
                                    silently discarded.
                                    0 posted · 1 refused · 2 cannot verify
+  pl mr cross-model <iid> "text"   record an ops#367 cross-model review line in
+                                   the MR DESCRIPTION — where the merge
+                                   machinery reads it from, and quotes it in
+                                   every machine-merge attribution note.
+                                   Re-running REPLACES the line rather than
+                                   piling up contradicting ones. It records a
+                                   review that happened; it is NOT an approval
+                                   and releases no hold.
+                                   0 recorded · 1 refused · 2 cannot verify
   pl mr list                       every open MR: held? auto-merge armed?
   pl mr status <iid>               hold state, GitLab's own merge status,
                                    sensitive paths, release record

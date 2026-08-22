@@ -133,6 +133,19 @@ case "$meth $path" in
       # returns when the pinned `sha` no longer matches the source branch head.
       emit "$(cat "$STATE/merge_resp.json" 2>/dev/null || echo '{"iid":900,"state":"merged"}')" \
            "$(cat "$STATE/merge_code" 2>/dev/null || echo 200)" ;;
+  "PUT "*"/merge_requests/"*)
+      # A PLAIN MR UPDATE (description, title …). The stub STORES it, so a verb
+      # that verifies its own write by reading it back is exercising a forge that
+      # actually remembers — otherwise the read-back could only ever fail, and a
+      # test proving "it failed closed" would be hiding that it never succeeds.
+      # Placed AFTER the /merge and /rebase arms, which are more specific.
+      if [ -n "$bodyfile" ] && [ -r "$bodyfile" ]; then
+          python3 -c 'import json,sys
+mr = json.load(open(sys.argv[1]))
+mr.update(json.load(open(sys.argv[2])))
+json.dump(mr, open(sys.argv[1], "w"))' "$STATE/mr.json" "$bodyfile" 2>/dev/null || true
+      fi
+      emit "$(cat "$STATE/mr.json")" ;;
   "GET "*"/pipelines/"*"/jobs"*)
       emit "$(cat "$STATE/jobs.json" 2>/dev/null || echo '[]')" ;;
   "POST "*"/jobs/"*"/retry")
@@ -653,4 +666,62 @@ REGEOF
     [[ "$output" == *"cannot be pinned"* ]] || { echo "$output"; false; }
     ! grep -q 'PUT .*/merge$' "$CURL_LOG" \
       || { echo "it merged anyway, unpinned:"; cat "$CURL_LOG"; false; }
+}
+
+################################################################################
+# pl mr cross-model — ops#385's own gap: the merge machinery QUOTES a field
+# nothing could write. `_mr_cross_model_review_state` reads the line out of the
+# DESCRIPTION; before this verb the only routes were a hand-rolled PUT or a
+# browser, and an agent has neither.
+################################################################################
+
+@test "RED-PROOF: pl mr cross-model records the line IN THE DESCRIPTION" {
+    printf '%s' '{"iid":900,"state":"opened","description":"body line\n\nmore body","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" cross-model 900 "Fable, 2026-08-23 — verdict MERGE WITH CHANGES"
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    local body; body=$(grep 'PUT /projects/9/merge_requests/900 ' "$CURL_BODY_LOG" || true)
+    [ -n "$body" ] || { echo "no description update reached the wire:"; cat "$CURL_BODY_LOG"; false; }
+    [[ "$body" == *"Cross-model review: Fable, 2026-08-23"* ]] \
+      || { echo "the line did not go into the description:"; echo "$body"; false; }
+    # THE BODY IS PRESERVED — an append must never become an overwrite.
+    [[ "$body" == *"body line"* ]] && [[ "$body" == *"more body"* ]] \
+      || { echo "the MR body was destroyed:"; echo "$body"; false; }
+}
+
+@test "RED-PROOF: re-running REPLACES the line — verdicts do not accumulate" {
+    # The reader breaks on the FIRST match, so a second appended line would pin a
+    # stale verdict forever.
+    printf '%s' '{"iid":900,"state":"opened","description":"body\n\nCross-model review: OLD, verdict REJECT","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" cross-model 900 "Fable, 2026-08-23 — verdict MERGE WITH CHANGES"
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    local body; body=$(grep 'PUT /projects/9/merge_requests/900 ' "$CURL_BODY_LOG" || true)
+    [[ "$body" != *"OLD, verdict REJECT"* ]] \
+      || { echo "the stale verdict survived, and the reader would report it:"; echo "$body"; false; }
+    [ "$(printf '%s' "$body" | grep -o 'Cross-model review:' | grep -c .)" -eq 1 ] \
+      || { echo "more than one review line:"; echo "$body"; false; }
+}
+
+@test "RED-PROOF: an UNREADABLE description is cannot-verify, never an overwrite" {
+    # Fail closed in the direction that costs friction, not the MR's body.
+    printf '%s' '{"iid":900,"state":"opened","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" cross-model 900 "Fable, 2026-08-23 — verdict X"
+    [ "$status" -eq 2 ] || { echo "expected 2 CANNOT VERIFY, got $status:"; echo "$output"; false; }
+    ! grep -q '^PUT /projects/9/merge_requests/900$' "$CURL_LOG" \
+      || { echo "it wrote anyway, destroying the body:"; cat "$CURL_LOG"; false; }
+}
+
+@test "an EMPTY review line is refused — a blank record is not a record" {
+    printf '%s' '{"iid":900,"state":"opened","description":"body","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" cross-model 900 "   "
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"records nothing"* ]]
+}
+
+@test "the verb does NOT merge, hold or release — it records, and says so" {
+    printf '%s' '{"iid":900,"state":"opened","description":"body","sha":"deadbeef"}' > "$STATE/mr.json"
+    run "$MR" cross-model 900 "Fable, 2026-08-23 — verdict MERGE WITH CHANGES"
+    [ "$status" -eq 0 ]
+    ! grep -qE 'PUT .*/(merge|rebase)$' "$CURL_LOG" || { echo "$(cat "$CURL_LOG")"; false; }
+    [[ "$output" == *"NOT an approval"* ]] \
+      || { echo "it did not say that recording a review is not approving it (ops#361):"; echo "$output"; false; }
 }

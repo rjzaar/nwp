@@ -580,3 +580,15 @@ EOF
     run _mr_merge_scope_ok 9
     [ "$status" -eq 0 ] || { echo "an ordinary in-scope MR was refused (rc $status): $output"; false; }
 }
+
+@test "RED-PROOF: the cross-model reader does not blow up under set -u when nothing is recorded" {
+    # The COMMON case — an MR with no review line — errored with
+    # "line: unbound variable" on the !474 branch. It still answered correctly, so
+    # it surfaced only as stderr noise, and _mr_post_merge_attribution redirects
+    # stderr, which is exactly where a latent set -u bug goes unnoticed.
+    _mr_fetch(){ printf '%s' '{"description":"a body with no review line"}'; }
+    local err; err=$( set -u; _mr_cross_model_review_state 9 2>&1 >/dev/null )
+    [ -z "$err" ] || { echo "wrote to stderr: $err"; false; }
+    local state; state=$(_mr_cross_model_review_state 9 2>/dev/null)
+    [ "$state" = "not recorded" ] || { echo "state was: $state"; false; }
+}

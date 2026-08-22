@@ -702,7 +702,7 @@ show_next_steps() {
 
     echo "Documentation:"
     echo "  Onboarding: docs/guides/coder-onboarding.md"
-    echo "  Commands:   docs/reference/commands/README.md"
+    echo "  Commands:   pl commands   (generated; see docs/reference/commands.md)"
     echo ""
 }
 

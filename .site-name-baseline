@@ -12,7 +12,7 @@
 # message why a new private-name reference is going into the tree.
 # Regenerate: scripts/ci/lint-site-names.sh --update-baseline
 # Inspect:    scripts/ci/lint-site-names.sh --list
-.doc-truth-baseline	14
+.doc-truth-baseline	13
 .gitignore	1
 .gitleaks.toml	5
 .gitleaksignore	2
@@ -26,6 +26,21 @@ classes/registry.yml	5
 classes/ssd.class.yml	2
 contracts/erasure.command.schema.json	1
 docs/README.md	5
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/backup.md	39
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/copy.md	1
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/dev2stg.md	26
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/email.md	4
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/install.md	3
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/migrate-secrets.md	11
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/modify.md	11
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/restore.md	34
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/seo-check.md	13
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/status.md	9
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/storage.md	3
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/sync.md	19
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/test.md	1
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/testos.md	1
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/theme.md	14
 docs/archive/F23-project-separation-v1-superseded.md	107
 docs/archive/LIVE_DEPLOYMENT_AUTOMATION_PROPOSAL-INTEGRATED.md	19
 docs/archive/dev2stg-enhancement-proposal-IMPLEMENTED.md	25
@@ -135,21 +150,6 @@ docs/proposals/README.md	18
 docs/proposals/YAML_PARSER_CONSOLIDATION.md	6
 docs/proposals/nwp-deep-analysis.md	4
 docs/reference/cathnet-prolog-rag-architecture.md	8
-docs/reference/commands/backup.md	39
-docs/reference/commands/copy.md	1
-docs/reference/commands/dev2stg.md	26
-docs/reference/commands/email.md	4
-docs/reference/commands/install.md	3
-docs/reference/commands/migrate-secrets.md	11
-docs/reference/commands/modify.md	11
-docs/reference/commands/restore.md	34
-docs/reference/commands/seo-check.md	13
-docs/reference/commands/status.md	9
-docs/reference/commands/storage.md	3
-docs/reference/commands/sync.md	19
-docs/reference/commands/test.md	1
-docs/reference/commands/testos.md	1
-docs/reference/commands/theme.md	14
 docs/reports/P54-IMPLEMENTATION-PLAN.md	4
 docs/reports/adr-0032-session-handoff.md	10
 docs/reports/adr0031-impl-decision-log-2026-07-10.md	7

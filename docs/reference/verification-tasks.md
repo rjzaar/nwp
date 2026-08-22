@@ -59,7 +59,7 @@ NWP uses a verification tracking system (`.verification.yml`) to ensure all feat
     6. Check setup status: `pl setup --status` (should show all required components with [✓])
     Success: All required components marked with [✓] and no error messages during installation
   related_docs:
-    - docs/reference/commands/setup.md
+    - docs/reference/commands.md
     - docs/guides/setup.md
     - docs/guides/quickstart.md
 ```
@@ -429,8 +429,9 @@ echo "✓ All features verified (100%)"
 
 ## Related Commands
 
-- [verify](../reference/commands/verify.md) - Verify command reference
-- [verify --run](../reference/commands/verify.md) - Automated verification suite
+- `pl verify --help` - Verify command reference
+- `pl verify --run` - Automated verification suite
+- [Command Reference](commands.md) - where the verb list comes from
 
 ## See Also
 

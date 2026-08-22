@@ -247,9 +247,14 @@ belong in subdirectories. Also 4 Moodle SSO docs that overlap massively.
   Audit flagged possible duplication. If content is identical or near-identical,
   delete `docs/SECURITY.md` and keep the subdir version. Otherwise merge.
 
-- [ ] **3.4 Resolve `docs/COMMAND_INVENTORY.md` vs `docs/reference/commands/README.md`** *(deferred — manual content audit)*
-  Audit says the former is superseded by the latter. Delete `COMMAND_INVENTORY.md`
-  or move to `docs/archive/`.
+- [x] **3.4 Resolve `docs/COMMAND_INVENTORY.md` vs `docs/reference/commands/README.md`** — DONE 2026-08-22 (ops#383)
+  The audit's premise turned out to be wrong in an instructive way: the inventory was
+  not superseded by the per-command pages, because **both** were hand-maintained and
+  both had drifted (55 of 119 verbs and 46 of 119 respectively). Neither was the answer.
+  Both were retired with `pl docs retire` — moved, hashed and ledgered, not deleted —
+  and replaced by the generated listing `pl commands` / `pl commands --json`, whose
+  completeness is proven by `tests/unit/test-todo-checks.bats`. See
+  `docs/_retired/MANIFEST.md`; `pl docs restore <path>` undoes either one.
 
 ### 5c. Archive stale reports (OPTIONAL)
 

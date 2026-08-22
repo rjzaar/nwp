@@ -559,7 +559,7 @@ cmd_add() {
     echo ""
     echo "Documentation:"
     echo "  Full Guide: docs/guides/coder-onboarding.md"
-    echo "  Commands:   docs/reference/commands/README.md"
+    echo "  Commands:   pl commands   (generated; see docs/reference/commands.md)"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""

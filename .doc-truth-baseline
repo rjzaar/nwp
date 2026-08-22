@@ -7,6 +7,13 @@
 #
 # Composition (2026-07-26): 262 dead-command-ref · 102 dead-link · 28 raw-remote-cli.
 #
+# SHRUNK 2026-08-22 by ops#383: 82 rows deleted (61 dead-link, 19
+# dead-command-ref, 2 raw-remote-cli). 80 of them belonged to
+# docs/reference/commands/ and 2 to docs/COMMAND_INVENTORY.md — both
+# retired with 'pl docs retire' (docs/_retired/MANIFEST.md), so the drift
+# they recorded no longer reproduces. Deleting a dead row is a fix; this
+# baseline did not grow.
+#
 # The 28 `raw-remote-cli` entries were baselined when that rule landed. The
 # 262 `dead-command-ref` entries were baselined by fix-programme item 9
 # (`docs-pl-first`) when THAT rule landed — the honest size of the debt: five
@@ -39,8 +46,6 @@
 # NOTE: `pl doc-truth --baseline` REGENERATES this file and will drop this
 # header. Re-add it after regenerating.
 dead-command-ref|CONTRIBUTING.md|./tests/run-tests.sh
-dead-command-ref|docs/COMMAND_INVENTORY.md|./bootstrap-coder.sh
-dead-command-ref|docs/COMMAND_INVENTORY.md|./report.sh
 dead-command-ref|docs/decisions/0007-verification-schema-v2-design.md|./migrate-verification-v2.sh
 dead-command-ref|docs/decisions/0008-recipe-system-architecture.md|./../lib/install-common.sh
 dead-command-ref|docs/decisions/0009-five-layer-yaml-protection.md|./../lib/yaml-write.sh
@@ -187,23 +192,6 @@ dead-command-ref|docs/proposals/YAML_PARSER_CONSOLIDATION.md|pl linode
 dead-command-ref|docs/proposals/YAML_PARSER_CONSOLIDATION.md|pl validate
 dead-command-ref|docs/reference/backup-implementation.md|./backup.sh
 dead-command-ref|docs/reference/backup-implementation.md|./restore.sh
-dead-command-ref|docs/reference/commands/bootstrap-coder.md|./coder-setup.sh
-dead-command-ref|docs/reference/commands/bootstrap-coder.md|./setup-ssh.sh
-dead-command-ref|docs/reference/commands/coder-setup.md|./setup-ssh.sh
-dead-command-ref|docs/reference/commands/migrate-secrets.md|./migrate-secrets.sh
-dead-command-ref|docs/reference/commands/migration.md|./migration.sh
-dead-command-ref|docs/reference/commands/migration.md|./../../scripts/commands/install.sh
-dead-command-ref|docs/reference/commands/migration.md|./scripts/import.sh
-dead-command-ref|docs/reference/commands/podcast.md|./../../scripts/commands/setup-ssh.sh
-dead-command-ref|docs/reference/commands/podcast.md|./setup-ssh.sh
-dead-command-ref|docs/reference/commands/produce.md|pl develop
-dead-command-ref|docs/reference/commands/produce.md|pl stage
-dead-command-ref|docs/reference/commands/schedule.md|./backup.sh
-dead-command-ref|docs/reference/commands/setup.md|./../../scripts/commands/install.sh
-dead-command-ref|docs/reference/commands/sync.md|./scripts/import.sh
-dead-command-ref|docs/reference/commands/test-nwp.md|./scripts/commands/test-nwp.sh
-dead-command-ref|docs/reference/commands/test-nwp.md|./setup-ssh.sh
-dead-command-ref|docs/reference/commands/upstream.md|./../../scripts/commands/contribute.sh
 dead-command-ref|docs/reference/features.md|./backup.sh
 dead-command-ref|docs/reference/features.md|./copy.sh
 dead-command-ref|docs/reference/features.md|./delete.sh
@@ -318,67 +306,6 @@ dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../reference/
 dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../reference/threat-model.md
 dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../tiers/tier-4-add-verifier.md
 dead-link|docs/proposals/F35-pl-site-rename.md|F23-project-separation-v2.md
-dead-link|docs/reference/commands/bootstrap-coder.md|../../decisions/cli-registration.md
-dead-link|docs/reference/commands/doctor.md|../../guides/troubleshooting.md
-dead-link|docs/reference/commands/email.md|../../deployment/postfix-setup.md
-dead-link|docs/reference/commands/email.md|drush.md
-dead-link|docs/reference/commands/email.md|../../guides/email-authentication.md
-dead-link|docs/reference/commands/email.md|../../../sites/avc/html/profiles/custom/avc/modules/avc_features/avc_email_reply/README.md
-dead-link|docs/reference/commands/email.md|../../testing/email-testing.md
-dead-link|docs/reference/commands/install.md|../../reference/recipe-format.md
-dead-link|docs/reference/commands/migrate-secrets.md|../../decisions/0001-two-tier-secrets.md
-dead-link|docs/reference/commands/migrate-secrets.md|../../security/safe-operations.md
-dead-link|docs/reference/commands/migration.md|../scripts/import.sh
-dead-link|docs/reference/commands/modify.md|../../guides/site-options.md
-dead-link|docs/reference/commands/produce.md|../../deployment/linode-setup.md
-dead-link|docs/reference/commands/produce.md|../../deployment/production-checklist.md
-dead-link|docs/reference/commands/produce.md|../../deployment/ssl-setup.md
-dead-link|docs/reference/commands/produce.md|../../guides/scaling-production.md
-dead-link|docs/reference/commands/produce.md|live-deploy.md
-dead-link|docs/reference/commands/produce.md|stage.md
-dead-link|docs/reference/commands/rollback.md|../../decisions/0003-rollback-system.md
-dead-link|docs/reference/commands/rollback.md|../../guides/backup-restore.md
-dead-link|docs/reference/commands/rollback.md|../../guides/deployment.md
-dead-link|docs/reference/commands/rollback.md|live-deploy.md
-dead-link|docs/reference/commands/schedule.md|git-backup.md
-dead-link|docs/reference/commands/schedule.md|../../guides/automation.md
-dead-link|docs/reference/commands/schedule.md|../../guides/backup-restore.md
-dead-link|docs/reference/commands/schedule.md|../../guides/cron-best-practices.md
-dead-link|docs/reference/commands/schedule.md|../../guides/log-management.md
-dead-link|docs/reference/commands/security-check.md|audit.md
-dead-link|docs/reference/commands/seo-check.md|drush.md
-dead-link|docs/reference/commands/seo-check.md|../../guides/staging-best-practices.md
-dead-link|docs/reference/commands/seo-check.md|live-deploy.md
-dead-link|docs/reference/commands/seo-check.md|../../proposals/SEO_ROBOTS_PROPOSAL.md
-dead-link|docs/reference/commands/setup.md|../../deployment/linode-setup.md
-dead-link|docs/reference/commands/setup.md|../../guides/getting-started.md
-dead-link|docs/reference/commands/setup-ssh.md|../../deployment/linode-setup.md
-dead-link|docs/reference/commands/setup-ssh.md|./live-deploy.md
-dead-link|docs/reference/commands/setup-ssh.md|../../security/ssh-key-management.md
-dead-link|docs/reference/commands/stg2prod.md|../../deployment/linode-setup.md
-dead-link|docs/reference/commands/stg2prod.md|../../guides/deployment.md
-dead-link|docs/reference/commands/stg2prod.md|../recipe-format.md
-dead-link|docs/reference/commands/stg2prod.md|../../security/security-model.md
-dead-link|docs/reference/commands/storage.md|../../decisions/0006-cloud-storage.md
-dead-link|docs/reference/commands/storage.md|../../guides/backup-restore.md
-dead-link|docs/reference/commands/storage.md|../../guides/cloud-cost-optimization.md
-dead-link|docs/reference/commands/sync.md|../../guides/import-guide.md
-dead-link|docs/reference/commands/sync.md|../scripts/import.sh
-dead-link|docs/reference/commands/test-nwp.md|../../CLAUDE.md
-dead-link|docs/reference/commands/test-nwp.md|../../testing/ci-cd-integration.md
-dead-link|docs/reference/commands/theme.md|../../decisions/0008-frontend-build-tools.md
-dead-link|docs/reference/commands/theme.md|develop.md
-dead-link|docs/reference/commands/theme.md|drush.md
-dead-link|docs/reference/commands/theme.md|../../guides/frontend-development.md
-dead-link|docs/reference/commands/theme.md|../../guides/nodejs-management.md
-dead-link|docs/reference/commands/theme.md|../../guides/opensocial-theming.md
-dead-link|docs/reference/commands/theme.md|../../guides/theme-development.md
-dead-link|docs/reference/commands/theme.md|../../guides/varbase-theming.md
-dead-link|docs/reference/commands/uninstall_nwp.md|../../decisions/cli-registration.md
-dead-link|docs/reference/commands/uninstall_nwp.md|../../guides/getting-started.md
-dead-link|docs/reference/commands/uninstall_nwp.md|../../proposals/installation-state-snapshot.md
-dead-link|docs/reference/commands/upstream.md|../../governance/contribution-guidelines.md
-dead-link|docs/reference/commands/upstream.md|../../guides/git-workflow.md
 dead-link|docs/reference/nwp.yml.md|../deployment/reference-tier-4.md
 dead-link|docs/reference/nwp.yml.md|feature-flags.md
 dead-link|docs/testing/human-testing.md|./DEVELOPER_LIFECYCLE_GUIDE.md
@@ -412,7 +339,5 @@ raw-remote-cli|docs/guides/verifier-operations.md|L174
 raw-remote-cli|docs/guides/verifier-operations.md|L237
 raw-remote-cli|docs/guides/verifier-operations.md|L243
 raw-remote-cli|docs/proposals/F24-relocate-dev-tree-to-mirror-store.md|L264
-raw-remote-cli|docs/reference/commands/migration.md|L153
-raw-remote-cli|docs/reference/commands/stg2prod.md|L343
 raw-remote-cli|docs/testing/testing.md|L342
 raw-remote-cli|docs/testing/testing.md|L343

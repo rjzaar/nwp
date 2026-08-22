@@ -445,9 +445,10 @@ ERROR: Sass compilation failed
 
 ## Related Commands
 
-- [theme](../reference/commands/theme.md) - Theme command reference
-- [make](../reference/commands/make.md) - Toggle dev/prod mode
-- [dev2stg](../reference/commands/dev2stg.md) - Deploy with frontend build
+- `pl theme --help` - Theme command reference
+- `pl make --help` - Toggle dev/prod mode
+- `pl dev2stg --help` - Deploy with frontend build
+- [Command Reference](../reference/commands.md) - where the verb list comes from
 
 ## See Also
 

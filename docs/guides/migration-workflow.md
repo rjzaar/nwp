@@ -383,8 +383,9 @@ Migration taking too long (> 10 hours)
 
 ## Related Commands
 
-- [install](../reference/commands/install.md) - Create migration stub
-- [Migration Script Reference](../reference/commands/migration.md) - Full command reference
+- `pl install --help` - Create migration stub
+- `pl migration --help` - Full command reference
+- [Command Reference](../reference/commands.md) - where the verb list comes from
 
 ## See Also
 

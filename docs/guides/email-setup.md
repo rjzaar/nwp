@@ -440,8 +440,9 @@ settings:
 
 ## Related Commands
 
-- [email](../reference/commands/email.md) - Email command reference
-- [dev2stg](../reference/commands/dev2stg.md) - Staging deployment (auto-configures email rerouting)
+- `pl email --help` - Email command reference
+- `pl dev2stg --help` - Staging deployment (auto-configures email rerouting)
+- [Command Reference](../reference/commands.md) - where the verb list comes from
 
 ## See Also
 

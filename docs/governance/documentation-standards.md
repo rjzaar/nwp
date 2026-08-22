@@ -109,7 +109,7 @@ docs/
 |--------|---------|--------|
 | `guides/` | Step-by-step tutorials for common tasks | ACTIVE |
 | `reference/` | Technical reference documentation | ACTIVE |
-| `reference/commands/` | Individual command documentation | ACTIVE |
+| `reference/commands.md` | Where the verb list comes from (`pl commands`) | ACTIVE |
 | `deployment/` | Infrastructure and deployment guides | ACTIVE |
 | `testing/` | Testing procedures and documentation | ACTIVE |
 | `security/` | Security architecture and best practices | ACTIVE |
@@ -125,7 +125,7 @@ docs/
 **Where to put new documentation:**
 
 - **How do I...?** → `guides/`
-- **What does this command do?** → `reference/commands/`
+- **What does this command do?** → `pl <verb> --help`, listed by `pl commands`
 - **How do I deploy to...?** → `deployment/`
 - **How do I test...?** → `testing/`
 - **Security architecture?** → `security/`
@@ -350,7 +350,10 @@ To deploy:
 
 ## Command Documentation Template
 
-All commands in `scripts/commands/` should have corresponding documentation in `docs/reference/commands/`.
+Every command in `scripts/commands/` carries its own `--help` and a one-line synopsis in its
+file header, which is what `pl commands` renders. That listing is generated, so it is complete
+by construction; the hand-written per-command pages that used to live in
+`docs/reference/commands/` were retired on 2026-08-22 (ops#383) at 38.7% coverage.
 
 ### Standard Command Documentation Template
 
@@ -487,10 +490,10 @@ Always link to related documentation when:
 ### How to Link Between Documents
 
 ```markdown
-<!-- From guides/ to reference/commands/ -->
-See the [backup command](../reference/commands/backup.md) for details.
+<!-- From guides/ to reference/ -->
+See the [command reference](../reference/commands.md) for details.
 
-<!-- From reference/commands/ to guides/ -->
+<!-- From reference/ to guides/ -->
 For a complete workflow, see the [Backup Guide](../../guides/backup-restore.md).
 
 <!-- Within same folder -->

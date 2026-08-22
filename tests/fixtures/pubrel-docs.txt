@@ -1,4 +1,13 @@
-docs/COMMAND_INVENTORY.md
+# pubrel-docs.txt — the public-release prose set the identity scrub covers.
+# Sourced by tests/helpers/pubrel-docs-check.sh; comments and blank lines are
+# stripped, so the count below is the count of real paths.
+#
+# TWO PATHS MOVED ON 2026-08-22 (ops#383) AND ARE STILL IN SCOPE. `pl docs
+# retire` moves a dead document into docs/_retired/; it does NOT remove it from
+# the repo, and this repo is publicly mirrored. A retired document is therefore
+# still PUBLISHED, so the operator-identity scrub must keep covering it — the
+# set is unchanged, only two of its members' paths are.
+docs/_retired/2026-08-22-command-inventory/docs/COMMAND_INVENTORY.md
 docs/decisions/0006-contribution-workflow.md
 docs/deployment/production-deployment.md
 docs/governance/core-developer-onboarding.md
@@ -27,5 +36,5 @@ docs/proposals/P52-rename-nwp-to-nwo.md
 docs/proposals/P56-produce-security-hardening.md
 docs/proposals/P59-ssh-identitiesonly-hardening.md
 docs/proposals/P67-per-site-workflow-maturity.md
-docs/reference/commands/live.md
+docs/_retired/2026-08-22-command-reference/docs/reference/commands/live.md
 docs/research/seed-content-research-2026-07-02.md

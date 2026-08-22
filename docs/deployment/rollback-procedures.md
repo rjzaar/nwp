@@ -432,10 +432,11 @@ pl restore avc
 
 ## Related Commands
 
-- [backup](../reference/commands/backup.md) - Create manual backups
-- [restore](../reference/commands/restore.md) - Restore from backups
-- [dev2stg](../reference/commands/dev2stg.md) - Deploy to staging
-- [stg2prod](../reference/commands/stg2prod.md) - Deploy to production (creates rollback points)
+- `pl backup --help` - Create manual backups
+- `pl restore --help` - Restore from backups
+- `pl dev2stg --help` - Deploy to staging
+- `pl stg2prod --help` - Deploy to production (creates rollback points)
+- [Command Reference](../reference/commands.md) - where the verb list comes from
 
 ## See Also
 

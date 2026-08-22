@@ -521,8 +521,9 @@ ${BOLD}WORKFLOW:${NC}
     Production:   pl stg2prod mysite
 
 ${BOLD}TAB COMPLETION:${NC}
+    Generated from the live inventory — never a second list to maintain.
     Add to ~/.bashrc:
-    source ${SCRIPT_DIR}/pl-completion.bash
+    complete -W "\$(pl commands --json | sed -n 's/.*"name":"\\([^"]*\\)".*/\\1/p')" pl
 
 ${BOLD}MORE HELP:${NC}
     pl <command> --help             Show help for specific command

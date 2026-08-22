@@ -33,6 +33,32 @@
 #    `.gitleaksignore` found in the --source directory; the source-dir copy
 #    wins. So to scan with a pruned ledger we must write the pruned ledger
 #    INTO the exported tree rather than pass it with -i.
+#
+# 3. gitleaks SPLITS A FILE INTO 10,000-BYTE FRAGMENTS AND MATCHES EACH ONE
+#    INDEPENDENTLY, so a word straddling a boundary is torn in half and the
+#    tail can match a rule the whole word never would. Reproduced 2026-08-22
+#    on 8.30.0 while editing docs/README.md for ops#383:
+#
+#      docs/README.md:202  internal-bare-hostname  Match:"mons"  Col 1–4
+#
+#    The text was `overview/narrow-way-commons.md`. `\bmons\b` cannot match
+#    inside "commons" — but byte 10000 fell between `com` and `mons`, so
+#    fragment 2 BEGAN with `mons.md)…` and the word boundary was real. Note
+#    the tell: StartColumn 1, on a line whose first four characters are not
+#    the match.
+#
+#    Two consequences worth knowing before you spend an hour on it:
+#      * it is a pure function of TOTAL FILE LENGTH. Deleting ANY line of the
+#        file — any line at all, including one 200 lines above the "finding" —
+#        made it vanish, because every deletion moves byte 10000.
+#      * therefore it appears and disappears on unrelated edits. A green
+#        history is not evidence that a given file is immune.
+#
+#    Do NOT "fix" it with a `.gitleaksignore` fingerprint: those are
+#    line-pinned, so the entry would be stale on the next edit while
+#    suppressing a rule at a line where a REAL leak could later appear. Reword
+#    or reflow so no rule-matching substring lands on a multiple of 10,000,
+#    and confirm with a real scan. Boundaries are at 10000, 20000, 30000 …
 # ---------------------------------------------------------------------------
 
 set -uo pipefail

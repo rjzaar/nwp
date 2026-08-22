@@ -230,7 +230,7 @@ EOF
 # ── the apply path writes nothing without --apply, and guards when it does ──
 
 @test "the apply script REFUSES to overwrite an existing conf" {
-  local script; script="$(vhost_apply_script "${TMP}/exists.conf" "true")"
+  local script; script="$(vhost_apply_script "${TMP}/exists.conf" "sudo -n nginx -t" "true")"
   printf 'server { listen 80; }\n' > "${TMP}/exists.conf"
   # A `sudo` that just runs the command, so the guard itself is exercised.
   mkdir -p "${TMP}/bin"
@@ -249,7 +249,7 @@ EOF
 @test "the apply script REMOVES what it wrote when nginx -t fails" {
   # Fail-closed: a config that does not pass `nginx -t` must not survive the
   # attempt, or the next reload (by certbot, by a reboot) takes the box down.
-  local script; script="$(vhost_apply_script "${TMP}/new.conf" "true")"
+  local script; script="$(vhost_apply_script "${TMP}/new.conf" "sudo -n nginx -t" "true")"
   mkdir -p "${TMP}/bin"
   cat > "${TMP}/bin/sudo" <<'EOF'
 #!/usr/bin/env bash
@@ -279,7 +279,7 @@ EOF
 }
 
 @test "the apply script refuses an EMPTY configuration" {
-  local script; script="$(vhost_apply_script "${TMP}/empty.conf" "true")"
+  local script; script="$(vhost_apply_script "${TMP}/empty.conf" "sudo -n nginx -t" "true")"
   mkdir -p "${TMP}/bin"
   cat > "${TMP}/bin/sudo" <<'EOF'
 #!/usr/bin/env bash
@@ -322,4 +322,247 @@ EOF
   [ "$status" -eq 3 ]
   [[ "$output" == *"CANNOT VERIFY"* ]]
   [[ "$output" == *"NOT"* ]]
+}
+
+################################################################################
+# --create : the OTHER HALF of this verb (static image-host handover, §8.1)
+#
+# `--restore` rebuilds from a STASH and "never overwrites an existing conf". A
+# site that has never existed has no stash, so --restore has nothing to work
+# from and correctly refuses. That left creating a vhost as hand-run
+# `ssh` + `install` — the same pl-first standing-order exception ops#359 was
+# opened to repay, reopened the moment a NEW name was needed.
+#
+# The two-stage shape is forced by certbot: the real vhost names a certificate
+# that does not exist yet, so installing it first fails `nginx -t` — on a box
+# that also serves GitLab. Bootstrap (HTTP + ACME only) must therefore be
+# emitted separately from the full TLS vhost.
+################################################################################
+
+# ── the CONFIG TEST command is measured too, not just the reload ────────────
+#
+# RULE 4 was applied to the reload and NOT to the test. `vhost_apply_script`
+# hardcodes `nginx -t`, and on the forge BOTH binaries exist: the Debian
+# /usr/sbin/nginx (inactive, disabled) and Omnibus
+# /opt/gitlab/embedded/sbin/nginx (the running master). Both read
+# /etc/nginx/conf.d/*.conf and they DISAGREE over it — measured 2026-08-22, the
+# Omnibus build warns about another static vhost in that directory and the Debian build
+# reports the same tree clean. Gating a reload of one on a test of the other is
+# a green tick from the wrong program.
+
+@test "RED: the config TEST command is measured — a GitLab-bundled box tests the bundled nginx" {
+  printf 'gitlab_embedded=yes\nnginx_present=yes\n' > "${CONF}/.facts"
+  run vhost_test_cmd "${CONF}"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/opt/gitlab/embedded/sbin/nginx"* ]]
+  [[ "$output" == *"-p /var/opt/gitlab/nginx"* ]]
+  [[ "$output" == *"-t"* ]]
+}
+
+@test "RED: a standalone box tests with the system nginx" {
+  run vhost_test_cmd "${CONF}"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nginx -t"* ]]
+  [[ "$output" != *"/opt/gitlab/"* ]]
+}
+
+@test "RED: the apply script gates on the MEASURED test command, never a bare nginx -t" {
+  printf 'gitlab_embedded=yes\nnginx_present=yes\n' > "${CONF}/.facts"
+  local script
+  script="$(vhost_apply_script "${TMP}/x.conf" "$(vhost_test_cmd "${CONF}")" "sudo gitlab-ctl hup nginx")"
+  [[ "$script" == *"/opt/gitlab/embedded/sbin/nginx"* ]]
+  # The bug: a bare `nginx -t` would test the DEAD Debian nginx and pass, then
+  # hup the Omnibus master with a config the Omnibus build may reject.
+  [[ "$script" != *"sudo -n nginx -t"* ]]
+}
+
+# ── stage 1: the bootstrap vhost ────────────────────────────────────────────
+
+@test "RED: --create bootstrap serves ACME over plain HTTP and names NO certificate" {
+  run vhost_create_conf bootstrap static img.example.org /var/www/img
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"server_name img.example.org;"* ]]
+  [[ "$output" == *"listen 80;"* ]]
+  [[ "$output" == *"acme-challenge"* ]]
+  [[ "$output" == *"root /var/www/img;"* ]]
+  # THE POINT: naming a cert that certbot has not issued yet fails `nginx -t`
+  # on the box that serves GitLab. Stage 1 must not reference one.
+  [[ "$output" != *"ssl_certificate"* ]]
+  [[ "$output" != *"listen 443"* ]]
+}
+
+@test "RED: the bootstrap does NOT redirect ACME to https (that breaks issuance)" {
+  run vhost_create_conf bootstrap static img.example.org /var/www/img
+  # A bare `return 301` in the port-80 block redirects certbot's own validation
+  # request — the exact defect vhost_repair_acme exists to fix. Do not emit it.
+  [[ "$output" == *"acme-challenge"* ]]
+  # everything that is not the challenge 404s rather than redirecting
+  [[ "$output" == *"return 404;"* ]]
+}
+
+# ── stage 2: the real vhost ─────────────────────────────────────────────────
+
+@test "RED: --create full emits TLS, HSTS and the certificate for the domain" {
+  run vhost_create_conf full static img.example.org /var/www/img
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"listen 443 ssl"* ]]
+  [[ "$output" == *"/etc/letsencrypt/live/img.example.org/fullchain.pem"* ]]
+  [[ "$output" == *"/etc/letsencrypt/live/img.example.org/privkey.pem"* ]]
+  [[ "$output" == *"Strict-Transport-Security"* ]]
+  [[ "$output" == *"X-Content-Type-Options"* ]]
+  [[ "$output" == *"server_tokens off;"* ]]
+}
+
+@test "RED: the full vhost KEEPS an ACME location, so renewal does not die in 90 days" {
+  run vhost_create_conf full static img.example.org /var/www/img
+  [[ "$output" == *"acme-challenge"* ]]
+}
+
+@test "RED: a static vhost serves images only, with no listing and no index" {
+  run vhost_create_conf full static img.example.org /var/www/img
+  [[ "$output" == *"autoindex off;"* ]]
+  [[ "$output" == *"png"* ]]
+  # Nothing may EXECUTE or be phishable on the box that also serves GitLab.
+  [[ "$output" != *"fastcgi_pass"* ]]
+  [[ "$output" != *"location ~ \\.php"* ]]
+  [[ "$output" == *"return 404;"* ]]
+  [[ "$output" == *"deny all;"* ]]
+}
+
+@test "RED: what --create emits is what the repair pass considers already correct" {
+  # The two halves of the verb must agree: a freshly created vhost must not be
+  # something --restore would immediately want to repair.
+  vhost_create_conf full static img.example.org /var/www/img > "${TMP}/fresh.conf"
+  run vhost_needs_acme "${TMP}/fresh.conf"
+  [ "$status" -eq 1 ]                       # 1 = does NOT need the repair
+  run vhost_repair_gitlab_includes "${TMP}/fresh.conf"
+  [ "$status" -eq 1 ]                       # 1 = no bundled include to repoint
+}
+
+@test "RED: a created vhost is recognised as serving the root it was created for" {
+  vhost_create_conf full static img.example.org /var/www/img > "${TMP}/fresh.conf"
+  run vhost_serves_root "${TMP}/fresh.conf" /var/www/img
+  [ "$status" -eq 0 ]
+  run vhost_server_names_of "${TMP}/fresh.conf"
+  [ "$output" = "img.example.org" ]
+}
+
+# ── fail closed ─────────────────────────────────────────────────────────────
+
+@test "RED: --create refuses an unknown template kind rather than guessing" {
+  run vhost_create_conf full php-fpm img.example.org /var/www/img
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]] || [[ "$output" == *"unsupported"* ]]
+}
+
+@test "RED: --create refuses an empty domain or root — never emits a half-formed server block" {
+  # ASSERT THE ERROR TEXT, not merely a non-zero exit. `[ "$status" -ne 0 ]`
+  # alone is satisfied by 127 command-not-found, which is how seven security
+  # checks once went green over a tree with no input validation at all.
+  run vhost_create_conf full static "" /var/www/img
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"domain"* ]]
+  run vhost_create_conf full static img.example.org ""
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"root"* ]]
+}
+
+@test "RED: --create refuses a domain that is not a hostname (nothing from argv reaches nginx raw)" {
+  # The emitted file is fed to `nginx -t` and installed on the box that serves
+  # GitLab. A domain carrying `;` or `}` would close the server block and let
+  # argv write arbitrary nginx directives.
+  run vhost_create_conf full static 'img.example.org; }' /var/www/img
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+  run vhost_create_conf full static img.example.org '/var/www/img; root /etc'
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+  # A relative root is not a root.
+  run vhost_create_conf full static img.example.org 'var/www/img'
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]]
+}
+
+# ── the stage-1 → stage-2 handoff ───────────────────────────────────────────
+#
+# --create's own output must be replaceable by its own next stage, and by
+# NOTHING ELSE. The bootstrap exists to be thrown away once the certificate is
+# issued; every other existing conf is somebody's live config.
+
+@test "RED: a generated stage-1 bootstrap is recognised as replaceable" {
+  vhost_create_conf bootstrap static img.example.org /var/www/img > "${TMP}/boot.conf"
+  run vhost_is_generated_bootstrap "${TMP}/boot.conf" img.example.org
+  [ "$status" -eq 0 ]
+}
+
+@test "RED: a HAND-WRITTEN config is never treated as a replaceable bootstrap" {
+  # The whole point of the guard. This one has no generated marker.
+  run vhost_is_generated_bootstrap "${CONF}/healthy.conf" healthy.example.com
+  [ "$status" -eq 1 ]
+}
+
+@test "RED: a generated bootstrap for a DIFFERENT domain is not replaceable" {
+  vhost_create_conf bootstrap static other.example.org /var/www/other > "${TMP}/other.conf"
+  run vhost_is_generated_bootstrap "${TMP}/other.conf" img.example.org
+  [ "$status" -eq 1 ]
+}
+
+@test "RED: a generated FULL vhost is not a bootstrap — re-creating must not clobber it" {
+  vhost_create_conf full static img.example.org /var/www/img > "${TMP}/full.conf"
+  run vhost_is_generated_bootstrap "${TMP}/full.conf" img.example.org
+  [ "$status" -eq 1 ]
+}
+
+# ── replacing restores the ORIGINAL bytes when the config test fails ────────
+
+@test "RED: a failed test after a REPLACE restores the previous config, not a bare removal" {
+  # Removing on failure is right for a create (there was nothing there before).
+  # For a replace it would DELETE a working vhost because its successor was bad
+  # — turning a failed upgrade into an outage.
+  local script
+  script="$(vhost_apply_script "${TMP}/live.conf" "sudo -n nginx -t" "true" 1)"
+  printf 'ORIGINAL-CONTENT\n' > "${TMP}/live.conf"
+  mkdir -p "${TMP}/bin"
+  cat > "${TMP}/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+while [ "${1#-}" != "$1" ]; do shift; done
+exec "$@"
+EOF
+  cat > "${TMP}/bin/nginx" <<'EOF'
+#!/usr/bin/env bash
+echo "nginx: [emerg] bad config" >&2
+exit 1
+EOF
+  cat > "${TMP}/bin/install" <<'EOF'
+#!/usr/bin/env bash
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in -o|-g|-m) shift 2 ;; *) args+=("$1"); shift ;; esac
+done
+exec /usr/bin/install "${args[@]}"
+EOF
+  chmod +x "${TMP}/bin/sudo" "${TMP}/bin/nginx" "${TMP}/bin/install"
+  run bash -c "PATH='${TMP}/bin:$PATH'; $script" <<<'server { listen 80; }'
+  [ "$status" -eq 2 ]
+  [ -f "${TMP}/live.conf" ]
+  [ "$(cat "${TMP}/live.conf")" = "ORIGINAL-CONTENT" ]
+}
+
+@test "RED: without allow-replace an existing conf is still REFUSED" {
+  local script
+  script="$(vhost_apply_script "${TMP}/keep.conf" "sudo -n nginx -t" "true" 0)"
+  printf 'ORIGINAL\n' > "${TMP}/keep.conf"
+  mkdir -p "${TMP}/bin"
+  cat > "${TMP}/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+while [ "${1#-}" != "$1" ]; do shift; done
+exec "$@"
+EOF
+  chmod +x "${TMP}/bin/sudo"
+  run bash -c "PATH='${TMP}/bin:$PATH'; $script" <<<'server { listen 80; }'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [ "$(cat "${TMP}/keep.conf")" = "ORIGINAL" ]
 }

@@ -144,6 +144,45 @@ vhost_reload_cmd() {
     fi
 }
 
+# vhost_test_cmd <dir>
+# RULE 4, APPLIED TO THE TEST AS WELL AS THE RELOAD.
+#
+# This was the half that was missed. `vhost_apply_script` hardcoded `nginx -t`,
+# and the tempting reading is "there is only one nginx, so that is fine". On the
+# forge there are TWO, and both are installed:
+#
+#   /usr/sbin/nginx                     Debian build — nginx.service is
+#                                       `inactive` and `disabled`
+#   /opt/gitlab/embedded/sbin/nginx     Omnibus build — the RUNNING master,
+#                                       `-p /var/opt/gitlab/nginx`
+#
+# Both read `include /etc/nginx/conf.d/*.conf;`, so the hardcoded test does at
+# least parse the new file — this is not a blind green. It is a green from the
+# WRONG PROGRAM, which is worse than it sounds, because the two builds
+# demonstrably disagree over that very directory: measured 2026-08-22, the
+# Omnibus binary emits `the "listen ... http2" directive is deprecated` for
+# another static vhost in that directory and the Debian binary reports the same tree clean.
+#
+# Both failure directions are live:
+#   * a config the RUNNING nginx would reject passes the dead one's test, so the
+#     verb reports "nginx -t passed, nginx reloaded" while the Omnibus master
+#     refused the reload and kept serving the old config — a false green on the
+#     box that also serves GitLab;
+#   * the Debian nginx.conf additionally pulls in /etc/nginx/sites-enabled/*,
+#     which the Omnibus one does not, so unrelated breakage there fails the test
+#     and rolls back a perfectly good vhost.
+#
+# Same fact, same measurement, same rule as the reload: ask the box which nginx
+# it is running, never the server's name.
+vhost_test_cmd() {
+    local dir="$1"
+    if [ "$(vhost_fact "$dir" gitlab_embedded)" = "yes" ]; then
+        printf 'sudo -n /opt/gitlab/embedded/sbin/nginx -p /var/opt/gitlab/nginx -t\n'
+    else
+        printf 'sudo -n nginx -t\n'
+    fi
+}
+
 ################################################################################
 # SECTION 2 — reading a vhost. Pure functions over a captured directory.
 ################################################################################
@@ -331,23 +370,249 @@ vhost_repair_acme() {
 }
 
 ################################################################################
+# SECTION 3b — CREATING a vhost that has never existed
+#
+# WHY THIS EXISTS (static image-host handover 2026-08-22, §8.1)
+# ----------------------------------------------------------
+# `--restore` rebuilds from a STASH and, by design, "never overwrites an
+# existing conf". A name that has never existed has no stash, so --restore has
+# nothing to rebuild from and correctly refuses. The verb detected the gap and
+# could not act on it — the same shape as ops#359 itself, one level up: creating
+# a vhost was still hand-run `ssh` + `install`, so the standing-order exception
+# ops#359 was opened to repay reopened the moment a NEW name was needed.
+#
+# THE TWO-STAGE SHAPE IS NOT A STYLE CHOICE. The real vhost names
+# /etc/letsencrypt/live/<domain>/fullchain.pem, which does not exist until
+# certbot has issued it. Install it first and `nginx -t` fails — on the box that
+# also serves GitLab. So the bootstrap (port 80, ACME only, no TLS) is a
+# separate emission, and the caller runs certbot between the two.
+#
+# GENERATION IS PURE (rule 2): these functions take strings and emit a config on
+# stdout. No ssh, no box, no state — which is what lets every property below be
+# driven from a fixture.
+################################################################################
+
+# _vhost_valid_domain <s> — a hostname, and nothing that could close a block.
+# What this emits is fed to `nginx -t` and installed as root on the forge, so a
+# domain carrying `;` or `}` would let argv write arbitrary nginx directives.
+_vhost_valid_domain() {
+    case "$1" in
+        ''|*[!a-zA-Z0-9.-]*) return 1 ;;
+        -*|.*|*.|*..*)       return 1 ;;
+    esac
+    case "$1" in *.*) return 0 ;; esac
+    return 1
+}
+
+# _vhost_valid_root <s> — an absolute path, no metacharacters, no traversal.
+_vhost_valid_root() {
+    case "$1" in
+        /*) ;;
+        *)  return 1 ;;
+    esac
+    case "$1" in
+        *[!a-zA-Z0-9._/-]*) return 1 ;;
+        *..*)               return 1 ;;
+    esac
+    return 0
+}
+
+# vhost_create_conf <stage> <kind> <domain> <root>
+#   stage : bootstrap | full
+#   kind  : static          (the only kind today — see the REFUSED below)
+# Emits the config on stdout. 2 = REFUSED, and nothing is emitted.
+vhost_create_conf() {
+    local stage="$1" kind="$2" domain="$3" root="$4"
+
+    if ! _vhost_valid_domain "$domain"; then
+        printf 'REFUSED: %s is not a valid domain for a server_name\n' "${domain:-<empty>}" >&2
+        return 2
+    fi
+    if ! _vhost_valid_root "$root"; then
+        printf 'REFUSED: %s is not a valid absolute document root\n' "${root:-<empty>}" >&2
+        return 2
+    fi
+    root="${root%/}"
+
+    case "$kind" in
+        static) ;;
+        *)
+            # Deliberately NOT a fallback to static. A php or proxy vhost needs
+            # a socket or an upstream this function was never told about, and
+            # guessing one onto the box that serves GitLab is exactly the class
+            # of "helpful" default this estate does not take.
+            printf 'REFUSED: unsupported template kind %s (known: static)\n' "${kind:-<empty>}" >&2
+            return 2 ;;
+    esac
+
+    case "$stage" in
+        bootstrap)
+            cat <<EOF
+# ${domain} — STAGE 1 of 2 (HTTP only), generated by \`pl server vhost --create\`.
+#
+# The full vhost names /etc/letsencrypt/live/${domain}/fullchain.pem, which does
+# not exist until certbot has issued it — installing that first fails nginx -t.
+# This stage exists ONLY to answer the http-01 challenge. Replace it with
+# --stage=full once the certificate exists.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${domain};
+
+    # The challenge is served, not redirected. A bare \`return 301\` here sends
+    # certbot's own validation request to https and issuance fails.
+    location ^~ /.well-known/acme-challenge/ {
+        auth_basic off;
+        root ${root};
+        allow all;
+    }
+
+    location / {
+        return 404;
+    }
+}
+EOF
+            return 0 ;;
+        full)
+            cat <<EOF
+# ${domain} — static host, generated by \`pl server vhost --create\`.
+#
+# Reload and test with the commands this box actually uses; \`vhost_reload_cmd\`
+# and \`vhost_test_cmd\` derive them from a measured fact, never from the host's
+# name. On a GitLab-bundled box \`systemctl reload nginx\` targets a dead unit
+# and reports success having reloaded nothing.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${domain};
+
+    # Kept on the TLS-serving vhost too: certbot renews over http-01 every 60
+    # days, and a port-80 block that only redirects breaks renewal silently —
+    # the site then dies when the certificate expires, 90 days after anyone
+    # touched it.
+    location ^~ /.well-known/acme-challenge/ {
+        auth_basic off;
+        root ${root};
+        allow all;
+    }
+
+    location / {
+        return 301 https://\$server_name\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${domain};
+
+    server_tokens off;
+
+    ssl_certificate /etc/letsencrypt/live/${domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    root ${root};
+
+    # No listing and no index: a bare directory path 404s rather than
+    # enumerating what is in the docroot.
+    autoindex off;
+
+    # An ALLOW-LIST of static image types. Everything else is refused rather
+    # than served, so a stray file landing in this docroot can never become an
+    # executable or phishable page on the box that also serves GitLab.
+    #
+    # \`add_header\` is NOT repeated here on purpose. nginx's add_header
+    # inheritance is replace-not-merge: one add_header in this block would drop
+    # all three security headers above from every image response. \`expires\`
+    # belongs to a different module and does not have that effect.
+    location ~* \\.(png|jpe?g|gif|webp|avif|svg|ico)\$ {
+        try_files \$uri =404;
+        expires 30d;
+    }
+
+    location ~ /\\. {
+        deny all;
+    }
+
+    location / {
+        return 404;
+    }
+}
+EOF
+            return 0 ;;
+        *)
+            printf 'REFUSED: unknown stage %s (known: bootstrap, full)\n' "${stage:-<empty>}" >&2
+            return 2 ;;
+    esac
+}
+
+# The marker every generated config carries. It is what lets --create tell its
+# own throwaway stage-1 from somebody's live configuration.
+VHOST_GENERATED_MARKER='generated by `pl server vhost --create`'
+
+# vhost_is_generated_bootstrap <file> <domain>
+# 0 only for a STAGE 1 config this verb generated, for THIS domain. Everything
+# else — a hand-written vhost, a generated bootstrap for another name, an
+# already-completed full vhost — is somebody's live config and returns 1.
+#
+# This is the guard on the one legitimate overwrite in the whole verb: replacing
+# the HTTP-only bootstrap with the TLS vhost once certbot has issued the
+# certificate. Without it, "--create again to finish the job" would be a
+# general-purpose clobber.
+vhost_is_generated_bootstrap() {
+    local f="$1" domain="$2"
+    [ -f "$f" ] || return 1
+    [ -n "$domain" ] || return 1
+    grep -qF "$VHOST_GENERATED_MARKER" "$f" 2>/dev/null || return 1
+    grep -qF 'STAGE 1 of 2' "$f" 2>/dev/null || return 1
+    # A bootstrap names no certificate. If this one does, it is not a bootstrap.
+    grep -q 'ssl_certificate' "$f" 2>/dev/null && return 1
+    # …and it must be the bootstrap for the name we are about to serve.
+    vhost_server_names_of "$f" | grep -qx "$domain" || return 1
+    return 0
+}
+
+################################################################################
 # SECTION 4 — applying a restore (the only thing here that writes)
 ################################################################################
 
-# vhost_apply_script <target-conf-path> <content-file> <reload-cmd>
+# vhost_apply_script <target-conf-path> <test-cmd> <reload-cmd>
 # Writes the new conf, TESTS the whole nginx config, and reloads only if the
 # test passed — otherwise removes what it wrote and leaves the box exactly as
 # it was. Refuses to overwrite an existing conf (the hand-restore's guard, kept
 # as the floor). The content is delivered on stdin, never interpolated into the
 # remote command line.
+#
+# <test-cmd> is PASSED IN, from vhost_test_cmd, rather than hardcoded to
+# `nginx -t`. On a box running GitLab's bundled nginx a bare `nginx -t` tests a
+# different binary against a different top-level config from the one about to be
+# reloaded — see vhost_test_cmd for the measurement.
 vhost_apply_script() {
-    local target="$1" reload="$2"
+    local target="$1" test_cmd="$2" reload="$3" allow_replace="${4:-0}"
     cat <<REMOTE
 set -u
 target='${target}'
+allow_replace='${allow_replace}'
+backup=''
 if sudo -n test -e "\$target"; then
-  printf 'REFUSED: %s already exists — a restore never overwrites a live config\n' "\$target" >&2
-  exit 1
+  if [ "\$allow_replace" != "1" ]; then
+    printf 'REFUSED: %s already exists — this never overwrites a live config\n' "\$target" >&2
+    exit 1
+  fi
+  # Keep the ORIGINAL bytes. On a replace, removing the file when the config
+  # test fails would delete a WORKING vhost because its successor was bad —
+  # turning a failed upgrade into an outage.
+  backup=\$(mktemp)
+  sudo -n cat "\$target" > "\$backup" || { printf 'FAILED: could not read %s to back it up\n' "\$target" >&2; exit 1; }
 fi
 tmp=\$(mktemp)
 cat > "\$tmp"
@@ -357,12 +622,19 @@ if [ ! -s "\$tmp" ]; then
 fi
 sudo -n install -o root -g root -m 0644 "\$tmp" "\$target" || { printf 'FAILED: could not write %s\n' "\$target" >&2; rm -f "\$tmp"; exit 1; }
 rm -f "\$tmp"
-if ! sudo -n nginx -t 2>&1; then
-  printf 'FAILED: nginx -t rejected the restored config — REMOVING it, the box is unchanged\n' >&2
-  sudo -n rm -f "\$target"
+if ! ${test_cmd} 2>&1; then
+  if [ -n "\$backup" ]; then
+    sudo -n install -o root -g root -m 0644 "\$backup" "\$target"
+    rm -f "\$backup"
+    printf 'FAILED: the config test rejected this config — RESTORED the previous %s, the box is unchanged\n' "\$target" >&2
+  else
+    sudo -n rm -f "\$target"
+    printf 'FAILED: the config test rejected this config — REMOVING it, the box is unchanged\n' >&2
+  fi
   exit 2
 fi
+rm -f "\$backup" 2>/dev/null || true
 ${reload} || { printf 'FAILED: reload failed\n' >&2; exit 3; }
-printf 'APPLIED: %s installed, nginx -t passed, nginx reloaded\n' "\$target"
+printf 'APPLIED: %s installed, config test passed, nginx reloaded\n' "\$target"
 REMOTE
 }

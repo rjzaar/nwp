@@ -388,11 +388,16 @@ cmd_conf_drift() {
 ################################################################################
 cmd_vhost() {
     local target="" site="" mode="status" apply=0 arg
+    local kind="static" stage="" issue_cert=0
     PROBE_CMD=""
     for arg in "$@"; do
         case "$arg" in
             --status)      mode="status" ;;
             --restore)     mode="restore" ;;
+            --create)      mode="create" ;;
+            --kind=*)      kind="${arg#--kind=}" ;;
+            --stage=*)     stage="${arg#--stage=}" ;;
+            --issue-cert)  issue_cert=1 ;;
             --apply)       apply=1 ;;
             --probe-cmd=*) PROBE_CMD="${arg#--probe-cmd=}" ;;
             -h|--help)     _vhost_usage; return 0 ;;
@@ -435,21 +440,58 @@ cmd_vhost() {
     fi
 
     # The site's DECLARED root, from the same inventory `pl server roots` reads.
-    local decl_path="" decl_domain="" entry n p d
+    local decl_path="" decl_domain="" decl_kind="site" entry n p d
     served_roots_declarations "$target" "$NWP_DIR" "" || true
     for entry in "${SR_DECL[@]:-}"; do
         IFS='|' read -r n p d _ _ <<<"$entry"
         if [[ "$n" == "$site" ]]; then decl_path="$p"; decl_domain="$d"; fi
     done
+
+    # …and, failing that, from `infrastructure_roots:`. A static image host, an
+    # ACME stub, a headscale proxy: real served roots that are deliberately NOT
+    # sites and must never be given a sites/<name>/.nwp.yml. `pl server roots`
+    # has always reconciled both kinds; this verb only ever read the first, so
+    # every infrastructure root was invisible to it — including the one it is
+    # now being asked to create.
+    if [[ -z "$decl_path" ]]; then
+        served_roots_infra "$target" "$NWP_DIR" || true
+        local ipath irest
+        for entry in "${SR_INFRA[@]:-}"; do
+            [[ -n "$entry" ]] || continue
+            ipath="${entry%%|*}"; irest="${entry#*|}"
+            if [[ "${irest%%|*}" == "$site" ]]; then
+                decl_path="$ipath"; decl_domain="${irest#*|}"; decl_kind="infrastructure"
+            fi
+        done
+    fi
+
     if [[ -z "$decl_path" ]]; then
         echo "CANNOT VERIFY: '${site}' declares no live root attributed to '${target}'."
         echo "               Nothing to compare a vhost against. Check: pl server roots ${target}"
+        if [[ "$mode" == "create" ]]; then
+            echo
+            echo "               A vhost is created FROM a declaration, never alongside one."
+            echo "               Declare the root first, then re-run — either as a site, or,"
+            echo "               for something that is not a site, in infrastructure_roots: of"
+            echo "               servers/${target}/.nwp-server.yml:"
+            echo
+            echo "                 infrastructure_roots:"
+            echo "                   - path: /var/www/${site}"
+            echo "                     service: ${site}"
+            echo "                     domain: ${site}.example.org"
+            echo
+            echo "               Declaring first is what stops 'pl server roots ${target}' going"
+            echo "               red the moment this vhost starts serving — an unexpected red is"
+            echo "               how a real one comes to be ignored."
+        fi
         return 3
     fi
 
     case "$mode" in
         status)  _vhost_status "$target" "$site" "$dir" "$decl_path" "$decl_domain" ;;
         restore) _vhost_restore "$target" "$site" "$dir" "$decl_path" "$decl_domain" "$prefix" "$apply" ;;
+        create)  _vhost_create "$target" "$site" "$dir" "$decl_path" "$decl_domain" "$prefix" \
+                               "$apply" "$kind" "$stage" "$decl_kind" "$issue_cert" ;;
     esac
 }
 
@@ -680,14 +722,34 @@ USAGE
 
 _vhost_usage() {
     cat <<'USAGE'
-Usage: pl server vhost <server> <site> [--status|--restore] [--apply]
+Usage: pl server vhost <server> <name> [--status|--restore|--create] [--apply]
 
-  --status   (default) is a vhost actually serving the site's declared root?
-             which stashed copies exist? and which certificate would 443 fall
-             through to if there is none? READ-ONLY.
+  --status   (default) is a vhost actually serving the declared root? which
+             stashed copies exist? and which certificate would 443 fall through
+             to if there is none? READ-ONLY.
   --restore  rebuild the vhost from a stashed copy, repairing GitLab-bundled
              includes and a missing ACME challenge location. DRY-RUN by
-             default; --apply installs it, gated on `nginx -t`.
+             default; --apply installs it, gated on the box's own config test.
+  --create   write a vhost for a name that has NEVER existed — the case
+             --restore cannot serve, because there is no stash to rebuild from.
+             DRY-RUN by default; --apply installs it.
+               --kind=static      template (default; the only kind today)
+               --stage=bootstrap  HTTP + ACME only, names no certificate
+               --stage=full       the real TLS vhost
+               --issue-cert       run certbot between the two stages, then
+                                  install the full vhost — the whole two-stage
+                                  dance in one command
+             Omit --stage and it picks: bootstrap while no certificate exists
+             for the domain, full once one does.
+
+  <name> must already be DECLARED — as a site, or in `infrastructure_roots:` of
+  servers/<server>/.nwp-server.yml for a root that is not a site. The vhost is
+  generated FROM that declaration, so `pl server roots` cannot go red because
+  somebody created a vhost and forgot to declare what it serves.
+
+  The config test and the reload command are both MEASURED from the box (a
+  GitLab-bundled nginx tests and reloads differently from a standalone one),
+  never guessed from the server's name.
 USAGE
 }
 
@@ -819,10 +881,12 @@ _vhost_restore() {
         return 0
     fi
 
-    local reload; reload="$(vhost_reload_cmd "$dir")"
-    printf '\n  APPLYING (nginx -t must pass, or the file is removed again)\n'
+    local reload test_cmd
+    reload="$(vhost_reload_cmd "$dir")"
+    test_cmd="$(vhost_test_cmd "$dir")"
+    printf '\n  APPLYING (%s must pass, or the file is removed again)\n' "$test_cmd"
     local script rc=0
-    script="$(vhost_apply_script "$target_conf" "$reload")"
+    script="$(vhost_apply_script "$target_conf" "$test_cmd" "$reload")"
     if [[ "$prefix" == "LOCAL" ]]; then
         bash -c "$script" < "$work" || rc=$?
     else
@@ -834,8 +898,311 @@ _vhost_restore() {
         return 1
     fi
     printf '\n  ROLLBACK (the stash was copied, never moved, so this fully reverts it):\n'
-    printf '    %s "sudo rm %s && sudo nginx -t && %s"\n' "${prefix}" "$target_conf" "$reload"
+    printf '    %s "sudo rm %s && %s && %s"\n' "${prefix}" "$target_conf" "$test_cmd" "$reload"
     return 0
+}
+
+# ── create ──────────────────────────────────────────────────────────────────
+#
+# The other half of --restore (static image-host handover 2026-08-22, §8.1).
+# --restore rebuilds from a stash and refuses to overwrite; a name that has
+# never existed has neither, so creating a vhost was still hand-run ssh+install.
+_vhost_create() {
+    local target="$1" site="$2" dir="$3" decl="$4" domain="$5" prefix="$6"
+    local apply="$7" kind="$8" stage="$9" decl_kind="${10}" issue_cert="${11:-0}"
+    local rel served=()
+
+    if [[ -z "$domain" ]]; then
+        echo "CANNOT VERIFY: '${site}' declares a root (${decl}) but no domain."
+        echo "               A vhost needs a server_name, and guessing one is how a box"
+        echo "               ends up answering for a name nobody meant it to. Add"
+        echo "               'domain:' to the declaration and re-run."
+        return 3
+    fi
+
+    # THE ONE LEGITIMATE OVERWRITE, settled first because both refusals below
+    # would otherwise catch it: our own stage-1 bootstrap. It exists to be
+    # replaced by the TLS vhost once certbot has issued the certificate, and its
+    # ACME location roots at the same declared path — so it both "already
+    # exists" and "already serves this root". Anything else under this name, or
+    # anything else serving this root, is somebody's live config.
+    local target_conf="$VHOST_CONF_DIR/${site}.conf" allow_replace=0
+    if [[ -e "$dir/${site}.conf" ]] && vhost_is_generated_bootstrap "$dir/${site}.conf" "$domain"; then
+        allow_replace=1
+    fi
+
+    if [[ "$allow_replace" -ne 1 ]]; then
+        # REFUSE if anything loaded already serves this root — the same floor
+        # --restore keeps. A create never overwrites a live config.
+        while IFS= read -r rel; do
+            [[ -n "$rel" ]] || continue
+            vhost_serves_root "$dir/$rel" "$decl" && served+=("$rel")
+        done < <(vhost_active_confs "$dir")
+        if [[ ${#served[@]} -gt 0 ]]; then
+            echo "REFUSED: ${VHOST_CONF_DIR}/${served[0]} already serves ${decl} — a create never"
+            echo "         overwrites a live config. Use --status to inspect it."
+            return 1
+        fi
+        if [[ -e "$dir/${site}.conf" ]]; then
+            echo "REFUSED: ${target_conf} already exists and is not a stage-1 bootstrap this"
+            echo "         verb generated for ${domain}. Not overwriting it."
+            echo "         Inspect with: pl server vhost ${target} ${site} --status"
+            return 1
+        fi
+    fi
+
+    # Which stage? Decided by whether the certificate EXISTS, measured on the
+    # box — not by an operator remembering which run this is. Naming a
+    # certificate that certbot has not issued yet fails the config test, and on
+    # this class of box that is the nginx serving GitLab.
+    local cert_path="/etc/letsencrypt/live/${domain}/fullchain.pem" cert_state="unknown"
+    if [[ -z "$stage" || "$stage" == "auto" ]]; then
+        local probe_rc=0 probe_out=""
+        probe_out="$(host_run "$prefix" "if sudo -n test -s '${cert_path}'; then echo CERT=yes; else echo CERT=no; fi" 2>/dev/null)" || probe_rc=$?
+        case "$probe_out" in
+            *CERT=yes*) stage="full";      cert_state="present" ;;
+            *CERT=no*)  stage="bootstrap"; cert_state="absent" ;;
+            *)
+                echo "CANNOT VERIFY: could not determine whether ${cert_path} exists (rc=${probe_rc})."
+                echo "               Refusing to pick a stage blind — an unreadable box is not"
+                echo "               'no certificate'. Re-run with an explicit --stage=bootstrap"
+                echo "               or --stage=full."
+                return 3 ;;
+        esac
+    fi
+
+    local work="$dir/.created" rc=0
+    vhost_create_conf "$stage" "$kind" "$domain" "$decl" > "$work" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "REFUSED: could not generate a ${kind}/${stage} vhost (see above). Nothing written."
+        return 1
+    fi
+
+    printf 'vhost create: %s on %s\n' "$site" "$target"
+    printf '  declared as   %s (%s)\n' "$decl_kind" \
+        "$([[ "$decl_kind" == infrastructure ]] && echo 'infrastructure_roots:' || echo 'a site')"
+    printf '  root          %s\n' "$decl"
+    printf '  domain        %s\n' "$domain"
+    printf '  template      %s / stage=%s%s\n' "$kind" "$stage" \
+        "$([[ "$cert_state" != unknown ]] && echo " (certificate ${cert_state})")"
+    printf '  install as    %s\n' "$target_conf"
+    printf '  nginx         %s\n' \
+        "$([[ "$(vhost_fact "$dir" gitlab_embedded)" == yes ]] && echo 'GitLab-bundled' || echo 'standalone')"
+    printf '  test          %s\n' "$(vhost_test_cmd "$dir")"
+    printf '  reload        %s\n' "$(vhost_reload_cmd "$dir")"
+    printf '\n  configuration to be installed:\n'
+    sed 's/^/    /' "$work"
+
+    [[ "$allow_replace" -eq 1 ]] && \
+        printf '\n  NOTE: replacing the stage-1 bootstrap this verb wrote for %s.\n' "$domain"
+
+    if [[ "$stage" == "bootstrap" && "$issue_cert" -ne 1 ]]; then
+        printf '\n  NEXT, once this is applied — issue the certificate, then run --create again\n'
+        printf '  (it will pick stage=full by itself, because the certificate will exist):\n'
+        printf '    pl server vhost %s %s --create --issue-cert --apply\n' "$target" "$site"
+    fi
+
+    if [[ "$apply" -ne 1 ]]; then
+        printf '\n  DRY RUN — nothing was changed. Re-run with --apply to install.\n'
+        [[ "$issue_cert" -eq 1 ]] && \
+            printf '  (--issue-cert would then run certbot for %s and install the full vhost.)\n' "$domain"
+        return 0
+    fi
+
+    local reload test_cmd
+    reload="$(vhost_reload_cmd "$dir")"
+    test_cmd="$(vhost_test_cmd "$dir")"
+
+    _vhost_install "$prefix" "$target_conf" "$test_cmd" "$reload" "$allow_replace" "$work" || return 1
+
+    # ── the second half of the two-stage dance ──────────────────────────────
+    # With the bootstrap serving, certbot can complete http-01. Then the TLS
+    # vhost becomes installable, because the certificate it names now exists.
+    if [[ "$stage" == "bootstrap" && "$issue_cert" -eq 1 ]]; then
+        printf '\n  ISSUING CERTIFICATE for %s (webroot %s)\n' "$domain" "$decl"
+        local cb_rc=0
+        host_run "$prefix" \
+            "sudo -n certbot certonly --webroot -w '${decl}' -d '${domain}' --key-type ecdsa --non-interactive --agree-tos" \
+            || cb_rc=$?
+        if [[ $cb_rc -ne 0 ]]; then
+            echo "FAILED: certbot did not issue a certificate for ${domain} (rc=${cb_rc})."
+            echo "        The stage-1 bootstrap IS installed and serving, so this is resumable:"
+            echo "        fix the cause and re-run  pl server vhost ${target} ${site} --create --issue-cert --apply"
+            return 1
+        fi
+
+        printf '\n  INSTALLING THE FULL VHOST (the certificate now exists)\n'
+        rc=0
+        vhost_create_conf full "$kind" "$domain" "$decl" > "$work.full" || rc=$?
+        if [[ $rc -ne 0 ]]; then
+            echo "REFUSED: could not generate the full vhost. The bootstrap is still serving."
+            return 1
+        fi
+        printf '%s\n' "  configuration to be installed:"
+        sed 's/^/    /' "$work.full"
+        # Replacing OUR bootstrap: allowed, and a failed test restores it.
+        _vhost_install "$prefix" "$target_conf" "$test_cmd" "$reload" 1 "$work.full" || return 1
+    fi
+
+    printf '\n  ROLLBACK:\n'
+    printf '    %s "sudo rm %s && %s && %s"\n' "$prefix" "$target_conf" "$test_cmd" "$reload"
+    return 0
+}
+
+# _vhost_install <prefix> <target-conf> <test-cmd> <reload> <allow-replace> <content-file>
+_vhost_install() {
+    local prefix="$1" target_conf="$2" test_cmd="$3" reload="$4" allow_replace="$5" content="$6"
+    local script rc=0
+    printf '\n  APPLYING (%s must pass, or the file is %s)\n' "$test_cmd" \
+        "$([[ "$allow_replace" -eq 1 ]] && echo 'restored to what it was' || echo 'removed again')"
+    script="$(vhost_apply_script "$target_conf" "$test_cmd" "$reload" "$allow_replace")"
+    if [[ "$prefix" == "LOCAL" ]]; then
+        bash -c "$script" < "$content" || rc=$?
+    else
+        # shellcheck disable=SC2086
+        $prefix "$script" < "$content" || rc=$?
+    fi
+    if [[ $rc -ne 0 ]]; then
+        echo "FAILED (rc=$rc) — the box is unchanged."
+        return 1
+    fi
+    return 0
+}
+
+################################################################################
+# Subcommand: assets <server> <name> --from=DIR [--apply]
+#
+# The content half of --create (static image-host handover, 2026-08-22). Creating
+# a docroot and being unable to fill it left `scp` + `sudo cp` — the idiom
+# CLAUDE.md names as FORBIDDEN and the shape of the ops#149 violation — as the
+# only way to publish a file. See lib/server-assets.sh.
+################################################################################
+cmd_assets() {
+    local target="" name="" from="" apply=0 owner="www-data:www-data" arg
+    PROBE_CMD=""
+    for arg in "$@"; do
+        case "$arg" in
+            --from=*)      from="${arg#--from=}" ;;
+            --owner=*)     owner="${arg#--owner=}" ;;
+            --apply)       apply=1 ;;
+            --probe-cmd=*) PROBE_CMD="${arg#--probe-cmd=}" ;;
+            -h|--help)     _assets_usage; return 0 ;;
+            -*)            echo "Unknown option: $arg" >&2; return 2 ;;
+            *)             if [[ -z "$target" ]]; then target="$arg"
+                           elif [[ -z "$name" ]]; then name="$arg"
+                           else echo "Unexpected argument: $arg" >&2; return 2; fi ;;
+        esac
+    done
+    if [[ -z "$target" || -z "$name" || -z "$from" ]]; then _assets_usage >&2; return 2; fi
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/served-roots.sh"
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/server-assets.sh"
+
+    # The destination is the DECLARED root — the same rule --create follows.
+    # Never a path from argv: that is what keeps `pl server roots` able to
+    # reconcile what is served against what NWP says is served.
+    local decl_path="" decl_kind="site" entry n p d ipath irest
+    served_roots_declarations "$target" "$NWP_DIR" "" || true
+    for entry in "${SR_DECL[@]:-}"; do
+        IFS='|' read -r n p d _ _ <<<"$entry"
+        [[ "$n" == "$name" ]] && decl_path="$p"
+    done
+    if [[ -z "$decl_path" ]]; then
+        served_roots_infra "$target" "$NWP_DIR" || true
+        for entry in "${SR_INFRA[@]:-}"; do
+            [[ -n "$entry" ]] || continue
+            ipath="${entry%%|*}"; irest="${entry#*|}"
+            [[ "${irest%%|*}" == "$name" ]] && { decl_path="$ipath"; decl_kind="infrastructure"; }
+        done
+    fi
+    if [[ -z "$decl_path" ]]; then
+        echo "CANNOT VERIFY: '${name}' declares no root attributed to '${target}'."
+        echo "               Content is pushed to a DECLARED root, never to a path from the"
+        echo "               command line — that is what keeps 'pl server roots ${target}'"
+        echo "               able to reconcile what is served against what NWP says is served."
+        return 3
+    fi
+    assets_validate_root "$decl_path" || return 2
+
+    local local_inv
+    local_inv="$(assets_local_inventory "$from")" || return 2
+
+    local prefix
+    prefix=$(_resolve_probe_prefix "$target") || {
+        echo "CANNOT VERIFY: cannot resolve a destination for '${target}'" >&2; return 3; }
+
+    # RULE 1/3: the plan is a diff against a MEASURED target inventory, and a
+    # probe that did not run is never "the target is empty".
+    local raw target_inv
+    raw="$(host_run "$prefix" "$(assets_inventory_script "$decl_path")" 2>/dev/null)" || true
+    target_inv="$(assets_parse_inventory "$raw")" || {
+        echo "               Refusing to grade every file NEW over a docroot that was simply"
+        echo "               unreadable. Check: pl server status ${target}"
+        return 3; }
+
+    local plan counts new rep unch orph
+    plan="$(assets_plan "$local_inv" "$target_inv")"
+    counts="$(assets_plan_counts "$plan")"
+    read -r new rep unch orph <<<"$counts"
+
+    printf 'assets: %s on %s\n' "$name" "$target"
+    printf '  declared as   %s\n' "$decl_kind"
+    printf '  target root   %s\n' "$decl_path"
+    printf '  source        %s\n' "$from"
+    printf '  owner         %s\n' "$owner"
+    printf '\n  plan (%s new, %s replaced, %s unchanged, %s already there and untouched):\n' \
+        "$new" "$rep" "$unch" "$orph"
+    printf '%s\n' "$plan" | sed 's/^/    /'
+
+    if [[ "$new" -eq 0 && "$rep" -eq 0 ]]; then
+        printf '\n  Nothing to do — every file is already present with identical content.\n'
+        return 0
+    fi
+
+    if [[ "$apply" -ne 1 ]]; then
+        printf '\n  DRY RUN — nothing was changed. Re-run with --apply to push.\n'
+        return 0
+    fi
+
+    # The payload goes over stdin as a tar. Nothing is staged in /tmp on the box
+    # for somebody to find later, and no filename reaches the remote shell.
+    local script rc=0
+    script="$(assets_push_script "$decl_path" "$owner")"
+    printf '\n  APPLYING\n'
+    if [[ "$prefix" == "LOCAL" ]]; then
+        tar -C "$from" -cf - . | bash -c "$script" || rc=$?
+    else
+        # shellcheck disable=SC2086
+        tar -C "$from" -cf - . | $prefix "$script" || rc=$?
+    fi
+    if [[ $rc -ne 0 ]]; then
+        echo "FAILED (rc=$rc)."
+        return 1
+    fi
+    printf '\n  Verify:  pl server roots %s\n' "$target"
+    return 0
+}
+
+_assets_usage() {
+    cat <<'USAGE'
+Usage: pl server assets <server> <name> --from=DIR [--apply] [--owner=U:G]
+
+  Push static content into a DECLARED root on <server> — the content half of
+  `pl server vhost --create`, which writes the server block but cannot fill it.
+
+  <name> must already be declared, as a site or in `infrastructure_roots:` of
+  servers/<server>/.nwp-server.yml. The destination is that declaration's path;
+  it is never taken from the command line, so `pl server roots` can always
+  reconcile what is served against what NWP says is served.
+
+  DRY-RUN by default. The plan is a real diff — each file is NEW, REPLACE,
+  UNCHANGED or ONLY-ON-TARGET — computed by digesting the target, not assumed.
+
+  This verb ADDS. It never removes anything: a file present only on the target
+  is reported and left alone. There is deliberately no --delete.
+USAGE
 }
 
 cmd_roots() {
@@ -2264,6 +2631,7 @@ case "$sub" in
     roots)   cmd_roots "$@" ;;
     vhost)   cmd_vhost "$@" ;;
     host-guard) cmd_host_guard "$@" ;;
+    assets)  cmd_assets "$@" ;;
     backup)  cmd_backup "$@" ;;
     conf-drift) cmd_conf_drift "$@" ;;
     sites)   cmd_sites "$@" ;;

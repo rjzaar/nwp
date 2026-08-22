@@ -65,9 +65,11 @@ _detail() {
 
 @test "an UNREACHABLE host is a different verdict from a stopped unit" {
   # Three states, never two: 'could not look' must not read as a measurement.
+  # And the exit code says which: 2 = CANNOT VERIFY (estate rule), never 1,
+  # because 1 claims the stack was measured and found unhealthy.
   _stub_ssh 'echo "ssh: Could not resolve hostname stubhost" >&2; exit 255'
   _health --json
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   _assert_valid_json "$output"
   d="$(_detail "$output" systemd)"
   case "$d" in
@@ -78,6 +80,59 @@ _detail() {
   # detail indistinguishable from a real answer.
   [ "$d" != "inactive" ]
   [ "$d" != "unreachable" ]
+}
+
+@test "an UNREACHABLE host must not report the models as ABSENT" {
+  # Measured 2026-08-15 (ops#383): with `ssh: Could not resolve hostname`, the
+  # verb printed '[✗] chat model: llama3.1:8b NOT registered'. It never looked.
+  # 'Could not list the models' and 'the model is not in the list' are
+  # different facts; only the second may say 'NOT registered'.
+  _stub_ssh 'echo "ssh: Could not resolve hostname stubhost" >&2; exit 255'
+  _health --json
+  [ "$status" -eq 2 ]
+  _assert_valid_json "$output"
+  for c in chat_model coder_model; do
+    d="$(_detail "$output" "$c")"
+    case "$d" in
+      *"CANNOT VERIFY"*) : ;;
+      *) printf '%s detail does not say CANNOT VERIFY: %s\n' "$c" "$d" >&2; return 1 ;;
+    esac
+    case "$d" in
+      *"NOT registered"*) printf '%s claims absence it never measured: %s\n' "$c" "$d" >&2; return 1 ;;
+    esac
+  done
+  # Same lie, bind flavour: '<no listener>' is a measurement claim.
+  b="$(_detail "$output" bind)"
+  [ "$b" != "<no listener>" ]
+  case "$b" in *"CANNOT VERIFY"*) : ;; *) printf 'bind detail: %s\n' "$b" >&2; return 1 ;; esac
+}
+
+@test "a REACHABLE daemon with the model genuinely absent is exit 1, not 2" {
+  # The other half of the three-state split: a real look that found a real
+  # absence is a FAILURE, and must not soften into CANNOT VERIFY.
+  _stub_ssh 'case "$last" in
+      *systemctl*) echo active; exit 0 ;;
+      *curl*) echo 200; exit 0 ;;
+      *"ss -tlnH"*) echo 127.0.0.1:11434; exit 0 ;;
+      *"ollama list"*) printf "NAME\nllama3.3:70b\n"; exit 0 ;;
+    esac'
+  _health --json
+  [ "$status" -eq 1 ]
+  _assert_valid_json "$output"
+  d="$(_detail "$output" chat_model)"
+  case "$d" in
+    *"NOT registered"*) : ;;
+    *) printf 'chat_model detail should say NOT registered: %s\n' "$d" >&2; return 1 ;;
+  esac
+  case "$d" in *"CANNOT VERIFY"*) return 1 ;; esac
+}
+
+@test "the human output for an unreachable host says CANNOT VERIFY, not unhealthy" {
+  _stub_ssh 'echo "ssh: Could not resolve hostname stubhost" >&2; exit 255'
+  _health
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CANNOT VERIFY"* ]]
+  [[ "$output" != *"NOT registered"* ]]
 }
 
 @test "a HEALTHY host still reports ok — the fix did not make the check inert" {
@@ -102,7 +157,7 @@ _detail() {
   # emitter injectable by anything the far end printed.
   _stub_ssh 'printf "he said \"boom\"\nsecond line\n" >&2; exit 255'
   _health --json
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]   # transport failure everywhere = CANNOT VERIFY
   _assert_valid_json "$output"
   d="$(_detail "$output" systemd)"
   case "$d" in *'"boom"'*'second line'*) : ;;

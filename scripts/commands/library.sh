@@ -483,7 +483,12 @@ cmd_status() {
     fi
     if [ -n "$host" ]; then
         print_info "On ${host}:"
-        ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" \
+        # `… || print_warning` was a fail-open: print_warning returns 0 and it
+        # was the verb's last statement, so an unreachable console host exited
+        # 0 having measured nothing (ops#383). Estate rule: exit 2 CANNOT
+        # VERIFY, never 0 — "$f: not published" above is a measurement this
+        # branch may report; "the host did not answer" is not.
+        if ! ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" \
             'd="$HOME/.local/share/nwp-console";
              for f in library.json library-public.json; do
                if [ -f "$d/$f" ]; then
@@ -492,7 +497,11 @@ cmd_status() {
                else
                  echo "  $f: not published"
                fi
-             done' 2>/dev/null || print_warning "  (unreachable)"
+             done' 2>/dev/null; then
+            print_error "CANNOT VERIFY: ${host} did not answer — 'could not look' is not 'not published'"
+            print_info  "recheck: re-run 'pl library status' when the host is reachable; the verdict clears on its own terms"
+            return 2
+        fi
     fi
 }
 

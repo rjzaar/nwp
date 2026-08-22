@@ -641,8 +641,16 @@ check_fleet_sync() {
 
     local manifest="${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"
     if [[ ! -f "$manifest" ]] || ! command -v yq >/dev/null 2>&1; then
-        print_info "no readable instance manifest on this machine — host currency is graded where the manifest lives (pl fleet sync status)"
-        return 0
+        # This used to print the honest sentence and then RETURN 0 — the exit
+        # code asserted the pass the sentence disclaimed, so doctor's summary
+        # counted "host currency: fine" on exactly the machines that cannot
+        # measure it (ops#383, the ops#214 class). Estate rule: an unreadable
+        # corpus is exit 2 CANNOT VERIFY, never 0. The truthful exit (ops#361)
+        # is the check itself: it clears on its own terms wherever the
+        # manifest is readable — no override, no attribution.
+        print_error "CANNOT VERIFY fleet engine-code currency — no readable instance manifest here (looked for: $manifest, and yq must be installed)"
+        print_hint "grade it where the manifest lives: pl fleet sync status"
+        return 2
     fi
 
     local out rc=0

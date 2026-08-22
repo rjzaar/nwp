@@ -25,6 +25,11 @@ source "$PROJECT_ROOT/lib/ui.sh"
 AI_HOST_SSH="${NWP_AI_HOST_SSH:-${NWP_MINI_SSH_HOST:-ai-host}}"
 
 # Models baselined in F21 Phase 3a.
+# NOTE (ops#383): this is the HEALTH BASELINE, not the estate's only model
+# claim — scripts/console/app/config.py defaults QUOKKA_MODEL=llama3.3:70b for
+# the console chat tab. Measured 2026-08-15 on the AI host: all three models
+# are registered, so the two surfaces disagree on defaults, not on reality.
+# If you change either, change it as a decision, not a drive-by.
 MODEL_CHAT="llama3.1:8b"
 MODEL_CODER="qwen2.5-coder:14b"
 
@@ -62,9 +67,14 @@ Checks performed:
     6. Chat model sustains >= 25 tok/s eval rate (unless --quick)
     7. Coder model sustains >= 20 tok/s eval rate (unless --quick)
 
-Exit codes:
+Exit codes (llm health):
     0 - All checks passed
-    1 - One or more checks failed
+    1 - One or more checks MEASURED a failure
+    2 - CANNOT VERIFY — the host/daemon could not be asked, so nothing was
+        measured. Never graded as pass OR fail; recheck by re-running once
+        the route works (e.g. NWP_AI_HOST_SSH=<alias>). Distinct from 1:
+        "the model is genuinely absent" is a measurement, "I could not
+        list the models" is not (ops#383).
 
 Environment:
     NWP_AI_HOST_SSH - SSH host alias for the AI host (default: ai-host;
@@ -135,7 +145,12 @@ check_systemd_active() {
     state="$(_ai_host_last_line "$out")"
     case "$state" in
         active|inactive|failed|activating|deactivating|reloading|unknown) ;;
-        *) state="unreachable (rc=${rc}: $(_ai_host_flatten "${out:-no output}"))" ;;
+        *)
+            # Not a systemd state word: the TRANSPORT failed, systemd was never
+            # asked. That is blindness, not a measurement (ops#383).
+            CHECK_SYSTEMD_DETAIL="unreachable (rc=${rc}: $(_ai_host_flatten "${out:-no output}"))"
+            CHECK_SYSTEMD_STATUS=blind
+            return 1 ;;
     esac
     CHECK_SYSTEMD_DETAIL="$state"
     if [[ "$state" == "active" ]]; then
@@ -151,8 +166,10 @@ check_daemon_reachable() {
     out=$(ai_host_ssh 'curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:11434/api/tags' 2>&1); rc=$?
     http="$(_ai_host_last_line "$out")"
     if [[ ! "$http" =~ ^[0-9]{3}$ ]]; then
+        # curl always prints a 3-digit code when it ran (000 on connect
+        # failure). No code = the ssh leg failed = we never looked (ops#383).
         CHECK_DAEMON_DETAIL="unreachable (rc=${rc}: $(_ai_host_flatten "${out:-no output}"))"
-        CHECK_DAEMON_STATUS=fail
+        CHECK_DAEMON_STATUS=blind
         return 1
     fi
     CHECK_DAEMON_DETAIL="HTTP $http on 127.0.0.1:11434/api/tags"
@@ -165,8 +182,17 @@ check_daemon_reachable() {
 }
 
 check_loopback_only() {
-    local listen
-    listen=$(ai_host_ssh "ss -tlnH 'sport = :11434' 2>/dev/null | awk '{print \$4}'" 2>/dev/null || true)
+    local listen rc
+    # The old `|| true` + 2>/dev/null swallowed the ssh verdict, so an
+    # unreachable host rendered as '<no listener>' — a bind measurement this
+    # check never took (ops#383). Capture the status; '<no listener>' is only
+    # sayable when ss actually ran and found nothing.
+    listen=$(ai_host_ssh "ss -tlnH 'sport = :11434' 2>/dev/null | awk '{print \$4}'" 2>&1); rc=$?
+    if [[ $rc -ne 0 ]]; then
+        CHECK_BIND_DETAIL="CANNOT VERIFY (rc=${rc}: $(_ai_host_flatten "${listen:-no output}"))"
+        CHECK_BIND_STATUS=blind
+        return 1
+    fi
     CHECK_BIND_DETAIL="$(_ai_host_flatten "${listen:-<no listener>}")"
     if [[ "$listen" == "127.0.0.1:11434" ]]; then
         CHECK_BIND_STATUS=ok
@@ -179,8 +205,23 @@ check_loopback_only() {
 check_model_registered() {
     local model="$1"
     local var_prefix="$2"
-    local found
-    found=$(ai_host_ssh '~/.local/bin/ollama list' 2>/dev/null | awk '{print $1}' | grep -Fx "$model" || true)
+    local out rc found
+    # 'I could not list the models' and 'the model is not in the list' are
+    # different facts. The old shape piped the ssh straight into grep with
+    # `|| true`, so `ssh: Could not resolve hostname` printed
+    # '<model> NOT registered' — an absence this check never measured
+    # (ops#383, the ops#214 defect class). Only a listing that RAN may say
+    # 'NOT registered'.
+    out=$(ai_host_ssh '~/.local/bin/ollama list' 2>&1); rc=$?
+    if [[ $rc -ne 0 ]]; then
+        printf -v "CHECK_${var_prefix}_MODEL_STATUS" "blind"
+        printf -v "CHECK_${var_prefix}_MODEL_DETAIL" "%s: CANNOT VERIFY — could not list models (rc=%s: %s)" \
+            "$model" "$rc" "$(_ai_host_flatten "${out:-no output}")"
+        return 1
+    fi
+    # grep WITHOUT -q: it consumes all input, so awk never takes a SIGPIPE
+    # that pipefail would promote into a verdict (lint:pipefail-sigpipe).
+    found=$(printf '%s\n' "$out" | awk '{print $1}' | grep -Fx "$model" || true)
     if [[ -n "$found" ]]; then
         printf -v "CHECK_${var_prefix}_MODEL_STATUS" "ok"
         printf -v "CHECK_${var_prefix}_MODEL_DETAIL" "%s registered" "$model"
@@ -199,9 +240,17 @@ benchmark_model() {
     local floor="$2"
     local var_prefix="$3"
     local prompt='Write one short sentence greeting the world.'
-    local payload
-    payload=$(ai_host_ssh "curl -sS --max-time 60 http://127.0.0.1:11434/api/generate -d '{\"model\":\"$model\",\"prompt\":\"$prompt\",\"stream\":false}'" 2>/dev/null || true)
+    local payload rc
+    payload=$(ai_host_ssh "curl -sS --max-time 60 http://127.0.0.1:11434/api/generate -d '{\"model\":\"$model\",\"prompt\":\"$prompt\",\"stream\":false}'" 2>&1); rc=$?
 
+    if [[ $rc -ne 0 ]]; then
+        # The ssh/curl leg failed: no measurement was taken (ops#383). This is
+        # only reachable if the transport died AFTER the daemon checks passed.
+        printf -v "CHECK_${var_prefix}_BENCH_STATUS" "blind"
+        printf -v "CHECK_${var_prefix}_BENCH_DETAIL" "CANNOT VERIFY (rc=%s: %s)" "$rc" "$(_ai_host_flatten "${payload:-no output}")"
+        printf -v "CHECK_${var_prefix}_BENCH_RATE" "0"
+        return 1
+    fi
     if [[ -z "$payload" ]]; then
         printf -v "CHECK_${var_prefix}_BENCH_STATUS" "fail"
         printf -v "CHECK_${var_prefix}_BENCH_DETAIL" "no response from %s" "$model"
@@ -239,59 +288,62 @@ except Exception:
 # Output formatters
 ################################################################################
 
+# _emit_check STATUS "label-ok: detail" "label-fail: detail" ["label-blind: detail"]
+# Three renderings, never two: BLIND is a WARN row saying the measurement was
+# not taken — it must not wear the ✗ of a measured failure (ops#383).
+_emit_check() {
+    local st="$1" ok_msg="$2" fail_msg="$3" blind_msg="${4:-$3}"
+    case "$st" in
+        ok)    print_status OK   "$ok_msg" ;;
+        blind) print_status WARN "$blind_msg" ;;
+        *)     print_status FAIL "$fail_msg" ;;
+    esac
+}
+
 emit_human() {
     local status="$1"
     print_header "AI-host LLM Health"
 
-    if [[ "$CHECK_SYSTEMD_STATUS" == "ok" ]]; then
-        print_status OK "systemd --user unit: $CHECK_SYSTEMD_DETAIL"
-    else
-        print_status FAIL "systemd --user unit: $CHECK_SYSTEMD_DETAIL"
-    fi
+    _emit_check "$CHECK_SYSTEMD_STATUS" \
+        "systemd --user unit: $CHECK_SYSTEMD_DETAIL" \
+        "systemd --user unit: $CHECK_SYSTEMD_DETAIL"
 
-    if [[ "$CHECK_DAEMON_STATUS" == "ok" ]]; then
-        print_status OK "daemon reachable: $CHECK_DAEMON_DETAIL"
-    else
-        print_status FAIL "daemon reachable: $CHECK_DAEMON_DETAIL"
-    fi
+    _emit_check "$CHECK_DAEMON_STATUS" \
+        "daemon reachable: $CHECK_DAEMON_DETAIL" \
+        "daemon reachable: $CHECK_DAEMON_DETAIL"
 
-    if [[ "$CHECK_BIND_STATUS" == "ok" ]]; then
-        print_status OK "listener bound loopback-only: $CHECK_BIND_DETAIL"
-    else
-        print_status FAIL "listener NOT loopback-only: $CHECK_BIND_DETAIL"
-    fi
+    _emit_check "$CHECK_BIND_STATUS" \
+        "listener bound loopback-only: $CHECK_BIND_DETAIL" \
+        "listener NOT loopback-only: $CHECK_BIND_DETAIL" \
+        "listener: $CHECK_BIND_DETAIL"
 
-    if [[ "$CHECK_CHAT_MODEL_STATUS" == "ok" ]]; then
-        print_status OK "chat model: $CHECK_CHAT_MODEL_DETAIL"
-    else
-        print_status FAIL "chat model: $CHECK_CHAT_MODEL_DETAIL"
-    fi
+    _emit_check "$CHECK_CHAT_MODEL_STATUS" \
+        "chat model: $CHECK_CHAT_MODEL_DETAIL" \
+        "chat model: $CHECK_CHAT_MODEL_DETAIL"
 
-    if [[ "$CHECK_CODER_MODEL_STATUS" == "ok" ]]; then
-        print_status OK "coder model: $CHECK_CODER_MODEL_DETAIL"
-    else
-        print_status FAIL "coder model: $CHECK_CODER_MODEL_DETAIL"
-    fi
+    _emit_check "$CHECK_CODER_MODEL_STATUS" \
+        "coder model: $CHECK_CODER_MODEL_DETAIL" \
+        "coder model: $CHECK_CODER_MODEL_DETAIL"
 
     if [[ "${QUICK:-0}" != "1" ]]; then
-        if [[ "$CHECK_CHAT_BENCH_STATUS" == "ok" ]]; then
-            print_status OK "chat bench: $CHECK_CHAT_BENCH_DETAIL"
-        else
-            print_status FAIL "chat bench: $CHECK_CHAT_BENCH_DETAIL"
-        fi
-        if [[ "$CHECK_CODER_BENCH_STATUS" == "ok" ]]; then
-            print_status OK "coder bench: $CHECK_CODER_BENCH_DETAIL"
-        else
-            print_status FAIL "coder bench: $CHECK_CODER_BENCH_DETAIL"
-        fi
+        _emit_check "$CHECK_CHAT_BENCH_STATUS" \
+            "chat bench: $CHECK_CHAT_BENCH_DETAIL" \
+            "chat bench: $CHECK_CHAT_BENCH_DETAIL"
+        _emit_check "$CHECK_CODER_BENCH_STATUS" \
+            "coder bench: $CHECK_CODER_BENCH_DETAIL" \
+            "coder bench: $CHECK_CODER_BENCH_DETAIL"
     fi
 
     echo
-    if [[ "$status" == "ok" ]]; then
-        print_success "AI-host LLM stack healthy"
-    else
-        print_error "AI-host LLM stack unhealthy — see checks above"
-    fi
+    case "$status" in
+        ok)
+            print_success "AI-host LLM stack healthy" ;;
+        blind)
+            print_error "CANNOT VERIFY — could not measure the LLM stack on ${AI_HOST_SSH} (this is 'could not look', not 'unhealthy')"
+            print_info  "recheck: fix the route (NWP_AI_HOST_SSH=<alias>) and re-run — the verdict clears on its own terms" ;;
+        *)
+            print_error "AI-host LLM stack unhealthy — see checks above" ;;
+    esac
 }
 
 emit_json() {
@@ -353,26 +405,24 @@ cmd_llm_health() {
         esac
     done
 
-    local overall=ok
-
-    check_systemd_active       || overall=fail
-    check_daemon_reachable     || overall=fail
-    check_loopback_only        || overall=fail
-    check_model_registered "$MODEL_CHAT"  CHAT  || overall=fail
-    check_model_registered "$MODEL_CODER" CODER || overall=fail
+    check_systemd_active       || true
+    check_daemon_reachable     || true
+    check_loopback_only        || true
+    check_model_registered "$MODEL_CHAT"  CHAT  || true
+    check_model_registered "$MODEL_CODER" CODER || true
 
     if [[ "$QUICK" != "1" ]]; then
         # Only run benchmarks if the daemon is up and the models are present;
         # otherwise they'll definitely fail and the output is noise.
         if [[ "$CHECK_DAEMON_STATUS" == "ok" && "$CHECK_CHAT_MODEL_STATUS" == "ok" ]]; then
-            benchmark_model "$MODEL_CHAT"  "$THRESHOLD_CHAT_TOKS"  CHAT  || overall=fail
+            benchmark_model "$MODEL_CHAT"  "$THRESHOLD_CHAT_TOKS"  CHAT  || true
         else
             CHECK_CHAT_BENCH_STATUS=skip
             CHECK_CHAT_BENCH_DETAIL="skipped (prereqs failed)"
             CHECK_CHAT_BENCH_RATE=0
         fi
         if [[ "$CHECK_DAEMON_STATUS" == "ok" && "$CHECK_CODER_MODEL_STATUS" == "ok" ]]; then
-            benchmark_model "$MODEL_CODER" "$THRESHOLD_CODER_TOKS" CODER || overall=fail
+            benchmark_model "$MODEL_CODER" "$THRESHOLD_CODER_TOKS" CODER || true
         else
             CHECK_CODER_BENCH_STATUS=skip
             CHECK_CODER_BENCH_DETAIL="skipped (prereqs failed)"
@@ -380,13 +430,35 @@ cmd_llm_health() {
         fi
     fi
 
+    # Overall verdict, three states (ops#383):
+    #   fail  — at least one check MEASURED something bad          → exit 1
+    #   blind — nothing measured bad, but ≥1 check could not look  → exit 2
+    #   ok    — every check measured, all good                     → exit 0
+    # A measured failure outranks blindness (the stack IS unhealthy, however
+    # much else we could not see); blindness outranks ok, because a verdict
+    # with an unmeasured check in it is not a pass (CLAUDE.md: never grade
+    # CANNOT VERIFY as green). Skipped benches count as neither.
+    local overall=ok s
+    for s in "$CHECK_SYSTEMD_STATUS" "$CHECK_DAEMON_STATUS" "$CHECK_BIND_STATUS" \
+             "$CHECK_CHAT_MODEL_STATUS" "$CHECK_CODER_MODEL_STATUS" \
+             "${CHECK_CHAT_BENCH_STATUS:-skip}" "${CHECK_CODER_BENCH_STATUS:-skip}"; do
+        case "$s" in
+            fail)  overall=fail; break ;;
+            blind) overall=blind ;;
+        esac
+    done
+
     if [[ "$json" == "1" ]]; then
         emit_json "$overall"
     else
         emit_human "$overall"
     fi
 
-    [[ "$overall" == "ok" ]]
+    case "$overall" in
+        ok)    return 0 ;;
+        blind) return 2 ;;
+        *)     return 1 ;;
+    esac
 }
 
 

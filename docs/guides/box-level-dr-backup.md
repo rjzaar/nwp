@@ -1,6 +1,6 @@
 # Box-level disaster recovery (`pl server backup`)
 
-**Status:** live on `live` since 2026-08-02 · **Implements:** [ADR-0025](../decisions/0025-production-backup-to-ver.md) · **Agent:** [ADR-0026](../decisions/0026-nwp-server-capability-agent.md)
+**Status:** live on `live` since 2026-08-02 · **Implements:** [NWP-ADR-0025](../decisions/0025-production-backup-to-ver.md) · **Agent:** [NWP-ADR-0026](../decisions/0026-nwp-server-capability-agent.md)
 
 ## What was missing
 
@@ -30,7 +30,7 @@ Two findings from building this, both recorded so they are not re-discovered:
 
 ## What it does
 
-`pl server backup <name>` is the control-host front door to the **ADR-0025** agent. It
+`pl server backup <name>` is the control-host front door to the **NWP-ADR-0025** agent. It
 does not carry data. It preflights headroom, then invokes `nwp-server backup --host` **on
 the box**, which writes an encrypted restic repository **local to the box**. A custodian
 (`ver`) later *pulls*. The box holds no credential that can delete the durable copy.
@@ -83,7 +83,7 @@ pl server backup live --schedule -y       # install it
 
 `--verify` proves **integrity**. `--restore-test` proves **recoverability** — it restores
 real files out of the archive and compares sha256 against what is still on the box, and
-restores one database dump and checks it is a complete `mysqldump`. ADR-0025 is explicit:
+restores one database dump and checks it is a complete `mysqldump`. NWP-ADR-0025 is explicit:
 a backup that has not been test-restored is not counted as a backup. Run the drill after
 any change to the tooling, and monthly regardless.
 
@@ -140,10 +140,10 @@ a site trashed by an upgrade, ransomware that encrypts webroots without finding
 
 - **Loss of the host.** The archive is on the disk it backs up. If the Linode is
   destroyed, the disk fails, or the account is lost, the archive goes with it. This is
-  by design — ADR-0025 puts the durable copy on `ver`, which **is not provisioned**. This
+  by design — NWP-ADR-0025 puts the durable copy on `ver`, which **is not provisioned**. This
   is the single biggest remaining gap and the reason the verb warns on every run.
 - **An attacker with root on the box.** `restic forget --prune` runs locally. Root can
-  delete the repo. The anti-ransomware property in ADR-0025 comes from the *pull* tier,
+  delete the repo. The anti-ransomware property in NWP-ADR-0025 comes from the *pull* tier,
   which does not exist yet.
 - **Anything after the last run.** RPO is 24 h (the 04:20 cron), not continuous.
 - **`/home`,** unless you pass `--extra-path=/home`.
@@ -159,7 +159,7 @@ a site trashed by an upgrade, ransomware that encrypts webroots without finding
    (`BOX=`), plus a decision about whether the stick pulls the raw restic repo (which
    would need the read-only `rrsync` jail widened from `/var/backups/nwp-pull` to
    `/var/backups`, or a second jailed key). Requires root on `met`.
-2. **Or provision `ver`** and run the real ADR-0025 pull leg, which is already written
+2. **Or provision `ver`** and run the real NWP-ADR-0025 pull leg, which is already written
    and harness-proven end to end (`pl ver-test`):
 
    ```bash
@@ -175,8 +175,8 @@ restorable — and not yet surviving loss of the box.**
 
 ## Related
 
-- [ADR-0025](../decisions/0025-production-backup-to-ver.md) — restic, custodian-pull, append-only
-- [ADR-0026](../decisions/0026-nwp-server-capability-agent.md) — the AI-free agent this extends
+- [NWP-ADR-0025](../decisions/0025-production-backup-to-ver.md) — restic, custodian-pull, append-only
+- [NWP-ADR-0026](../decisions/0026-nwp-server-capability-agent.md) — the AI-free agent this extends
 - `pl server health` — the preflight this verb refuses to skip
 - `pl server-state capture` — the git-tracked config inventory (complementary, not a backup)
 - `pl ver-test` — the throwaway-Linode harness that proves the full chain

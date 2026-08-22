@@ -25,7 +25,7 @@
 #      grade about one passage with a grade about another and report the result
 #      as disagreement.
 #   5. THE RIGHTS BOUNDARY IS ENFORCED, NOT REQUESTED. `nwp/nwp` is publicly
-#      mirrored (ADR-0039); the builder must refuse to write corpus excerpts
+#      mirrored (NWP-ADR-0039); the builder must refuse to write corpus excerpts
 #      into it.
 #   6. AT N=1 IT IS STILL P78'S INSTRUMENT. If the thresholds move when the
 #      panel arrives, they were not committed in advance.

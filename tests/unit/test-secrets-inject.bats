@@ -2,7 +2,7 @@
 # PL-STG2LIVE §6 P0-4 — `pl secrets inject`: registry-driven env-config +
 # cross-site token injection. These tests run fully OFFLINE: every case is
 # either --dry-run (no live write) or a fail-closed abort BEFORE any ssh.
-# Assertions prove the ADR-0017 invariant — key-paths are printed, values are
+# Assertions prove the NWP-ADR-0017 invariant — key-paths are printed, values are
 # NOT. Fixtures use obvious placeholder values (never token-shaped) so the
 # gitleaks pre-push stays green.
 

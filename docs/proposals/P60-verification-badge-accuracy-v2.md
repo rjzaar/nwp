@@ -230,7 +230,7 @@ pl verify stats  # Should match badge output
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| YAML corruption during bulk state update | Low | High | Use ADR-0009 five-layer protection for all writes |
+| YAML corruption during bulk state update | Low | High | Use NWP-ADR-0009 five-layer protection for all writes |
 | Badge regression (shows lower %) | Medium | Low | Expected — correct number will be lower but accurate |
 | Breaking verify.sh TUI display | Low | Medium | Test TUI after changes |
 

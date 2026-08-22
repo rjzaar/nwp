@@ -1,4 +1,4 @@
-# NWP nwp-server DR backup — per-site nightly timer (ADR-0032 Flow B).
+# NWP nwp-server DR backup — per-site nightly timer (NWP-ADR-0032 Flow B).
 # Instance = site name, e.g.  nwp-server-backup@ss.timer
 # Enable:  systemctl enable --now nwp-server-backup@ss.timer
 

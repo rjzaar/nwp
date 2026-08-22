@@ -86,7 +86,7 @@ _demo_clip_have_yq() {
 # caught on !436 (pipeline 2252, job 19405):
 #
 #     NEW AWK YAML PARSER: lib/demo-clip-survival.sh::demo_site_on_reset_path
-#     ERROR: 1 AWK YAML parser(s) introduced. Use yq instead (ADR-0015).
+#     ERROR: 1 AWK YAML parser(s) introduced. Use yq instead (NWP-ADR-0015).
 #
 # The lint was right about more than style. That awk read `provider: nwd  # note`
 # as the value `nwd` only by luck of field splitting, would have taken a quoted

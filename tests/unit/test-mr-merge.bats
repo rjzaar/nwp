@@ -33,12 +33,12 @@
 setup() {
     # PINNED TO TEAM MODE. This suite tests the two-person machinery — the Draft
     # hold, the release record, the sensitive-path refusal — and that machinery is
-    # switched OFF in solo mode (ADR-0037), which is what the estate now declares.
+    # switched OFF in solo mode (NWP-ADR-0037), which is what the estate now declares.
     # Pinning keeps these cases meaningful: team mode is disabled, NOT deleted, so
     # its tests must keep passing or the switch would arm onto untested code.
     export NWP_REVIEW_MODE=team
     # A HUMAN token. cmd_merge now refuses a bot, and refuses when it cannot tell
-    # (ADR-0037: "a machine never merges"). Unstubbed, _mr_token_user has no API to
+    # (NWP-ADR-0037: "a machine never merges"). Unstubbed, _mr_token_user has no API to
     # reach, returns rc 1, and every case here died on that refusal before reaching
     # its own assertion.
     _mr_token_user(){ printf 'a-human'; }
@@ -96,7 +96,7 @@ echo "$meth $path" >> "$CURL_LOG"
 emit() { printf '%s\n%s' "$1" "${2:-200}"; }     # body \n http_code (write-out)
 case "$meth $path" in
     # WHO AM I. cmd_merge refuses a bot token, and refuses when it cannot tell
-    # (ADR-0037: "a machine never merges"). This suite runs mr.sh as a SUBPROCESS,
+    # (NWP-ADR-0037: "a machine never merges"). This suite runs mr.sh as a SUBPROCESS,
     # so a bats function stub cannot reach it — the answer must come from the curl
     # stub like every other call. Default is a human; a case wanting the bot
     # refusal writes $STATE/whoami.json instead.
@@ -476,7 +476,7 @@ JSON
 }
 
 @test "REFUSES to merge when the token is a BOT — a machine never merges" {
-    # ADR-0037's cross-mode invariant, exercised through the real subprocess rather
+    # NWP-ADR-0037's cross-mode invariant, exercised through the real subprocess rather
     # than a function stub. Solo mode drops the Draft hold, so this refusal is what
     # stands between an armed automation and a merged MR.
     printf '%s' '{"username":"group_9_bot_53ae5a1df066ec501e8867f7276f66b1","bot":true}' > "$STATE/whoami.json"

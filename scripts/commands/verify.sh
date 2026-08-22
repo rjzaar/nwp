@@ -2605,7 +2605,7 @@ verification_freshness_days() {
 }
 
 # Every verified_at timestamp in the file, one per line.
-# yq, not awk — ADR-0015. `pl` reads YAML with yq; an AWK parser here would be
+# yq, not awk — NWP-ADR-0015. `pl` reads YAML with yq; an AWK parser here would be
 # the sixth in this file and lint:yq-first refuses new ones.
 _machine_verified_timestamps() {
     yq e '[.features[].checklist[]? | select(.machine.state.verified == true)
@@ -3265,7 +3265,7 @@ verify_cap_met() {
 # Explicit per-item override: `machine.requires` on one checklist item.
 # Prints nothing when the item carries no explicit tag.
 #
-# yq, not awk — ADR-0015 / lint:yq-first. The registry is YAML and `pl` reads
+# yq, not awk — NWP-ADR-0015 / lint:yq-first. The registry is YAML and `pl` reads
 # YAML with yq (see _machine_verified_timestamps above, lib/ci-stats.sh,
 # pl get_site_field). A hand-rolled indentation parser is exactly what that
 # gate exists to stop, and the .yq-first-baseline is shrink-only: a brand-new

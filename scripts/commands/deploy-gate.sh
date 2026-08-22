@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NWP Deploy Gate - status and self-test for the hardware+signature gate (ADR-0028/ops#79)
+# NWP Deploy Gate - status and self-test for the hardware+signature gate (NWP-ADR-0028/ops#79)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@ show_help() {
     cat << 'EOF'
 Usage: pl deploy-gate <command>
 
-Inspect and self-test the hardware+signature deploy gate (ADR-0028).
+Inspect and self-test the hardware+signature deploy gate (NWP-ADR-0028).
 The gate requires a live Solo touch (ed25519-sk signature verified against
 keys/allowed_signers) before any prod-write verb proceeds. It is a no-op
 until configured, so the AI test tier is unaffected.
@@ -54,7 +54,7 @@ EOF
 ################################################################################
 
 cmd_status() {
-    print_header "Deploy Gate Status (ADR-0028)"
+    print_header "Deploy Gate Status (NWP-ADR-0028)"
 
     local signers sk
     signers="$(_dg_allowed_signers)"

@@ -16,7 +16,7 @@
 # - Artifact management
 #
 # NOTE: Legacy deploy:staging / deploy:production jobs were deleted in
-# F24 Phase 3 Step 1 — see ADR-0017 (trust model) for rationale. The
+# F24 Phase 3 Step 1 — see NWP-ADR-0017 (trust model) for rationale. The
 # replacement build-artifact → verifier handoff is tracked in F28.
 
 stages:
@@ -189,7 +189,7 @@ lint:bash:
   tags:
     - nwp
 
-# yq-first enforcement (F36 A-C2 / ADR-0015). Refuses commits that reintroduce
+# yq-first enforcement (F36 A-C2 / NWP-ADR-0015). Refuses commits that reintroduce
 # AWK YAML parsers in pl, scripts/commands/, or lib/. yq is the sanctioned YAML
 # reader; AWK for non-YAML field extraction (du output, port parsing, printf
 # arithmetic) remains fine.
@@ -365,7 +365,7 @@ lint:leakage:
     - nwp
   allow_failure: false
 
-# Documentation-truth gate (P62 / ADR-0030). Runs `pl doc-truth`, which asserts
+# Documentation-truth gate (P62 / NWP-ADR-0030). Runs `pl doc-truth`, which asserts
 # the *structural* claims NWP docs make against the tree — every repo-relative
 # markdown link resolves, and every `ADR-NNNN` mention resolves to a real
 # docs/decisions file. Pre-existing rot is captured in `.doc-truth-baseline`
@@ -503,7 +503,7 @@ contracts:compat:
 
 # Unit tests (BATS)
 #
-# yq v4 is the sanctioned YAML reader (ADR-0015) and the unit suites for
+# yq v4 is the sanctioned YAML reader (NWP-ADR-0015) and the unit suites for
 # moodle-promote, pair-guard, boundary, sanitize-dispatch and delete-impact
 # exercise lib code that reads fixture YAML through it. Without yq those libs
 # fail closed (REFUSED) and 46 tests go red (ops#88).
@@ -1358,6 +1358,33 @@ verify:honesty:
 #       people to merge past a permanently red gate they cannot fix
 #       (the boundary:classify lesson, ops#165). Once the variable is set the
 #       amber disappears; a real finding still blocks.
+# lint:adr-namespace — an ADR reference must say WHICH series it means (ops#383).
+#
+# Three decision series wrote the same `ADR-NNNN` token: the engine's
+# docs/decisions/, each site profile repo's docs/decisions/, and a banded scheme
+# docs/onboarding/adrs.md invented for itself. Every integer 1-22 named at least
+# two decisions; 0020/0021/0022 named three each. `pl doc-truth`'s dead-adr check
+# resolved bare numbers against docs/decisions/ and reported GREEN on references
+# to documents in other repos.
+#
+# NO allow_failure and NO baseline, deliberately. Every other lint here carries a
+# shrink-only baseline because it makes a judgement that can misfire; this one
+# observes whether four characters are present. There is no false positive to
+# escape from, so an override would be theatre. Exit 2 (CANNOT VERIFY — corpus
+# unreadable, not a git checkout, zero files scanned) IS surfaced as an amber
+# non-pass, because "I could not look" must never render as a pass.
+lint:adr-namespace:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-adr-namespace.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+  allow_failure:
+    exit_codes: [2]
+
 lint:site-names:
   stage: lint
   script:

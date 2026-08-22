@@ -21,7 +21,7 @@ mkdir -p "${NWP_INSTANCES_DIR}"
 cat > "${MANIFEST}" <<'EOF'
 # nwp-instances/instance-manifest.yml — PRIVATE
 # Edit hostnames to match the operator's environment.
-# Role labels are stable (per ADR-0020); bindings are per-deployment.
+# Role labels are stable (per NWP-ADR-0020); bindings are per-deployment.
 
 roles:
   authoring:           [<authoring-host>]

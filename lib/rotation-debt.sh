@@ -145,7 +145,7 @@ rotation_debt_ids() {
 #   rc 1  REFUSE — an open rotation debt, or the registry could not be read
 #
 # Called by every path that brings a site up on PROD:
-#   · lib/deploy-gate.sh:deploy_gate_require   when target == prod  (ADR-0028;
+#   · lib/deploy-gate.sh:deploy_gate_require   when target == prod  (NWP-ADR-0028;
 #     covers pl stg2prod + pl live2prod + any future prod-write verb by
 #     construction, because they all pass through the one gate)
 #   · pl canonical set <site> prod             the moment a site BECOMES prod

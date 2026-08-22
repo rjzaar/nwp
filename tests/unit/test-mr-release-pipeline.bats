@@ -32,12 +32,12 @@
 setup() {
     # PINNED TO TEAM MODE. This suite tests the two-person machinery — the Draft
     # hold, the release record, the sensitive-path refusal — and that machinery is
-    # switched OFF in solo mode (ADR-0037), which is what the estate now declares.
+    # switched OFF in solo mode (NWP-ADR-0037), which is what the estate now declares.
     # Pinning keeps these cases meaningful: team mode is disabled, NOT deleted, so
     # its tests must keep passing or the switch would arm onto untested code.
     export NWP_REVIEW_MODE=team
     # A HUMAN token. cmd_merge now refuses a bot, and refuses when it cannot tell
-    # (ADR-0037: "a machine never merges"). Unstubbed, _mr_token_user has no API to
+    # (NWP-ADR-0037: "a machine never merges"). Unstubbed, _mr_token_user has no API to
     # reach, returns rc 1, and every case here died on that refusal before reaching
     # its own assertion.
     _mr_token_user(){ printf 'a-human'; }

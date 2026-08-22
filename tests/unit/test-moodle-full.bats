@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 ################################################################################
 # Unit tests for lib/sanitizers/moodle-full.sh — the atomic "full Moodle
-# sanitised artifact" orchestrator (ops#111 / ADR-0032 Flow A).
+# sanitised artifact" orchestrator (ops#111 / NWP-ADR-0032 Flow A).
 #
 # DOCKER-FREE, secret-free. The DB step (moodle.sh) needs a live DB, so we
 # inject a STUB DB sanitiser via NWP_MOODLE_DB_SANITIZER; the moodledata scrub

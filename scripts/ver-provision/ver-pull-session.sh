@@ -3,7 +3,7 @@ set -euo pipefail
 ################################################################################
 # ver-pull-session.sh — one supervised ONLINE SESSION on `ver`: bring up the 1:1
 # tunnel, unseal the keystore (token touch), drain prod's restic snapshots via
-# ver-backup-pull.sh, verify, then lock and go dark again (ADR-0025; ops#25).
+# ver-backup-pull.sh, verify, then lock and go dark again (NWP-ADR-0025; ops#25).
 #
 # `ver` is offline by default. This script is the ONLY sanctioned way it goes
 # online for backups, and it cleans up after itself fail-safe: the unsealed
@@ -19,7 +19,7 @@ set -euo pipefail
 #   e.g.  site1|sftp:backup@<prod-tunnel-ip>:/var/backups/nwp-server/site1|/srv/ver-backups/site1|raw
 # The 4th field is the data class (ops#127) and is MANDATORY — the session
 # fails closed on any line that omits or mis-declares it:
-#   raw        unsanitised user data (PII, ADR-0025). Gets a HARD erasure ceiling
+#   raw        unsanitised user data (PII, NWP-ADR-0025). Gets a HARD erasure ceiling
 #              (`ver-backup-pull --keep-within 30d`) so no RAW snapshot outlives
 #              the 30-day erasure promise. Optional per-source override: `raw:14d`.
 #   sanitized  no PII — keeps the tiered daily/weekly/monthly DR policy.

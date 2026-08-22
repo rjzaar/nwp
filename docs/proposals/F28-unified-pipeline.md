@@ -3,8 +3,8 @@
 **Status:** PROPOSED
 **Created:** 2026-04-12
 **Author:** Robert Karsten Zaar (with AI assistance)
-**Priority:** High (formal successor to F24 Phase 3; unblocks prod deploys under ADR-0017)
-**Depends On:** F21 Phase 2 (mirror-store runner) ✅, F21 Phase 5 (verifier bootstrap — tooling complete, hardware token pending), [ADR-0024](../decisions/0024-self-deploying-prod-supersedes-verifier.md) (deploy-authority posture — supersedes the withdrawn ADR-0019 this proposal originally cited), F23 (site layout) ✅
+**Priority:** High (formal successor to F24 Phase 3; unblocks prod deploys under NWP-ADR-0017)
+**Depends On:** F21 Phase 2 (mirror-store runner) ✅, F21 Phase 5 (verifier bootstrap — tooling complete, hardware token pending), [NWP-ADR-0024](../decisions/0024-self-deploying-prod-supersedes-verifier.md) (deploy-authority posture — supersedes the withdrawn NWP-ADR-0019 this proposal originally cited), F23 (site layout) ✅
 **Breaking Changes:** Yes — replaces the deleted legacy `deploy:staging` / `deploy:production` CI stages (see commits `24baecd`, `05d181a`, `4bb1264`)
 **Estimated Effort:** Large — this is the load-bearing spine of the distributed pipeline; phased over weeks
 
@@ -16,7 +16,7 @@
 
 As of commit `faf98b6`, NWP no longer has a deploy path in CI. The
 legacy `deploy:staging` / `deploy:production` jobs were deleted
-(F24 Phase 3 Step 1) because they violated ADR-0017's trust model
+(F24 Phase 3 Step 1) because they violated NWP-ADR-0017's trust model
 — they ran on CI runners that were AI-accessible, with SSH keys
 that could reach prod. The fix was to remove them now, before they
 were used under the new threat model, rather than leave a wired-up
@@ -48,7 +48,7 @@ A three-hop pipeline where the only trust-inversion happens
   ┌─────────────────────────────┐   ┌────────────────────────────┐
   │          build-tier                │   │          verifier              │
   │ (mirror-store + ai-host, dev, CI)       │   │ (offline-default laptop,    │
-  │                             │   │  Solo 2C+, per ADR-0019)   │
+  │                             │   │  Solo 2C+, per NWP-ADR-0019)   │
   │ build → test → sanitize →  │   │                            │
   │ sign artifact → upload to  │──>│ pull from Packages API →   │
   │ GitLab Packages            │   │ minisign verify → bring up │
@@ -94,7 +94,7 @@ Key design properties:
    the inversion of the deleted `deploy:production` job and is the
    whole point of F28.
 
-### 1.3 Relationship to F24, F21, F26, F27, ADR-0017, ADR-0019
+### 1.3 Relationship to F24, F21, F26, F27, NWP-ADR-0017, NWP-ADR-0019
 
 - **F24** identified the need and executed the *deletion* half
   (Phase 3 Step 1, merged). F28 is the *construction* half. F24 is
@@ -107,9 +107,9 @@ Key design properties:
   Packages API primitive in the *reverse* direction (prod → build-tier).
   F26's per-MR preview provisioning lives entirely on build-tier and
   never triggers an F28 deploy, but shares the CI job definitions.
-- **ADR-0017** is the trust model F28 implements. If F28 contradicts
-  ADR-0017, F28 is wrong.
-- **ADR-0019** changes verifier's posture from "offline by default" to
+- **NWP-ADR-0017** is the trust model F28 implements. If F28 contradicts
+  NWP-ADR-0017, F28 is wrong.
+- **NWP-ADR-0019** changes verifier's posture from "offline by default" to
   "always-on with hardware-rooted keys". F28 respects both postures
   — the always-on property means verifier can *poll* for bundles rather
   than needing the operator to physically open it, but the hardware-token
@@ -227,7 +227,7 @@ signed bundles — its artifacts live only on mirror-store, never go to
 ### 3.3 The verifier pull + verify + deploy
 
 `pl deploy` on verifier (superseding the placeholder script referenced
-in ADR-0019 § Deploy script changes) does, in order:
+in NWP-ADR-0019 § Deploy script changes) does, in order:
 
 1. **List available bundles** for a given site by calling the
    GitLab Packages API with a *read-only* token. This token is
@@ -250,7 +250,7 @@ in ADR-0019 § Deploy script changes) does, in order:
 7. **Bring up the WireGuard tunnel** to the target prod host.
    The tunnel config is static on verifier (installed at bootstrap);
    `wg-quick up` requires a second touch because the WG private
-   key is gated behind `pam_u2f` (ADR-0019 alternative to
+   key is gated behind `pam_u2f` (NWP-ADR-0019 alternative to
    on-disk-key).
 8. **SSH to prod** over the tunnel, copy the bundle, run
    `scripts/pre-deploy.sh`, `scripts/apply.sh`, and
@@ -473,8 +473,8 @@ publish:bundle:
 
 ## 8. References
 
-- [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
-- [ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md) — verifier posture + deploy client forms
+- [NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
+- [NWP-ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md) — verifier posture + deploy client forms
 - [F21](F21-distributed-build-deploy-pipeline.md) — infrastructure (Headscale, mirror-store runner, verifier bootstrap, sanitizer)
 - [F24](F24-relocate-dev-tree-to-mirror-store.md) — F28 supersedes its Phase 3 for forward design
 - [F26](F26-avc-ss-oidc.md) — cross-site consumer; uses F28 bundles for prod cut-over

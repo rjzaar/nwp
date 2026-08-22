@@ -201,7 +201,7 @@ Read [the playbook](docs/zz-no-such-target.md) first.'
     # The instruction printed while a LIVE SITE IS DARK is the one that trains
     # the reflex. Eight call sites across stg2live/live2prod/stg2prod told the
     # operator to "Fix on the host: sudo -u www-data … drush … sset
-    # system.maintenance_mode 0", bypassing the dry-run default, the ADR-0028
+    # system.maintenance_mode 0", bypassing the dry-run default, the NWP-ADR-0028
     # deploy gate, the live.enabled flag and the rollback ledger.
     #
     # lib/moodle-deploy.sh already does it right ("Recover: pl moodle rollback
@@ -266,7 +266,7 @@ Read [the playbook](docs/zz-no-such-target.md) first.'
 #     Status-less ADR ran GREEN, rc=0 — while the real tree had two 0032-*.md
 #     files coexisting since 2026-08-06 (0032-non-prod-data-refresh vs
 #     0032-review-mode-follows-approvers, renumbered to 0037 in this MR) and
-#     ADR-0034 carried its status as a `- **Status:**` list item that ops#318
+#     NWP-ADR-0034 carried its status as a `- **Status:**` list item that ops#318
 #     recorded as "no Status line at all".
 #
 #   * MEMORY — `--memory` did not exist while the injected auto-memory's
@@ -311,8 +311,8 @@ _fixture_tree() {
 @test "doc-truth: a duplicated ADR number is drift (adr-dup)" {
     _fixture_tree
     mkdir -p "${FIX}/docs/decisions"
-    printf '# ADR-0001: a\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-first.md"
-    printf '# ADR-0001: b\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-second.md"
+    printf '# NWP-ADR-0001: a\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-first.md"
+    printf '# NWP-ADR-0001: b\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-second.md"
     run env PROJECT_ROOT="$FIX" "$DT"
     [ "$status" -eq 1 ]
     echo "$output" | grep 'adr-dup' | grep -q '0001'
@@ -324,7 +324,7 @@ _fixture_tree() {
     # to every Status-grep in the estate (ops#318: "no Status line at all").
     _fixture_tree
     mkdir -p "${FIX}/docs/decisions"
-    printf '# ADR-0002: x\n\n- **Status:** Proposed (list-item shape)\n' > "${FIX}/docs/decisions/0002-liststatus.md"
+    printf '# NWP-ADR-0002: x\n\n- **Status:** Proposed (list-item shape)\n' > "${FIX}/docs/decisions/0002-liststatus.md"
     run env PROJECT_ROOT="$FIX" "$DT"
     [ "$status" -eq 1 ]
     echo "$output" | grep 'adr-status' | grep -q '0002-liststatus.md'
@@ -334,7 +334,7 @@ _fixture_tree() {
 @test "doc-truth: two Status lines are as wrong as none (correction-by-accretion)" {
     _fixture_tree
     mkdir -p "${FIX}/docs/decisions"
-    printf '# ADR-0003: y\n\n**Status:** Proposed\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0003-double.md"
+    printf '# NWP-ADR-0003: y\n\n**Status:** Proposed\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0003-double.md"
     run env PROJECT_ROOT="$FIX" "$DT"
     [ "$status" -eq 1 ]
     echo "$output" | grep 'adr-status' | grep -q '2-status-lines'
@@ -343,8 +343,8 @@ _fixture_tree() {
 @test "doc-truth: well-formed ADRs are not drift (over-fire guard)" {
     _fixture_tree
     mkdir -p "${FIX}/docs/decisions"
-    printf '# ADR-0001: a\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-only.md"
-    printf '# ADR-0002: b\n\n**Status:** Superseded by ADR-0001\n' > "${FIX}/docs/decisions/0002-only.md"
+    printf '# NWP-ADR-0001: a\n\n**Status:** Accepted\n' > "${FIX}/docs/decisions/0001-only.md"
+    printf '# NWP-ADR-0002: b\n\n**Status:** Superseded by NWP-ADR-0001\n' > "${FIX}/docs/decisions/0002-only.md"
     run env PROJECT_ROOT="$FIX" "$DT"
     [ "$status" -eq 0 ]
 }

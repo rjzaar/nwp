@@ -3,7 +3,7 @@
 # Copy this file to your operator instance directory (per F33):
 #   $HOME/nwp-instances/_global/nwp.yml
 #
-# This template is **schema-v3** (per ADR-0020 + F32 Phase A). The schema
+# This template is **schema-v3** (per NWP-ADR-0020 + F32 Phase A). The schema
 # is enforced by `lib/schema/nwp_yml_v3.json` and validated on every
 # `pl tier validate-config` run plus every CI build.
 #
@@ -110,7 +110,7 @@ sites:
     #          deploys still flow via `pl stg2live --code-only`).
     #   prod — prod is the source; live/dev are downstream sanitized copies;
     #          code work is branch-only with a protected CI-gated main
-    #          (ADR-0024).
+    #          (NWP-ADR-0024).
     # Default when absent: dev (today's behavior). Change phases with an
     # explicit operator action — `pl canonical set <site> <phase>` — which
     # records canonical_set_by/canonical_set_at here and appends to the
@@ -124,7 +124,7 @@ sites:
     # typed confirmation). Invalid pairs with canonical are refused.
     # maturity: incubating
     #
-    # Site CLASS (ADR-0036/ops#153) — the THIRD axis. canonical says where
+    # Site CLASS (NWP-ADR-0036/ops#153) — the THIRD axis. canonical says where
     # content is true, maturity says how carefully code moves; class says what
     # the site IS, and therefore which DATA invariants bind it:
     #   member-paired      real members; identity+consent from a paired provider
@@ -166,7 +166,7 @@ sites:
     avc_integration:
       avc_site: example-drupal # link by site key, not domain
       default_role: student
-    # Paired-site link (ADR-0031). `paired_with` names the PROVIDER SITE KEY as a
+    # Paired-site link (NWP-ADR-0031). `paired_with` names the PROVIDER SITE KEY as a
     # BARE SCALAR — never a map, never a URL. The provider's endpoint URL belongs
     # in the pair contract's endpoints.<tier>.issuer (and, for Moodle consumers,
     # oauth2.provider_url); a map here cannot name a site, so pair_guard treats it
@@ -215,7 +215,7 @@ sites:
       support_email: support@<example-mail-domain>
       support_name: "Example LMS Support"
       noreply_address: example-moodle@<example-mail-domain>
-    # ── Moodle promotion substrate (ADR-0031 D8 / ops D) ──────────────────────
+    # ── Moodle promotion substrate (NWP-ADR-0031 D8 / ops D) ──────────────────────
     # Per-tier values the Moodle settings-writer (lib/moodle-promote.sh, via
     # `pl moodle-promote`) uses to rewrite config.php when this site is promoted
     # to a NON-canonical tier. Only dev/stg/test are written — a live/prod Moodle
@@ -250,7 +250,7 @@ sites:
         client_secret_source: "moodle.example-moodle.oauth.client_secret" # get_data_secret path
         enabled: false # operator flips true after provisioning the secret
         # ---------------------------------------------------------------------------
-        # PAIRED SITES (ADR-0031 / ops#75) — nwc↔ssc (real) and nwd↔ssd (demo twins)
+        # PAIRED SITES (NWP-ADR-0031 / ops#75) — nwc↔ssc (real) and nwd↔ssd (demo twins)
         #
         # NWP runs paired sites across two stacks coupled by OAuth2/OIDC SSO,
         # copyright-policy sync and a feedback bridge:
@@ -429,7 +429,7 @@ sites:
 # === TIER 4 — adds verifier (offline signed-deploy, prod-trust) ================
 #
 # Tier 4 introduces the only host that ever reaches prod: the verifier.
-# It runs the separately-built `nwp-verifier` binary (per ADR-0022), is
+# It runs the separately-built `nwp-verifier` binary (per NWP-ADR-0022), is
 # air-gapped except for a single outbound WireGuard tunnel, and holds
 # the hardware-rooted signing key. No AI ever touches the verifier.
 #

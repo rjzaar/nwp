@@ -2,11 +2,11 @@
 set -uo pipefail
 ################################################################################
 # nwp-server publish — snapshot → sanitize → fail-closed PII gate → publish the
-# sanitized artifact to THIS host's OWN repo (ADR-0024 "publish" capability).
+# sanitized artifact to THIS host's OWN repo (NWP-ADR-0024 "publish" capability).
 #
 # This REPLACES the old wiring where the `publish` verb pointed at the build-tier
 # registry uploader (scripts/commands/publish.sh) — which required a full-`api`
-# GitLab PAT on prod and never ran the PII gate, violating the ADR-0024 three-key
+# GitLab PAT on prod and never ran the PII gate, violating the NWP-ADR-0024 three-key
 # ledger. This capability instead:
 #   1. runs the site's sanitizer (lib/sanitizers/<site>.sh, mayo.sh model): dumps
 #      the LIVE DB read-only into a throwaway scratch copy, sanitises the scratch
@@ -89,7 +89,7 @@ fi
 perms="$(stat -c '%a' "$TOKEN_FILE" 2>/dev/null || echo '')"
 case "$perms" in 600|400|'') : ;; *) print_warning "token file $TOKEN_FILE is $perms — expected 600/400" ;; esac
 
-# Stack detection (ADR-0032 Flow A): a Moodle root carries version.php and its
+# Stack detection (NWP-ADR-0032 Flow A): a Moodle root carries version.php and its
 # sanitizer (<site>.sh → moodle-full.sh) emits a .tar.gz BUNDLE {db.sql.gz, manifest};
 # a Drupal site emits a plain .sql.gz dump. The extension + gate method follow.
 if [ -f "$SITE_DIR/version.php" ]; then

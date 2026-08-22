@@ -13547,7 +13547,7 @@ features:
     name: Documentation-Truth Gate (doc-truth.sh)
     description: P62 structural documentation-truth gate — asserts every repo-relative
       markdown link and every ADR-NNNN reference resolves against the tree; baseline-safe
-      (fails only on NEW drift). Wired into CI as lint:doc-truth (ADR-0030).
+      (fails only on NEW drift). Wired into CI as lint:doc-truth (NWP-ADR-0030).
     files:
     - scripts/commands/doc-truth.sh
     checklist:

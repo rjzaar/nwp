@@ -2,6 +2,46 @@
 
 This directory contains Architecture Decision Records (ADRs) documenting significant technical and process decisions made for the NWP project.
 
+## Cite these as `NWP-ADR-NNNN` (ops#383)
+
+**This is the ENGINE series.** It is not the only ADR series in the estate: each
+site-profile repo keeps its own `docs/decisions/`, also numbered from 0001, and
+those numbers collide with these ones head-on. Before the prefix existed, every
+integer 1–22 named at least two different decisions and 0020/0021/0022 named
+three each — 0020 was simultaneously *tiered architecture model* (here), a guild
+decision (profile) and *editorial state machine* (an invented banded scheme). A
+bare reference resolved against this directory and reported green while naming a
+document its author had never read.
+
+So a reference must say which series it means. The prefix is the series' short
+code, uppercased:
+
+| Prefix | Series | Lives in |
+|--------|--------|----------|
+| `NWP-ADR-NNNN` | engine decisions — **this directory** | the engine repo, `docs/decisions/` |
+| `<CODE>-ADR-NNNN` | that site profile's decisions | the profile's own repo, `profiles/custom/<code>/docs/decisions/` |
+
+Per [NWP-ADR-0039](0039-instance-state-in-private-overlay-repos.md) the engine
+repo is publicly mirrored and does not name private instances, so the profile
+short codes are not enumerated here. The set the tooling accepts is declared in
+one place — `ADR_NAMESPACES` in `scripts/ci/lint-adr-namespace.sh` — and adding
+a code there is the deliberate act of declaring that a new decision series
+exists and that this repo may cite it.
+
+**Numbers were NOT reassigned and never will be.** `NWP-ADR-0017` is the same
+document `ADR-0017` always was; only the prefix is new. <!-- adr-namespace:literal -->
+Renumbering would have
+invalidated every citation in every issue, MR and transcript in the estate —
+Nygard's rule, and the reason this fix is additive.
+
+Filenames keep the bare `NNNN-slug.md` form, because they are already
+unambiguous: the directory they sit in *is* the namespace.
+
+Enforced by `lint:adr-namespace` (`scripts/ci/lint-adr-namespace.sh`), which
+fails on any bare `ADR-NNNN` in a tracked markdown file. It has no baseline and
+no override — a reference either carries a prefix or it does not — and exits 2
+CANNOT VERIFY if it cannot read the corpus.
+
 ## What is an ADR?
 
 An Architecture Decision Record captures a decision that has significant impact on the project's architecture, development process, or contributor workflow. ADRs help:
@@ -62,6 +102,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Accepted (ratified by operator 2026-07-18, nwp/ops#95) |
 | [0030](0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes + impact/fate-manifest contract | 2026-07-09 | Accepted (ratified 2026-07-18, nwp/ops#95); supersedes 0013 (ops#33 `canonical:` + P67 `maturity:` + ops#47 `lib/impact.sh`) |
 | [0032](0032-non-prod-data-refresh-and-file-store.md) | Non-prod data refresh & file store (Flow B) | 2026-07-23 | Accepted (2026-07-23) — implementation merged to `main`; live host validation still outstanding (nwp/ops#120) |
+| [0033](0033-console-multi-tenant-projects.md) | NWP Console multi-tenancy — projects, the Scope choke point, and what it is NOT | 2026-07-26 | Accepted (2026-07-26, operator) |
 | [0034](0034-paired-restore-identity-invariant-enforcement.md) | Paired-restore identity invariant — enforcement | 2026-07-28 | Proposed (nwp/ops#83) — amends 0031 D9: unrecorded counterpart position is CANNOT-VERIFY and refuses; adds the paired-checkpoint "both" branch |
 | [0035](0035-erasure-propagation-op-to-rp.md) | Erasure propagation nwc (OP) → ss/ssc (RP) | 2026-07-28 | **Proposed** — bespoke signed channel over the P74 contract machinery, not OpenID Provider Commands (draft-02); staged path with the operator runbook as the standing fallback (nwp/ops#81) |
 | [0037](0037-review-mode-follows-approvers.md) | Review mode follows `approvers:` — one reviewer today, two when there are two | 2026-08-06 | Accepted (renumbered from a duplicate 0032, 2026-08-09, nwp/ops#319) |
@@ -86,7 +127,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 
 | ADR | Title | Note |
 |-----|-------|------|
-| [0014](0014-git-hooks-documentation-enforcement.md) | Git hooks for documentation enforcement | Never installed in practice; superseded-in-intent by **P62 `pl doc-truth`** (baseline-safe CI gate `lint:doc-truth`, see ADR-0030) |
+| [0014](0014-git-hooks-documentation-enforcement.md) | Git hooks for documentation enforcement | Never installed in practice; superseded-in-intent by **P62 `pl doc-truth`** (baseline-safe CI gate `lint:doc-truth`, see NWP-ADR-0030) |
 
 ## Proposed (not yet accepted)
 

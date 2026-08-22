@@ -23,7 +23,7 @@ reads until the next audit. There is no channel that:
   leaving the site,
 - lets prod ship that report back to the dev environment with
   enough metadata to reproduce,
-- preserves ADR-0017's trust posture — no AI-accessible host may
+- preserves NWP-ADR-0017's trust posture — no AI-accessible host may
   hold a credential that reaches prod, and the verifier boundary is
   inviolable in *both* directions.
 
@@ -59,9 +59,9 @@ alternatives considered and rejected were:
 
 Option (i) keeps prod strictly *outbound HTTPS* and keeps all
 ingestion logic on the mirror-store, where AI access is already permitted under
-ADR-0017.
+NWP-ADR-0017.
 
-### 1.3 Relationship to F28, F25, ADR-0017
+### 1.3 Relationship to F28, F25, NWP-ADR-0017
 
 F27 is a *consumer* of the F28 handoff shape (signed artifacts
 travelling through GitLab Packages) applied in the reverse
@@ -186,7 +186,7 @@ reports from the same user without knowing who they are.
 
 ### 4.1 Prod → dev trust boundary
 
-F27 respects ADR-0017 by having prod *write to a public-HTTPS
+F27 respects NWP-ADR-0017 by having prod *write to a public-HTTPS
 endpoint* rather than *open a port*. The path from prod looks
 identical to any outbound HTTPS call Drupal already makes (composer
 update, update.php, etc.). No new inbound surface on prod, no new
@@ -290,7 +290,7 @@ raise the review gate from 1 approver to 2, per § 4.4.
 
 ## 7. References
 
-- [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
+- [NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
 - [F21](F21-distributed-build-deploy-pipeline.md) — mirror-store runner infrastructure
 - [F25](F25-mayo-nwp-integration.md) — mayo integration (first tenant)
 - [F28](F28-unified-pipeline.md) — signed-artifact handoff shape (shared with F27)

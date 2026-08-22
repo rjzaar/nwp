@@ -1,4 +1,4 @@
-# ADR-0009: Five-Layer YAML Protection System
+# NWP-ADR-0009: Five-Layer YAML Protection System
 
 **Status:** Accepted
 **Date:** 2026-01-14 (formalized after incident 2026-01-13)
@@ -476,9 +476,9 @@ settings:
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - Established YAML as single source of truth
-- **ADR-0003: Bash for Automation Scripts** - Bash limitations necessitate extra safety
-- **ADR-0015: YAML-First with AWK Fallback Pattern** (pending) - yq vs AWK trade-offs
+- **NWP-ADR-0002: YAML-Based Configuration** - Established YAML as single source of truth
+- **NWP-ADR-0003: Bash for Automation Scripts** - Bash limitations necessitate extra safety
+- **NWP-ADR-0015: YAML-First with AWK Fallback Pattern** (pending) - yq vs AWK trade-offs
 
 ## Lessons Learned
 

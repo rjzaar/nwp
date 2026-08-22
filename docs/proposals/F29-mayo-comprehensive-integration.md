@@ -291,7 +291,7 @@ mv ~/nwp/sites/mayo/scripts/setup-safety-email.sh \
    ~/nwp/sites/mayo/dev/scripts/
 ```
 
-2.4. Create `sites/mayo/dev/README.md` — what mayo/mayo is, how to clone + install, links to NWP and ADR-0017.
+2.4. Create `sites/mayo/dev/README.md` — what mayo/mayo is, how to clone + install, links to NWP and NWP-ADR-0017.
 
 2.5. Initialize git:
 ```bash

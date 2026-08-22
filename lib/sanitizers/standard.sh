@@ -5,7 +5,7 @@ set -euo pipefail
 _STD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_STD_DIR/../prod-guard.sh"
 # Shared-salt OIDC email hash so a paired Drupal site's fake emails MATCH the
-# Moodle side's, preserving the cross-stack SSO join (ADR-0032). Optional: only
+# Moodle side's, preserving the cross-stack SSO join (NWP-ADR-0032). Optional: only
 # used when a salt is available (a non-paired Drupal site falls back to positional).
 source "$_STD_DIR/oidc-email.sh"
 ################################################################################

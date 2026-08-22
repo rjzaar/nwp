@@ -1,11 +1,11 @@
-# ADR-0024: Self-Deploying Prod via Linode-Resident Runner (supersedes the verifier deploy model)
+# NWP-ADR-0024: Self-Deploying Prod via Linode-Resident Runner (supersedes the verifier deploy model)
 
-> **Reconciliation note (2026-07-02, nwp/ops#28).** A second, duplicate ADR-0024
+> **Reconciliation note (2026-07-02, nwp/ops#28).** A second, duplicate NWP-ADR-0024
 > existed (`0024-self-deploying-prod-agent.md`, the `nwp-server` agent). By
 > operator decision it has been renumbered to
-> [ADR-0026](0026-nwp-server-capability-agent.md) and re-scoped as the
-> **`nwp-server` AI-free capability agent**. **This file is canonical ADR-0024
-> and canonical for production deploy authority**; ADR-0026 governs the agent's
+> [NWP-ADR-0026](0026-nwp-server-capability-agent.md) and re-scoped as the
+> **`nwp-server` AI-free capability agent**. **This file is canonical NWP-ADR-0024
+> and canonical for production deploy authority**; NWP-ADR-0026 governs the agent's
 > capability set (pull+verify, apply/rollback, sanitized publish, backup,
 > status) and its three-key credential ledger.
 
@@ -17,14 +17,14 @@ part of the runner-resident deploy path may carry authority until **all three**
 land: the linchpin (token downscope to Developer-only / `read_repository`),
 WebAuthn enrolment for the operator's forge account, and the protected
 `prod-deploy` runner. Until then, real user-facing production deploys remain
-gated by the offline deploy host + hardware token (ADR-0017).
+gated by the offline deploy host + hardware token (NWP-ADR-0017).
 
 > **Amendment — 2026-07-18 (nwp/ops#52, verify-then-apply).** The runner-resident
 > deploy step is **verify-then-apply**, NOT a bare `git pull`: the ▶ job invokes
 > the `nwp-server` pull/apply path (`server-pull` / `server-apply`), which
 > minisign-verifies the signed bundle **at the box** (`lib/bundle-verify.sh`,
 > fail-closed) before applying. A GitLab/ref compromise that rewrites a ref
-> without a valid signature is then rejected locally — restoring ADR-0017's
+> without a valid signature is then rejected locally — restoring NWP-ADR-0017's
 > "trust flows through signatures, not machines" property to the routine prod
 > path (SLSA verify-at-consumption). The "fixed `git pull <ref>` + `pl stg2live`"
 > wording in Option 3 below is superseded by this step.
@@ -33,27 +33,27 @@ gated by the offline deploy host + hardware token (ADR-0017).
 > (Claude Code) **deploy authority to the LIVE TEST tier** (the shared test box) — on the basis
 > that these are **test sites, not real production**. Consistent with the threat model's "AI blast
 > radius = dev/stg/live". **Unchanged:** any real user-facing production tier remains **gated by
-> the offline deploy host + hardware token** per ADR-0017; this grant does NOT extend AI write
+> the offline deploy host + hardware token** per NWP-ADR-0017; this grant does NOT extend AI write
 > access to that boundary. Scope: the test fleet only.
 
 **Date:** 2026-06-25 (accepted 2026-06-28; test-tier deploy authority granted 2026-07-01)
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) (amends its deploy-authority half), [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) (**supersedes, before implementation**), [ADR-0004](0004-two-tier-secrets-architecture.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md), [F28](../proposals/F28-unified-pipeline.md); reeval `07-PIPELINE-EXPLAINER §9–§10`, `08-VISION…CONTROL-PLANE Part III-A & IV`, `09-PROGRESS §3`; decision A14.
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (amends its deploy-authority half), [NWP-ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) (**supersedes, before implementation**), [NWP-ADR-0004](0004-two-tier-secrets-architecture.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md), [F28](../proposals/F28-unified-pipeline.md); reeval `07-PIPELINE-EXPLAINER §9–§10`, `08-VISION…CONTROL-PLANE Part III-A & IV`, `09-PROGRESS §3`; decision A14.
 
 > **0023 is reserved** for the AI Confidentiality Boundary (P67); this ADR takes 0024.
 
 ## Context
 
-ADR-0017 established a **verifier** as the sole prod-writer:
+NWP-ADR-0017 established a **verifier** as the sole prod-writer:
 an AI-free host that verifies minisign signatures and deploys to prod.
-ADR-0019 (Proposed, never implemented) revised the verifier to be always-on
+NWP-ADR-0019 (Proposed, never implemented) revised the verifier to be always-on
 with prod keys on a Solo 2C+ hardware token, touch-per-deploy — to fix the
 "critical Drupal patch drops while operator is travelling" latency problem.
 
 Two things have since clarified the design (reeval 07 §8–§10, 09 §3):
 
-1. **The operator's actual aim is phone approval of updates.** ADR-0019 tried
+1. **The operator's actual aim is phone approval of updates.** NWP-ADR-0019 tried
    to satisfy this with "phone-as-deploy-client" (its *Deploy client forms* §3:
    phone runs an SSH client + Headscale + taps the Solo via NFC to authorise an
    `ed25519-sk` SSH deploy). On closer inspection this hardware path is weak:
@@ -77,7 +77,7 @@ physical token touch on a deploy host" to "the right to merge to protected main
 
 ## Options Considered
 
-### Option 1: Hardware-token verifier (ADR-0017 + ADR-0019 as written)
+### Option 1: Hardware-token verifier (NWP-ADR-0017 + NWP-ADR-0019 as written)
 An AI-free always-on verifier holds the prod key on a Solo 2C+; deploys
 require a per-use touch; the phone deploys via NFC+SSH (form 3).
 - **Pros:** offline signature re-verification — a compromised GitLab *cannot*
@@ -125,14 +125,14 @@ trigger a production deploy is **the right to merge to protected main and/or run
 the manual ▶ job in GitLab**, gated by WebAuthn (the Solo 2C+ as authenticator).
 **No prod-write credential exists on any machine off the prod box.**
 
-**ADR-0019 is Superseded (before implementation) by this ADR.** The always-on
+**NWP-ADR-0019 is Superseded (before implementation) by this ADR.** The always-on
 hardware-token verifier is not built. **the verifier host is held in reserve as the high-
 stakes escalation** (see triggers below), not as the default deploy path.
 
-**This amends ADR-0017's deploy-authority half:** "the verifier is the sole
+**This amends NWP-ADR-0017's deploy-authority half:** "the verifier is the sole
 prod-writer" → "prod is its own deployer; trust still flows through review +
 protected-merge + CI gates, and no off-box host holds a prod credential." The
-following ADR-0017/0019 properties **remain inviolable**:
+following NWP-ADR-0017/0019 properties **remain inviolable**:
 - **No AI on the prod-write path.** The runner executes a fixed, non-AI script;
   no agent, no LLM, no Claude session may trigger or alter a prod deploy.
 - **No prod reachability from any AI-capable host.** no AI host holds a
@@ -185,7 +185,7 @@ that *removes* prod credentials everywhere beats the more complex model that
 defeating a compromised git server) is real but is a **higher-stakes** defence;
 it is recorded as an escalation, not discarded as wrong.
 
-The intent↔execution gap that worried ADR-0019 is closed *better* here than by a
+The intent↔execution gap that worried NWP-ADR-0019 is closed *better* here than by a
 screenless token: the operator approves a **specific reviewed diff** and the
 runner deploys **that exact merged commit** — there is no opaque "the host asked
 for X, you thought it was Y" step. And it finally makes the operator's real aim —
@@ -231,9 +231,9 @@ linchpin — is forbidden, as it would let an AI-host token deploy):
       the GitLab PWA); the job deploys only the merged ref, logs the SHA+target,
       and pushes a signed deploy-audit record to the `ctl`/GitLab audit ledger.
 - [ ] End-to-end test from the phone with a trivial change.
-- [ ] Update `ADR-0019` status → Superseded by ADR-0024; update CLAUDE.md
+- [ ] Update `NWP-ADR-0019` status → Superseded by NWP-ADR-0024; update CLAUDE.md
       Distributed Actor Glossary (the verifier host → "reserve / escalation only"; add the
-      prod-deploy runner + linchpin); record the ADR-0017 deploy-authority
+      prod-deploy runner + linchpin); record the NWP-ADR-0017 deploy-authority
       amendment in its header.
 - [ ] Pair with K2a (wire nwd as the CC0 approval surface) so the approval flow
       has something real to exercise.
@@ -244,6 +244,6 @@ linchpin — is forbidden, as it would let an AI-host token deploy):
 host)? Has a phone-approved deploy run end-to-end? Is the runner restricted to
 the fixed deploy job? Has a GitLab SA been treated as a top-tier patch?
 **Review outcome:** Pending
-**Rollback / escalation:** if any escalation trigger fires, build the ADR-0019
+**Rollback / escalation:** if any escalation trigger fires, build the NWP-ADR-0019
 verifier (the Solo tokens are already in hand) and move prod authority back
 off-GitLab.

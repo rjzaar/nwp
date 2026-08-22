@@ -276,7 +276,7 @@ EOF
 
 # ---- 4. ADR status inventory -------------------------------------------------
 # Cheap, local, and the source of a live falsehood: the injected document called
-# ADR-0024 "Proposed" in its body and "ACCEPTED" in a banner three screens
+# NWP-ADR-0024 "Proposed" in its body and "ACCEPTED" in a banner three screens
 # above. Which one a reader believes depended on how far they scrolled. The
 # status line is machine-readable BY DECREE (`pl doc-truth`'s adr-hygiene check
 # fails any ADR without exactly one), so it can simply be counted.
@@ -669,7 +669,7 @@ om_lint() {
   fi
 
   # ---- rule: projection-contradiction, ADR status --------------------------
-  # "ADR-0024 (**Proposed**)" in the body while the ADR itself says Accepted.
+  # "NWP-ADR-0024 (**Proposed**)" in the body while the ADR itself says Accepted.
   blind=$(_om_blind "${OM_S_ADRS:-}")
   if [ -n "$blind" ]; then
     printf 'projection-blind|%s|ADR statuses unmeasured: %s\n' "$file" "$blind"

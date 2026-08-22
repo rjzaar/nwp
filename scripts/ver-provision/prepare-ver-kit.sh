@@ -16,7 +16,7 @@ set -euo pipefail
 #     KIT.sha256        manifest of every file (+ KIT.sha256.minisig)
 #     RUNBOOK.md        offline copy of docs/guides/ver-provisioning-runbook.md
 #
-# Supply-chain posture (ADR-0025 "the restic binary is minisign-verified before
+# Supply-chain posture (NWP-ADR-0025 "the restic binary is minisign-verified before
 # use"): this script FAILS CLOSED on tool integrity. Every tool binary must match
 # an operator-supplied sha256 pin before it enters the kit; the kit is then signed
 # with the NWP minisign key so `ver` can verify the whole tree offline against the

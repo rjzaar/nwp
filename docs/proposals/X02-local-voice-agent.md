@@ -25,7 +25,7 @@ faster-whisper STT + an 8B-class instruction model on Ollama + Piper or
 Kokoro TTS.
 
 This is explicitly scope expansion beyond NWP's core Drupal deployment
-mission — hence the X## designation per ADR-0011. The justification is that
+mission — hence the X## designation per NWP-ADR-0011. The justification is that
 the `ai-host` tier is NWP's day-to-day agent tier (see [F21](F21-distributed-build-deploy-pipeline.md)),
 and giving it a voice channel is a natural extension of that role. If the
 experiment turns out to be noise, the whole stack deletes cleanly: it lives
@@ -175,7 +175,7 @@ the host's iGPU. Both models coexist in memory without host swapping.
 3. Verify inbound calls reach a throwaway TwiML `<Say>Hello</Say>` response
    (hard-code the TwiML in the Twilio console, no server yet).
 4. Record the number, its SID, and webhook URL in `.secrets.yml` (infra
-   tier per ADR-0004 — the Twilio account SID and auth token are
+   tier per NWP-ADR-0004 — the Twilio account SID and auth token are
    infrastructure automation credentials, not user data).
 
 **Success:** A human can dial the number and reach the hello-world TwiML.
@@ -412,9 +412,9 @@ reverting three small edits in 5.2) fully removes it.
 - **[Local LLM Guide](../guides/local-llm.md)** — Ollama baseline this proposal builds on
 - **F21 Phase 3a** — concrete `ai-host` provisioning plan X02 inherits from
 - **[F21: Distributed Build/Deploy Pipeline](F21-distributed-build-deploy-pipeline.md)** — defines the `ai-host` role and the "no prod access" rule
-- **[ADR-0004: Two-tier Secrets Architecture](../decisions/0004-two-tier-secrets-architecture.md)** — classifies Twilio credentials as infra tier
-- **[ADR-0011: Proposal Designation System](../decisions/0011-proposal-designation-system.md)** — justifies the X## prefix
-- **[ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** — the `ai-host`'s trust boundary
+- **[NWP-ADR-0004: Two-tier Secrets Architecture](../decisions/0004-two-tier-secrets-architecture.md)** — classifies Twilio credentials as infra tier
+- **[NWP-ADR-0011: Proposal Designation System](../decisions/0011-proposal-designation-system.md)** — justifies the X## prefix
+- **[NWP-ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** — the `ai-host`'s trust boundary
 
 ---
 

@@ -4,11 +4,11 @@
 # Functions do explicit error handling and never rely on errexit.
 ################################################################################
 # lib/server-backup-resolve.sh — stack-aware resolvers for `nwp-server backup`
-# (ADR-0032 Flow B). Pure, testable helpers so server-backup.sh can back up a
+# (NWP-ADR-0032 Flow B). Pure, testable helpers so server-backup.sh can back up a
 # MOODLE site (moodledata + mysqldump) as well as a Drupal site (public+private
 # files + drush), instead of assuming a single Drupal layout.
 #
-# All raw-data movement stays within ADR-0025's DR flow (raw → ver only). These
+# All raw-data movement stays within NWP-ADR-0025's DR flow (raw → ver only). These
 # helpers only RESOLVE paths/creds; the actual restic/mysqldump run in
 # server-backup.sh on the prod host.
 ################################################################################
@@ -57,7 +57,7 @@ sb_moodle_dataroot() {
 
 # sb_backup_files_paths <site-dir> [drupal_public_sub] [drupal_private_sub]
 # Echo (newline-separated) the EXISTING dirs to back up for this stack:
-#   moodle → the moodledata tree (the ADR-0031 D8 "zero backups today" gap).
+#   moodle → the moodledata tree (the NWP-ADR-0031 D8 "zero backups today" gap).
 #   drupal → public files + private files (private is often outside the webroot;
 #            probe the common locations, or use the explicit sub if given).
 sb_backup_files_paths() {

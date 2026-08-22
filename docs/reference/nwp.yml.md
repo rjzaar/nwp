@@ -2,7 +2,7 @@
 
 **Schema source of truth:** [`lib/schema/nwp_yml_v3.json`](../../lib/schema/nwp_yml_v3.json)
 **Authored:** F32 Phase A
-**Decision:** [ADR-0020](../decisions/0020-tiered-architecture-model.md)
+**Decision:** [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md)
 
 `nwp.yml` is the operator's per-instance configuration file. It is
 **always private** (never committed to the public repo; lives in
@@ -103,7 +103,7 @@ features:
 ## 4. Tier 4 (full reference; adds verifier)
 
 Adds a `verifier` host with the offline signed-deploy role. The verifier
-runs the separately-built `nwp-verifier` binary (per ADR-0022), not
+runs the separately-built `nwp-verifier` binary (per NWP-ADR-0022), not
 `nwp` proper. The full Tier 4 example lives at
 [`docs/deployment/reference-tier-4.md`](../deployment/reference-tier-4.md)
 (authored in F32 Phase E).
@@ -198,7 +198,7 @@ the current `nwp.yml`. CI runs the same validator on every push.
 
 ## 9. Related
 
-- [ADR-0020 — Tiered architecture model](../decisions/0020-tiered-architecture-model.md)
+- [NWP-ADR-0020 — Tiered architecture model](../decisions/0020-tiered-architecture-model.md)
 - [F32 — Tiered architecture implementation](../proposals/F32-tiered-architecture-implementation.md)
 - [F33 — Repository topology refactor](../proposals/F33-repository-topology-refactor.md)
 - [`role-vocabulary.md`](role-vocabulary.md)

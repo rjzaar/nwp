@@ -159,7 +159,7 @@ ${BOLD}FLEET SYNC (ops#360 — engine-code propagation):${NC}
     Targets are ROLES resolved via the private instance manifest, never
     hostnames. Prod-reaching roles (verifier, signed-deploy, prod-cluster,
     prod-agent, prod-au) and 'authoring' are REFUSED — prod receives code as
-    signed artifacts through its own path (ADR-0017/0028), and sessions
+    signed artifacts through its own path (NWP-ADR-0017/0028), and sessions
     control the dev tree. The worker (scripts/fleet-sync-host.sh) is
     fast-forward-only, verifies signatures (enforcing under
     NWP_REQUIRE_SIGNED_COMMITS=1), health-checks what changed, reverts on
@@ -1246,7 +1246,7 @@ PY
 #                                            reached the host yet)
 #   pl fleet sync status  [--host=<role>] [--quiet]
 #
-# THE GUARD (ADR-0017/0028, CLAUDE.md "key off the canonical phase/role, never
+# THE GUARD (NWP-ADR-0017/0028, CLAUDE.md "key off the canonical phase/role, never
 # a hostname list"): every verb that targets a host first resolves the ROLE
 # through the instance manifest and REFUSES when the role — or ANY role the
 # resolved host also holds — is prod-reaching (verifier, signed-deploy,
@@ -1280,7 +1280,7 @@ _sync_guard_role() {
     local dr
     for dr in $SYNC_DENY_ROLES; do
         if [ "$role" = "$dr" ]; then
-            print_error "REFUSED: --host=$role is a prod-reaching role — prod hosts receive code as SIGNED ARTIFACTS via their own verification path (ADR-0017/0028), never via fleet sync"
+            print_error "REFUSED: --host=$role is a prod-reaching role — prod hosts receive code as SIGNED ARTIFACTS via their own verification path (NWP-ADR-0017/0028), never via fleet sync"
             return 2
         fi
     done

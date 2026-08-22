@@ -460,7 +460,7 @@ gitlab_api_create_project() {
         # ops#49: FAIL CLOSED. Do NOT silently fall back to the SSH gitlab-rails
         # path — that needs SSH + sudo on the GitLab box (full instance admin,
         # MORE privilege than the API token) and would route straight around the
-        # ADR-0024 token downscope. Refuse and tell the operator; the explicit
+        # NWP-ADR-0024 token downscope. Refuse and tell the operator; the explicit
         # SSH path (gitlab_create_project) is still available to callers that
         # deliberately choose it.
         print_error "No GitLab API token — refusing to create project '${group}/${project_name}'."
@@ -1009,15 +1009,15 @@ git_commit() {
     return 0
 }
 
-# gitlab_create_project — RETIRED per ADR-0024 (no SSH+sudo to the GitLab box).
+# gitlab_create_project — RETIRED per NWP-ADR-0024 (no SSH+sudo to the GitLab box).
 #
 # This used to `ssh gitlab@<box> "sudo gitlab-rails runner …"` — full instance
-# admin from an AI-reachable host, the exact boundary ADR-0024 forbids. Project
+# admin from an AI-reachable host, the exact boundary NWP-ADR-0024 forbids. Project
 # creation now goes through the TOKEN path (gitlab_api_create_project) or the UI.
 # Kept as a fail-closed stub so any stale caller errors loudly instead of silently
 # escalating over SSH+sudo.
 gitlab_create_project() {
-    print_error "gitlab_create_project (SSH+sudo gitlab-rails) is disabled per ADR-0024."
+    print_error "gitlab_create_project (SSH+sudo gitlab-rails) is disabled per NWP-ADR-0024."
     print_info  "Create the project via the token path (gitlab_api_create_project) or the GitLab UI, then retry."
     return 1
 }
@@ -1059,10 +1059,10 @@ git_push() {
         return 0
     fi
 
-    # ADR-0024: do NOT auto-create the project via SSH+sudo on push failure (that
+    # NWP-ADR-0024: do NOT auto-create the project via SSH+sudo on push failure (that
     # was full instance admin on the GitLab box). If the project is missing, create
     # it via the token path (gitlab_api_create_project) or the GitLab UI, then retry.
-    print_warning "Push failed — if the project is missing, create it via the token path or the GitLab UI, then retry. Not auto-escalating to SSH+sudo (ADR-0024)."
+    print_warning "Push failed — if the project is missing, create it via the token path or the GitLab UI, then retry. Not auto-escalating to SSH+sudo (NWP-ADR-0024)."
     cd - > /dev/null
     return 1
 }

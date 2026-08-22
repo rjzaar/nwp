@@ -219,7 +219,7 @@ _mr_host_ok(){ [ "$(_mr_host)" != "$MR_HOST_UNRESOLVED" ]; }
 
 # Token preference: an explicit CI/job token first (so the pipeline never needs
 # the developer credential), then .secrets.yml:gitlab.api_token — the non-admin
-# group bot that ADR-0024 left as the MR-capable identity.
+# group bot that NWP-ADR-0024 left as the MR-capable identity.
 #
 # NOTE the deliberate omission of gitlab.ops_note_token: it is Reporter on
 # nwp/ops only and cannot touch an MR on the code repo. Falling back to it would
@@ -558,7 +558,7 @@ _mr_author(){   printf '%s' "$1" | _mr_jget 'author.username'; }
 # spot which is the MR location."
 #
 # THE FACT IS `approvers:` IN THE SECRETS REGISTRY, not a new setting. That list
-# already exists and cmd_release already keys the ADR-0028 Phase 1 dispensation
+# already exists and cmd_release already keys the NWP-ADR-0028 Phase 1 dispensation
 # off it, with the rationale spelled out there: "Keyed off a DECLARED FACT, never
 # a date or a phase name: inert today, correct forever, and it arms without anyone
 # remembering to arm it." Adding the second name IS the shift, and IS the second

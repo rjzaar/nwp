@@ -319,7 +319,7 @@ _fake_golden() {
   [ -n "$h" ] && [ -n "$i" ] && [ "$h" -lt "$i" ]
 }
 
-@test "paired reset restores PROVIDER FIRST (ADR-0031 D5)" {
+@test "paired reset restores PROVIDER FIRST (NWP-ADR-0031 D5)" {
   body=$(awk '/^cmd_reset_paired\(\)/,/^}/' "$DEMO_CMD")
   printf '%s\n' "$body" | grep -q 'for half in provider consumer'
   # and never the reverse
@@ -1001,7 +1001,7 @@ _line_of() { printf '%s\n' "$1" | grep -n "^$2" | head -1 | cut -d: -f1; }
   [[ "$line" == *"cons-prov"* ]]
 }
 
-@test "ops#170: PROVIDER FIRST on live (ADR-0031 D5)" {
+@test "ops#170: PROVIDER FIRST on live (NWP-ADR-0031 D5)" {
   _live_fixture_config; _live_goldens
   trace="$(_live_trace)"
   p=$(_line_of "$trace" "RESTORE prov"); c=$(_line_of "$trace" "RESTORE cons")

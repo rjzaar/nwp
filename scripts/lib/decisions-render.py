@@ -116,7 +116,7 @@ if only_iid:
         sys.exit(1)
 
 # ── Open MRs, from the manifest decisions.sh fetched ──────────────────────────
-# Under solo review mode (ADR-0032) the merge click IS the approval, so an open
+# Under solo review mode (NWP-ADR-0032) the merge click IS the approval, so an open
 # MR belongs in the same queue as a needs-decision issue. A project whose fetch
 # failed carries ok=False and an error — it is rendered as CANNOT-READ, never
 # dropped: an unreadable forge must not look like an empty one.

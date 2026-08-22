@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 # servers/nwpcode/forge/install-forge-identities.sh — install the two NAMED
-# forge-box identities (ops#331, ADR-0038).
+# forge-box identities (ops#331, NWP-ADR-0038).
 #
 #   bash servers/nwpcode/forge/install-forge-identities.sh [--execute]
 #        [--only=ops|probe] [--no-wrapper]
@@ -30,13 +30,13 @@
 #     entry — including `gitlab@nwpcode.org` (the dev workstation's
 #     ~/.ssh/gitlab_linode). The workstation keeps working through the cutover
 #     BY DESIGN; retiring that entry is a separate, later, operator-visible step
-#     (`pl forge retire-legacy-key`, ADR-0038 §Migration). An installer that
+#     (`pl forge retire-legacy-key`, NWP-ADR-0038 §Migration). An installer that
 #     could cut the workstation's own access is an installer nobody should run.
 #     The check is enforced, not intended: every pre-existing line that is not
 #     one of OUR two comments must survive byte-identical or the box restores
 #     the backup and the script aborts.
 #   * It never mints, reads, stages or prints a GitLab token. The application
-#     plane (ADR-0038 plane 2) is an OPERATOR mint; this script is the Linux
+#     plane (NWP-ADR-0038 plane 2) is an OPERATOR mint; this script is the Linux
 #     plane only.
 #   * It never generates a keypair. Generation happens on the machine that will
 #     HOLD the private half, so no private key ever crosses a wire:
@@ -189,7 +189,7 @@ say "3/3  Verify"
 #     ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp-forge-probe gitlab@<box> id
 # authenticates with gitlab_linode and prints `uid=1000(gitlab) … 27(sudo)` —
 # i.e. it reports a SHELL where the jail is working, and reports success for a
-# key that is not installed at all. Measured 2026-08-10, ADR-0038 §"the trap
+# key that is not installed at all. Measured 2026-08-10, NWP-ADR-0038 §"the trap
 # that nearly produced a fake green". Never print a verify recipe without them.
 ISO="-F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes"
 cat <<EOF

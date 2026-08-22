@@ -190,7 +190,7 @@ log_test_result()       # Record result with timestamp
 
 #### 5-Layer YAML Protection (CRITICAL)
 
-This protection was added after the January 2026 data loss incident (ADR-0009):
+This protection was added after the January 2026 data loss incident (NWP-ADR-0009):
 
 ```bash
 # MUST be preserved in lib/verify-runner.sh
@@ -1102,7 +1102,7 @@ jobs:
 
 #### 10.1.4 Success Criteria
 - [ ] All helper functions working in lib/verify-runner.sh
-- [ ] 5-layer protection passes ADR-0009 requirements
+- [ ] 5-layer protection passes NWP-ADR-0009 requirements
 - [ ] Schema migration preserves all v2 data
 - [ ] 571 items in .verification.yml
 

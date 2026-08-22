@@ -1,13 +1,13 @@
-# ADR-0006: Contribution Workflow
+# NWP-ADR-0006: Contribution Workflow
 
 **Status:** Accepted
 **Date:** 2026-01-09
 **Decision Makers:** the operator
-**Related Issues:** N/A (implements governance framework from ADR-0005)
+**Related Issues:** N/A (implements governance framework from NWP-ADR-0005)
 
 ## Context
 
-With the distributed contribution governance framework established in ADR-0005, we need concrete tooling and workflow documentation for contributors to sync with upstream repositories and submit contributions. The key challenges are:
+With the distributed contribution governance framework established in NWP-ADR-0005, we need concrete tooling and workflow documentation for contributors to sync with upstream repositories and submit contributions. The key challenges are:
 
 1. **Synchronization**: Developers working on Tier 2+ repositories need to pull changes from upstream
 2. **Contribution**: Changes need to flow upstream through merge requests with proper security review
@@ -176,7 +176,7 @@ Located in `.gitlab/issue_templates/`:
 
 ### Security Review Requirements
 
-Per ADR-0005, contributions require:
+Per NWP-ADR-0005, contributions require:
 1. **Scope verification**: Changes must match stated purpose
 2. **Red flag detection**: Automated checks for suspicious patterns
 3. **Sensitive path protection**: Two-person rule for critical files

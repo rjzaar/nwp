@@ -3,7 +3,7 @@
 **Last updated:** 2026-06-29 · **Branch (both repos):** `unfork/open-social-13`
 **Status:** ✅ **WORKS end-to-end** — a clean NWC site installs on composer-managed Open
 Social 13.0.2, `composer audit`-clean. Remaining work is productionization + the test gate
-(see §8). Prod cutover gated on **A14** (ADR-0024).
+(see §8). Prod cutover gated on **A14** (NWP-ADR-0024).
 
 > This doc is self-contained for handover. The work is tracked as **nwp/ops#3** (the system
 > of record); this is the technical detail. Two git repos are involved:
@@ -183,7 +183,7 @@ In rough priority order:
    `php: 8.3` bump for nwc/nwd/nwt recipes still TODO.
 6. **GraphQL follow-up:** adopt OS's first stable release off `main` that ships the graphql-5
    migration, then drop graphql to `^5` and remove the webonyx `audit.ignore` (§7).
-7. **Verify-then-publish / cutover:** prod cutover is gated on **A14** (ADR-0024). Publishing the
+7. **Verify-then-publish / cutover:** prod cutover is gated on **A14** (NWP-ADR-0024). Publishing the
    un-forked profile is now clean (no vendored GPL OS) — see PUBLISH-SCRUB when ready.
 
 ### Known non-blocking warnings during install

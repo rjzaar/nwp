@@ -1,4 +1,4 @@
-# ADR-0003: Bash for Automation Scripts
+# NWP-ADR-0003: Bash for Automation Scripts
 
 **Status:** Accepted
 **Date:** 2026-01-08

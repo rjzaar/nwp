@@ -71,7 +71,7 @@ This is the single most important fact, and it is easy to miss.
 | Intended home | the `dir` subdomain | the planned `vid` subdomain — built, **not yet deployed** |
 
 The toolkit already serves DIR (648 episodes), Restore The Glory (180), and the
-Thomistic Institute (600). Its own architecture decision record (ADR-0001,
+Thomistic Institute (600). Its own architecture decision record (NWP-ADR-0001,
 accepted 2026-05-17) states plainly that the DIR site directories **become
 consumers of the toolkit, not its owner**.
 
@@ -178,7 +178,7 @@ the community site while the transcripts stay behind their gate.
 Build the transcript search interface inside nwc as a Drupal module.
 
 - **Work:** a `nwptoolkit_search` Drupal client — already scoped in the toolkit's
-  ADR-0001 as Phase C, **not built**. Plus resolving the blocking copyright item.
+  NWP-ADR-0001 as Phase C, **not built**. Plus resolving the blocking copyright item.
 - **Why not:** highest cost, highest legal exposure, and it duplicates a working
   service to put restricted content on a less restricted surface. It also
   contradicts the product-triple design without any recorded reason to.

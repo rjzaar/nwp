@@ -1,6 +1,6 @@
 #!/bin/bash
 ################################################################################
-# lib/pair.sh — paired-site versioning guard (ADR-0031 Phase C / nwp/ops#75)
+# lib/pair.sh — paired-site versioning guard (NWP-ADR-0031 Phase C / nwp/ops#75)
 #
 # NWP runs PAIRED sites across two stacks that are coupled by OAuth2/OIDC SSO,
 # copyright-policy sync and a feedback bridge:
@@ -8,7 +8,7 @@
 #   nwc (Drupal/Open Social, PROVIDER)  ↔  ssc (Moodle, real students, CONSUMER)
 #   nwd (Drupal demo,        PROVIDER)  ↔  ssd (Moodle demo,           CONSUMER)
 #
-# ADR-0031 D2 makes the *contract* — not the pair — the versioned artifact
+# NWP-ADR-0031 D2 makes the *contract* — not the pair — the versioned artifact
 # (`pair-contract.yml`, one per pair). This lib is `pair_guard`: a deploy-time
 # choke-point check that reads that contract + both sides' recorded deployed
 # versions and refuses a promotion that would violate the pair invariants:
@@ -143,7 +143,7 @@ pair_contract_file() {
 # `provider: nwc / consumer: ssc` in a committed, signed-schema file the whole
 # time, while the guard asked a file nobody could see and got silence.
 #
-# This is also what ADR-0031 D2 already asserts — "the CONTRACT, not the pair,
+# This is also what NWP-ADR-0031 D2 already asserts — "the CONTRACT, not the pair,
 # is the versioned artifact". Reading membership from it is that decision
 # carried through to the choke-point instead of stopping at the doc.
 #
@@ -714,7 +714,7 @@ pair_provider_sub_shape_guard() {
 
     _pair_err "REFUSED: provider code does not emit the contracted sub shape (sub_stability: $stability)."
     _pair_err "Expected /$assert_re/ in $source_glob — a --code-only deploy of this tree would revert the"
-    _pair_err "'$stability' sub and sever every consumer UID-lock (ADR-0031 D9 / nwp/ops#83)."
+    _pair_err "'$stability' sub and sever every consumer UID-lock (NWP-ADR-0031 D9 / nwp/ops#83)."
     return 1
 }
 
@@ -802,7 +802,7 @@ _pair_blind_refuse() {
     while IFS= read -r _r; do [ -n "$_r" ] && _pair_err "  - $_r"; done <<< "$reasons"
     _pair_info "This is NOT a clean result: the guard found no pair because it could not look, and a"
     _pair_info "full-DB promotion past an unread pairing is exactly what severs the ssc UID-locks"
-    _pair_info "(ADR-0031 D6). Unreadable therefore REFUSES, it does not fall through to 'unpaired'."
+    _pair_info "(NWP-ADR-0031 D6). Unreadable therefore REFUSES, it does not fall through to 'unpaired'."
     _pair_info "Fix: declare it in the canonical shape — 'paired_with: <provider-site-key>' as a bare"
     _pair_info "     scalar in sites/<consumer>/.nwp.yml (see pairs/README.md); or remove the key if"
     _pair_info "     the site is genuinely unpaired."
@@ -861,7 +861,7 @@ pair_guard() {
         fi
         _pair_err "REFUSED: '$site' is declared paired ($pair_id) but its pair contract is missing or invalid:"
         _pair_err "  expected a valid pair-contract.yml at: $contract"
-        _pair_info "The pair invariants (ADR-0031 D2/D5/D6) cannot be verified without it — failing closed."
+        _pair_info "The pair invariants (NWP-ADR-0031 D2/D5/D6) cannot be verified without it — failing closed."
         _pair_info "Fixes: author the contract (see docs/guides/ops75-pair-contract-schema.md +"
         _pair_info "       pair-contract.example.yml), or remove the 'paired_with:' key if this site is not paired,"
         _pair_info "       or set NWP_PAIR_GATE_SOFT=true to proceed without pair checks (audited)."
@@ -898,7 +898,7 @@ pair_guard() {
     local rag; rag="$(pair_rag_get "$pair_id" "$target")"
     if [ "$rag" = "red" ] && [ "$override" != "true" ]; then
         _pair_err "REFUSED: pair '$pair_id' is RED at $target (last pair-smoke failed)."
-        _pair_err "Promoting either half onto a broken pair is refused (ADR-0031 D5)."
+        _pair_err "Promoting either half onto a broken pair is refused (NWP-ADR-0031 D5)."
         _pair_info "Investigate: pl pair status $consumer   /   pl pair-smoke $consumer --tier=$target --dry-run"
         _pair_info "To override once resolved (ledgered): re-run with --override-pair."
         return 1
@@ -926,7 +926,7 @@ pair_guard() {
             _pair_err "  - $couples_reason"
             _pair_info "This is NOT a clean result: treating an unreadable coupling clause as 'uncoupled'"
             _pair_info "is exactly the fail-open shape that let a full-DB push sever the ssc UID-locks"
-            _pair_info "(ADR-0031 D6). Fix the identity: block in $(basename "$contract")."
+            _pair_info "(NWP-ADR-0031 D6). Fix the identity: block in $(basename "$contract")."
             _pair_info "Escape (audited): NWP_PAIR_GATE_SOFT=true. --override-pair does NOT cover this."
             pair_ledger_append "$pair_id" "action=coupling-blind-refuse cmd=$cmd site=$site target=$target"
             return 1
@@ -941,7 +941,7 @@ pair_guard() {
         if [ -z "$prov_cv" ]; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED: consumer '$site' promotion to $target, but provider '$provider' has no"
-                _pair_err "recorded deployment at $target — provider must promote first (ADR-0031 D5)."
+                _pair_err "recorded deployment at $target — provider must promote first (NWP-ADR-0031 D5)."
                 _pair_info "Deploy the provider to $target first (pl stg2live $provider ...), then retry."
                 _pair_info "Override (ledgered): --override-pair."
                 return 1
@@ -949,7 +949,7 @@ pair_guard() {
         elif [ "${cv:-0}" -gt "${prov_cv:-0}" ] 2>/dev/null; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED: consumer '$site' wants contract_version $cv but provider '$provider' is at"
-                _pair_err "contract_version $prov_cv at $target — provider promotes first (ADR-0031 D5)."
+                _pair_err "contract_version $prov_cv at $target — provider promotes first (NWP-ADR-0031 D5)."
                 _pair_info "Deploy the provider to $target first, then retry. Override (ledgered): --override-pair."
                 return 1
             fi
@@ -958,7 +958,7 @@ pair_guard() {
         if [ "$code_only" != "true" ] && [ "$couples_rc" -eq 0 ]; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED: '$site' is an identity-coupled CONSUMER at $target — a full-DB push would"
-                _pair_err "clobber real users' learning state (minors' records, plane 5b). (ADR-0031 D6)."
+                _pair_err "clobber real users' learning state (minors' records, plane 5b). (NWP-ADR-0031 D6)."
                 _pair_info "Deploy code/config only: re-run with --code-only."
                 _pair_info "Override (ledgered): --override-pair."
                 return 1
@@ -970,7 +970,7 @@ pair_guard() {
         if [ "$code_only" != "true" ] && [ "$couples_rc" -eq 0 ]; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED: '$site' is an identity-coupled PROVIDER at $target — a full-DB push would"
-                _pair_err "renumber Drupal uids and sever every '$consumer' SSO identity (ADR-0031 D6)."
+                _pair_err "renumber Drupal uids and sever every '$consumer' SSO identity (NWP-ADR-0031 D6)."
                 _pair_info "Deploy code/config only: re-run with --code-only (the standing rule until this)."
                 _pair_info "Override (ledgered): --override-pair."
                 return 1
@@ -1026,9 +1026,9 @@ pair_guard_record_success() {
 }
 
 ################################################################################
-# ops#83 — RESTORE choke-point (ADR-0031 D9, both-or-forward invariant)
+# ops#83 — RESTORE choke-point (NWP-ADR-0031 D9, both-or-forward invariant)
 #
-# ADR-0031 D5 says CODE rollback is safe per-site (expand-contract). That is
+# NWP-ADR-0031 D5 says CODE rollback is safe per-site (expand-contract). That is
 # FALSE for a DB restore/rebuild at a coupled tier: it can change or drop the
 # provider (uuid,uid) map and orphan every consumer UID-lock. sub_stability:uuid
 # neutralises WITHIN-half renumber; this guard governs CROSS-half point-in-time
@@ -1303,7 +1303,7 @@ pair_guard_restore() {
             return 0
         fi
         _pair_err "REFUSED restore: '$site' is paired ($pair_id) but its pair contract is missing/invalid ($contract)."
-        _pair_info "The both-or-forward invariant (ADR-0031 D9) cannot be verified — failing closed."
+        _pair_info "The both-or-forward invariant (NWP-ADR-0031 D9) cannot be verified — failing closed."
         return 1
     fi
 
@@ -1327,7 +1327,7 @@ pair_guard_restore() {
         _pair_err "REFUSED restore: CANNOT VERIFY whether pair '$pair_id' identity-couples tier '$target' —"
         _pair_err "the contract declares identity coupling but the declaration is illegible:"
         _pair_err "  - $_r_couples_reason"
-        _pair_info "An unreadable coupling clause must not read as 'restore freely' (ADR-0031 D9)."
+        _pair_info "An unreadable coupling clause must not read as 'restore freely' (NWP-ADR-0031 D9)."
         _pair_info "Escape (audited): NWP_PAIR_GATE_SOFT=true. --override-pair does NOT cover this."
         pair_ledger_append "$pair_id" "action=restore-coupling-blind-refuse cmd=$cmd site=$site target=$target"
         return 1
@@ -1337,7 +1337,7 @@ pair_guard_restore() {
     fi
 
     # 3b. CODE-ONLY. A restore that loads no database cannot renumber an identity
-    #     set, so it cannot orphan a UID-lock — the same reasoning ADR-0031 D5
+    #     set, so it cannot orphan a UID-lock — the same reasoning NWP-ADR-0031 D5
     #     uses for code rollback, and the reason D6's escape is `--code-only`.
     #     It must be POSITIVELY asserted by the caller: the default is false, so
     #     a caller that says nothing is treated as DB-touching and gated.
@@ -1480,14 +1480,14 @@ pair_guard_restore() {
         if [ -z "$target_anchor" ]; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED restore: '$site' target identity anchor is UNKNOWN while '$counter_side' is at anchor $counter_anchor ($target)."
-                _pair_err "Cannot prove the restore moves the identity set FORWARD (ADR-0031 D9 both-or-forward) — failing closed."
+                _pair_err "Cannot prove the restore moves the identity set FORWARD (NWP-ADR-0031 D9 both-or-forward) — failing closed."
                 _pair_info "Provide the backup's identity anchor (pl pair anchor …), or override (ledgered): --override-pair."
                 return 1
             fi
         elif [ "$target_anchor" -lt "$counter_anchor" ] 2>/dev/null; then
             if [ "$override" != "true" ]; then
                 _pair_err "REFUSED restore: restoring '$site' ($role) to anchor $target_anchor is OLDER than '$counter_side' anchor $counter_anchor at $target."
-                _pair_err "That would strand every '$counter_side' UID-lock newer than $target_anchor (ADR-0031 D9)."
+                _pair_err "That would strand every '$counter_side' UID-lock newer than $target_anchor (NWP-ADR-0031 D9)."
                 _pair_info "Restore BOTH halves to one cut, or to an anchor >= $counter_anchor. Override (ledgered): --override-pair."
                 return 1
             fi

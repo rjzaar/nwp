@@ -8,7 +8,7 @@ golden shipped with this document. Every snippet below is illustrative.
 **Predecessors:** [P75](P75-clip-catalogue-triage-and-guild-workflow.md) (the triage this measures) ·
 [P64](P64-clip-choice-as-data-not-content.md) (clip choice as data) ·
 [P69](P69-fix-engine-bakeoff.md) (the estate's precedent for *"same battery, same rig, same
-metrics, chronicled as it happens"*) · ADR-0027 (unified course content)
+metrics, chronicled as it happens"*) · NWP-ADR-0027 (unified course content)
 **Related:** [nwp/ops#337](https://git.nwpcode.org/nwp/ops/-/issues/337) (P75) ·
 [nwp/ops#338](https://git.nwpcode.org/nwp/ops/-/issues/338) (`~/dir` has no forge home, no CI)
 

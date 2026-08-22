@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 ################################################################################
 # Unit tests for lib/pii-gate.sh :: pii_gate_scan_artifact — the bundle-aware
-# independent gate (ops#111 / ADR-0032 Flow A). Verifies it:
+# independent gate (ops#111 / NWP-ADR-0032 Flow A). Verifies it:
 #   - transparently delegates to pii_gate_scan for a plain .sql.gz (Drupal path),
 #   - for a moodle-full bundle, extracts + scans the INNER db.sql.gz and asserts
 #     the manifest attests an EMPTY filedir,

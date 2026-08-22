@@ -125,7 +125,7 @@ Default password `"Admin123!"` is a common dictionary password pattern. If secre
 | Aspect | Assessment | Details |
 |--------|------------|---------|
 | **Modularity** | Good | Clear separation between `lib/` and `scripts/commands/` |
-| **Configuration** | Excellent | YAML with two-tier secrets architecture (ADR-0004) |
+| **Configuration** | Excellent | YAML with two-tier secrets architecture (NWP-ADR-0004) |
 | **CLI Design** | Good | Unified `pl` entry point with consistent patterns |
 | **Documentation** | Excellent | 68 docs, ADRs, comprehensive CLAUDE.md |
 | **Recipe System** | Very Extensible | Easy to add new CMS types |
@@ -160,7 +160,7 @@ nwp/
 
 1. **nwp.yml** - User site definitions (never committed)
 2. **example.nwp.yml** - Template with documentation (committed)
-3. **Secrets** (Two-tier per ADR-0004):
+3. **Secrets** (Two-tier per NWP-ADR-0004):
    - `.secrets.yml` - Infrastructure API tokens (safe for AI)
    - `.secrets.data.yml` - Production credentials (blocked from AI)
 

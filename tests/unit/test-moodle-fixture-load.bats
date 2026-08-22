@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 ################################################################################
 # Unit tests for lib/moodle-fixture-load.sh — the dev/stg fixture LOADER core
-# (ops#111 / ADR-0032 Flow A, increment 2b). Docker-free, secret-free.
+# (ops#111 / NWP-ADR-0032 Flow A, increment 2b). Docker-free, secret-free.
 #   - moodle_fixture_verify_extract: gate + extract the inner db.sql.gz, fail-closed
 #   - moodle_scaffold_empty_dataroot: rebuild an EMPTY moodledata, never clobber
 #     a populated real dataroot.

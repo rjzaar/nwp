@@ -12,9 +12,9 @@
 > ADRs and runbooks it cross-links — it tells you what each piece is, how they fit,
 > and where the sharp edges are. Every claim is traceable to a file cited inline.
 >
-> **Primary sources:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
-> (paired-site versioning), [ADR-0027](../decisions/0027-unified-course-content-architecture.md)
-> (unified course content), [ADR-0029](../decisions/0029-nwc-authorization-model.md)
+> **Primary sources:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
+> (paired-site versioning), [NWP-ADR-0027](../decisions/0027-unified-course-content-architecture.md)
+> (unified course content), [NWP-ADR-0029](../decisions/0029-nwc-authorization-model.md)
 > (nwc authorization), the pair contract `private/pairs/ssc.pair-contract.yml` (the private overlay repo — ops#326; sample shape: [`pairs/ssd.pair-contract.yml`](../../pairs/ssd.pair-contract.yml)),
 > the guard [`lib/pair.sh`](../../lib/pair.sh), the boundary classifier
 > [`lib/boundary.sh`](../../lib/boundary.sh), and the two runbooks
@@ -36,7 +36,7 @@ client, real learning records). A demo twin pair, **nwd ↔ ssd**, mirrors the
 topology but carries no real users and is uncoupled
 ([`pairs/README.md`](../../pairs/README.md) lines 24–33).
 
-The load-bearing correction that shapes everything below (ADR-0031 Context,
+The load-bearing correction that shapes everything below (NWP-ADR-0031 Context,
 "The framing correction"): **"two sites move in lockstep" is the wrong model.**
 There are **five planes** with three different movement patterns, and only a
 *narrow, versioned contract* actually couples the pair.
@@ -46,7 +46,7 @@ There are **five planes** with three different movement patterns, and only a
 ## The two boundaries (read this first)
 
 Two orthogonal boundaries run through the whole system. Conflating them is the
-"category error of the last three months of docs" that ADR-0027 §2 exists to
+"category error of the last three months of docs" that NWP-ADR-0027 §2 exists to
 kill. Keep them separate in your head:
 
 ```
@@ -58,7 +58,7 @@ kill. Keep them separate in your head:
   • OIDC trust chains (F26)                      (a signature), does not re-review
   • two-tier sanitization                      • attributed to the MEMBER, CC0
 ```
-*(ADR-0027 §2, lines 88–107; ADR-0029 Implementation Notes lines 163–167.)*
+*(NWP-ADR-0027 §2, lines 88–107; NWP-ADR-0029 Implementation Notes lines 163–167.)*
 
 - The **community/interaction boundary** is a *people* boundary. It is where the
   OIDC SSO + UID-lock, sanitization, and guild membership live. This is what
@@ -67,17 +67,17 @@ kill. Keep them separate in your head:
   cleared its origin's checks flows freely; a receiver *verifies a signature*
   rather than re-reviewing. This is the subject of §C.
 
-ADR-0029 is the authorization companion to ADR-0027: ADR-0027 severs *individual
-identity* at the site boundary (member-level, CC0); ADR-0029 ensures the *acting
-identity inside* a site is authentic and authorized (ADR-0029 lines 163–167).
+NWP-ADR-0029 is the authorization companion to NWP-ADR-0027: NWP-ADR-0027 severs *individual
+identity* at the site boundary (member-level, CC0); NWP-ADR-0029 ensures the *acting
+identity inside* a site is authentic and authorized (NWP-ADR-0029 lines 163–167).
 
 ---
 
 ## The five-plane model (the shared vocabulary)
 
 Any tool, guard, or runbook that says "promote the pair" must say **which
-plane** it moves. This table is ADR-0031's authoritative decomposition
-(ADR-0031 Context lines 68–80, Decision D1 lines 132–136):
+plane** it moves. This table is NWP-ADR-0031's authoritative decomposition
+(NWP-ADR-0031 Context lines 68–80, Decision D1 lines 132–136):
 
 ```
   #    PLANE                         TRUTH LIVES IN            MOVES              DISPOSABLE?
@@ -90,15 +90,15 @@ plane** it moves. This table is ADR-0031's authoritative decomposition
   3    Moodle code (ssc plugins)     GitLab plugin repos +     manifest+installer yes (once repos
                                      pinned Moodle core tag     into site trees    are fixed)
   4    Formation content             nwp/courses YAML + JSON    git MRs; rendered  it's the canon
-       (canonical courses)           Schema (ADR-0027)          SIDEWAYS
-  5a   Moodle rendered course rows   none (projection of 4)    --clear re-render  yes (ADR-0027 D1)
+       (canonical courses)           Schema (NWP-ADR-0027)          SIDEWAYS
+  5a   Moodle rendered course rows   none (projection of 4)    --clear re-render  yes (NWP-ADR-0027 D1)
   5b   Moodle learning/user state    the ssc LIVE DB +         never regenerated; ABSOLUTELY NOT
        (accounts, attempts, grades,  moodledata                backup/restore     — PII, minors'
        badges, policy acceptances)                              only              records
 ```
 
 Three movement patterns, and a paired promotion scheme must respect all three
-(ADR-0031 lines 77–80):
+(NWP-ADR-0031 lines 77–80):
 
 - **code flows UP** (git, dev → stg → live → prod) — planes 1, 3
 - **site content flows DOWN** (sanitized DB pulls) — plane 2
@@ -115,7 +115,7 @@ semantics. Name the plane and the confusion disappears.
 
 ### A.1 The wrong answers, and the chosen one
 
-ADR-0031 rejected two tempting models (Options 1–2, lines 106–129):
+NWP-ADR-0031 rejected two tempting models (Options 1–2, lines 106–129):
 
 - **Collapse into one versioned unit** (one tag, one release) — *impossible across
   stacks*: a Drupal profile and Moodle plugins can't share a package or deploy
@@ -126,7 +126,7 @@ ADR-0031 rejected two tempting models (Options 1–2, lines 106–129):
   halves; doubles every deploy's blast radius; complicates the single-site,
   security-critical deploy gate.
 
-The chosen model (Option 3, ADR-0031 D2/D5, lines 121–129 & 138–205):
+The chosen model (Option 3, NWP-ADR-0031 D2/D5, lines 121–129 & 138–205):
 
 > **Version the *contract*, not the pair.** Add per-surface minimum counterpart
 > versions + expand-contract discipline + **provider-first ordering** + a **pair
@@ -170,7 +170,7 @@ whole boundary.) Each surface may carry a `schema:` path into
 [`lib/pair.sh`](../../lib/pair.sh) is a deploy-time choke-point that reads the
 contract + both sides' recorded deployed versions and refuses an unsafe
 promotion. It runs at the same choke-points as the other guards, in this order
-(ADR-0031 D5 lines 187–190): `canonical_guard_content_push` →
+(NWP-ADR-0031 D5 lines 187–190): `canonical_guard_content_push` →
 `maturity_guard_deploy` → **`pair_guard`** → `deploy_gate_require`.
 
 Its properties (`lib/pair.sh` header lines 11–35):
@@ -199,7 +199,7 @@ Its properties (`lib/pair.sh` header lines 11–35):
 
 A parallel `pair_guard_restore()` (`lib/pair.sh` lines 550–676) governs **DB
 restore/rebuild** at a coupled tier — the *both-or-forward* invariant (§Gotchas,
-ADR-0031 D9).
+NWP-ADR-0031 D9).
 
 `pair_guard_record_success()` (lines 446–460) is called by the deploy verbs on
 success to record which `contract_version` each side reached at each tier, so the
@@ -219,12 +219,12 @@ pl pair-smoke ssc --dry-run     # print the 5-URL plan; touches NO network by de
 
 The **pair smoke suite** (`scripts/commands/pair-smoke.sh`) runs the contract's
 `smoke_urls` (contract lines 284–312) after any promotion of either half; a
-failure sets the pair RAG red, which `pair_guard` then blocks on (ADR-0031 D5
+failure sets the pair RAG red, which `pair_guard` then blocks on (NWP-ADR-0031 D5
 lines 191–194). The safety net is **observation, not a transaction**.
 
 ### A.5 Versioning + multi-repo coordination
 
-- **Tagging (D3, ADR-0031 lines 153–165):** `nwp/nwc` uses a single `vX.Y.Z`
+- **Tagging (D3, NWP-ADR-0031 lines 153–165):** `nwp/nwc` uses a single `vX.Y.Z`
   scheme (the old `nwc/v*` scheme is retired); a tag is cut whenever
   `composer.json`'s version changes. Moodle plugin repos tag `vX.Y.Z` matching
   `$plugin->release` (the `YYYYMMDDXX` `$plugin->version` stays the Moodle-native
@@ -250,7 +250,7 @@ them:
    instance* (config + content). This is [`nwc-fork-guide.md`](nwc-fork-guide.md).
 2. **Across the pair** (nwc + ssc): the *canonical content model* (one source,
    many disposable render targets) vs the per-target *adapters/overlays*. This is
-   ADR-0027.
+   NWP-ADR-0027.
 
 ### B.1 Within-site: generic package vs instance (nwc-fork-guide)
 
@@ -268,11 +268,11 @@ platform — the "anyone can install" guarantee. The ~40 nwc modules live under
 `sites/nwc/dev/html/profiles/custom/nwc/modules/nwc_features/` (e.g. `nwc_oidc_claims`,
 `nwc_copyright`, `nwc_moodle`, `nwc_editorial`, `nwc_guild`, `nwc_feedback`).
 
-### B.2 Across-pair: canonical content, disposable adapters (ADR-0027)
+### B.2 Across-pair: canonical content, disposable adapters (NWP-ADR-0027)
 
 The single source of truth for *formation content* (plane 4) is **`nwp/courses`**:
 authored in YAML, distributed as JSON, contracted by a JSON Schema. **Every render
-target is a pure function of canonical JSON and is disposable** (ADR-0027 D1,
+target is a pure function of canonical JSON and is disposable** (NWP-ADR-0027 D1,
 lines 62–85):
 
 ```
@@ -286,10 +286,10 @@ lines 62–85):
 ```
 
 The Moodle rows are plane 5a — re-rendered with `populate_courses.php --clear`;
-**nothing authored *in* Moodle survives** (ADR-0027 clarification 1, lines 43–45).
+**nothing authored *in* Moodle survives** (NWP-ADR-0027 clarification 1, lines 43–45).
 A member site (mayo, avcommons, future) is a **federation member**: same canonical
 code, its own community, its own manifest + an `adaptations/<member>/` overlay
-carrying only what differs — **not a git fork** (ADR-0027 D3, lines 109–117).
+carrying only what differs — **not a git fork** (NWP-ADR-0027 D3, lines 109–117).
 
 ### B.3 The boundary between generic and adapter — mechanized
 
@@ -329,7 +329,7 @@ block (lines 217–279). The load-bearing facts:
 - **The UID-lock**: `sub → idnumber` is the mandatory field mapping. Without it
   `auth_nwc` **denies every login** (fail-closed; contract lines 243–249). This
   locks `mdl_user.idnumber == OIDC sub == nwc Drupal account`.
-- **`sub` is the Drupal account UUID, not the serial uid** (ADR-0031 D9(A),
+- **`sub` is the Drupal account UUID, not the serial uid** (NWP-ADR-0031 D9(A),
   contract lines 172–177). The UUID is row-stored, never renumbered, never reused —
   so the lock survives a *within-half* renumber/rebuild/migrate. This is
   live-proven on the empty-seed nwc live tier.
@@ -339,7 +339,7 @@ block (lines 217–279). The load-bearing facts:
   SSO. Trust anchors = TLS + confidential client + PKCE(S256) + bearer userinfo. See
   [`ops82-key-rotation.md`](ops82-key-rotation.md).
 
-The Moodle **promotion substrate** (`lib/moodle-promote.sh`, ADR-0031 D8) is the
+The Moodle **promotion substrate** (`lib/moodle-promote.sh`, NWP-ADR-0031 D8) is the
 Moodle analogue of the Drupal `settings.php` rewrite + `drush cr`: it writes
 `config.php`, plans the `$CFG->wwwroot` rewrite, generates the vhost, and emits the
 OIDC descriptors — all **fail-closed and off-unless-configured**, refusing any tier
@@ -352,7 +352,7 @@ The other coupling surfaces:
 - **Copyright sync** (plane 2 → 5b, single-writer): `nwc_copyright vN` →
   `local_nwc_copyright_sync` → Moodle `tool_policy_versions` → student re-consent
   events. **One writer, both paths read** (`policy.writer: nwc_copyright`, contract
-  lines 194–197; ADR-0031 D2(b)). Never dual-write — that is the ops#31 race.
+  lines 194–197; NWP-ADR-0031 D2(b)). Never dual-write — that is the ops#31 race.
 - **Feedback bridge** (ssc → nwc): the consumer POSTs; nwc is the sink.
 - **Erasure** (nwc → ssc, ops#81): a signed OP→RP right-to-be-forgotten channel —
   destructive, single-writer, idempotent. See [`ops81-erasure-channel.md`](ops81-erasure-channel.md).
@@ -372,7 +372,7 @@ The other coupling surfaces:
 ### C.1 nwc community content (plane 2)
 
 The nwc **community DB** (nodes, guilds, users, in-flight editorial state) is
-**not disposable — it *is* the community** (ADR-0031 plane table, line 71). It
+**not disposable — it *is* the community** (NWP-ADR-0031 plane table, line 71). It
 lives in one environment's DB, declared by the site's `canonical:` phase
 ([`lib/canonical.sh`](../../lib/canonical.sh) header lines 3–24):
 
@@ -390,12 +390,12 @@ the site's legal texts — never the `nwp/nwc` package.
 
 ssc's **learning records** — accounts, enrolments, quiz attempts, grades, badges,
 `tool_policy` acceptances, and `moodledata` files — are **plane 5b: absolutely not
-disposable** (minors' PII; ADR-0031 plane table, line 75). They are **never
+disposable** (minors' PII; NWP-ADR-0031 plane table, line 75). They are **never
 regenerated** — backup/restore + (future) sanitized pulls only. For ssc,
 `canonical: live` (real students → user state is canonical there;
 `pairs/README.md` lines 52–56). The **Moodle sanitizer is security-critical** and
 gets the same human-review treatment as auth code, with fail-closed default
-(ADR-0031 D8, lines 237–244). ⚠ `moodledata` is in **zero backups today** and must
+(NWP-ADR-0031 D8, lines 237–244). ⚠ `moodledata` is in **zero backups today** and must
 join the backup surface (D8; substrate doc TODO #8).
 
 ### C.3 formation content (plane 4) — the shared canon
@@ -404,9 +404,9 @@ Formation *courses* are **not** site-specific: they are the canonical
 `nwp/courses` store rendered *sideways* into each target (§B.2). The Moodle course
 rows (plane 5a) are a disposable projection; the durable per-student state
 (plane 5b) hangs off them, which is *only* safe because the join key is id-stable
-(`render_id_stability.join_key: canonical_id`, contract lines 199–203; ADR-0027
+(`render_id_stability.join_key: canonical_id`, contract lines 199–203; NWP-ADR-0027
 §7). Cross-site sharing of member-contributed content rides the two rails
-(ADR-0027 D8, lines 197–204): **within the fleet**, the P65/ops#32 seed-content
+(NWP-ADR-0027 D8, lines 197–204): **within the fleet**, the P65/ops#32 seed-content
 lifecycle (`nwc-content:update` delivers DRAFT revisions, skipping locally-modified
 content); **cross-trust-boundary**, the F28 signed pipeline + F26 OIDC, with
 member-level CC0 attribution and identity severed at the site boundary.
@@ -419,7 +419,7 @@ member-level CC0 attribution and identity severed at the site boundary.
    students hold UID-locks against nwc's live tier, a **full-DB `pl stg2live nwc` /
    `stg2prod nwc` is forbidden** — it would renumber Drupal uids and silently sever
    *every* ssc SSO identity. `pair_guard` enforces this for **both** halves at
-   coupled tiers (`lib/pair.sh` lines 402–424; ADR-0031 D6 + Immediate hazard note
+   coupled tiers (`lib/pair.sh` lines 402–424; NWP-ADR-0031 D6 + Immediate hazard note
    lines 293–298; `identity.coupled_tiers: [live, prod]`, contract lines 169–171).
    Use `--code-only`. On the consumer half the same full-DB refusal protects real
    students' plane-5b records. This holds even though nwc is `canonical: dev`
@@ -428,7 +428,7 @@ member-level CC0 attribution and identity severed at the site boundary.
 
 2. **Provider-first ordering on a contract bump.** When `contract_version` bumps,
    **nwc (provider) promotes before ssc (consumer)** at a tier; a consumer
-   promotion past its provider is refused (`lib/pair.sh` lines 382–401; ADR-0031
+   promotion past its provider is refused (`lib/pair.sh` lines 382–401; NWP-ADR-0031
    D5). Merge order for contract-bump MRs is likewise provider-first, same day
    (D7). Between the two promotions the halves run different code — this skew is
    **normal and observable**, not a fault; contract-surface changes must be
@@ -441,12 +441,12 @@ member-level CC0 attribution and identity severed at the site boundary.
    later). The per-surface `provider_min`/`consumer_min` fields carry the actual
    version constraints.
 
-4. **Restore ≠ code rollback (both-or-forward).** ADR-0031 D5's "rollback is safe
+4. **Restore ≠ code rollback (both-or-forward).** NWP-ADR-0031 D5's "rollback is safe
    per-site" covers **code** (git revert). It does **not** cover a **DB
    restore/rebuild that renumbers uids** at a coupled tier — that can orphan every
    consumer UID-lock. `pair_guard_restore()` fails closed unless a provider identity
    ledger + consumer join-snapshot exist and the restored anchor is **≥** the
-   counterpart's (ADR-0031 D9; `lib/pair.sh` lines 550–676; runbook
+   counterpart's (NWP-ADR-0031 D9; `lib/pair.sh` lines 550–676; runbook
    [`ops83-dr-restore.md`](ops83-dr-restore.md)).
 
 5. **JWKS path trap.** The signing-health probe is `/.well-known/jwks.json` (200) —
@@ -467,8 +467,8 @@ member-level CC0 attribution and identity severed at the site boundary.
 These are places where sources disagree or a doc is stale — flagged rather than
 silently reconciled:
 
-1. **ADR-0031 calls the OIDC wiring a "STUB / F26-gated / not implemented"**
-   (ADR-0031 lines 99–102, 348–351; `lib/pair.sh` lines 37–40), but the **pair
+1. **NWP-ADR-0031 calls the OIDC wiring a "STUB / F26-gated / not implemented"**
+   (NWP-ADR-0031 lines 99–102, 348–351; `lib/pair.sh` lines 37–40), but the **pair
    contract and the substrate runbook say it is LIVE-PROVEN 2026-07-11**
    (contract lines 217–223; `moodle-promotion-substrate.md` §F26 runbook). The ADR
    (2026-07-10) simply predates the live proof (2026-07-11); treat the contract +
@@ -487,10 +487,10 @@ silently reconciled:
    the boundary path may need updating to the `auth_nwc` plugin path — flag for the
    operator/ops#75 owner.
 
-3. **ADR numbering.** In `docs/decisions/`, **ADR-0029 is the nwc authorization
-   model** and **ADR-0031 is paired-site versioning** (ADR-0027 is unified course
-   content). ADR-0031's own numbering note (lines 19–23) flags a *separate*
-   NWC-profile-local "ADR-0030/0031" series cited in `docs/onboarding/adrs.md`
+3. **ADR numbering.** In `docs/decisions/`, **NWP-ADR-0029 is the nwc authorization
+   model** and **NWP-ADR-0031 is paired-site versioning** (NWP-ADR-0027 is unified course
+   content). NWP-ADR-0031's own numbering note (lines 19–23) flags a *separate*
+   NWC-profile-local "NWP-ADR-0030/0031" series cited in `docs/onboarding/adrs.md`
    that does **not** exist in `docs/decisions/` and collides by number — it
    recommends renumbering that onboarding series `NWC-ADR-*`. Not yet done.
 
@@ -506,11 +506,11 @@ silently reconciled:
 
 | You want… | Read |
 |---|---|
-| The full versioning/promotion decision + 5-plane rationale | [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) |
+| The full versioning/promotion decision + 5-plane rationale | [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) |
 | The pair contract schema, field-by-field | [ops75-pair-contract-schema.md](ops75-pair-contract-schema.md) + `private/pairs/ssc.pair-contract.yml` (the private overlay repo — ops#326; sample shape: [`pairs/ssd.pair-contract.yml`](../../pairs/ssd.pair-contract.yml)) |
 | The Moodle promotion substrate + the F26 SSO runbook | [moodle-promotion-substrate.md](moodle-promotion-substrate.md) |
-| The canonical content model + the two boundaries | [ADR-0027](../decisions/0027-unified-course-content-architecture.md) |
-| The nwc authorization model (acting identity inside a site) | [ADR-0029](../decisions/0029-nwc-authorization-model.md) |
+| The canonical content model + the two boundaries | [NWP-ADR-0027](../decisions/0027-unified-course-content-architecture.md) |
+| The nwc authorization model (acting identity inside a site) | [NWP-ADR-0029](../decisions/0029-nwc-authorization-model.md) |
 | Generic package vs your instance (single-site) | [nwc-fork-guide.md](nwc-fork-guide.md) |
 | Moodle plugin repo hygiene + manifest/installer | [ops73-moodle-plugin-manifest-design.md](ops73-moodle-plugin-manifest-design.md) |
 | Tag/release + versioning scheme | [ops74-versioning-scheme.md](ops74-versioning-scheme.md), [ops74-tag-release-runbook.md](ops74-tag-release-runbook.md) |

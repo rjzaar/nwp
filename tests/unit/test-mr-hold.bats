@@ -27,7 +27,7 @@
 setup() {
     # PINNED TO TEAM MODE. This suite tests the two-person machinery — the Draft
     # hold, the release record, the sensitive-path refusal — and that machinery is
-    # switched OFF in solo mode (ADR-0037), which is what the estate now declares.
+    # switched OFF in solo mode (NWP-ADR-0037), which is what the estate now declares.
     # Pinning keeps these cases meaningful: team mode is disabled, NOT deleted, so
     # its tests must keep passing or the switch would arm onto untested code.
     export NWP_REVIEW_MODE=team
@@ -543,7 +543,7 @@ _sensitive_repo() {
   [[ "$output" == *"no CLAUDE.md sensitive path touched"* ]]
 }
 
-# --- ADR-0028 Phase 1 dispensation: the self-arming approver trigger ---------
+# --- NWP-ADR-0028 Phase 1 dispensation: the self-arming approver trigger ---------
 
 @test "ONE declared approver: an agent may record the operator's approval" {
     # The Phase-1 dispensation. Not a weakness being tolerated — a two-person

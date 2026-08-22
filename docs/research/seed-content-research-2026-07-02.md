@@ -37,7 +37,7 @@ Three unrelated machines; none gates entity creation:
 Core `content_moderation`/`workflows` are unused anywhere. **Doctrine-vs-code gaps:**
 "content trials ≥7 days" and "pipeline content needs Class B approval" exist in no code;
 the 7-day figure is the seeded policy-*discussion* default (`nwc_governance.install` ~L57);
-trial durations are per-template `default_trial_days` (ADR-0006); ADR-0011's extra pipeline
+trial durations are per-template `default_trial_days` (NWC-ADR-0006); NWC-ADR-0011's extra pipeline
 stages (ai_disclosure_audit etc.) are unimplemented. "Class A/B/C" is the Sojourners badge
 taxonomy, not a reviewer class.
 
@@ -106,20 +106,20 @@ non-live policy). This is why P65 lands install-time Class-3 content as publishe
 
 ## D. Governance grounding (ADRs)
 
-- **ADR-0014:** seed content passed the standard editorial pipeline *during authoring* —
-  "not magic". ADR-0015: `--site-mode` picks which content set installs (canonical vs demo).
-- **ADR-0006:** template-driven state machine; trial durations per-template config.
-  ADR-0011: pipeline-origin content first-class w/ operator accountability + extra stages
-  (unimplemented). ADR-0008: solo approval only via auditable ScopeGrant. ADR-0005:
+- **NWC-ADR-0014:** seed content passed the standard editorial pipeline *during authoring* —
+  "not magic". NWC-ADR-0015: `--site-mode` picks which content set installs (canonical vs demo).
+- **NWC-ADR-0006:** template-driven state machine; trial durations per-template config.
+  NWC-ADR-0011: pipeline-origin content first-class w/ operator accountability + extra stages
+  (unimplemented). NWC-ADR-0008: solo approval only via auditable ScopeGrant. NWC-ADR-0005:
   Shepherds oversight; quorum scales with size.
 - **Legal-text authority:** Copyright Guild authors, Shepherds approve
   (copyright-guild.yml / shepherds.yml); `nwc_copyright` is "single source of truth" with
   version-bump reconsent (README + versions.yml `posture` — implemented, but **no ADR
   records this design**).
-- **ADR-0001 (federation seam):** forks rename, replace the particulars (branding,
+- **NWC-ADR-0001 (federation seam):** forks rename, replace the particulars (branding,
   canonical legal text, demo content), own their editorial authority entirely; no
   cross-federation editorial body; not required to share particulars back.
-- **Gaps found:** `docs/FORK_GUIDE.md` referenced by ADR-0001/0014/0015 but DOES NOT
+- **Gaps found:** `docs/FORK_GUIDE.md` referenced by NWC-ADR-0001/0014/0015 but DOES NOT
   EXIST; no ADR for the reconsent design; no decision on install-time approval state
   (P65 §2 is that decision, needs ratifying as an ADR — P65 item 6); trial/pipeline
   doctrine unimplemented; guild seeds carry structure but NOT charter prose (charter

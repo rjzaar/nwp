@@ -12,7 +12,7 @@ wire `pl doc-truth` into `pl verify`/CI, and burn down the 148 baselined dead li
 **Depends On:** None (this proposal is independent of P61, F32–F34)
 **Breaking Changes:** No (additive; nightly cron job + report file)
 **Estimated Effort:** ~4 phases; one weekend
-**Architecture decision records:** none yet (sibling concern to [ADR-0021](../decisions/0021-public-only-repo-scope.md))
+**Architecture decision records:** none yet (sibling concern to [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md))
 
 > **Why this proposal exists.** [P61](P61-leakage-hygiene-ci.md) prevents *secret* drift from the private layer into the public layer; P62 prevents *truth* drift between the private central index and the machines it describes. The two are cousins: same shape (rule set + scan + gate), different target. P62 is a defensive measure against the failure mode that surfaced during the SD ITD ep-4 transcription resumption on 2026-05-10/11, where `~/central/INDEX.md §5.3 sd` was host-ambiguous and `~/sd/scripts/sync_transcripts.sh` named a stale remote — both because nothing automatically verifies that what central claims is still true.
 
@@ -138,7 +138,7 @@ Install the systemd user-timer on `ai-host`. Pipe drift findings to the operator
 - [P61](P61-leakage-hygiene-ci.md) — the sibling proposal protecting the public boundary
 - [F33](F33-repository-topology-refactor.md) — `instance-manifest.yml` provides the host-vocabulary mapping
 - [F34](F34-role-label-proposal-rewrite.md) — role-label vocabulary used by `<project>.md` files
-- [ADR-0021](../decisions/0021-public-only-repo-scope.md) — establishes the public/private boundary that P62 verifies (the central-side claims about private machines)
+- [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) — establishes the public/private boundary that P62 verifies (the central-side claims about private machines)
 - `~/central/README.md §3c` — the canonical `<project>.md` shape this proposal assumes
 
 ## 8. Open Questions

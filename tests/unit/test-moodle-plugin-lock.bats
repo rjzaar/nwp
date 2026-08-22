@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# ops#73 (ADR-0031 D4 residue) — THE PER-TREE PLUGIN LOCKFILE.
+# ops#73 (NWP-ADR-0031 D4 residue) — THE PER-TREE PLUGIN LOCKFILE.
 #
 # THE GAP, measured on this estate 2026-08-07: `pl moodle plugin deploy` ships a
 # plugin dir to a live tree, gates it six ways, snapshots it — and records the

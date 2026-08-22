@@ -23,7 +23,7 @@ review.
 
 ## Decisions (chronological)
 
-### Design decisions settled in-session (2026-07-08/09) — see ADR-0027
+### Design decisions settled in-session (2026-07-08/09) — see NWP-ADR-0027
 1. Canonical = `nwp/courses`; adapters disposable. 2. Two boundaries (safeguarding=people /
 content=flows-signed). 3. Federation by overlay, not fork. 4. Member-level CC0, identity severed at
 boundary. 5. Ceremony scales with trust distance. 6. Audience birthing ladder (IG→guild→site).

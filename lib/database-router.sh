@@ -453,7 +453,7 @@ _san_critical_query() {
 }
 
 ################################################################################
-# ADR-0031 Phase D (ops#76): promotion-pipeline TYPE DISPATCH
+# NWP-ADR-0031 Phase D (ops#76): promotion-pipeline TYPE DISPATCH
 #
 # The sanitize path below was Drupal-only: every statement in
 # _sanitize_staging_db_drupal (users_field_data, drush upwd, cache_* truncation)
@@ -557,7 +557,7 @@ detect_site_stack() {
 _sanitize_staging_db_moodle() {
     local target_site="$1"
     fail "Moodle DDEV in-place sanitize (Path B) is intentionally not wired — use Path A"
-    note "Target '$target_site' is a Moodle stack (ADR-0031 plane 5b: student learning records + tool_policy consent)."
+    note "Target '$target_site' is a Moodle stack (NWP-ADR-0031 plane 5b: student learning records + tool_policy consent)."
     note "Moodle sanitisation runs prod-native: scripts/commands/server-publish.sh with"
     note "  lib/sanitizers/${target_site}.sh or private/sanitizers/${target_site}.sh (→ lib/sanitizers/moodle.sh). See ops#110/#326."
     note "Refusing to promote a Moodle DB un-sanitized via the DDEV path (fail-closed)."

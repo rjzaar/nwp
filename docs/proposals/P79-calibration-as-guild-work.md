@@ -88,7 +88,7 @@ opinion that can be scored against both. **The synthetic key P78 already produce
 artefact `§10.1` was waiting for.**
 
 **(c) The blinding and anti-self-review this proposal enforces are already declared and already
-unbuilt.** `pairing.anti_self_review: true # pair never includes the task author (ADR-0006)` and
+unbuilt.** `pairing.anti_self_review: true # pair never includes the task author (NWC-ADR-0006)` and
 `pairing.blind: true # neither member sees the other answer until both submit` are both in the
 spec; P75 §3.1 measured them as *"Does not exist"* (grep returns nothing) and *"The opposite is
 built in"* (`ApplyDecisionForm.php:44-51` prints the author's name and endorsement count to the
@@ -433,7 +433,7 @@ an identical ordering.
 
 ### 4.4 Anti-self-review, applied at BUILD time
 
-`ADR-0006` / `pairing.anti_self_review: true`. A rater must not calibrate a learning point whose
+`NWC-ADR-0006` / `pairing.anti_self_review: true`. A rater must not calibrate a learning point whose
 current clip choice they authored or for which they filed a `ClipSuggestion`. The exclusion list
 is passed to the builder and **the excluded learning points are not in that rater's packet at
 all** — an exclusion applied at render time still ships the item to the browser.
@@ -476,7 +476,7 @@ the ladder for it.
 
 | | `ABSTAIN-DOCTRINE` | `ABSTAIN-PEDAGOGY` |
 |---|---|---|
-| **routed to** | **Sojourners propose → Theology approves** (the existing apprenticeship model) | the **formation** guild — the Media Guild's remit is explicitly *"not theological formation"* (ADR-0017) |
+| **routed to** | **Sojourners propose → Theology approves** (the existing apprenticeship model) | the **formation** guild — the Media Guild's remit is explicitly *"not theological formation"* (NWC-ADR-0017) |
 | **the question asked** | *"Is this passage doctrinally sound to place in front of a learner at this point?"* | *"Is this the right depth and a safe framing for a learner at this point?"* |
 | **the answer** | **SOUND · UNSOUND · NEEDS-CONTEXT** | **FITS · TOO-DEEP · UNSAFE-FRAMING** |
 | **precedent** | `tie_break.third_member_preference: active Master in this skill (other than the original two)` — the guild's own escalation shape | same |

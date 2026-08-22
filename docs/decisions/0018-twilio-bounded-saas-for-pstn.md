@@ -1,11 +1,11 @@
-# ADR-0018: Twilio as Bounded SaaS Dependency for PSTN Voice/SMS
+# NWP-ADR-0018: Twilio as Bounded SaaS Dependency for PSTN Voice/SMS
 
 **Status:** Accepted
 **Date:** 2026-04-08
 **Accepted:** 2026-04-08
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** X02
-**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0017](0017-distributed-build-deploy-pipeline.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [X02](../proposals/X02-local-voice-agent.md)
+**References:** [NWP-ADR-0004](0004-two-tier-secrets-architecture.md), [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [X02](../proposals/X02-local-voice-agent.md)
 
 ## Context
 
@@ -173,7 +173,7 @@ voice/SMS access. The bounding rules are:
    before it hardens.
 
 5. **Credentials classification.** Twilio Account SID, Auth Token, and
-   number SIDs are **infra-tier** secrets per [ADR-0004](0004-two-tier-secrets-architecture.md)
+   number SIDs are **infra-tier** secrets per [NWP-ADR-0004](0004-two-tier-secrets-architecture.md)
    (they enable infrastructure automation; they don't expose user data).
    They live in `.secrets.yml`, never in `.secrets.data.yml`.
 
@@ -182,7 +182,7 @@ voice/SMS access. The bounding rules are:
    source and a voice-accessible tool is reachable by anyone who dials
    the number. Any future tool addition requires an explicit scope
    review. Nothing prod-adjacent is ever exposed — the voice-agent host's existing
-   no-prod-access rule from [ADR-0017](0017-distributed-build-deploy-pipeline.md)
+   no-prod-access rule from [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md)
    is preserved unchanged.
 
 7. **Scope creep prevention.** This exception applies to PSTN voice/SMS
@@ -190,7 +190,7 @@ voice/SMS access. The bounding rules are:
    categories (Slack, Discord, Pushover, cloud LLMs, cloud STT, cloud
    TTS) are fine "because we already use Twilio." Each new SaaS proposal
    must be evaluated against the threat model on its own merits. The
-   existence of ADR-0018 is not a citation for expanding it.
+   existence of NWP-ADR-0018 is not a citation for expanding it.
 
 ## Rationale
 
@@ -291,7 +291,7 @@ property of any of the above, so the ADR does not extend to them.
 - The voice agent use case unblocks with a clear, bounded SaaS exposure
 - The single-adapter rule forces a provider-swap test that catches
   lock-in early, before it hardens
-- Twilio credentials classification extends [ADR-0004](0004-two-tier-secrets-architecture.md)
+- Twilio credentials classification extends [NWP-ADR-0004](0004-two-tier-secrets-architecture.md)
   (infra tier) to a new credential type without reopening the schema
 - Future telephony-related work inherits the bounding rules
   automatically
@@ -319,10 +319,10 @@ property of any of the above, so the ADR does not extend to them.
 
 ### Neutral
 
-- [ADR-0017](0017-distributed-build-deploy-pipeline.md) (distributed
+- [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (distributed
   build/deploy) is unchanged — Twilio is not in the deploy path, the voice-agent host
   has no prod access, and the voice agent's tool allowlist is empty.
-- [ADR-0004](0004-two-tier-secrets-architecture.md) (two-tier secrets)
+- [NWP-ADR-0004](0004-two-tier-secrets-architecture.md) (two-tier secrets)
   gains one more infra-tier credential type without schema changes.
 - CLAUDE.md threat model gains a documented exception with a link to
   this ADR, preserving the paranoid disposition with one bounded hole.
@@ -350,7 +350,7 @@ Once this ADR is accepted, add a single sentence to CLAUDE.md § Threat
 Model pointing at it:
 
 > **Bounded SaaS exception for PSTN voice/SMS access** — see
-> [ADR-0018](docs/decisions/0018-twilio-bounded-saas-for-pstn.md). The
+> [NWP-ADR-0018](docs/decisions/0018-twilio-bounded-saas-for-pstn.md). The
 > `prefer self-hosted` rule holds everywhere else; this is the single
 > documented exception, scoped to the audio transport layer only.
 
@@ -358,7 +358,7 @@ This keeps CLAUDE.md short while preserving auditability.
 
 ### No schema changes
 
-Twilio credentials fit the existing infra-tier shape per ADR-0004. No
+Twilio credentials fit the existing infra-tier shape per NWP-ADR-0004. No
 new credential tier or secrets schema change is needed.
 
 ### Provider swap runbook sketch
@@ -407,19 +407,19 @@ revising. If it hasn't leaked, promote the ADR from Proposed to
 Accepted.
 
 **Review question at 90 days:** has any other proposal tried to cite
-ADR-0018 as a precedent for a SaaS that *does* have a self-hosted
+NWP-ADR-0018 as a precedent for a SaaS that *does* have a self-hosted
 alternative? If so, the scope-creep prevention rule needs strengthening
 and possibly an explicit "rejected citations" log in this ADR.
 
 ## Related Decisions
 
-- **[ADR-0004: Two-tier Secrets Architecture](0004-two-tier-secrets-architecture.md)**
+- **[NWP-ADR-0004: Two-tier Secrets Architecture](0004-two-tier-secrets-architecture.md)**
   — Twilio credentials classified as infra tier under the existing
   schema. No new credential tier required.
-- **[ADR-0017: Distributed Build/Deploy Pipeline](0017-distributed-build-deploy-pipeline.md)**
+- **[NWP-ADR-0017: Distributed Build/Deploy Pipeline](0017-distributed-build-deploy-pipeline.md)**
   — Orthogonal. Twilio is not in the deploy path; the voice-agent host has no prod
-  access; the voice agent's tool allowlist is empty; ADR-0018 does not
-  weaken any property ADR-0017 establishes.
+  access; the voice agent's tool allowlist is empty; NWP-ADR-0018 does not
+  weaken any property NWP-ADR-0017 establishes.
 - **[X02: Local Voice Agent](../proposals/X02-local-voice-agent.md)**
   — The proposal this ADR unblocks and scopes.
 - **CLAUDE.md § Threat Model** — The standing order this ADR makes an

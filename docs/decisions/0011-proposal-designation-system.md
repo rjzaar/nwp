@@ -1,4 +1,4 @@
-# ADR-0011: Proposal Designation System (P##, F##, X##)
+# NWP-ADR-0011: Proposal Designation System (P##, F##, X##)
 
 **Status:** Accepted
 **Date:** 2026-01-10 (formalized in roadmap reorganization)
@@ -155,5 +155,5 @@ Implement three-tier proposal designation system:
 
 ## Related Decisions
 
-- **ADR-0005: Distributed Contribution Governance** - F04 proposal
-- **ADR-0007: Verification Schema v2** - F09 proposal
+- **NWP-ADR-0005: Distributed Contribution Governance** - F04 proposal
+- **NWP-ADR-0007: Verification Schema v2** - F09 proposal

@@ -1015,7 +1015,7 @@ cmd_release(){
   }
   print_info "project: $(_mr_project_human)  (resolved from this directory's git remote)"
 
-  # ── ADR-0028 "Phase 1 dispensation": a trigger that arms itself ────────────
+  # ── NWP-ADR-0028 "Phase 1 dispensation": a trigger that arms itself ────────────
   #
   # While the registry's `approvers:` fact names exactly ONE human, an agent may
   # record that person's approval on their explicit instruction. That is a
@@ -1025,7 +1025,7 @@ cmd_release(){
   #
   # The MOMENT a second name is added this refuses agent-recorded approvals —
   # a second human exists, so the approval must be authenticated (ed25519-sk
-  # Solo touch, ADR-0028 "Signing"). Adding the name is the entire switch.
+  # Solo touch, NWP-ADR-0028 "Signing"). Adding the name is the entire switch.
   #
   # Keyed off a DECLARED FACT, never a date or a phase name: inert today,
   # correct forever, and it arms without anyone remembering to arm it.
@@ -1039,10 +1039,10 @@ cmd_release(){
   if [ "$_appr_n" -gt 1 ] && [ -z "${NWP_MR_APPROVAL_SIGNATURE:-}" ]; then
     die "REFUSING: the registry declares $_appr_n approvers, so a second human
   can sign. Recording an approval on someone's behalf is sanctioned only while
-  there is exactly one (ADR-0028, Phase 1 dispensation).
+  there is exactly one (NWP-ADR-0028, Phase 1 dispensation).
 
   @$approver must authenticate it themselves — ed25519-sk Solo touch, per
-  ADR-0028 'Signing'. Set NWP_MR_APPROVAL_SIGNATURE once that path exists.
+  NWP-ADR-0028 'Signing'. Set NWP_MR_APPROVAL_SIGNATURE once that path exists.
 
   Not a bug: adding the second name to approvers: is what turns the
   record-of-intent into a real two-person rule."

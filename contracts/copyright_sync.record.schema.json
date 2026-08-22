@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://git.example/nwp/contracts/copyright_sync.record.schema.json",
   "title": "nwc → ss copyright / legal-policy sync record",
-  "description": "The POST body nwc_copyright::MoodleToolPolicySync::pushToMoodle() sends to the Moodle consumer (local_nwc_copyright_sync → tool_policy). Single-writer rail (ADR-0031 D2 writer=nwc_copyright). A `version` bump forces student re-consent on the Moodle side, so this is a consent-affecting surface — a schema change here is boundary-touching.",
+  "description": "The POST body nwc_copyright::MoodleToolPolicySync::pushToMoodle() sends to the Moodle consumer (local_nwc_copyright_sync → tool_policy). Single-writer rail (NWP-ADR-0031 D2 writer=nwc_copyright). A `version` bump forces student re-consent on the Moodle side, so this is a consent-affecting surface — a schema change here is boundary-touching.",
   "type": "object",
   "additionalProperties": false,
   "required": ["policy_name", "title", "version", "effective_date", "change_summary", "body_md"],

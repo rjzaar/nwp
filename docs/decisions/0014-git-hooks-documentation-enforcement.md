@@ -1,11 +1,11 @@
-# ADR-0014: Git Hooks for Documentation Enforcement
+# NWP-ADR-0014: Git Hooks for Documentation Enforcement
 
 > **Deprecated (2026-07-09).** The client-side documentation-enforcement hooks described
 > here were never installed in practice (local-only, `--no-verify`-bypassable, and no
 > `setup.sh --install-git-hooks` adoption occurred). The *intent* — mechanically catching
 > documentation drift — is now served by **P62 `pl doc-truth`** (a baseline-safe structural
 > gate wired into CI as `lint:doc-truth` and the `pl verify` battery; see
-> [ADR-0030](0030-per-site-canonical-maturity-axes.md)). Retained for history.
+> [NWP-ADR-0030](0030-per-site-canonical-maturity-axes.md)). Retained for history.
 
 **Status:** Deprecated (superseded-in-intent by P62 `pl doc-truth`)
 **Date:** 2026-01-14 (v0.23.0)
@@ -280,8 +280,8 @@ exit 0
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - nwp.yml protection
-- **ADR-0009: Five-Layer YAML Protection** - File protection strategies
+- **NWP-ADR-0002: YAML-Based Configuration** - nwp.yml protection
+- **NWP-ADR-0009: Five-Layer YAML Protection** - File protection strategies
 - **CLAUDE.md**: Release Tag Process - Documentation update checklist
 
 ## Future Enhancements

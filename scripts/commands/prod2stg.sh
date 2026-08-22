@@ -61,7 +61,7 @@ should_run_step() {
 }
 
 # Get recipe value from nwp.yml
-# F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser).
+# F36 A-C2: yq-first per NWP-ADR-0015 (replaces legacy AWK YAML parser).
 get_recipe_value() {
     local recipe=$1
     local key=$2
@@ -72,7 +72,7 @@ get_recipe_value() {
 }
 
 # Get site value from nwp.yml
-# F36 A-C2: yq-first per ADR-0015.
+# F36 A-C2: yq-first per NWP-ADR-0015.
 get_site_value() {
     local site=$1
     local key=$2
@@ -102,7 +102,7 @@ get_prod_config() {
 }
 
 # Get Linode server config
-# F36 A-C2: yq-first per ADR-0015.
+# F36 A-C2: yq-first per NWP-ADR-0015.
 get_linode_server() {
     local server_name=$1
     local key=$2
@@ -679,7 +679,7 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         RECIPE="$BASE_NAME"
     fi
 
-    # Read reinstall_modules from recipe (F36 A-C2: yq-first per ADR-0015)
+    # Read reinstall_modules from recipe (F36 A-C2: yq-first per NWP-ADR-0015)
     REINSTALL_MODULES=$(recipe="$RECIPE" yq eval \
         '.recipes[env(recipe)].reinstall_modules // [] | .[]' \
         "$PROJECT_ROOT/nwp.yml" 2>/dev/null)

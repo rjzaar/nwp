@@ -4,7 +4,7 @@
 **Created:** 2026-05-09
 **Superseded by:** gitignoring `servers/*` to match the existing `sites/*` pattern; no separate `~/nwp-instances/` repo required. See §10 below for the rationale.
 **Author:** Robert Karsten Zaar (with AI assistance)
-**Architecture decision record:** [ADR-0021](../decisions/0021-public-only-repo-scope.md) (still in effect — public/private split is real; mechanism simplified)
+**Architecture decision record:** [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) (still in effect — public/private split is real; mechanism simplified)
 
 > **Why this proposal is superseded.** Audit of `~/nwp/` git state on 2026-05-22 showed that `sites/`, `nwp.yml`, `.secrets.yml`, `keys/prod_*`, and `private/` are *already* gitignored; only `servers/<host>/` was tracked. Extending the existing gitignore pattern from `sites/` to `servers/` achieves the public/private split (G1 + G3 from §2) without the overhead of a parallel `~/nwp-instances/` repo, `pl` layout detection (§4.2), or an `instance-manifest.yml` (§4.3). The full move-out remains a valid future direction if multi-operator / multi-machine private-overlay sync becomes a real need (see §10).
 
@@ -36,7 +36,7 @@ Throughout the cutover, the operator's existing deploy chain must continue to wo
 
 ## 3. Non-Goals
 
-- This proposal does **not** define the tier or feature model; that work is [ADR-0020](../decisions/0020-tiered-architecture-model.md) / [F32](F32-tiered-architecture-implementation.md).
+- This proposal does **not** define the tier or feature model; that work is [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) / [F32](F32-tiered-architecture-implementation.md).
 - This proposal does **not** rewrite the AI integration; that work is [F32](F32-tiered-architecture-implementation.md) Phase C.
 - This proposal does **not** address content of operator-specific proposals (X-series, per-site A-/S-/M-/C-series); that work is [F34](F34-role-label-proposal-rewrite.md).
 - This proposal does **not** install the leakage hygiene gate; that work is [P61](P61-leakage-hygiene-ci.md), which must land first.
@@ -254,8 +254,8 @@ The cutover is staged so each phase can be committed independently and verified 
 
 ## 10. Related decisions and proposals
 
-- [ADR-0021](../decisions/0021-public-only-repo-scope.md) — the architectural decision this proposal implements.
-- [ADR-0020](../decisions/0020-tiered-architecture-model.md) — the tier model that depends on the public/private split.
+- [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) — the architectural decision this proposal implements.
+- [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) — the tier model that depends on the public/private split.
 - [F32](F32-tiered-architecture-implementation.md) — tiered architecture implementation; consumes the cleaner repo layout.
 - [F34](F34-role-label-proposal-rewrite.md) — content of existing proposals; depends on this proposal having moved per-site content.
 - [P61](P61-leakage-hygiene-ci.md) — leakage gate; must land first.

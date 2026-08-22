@@ -1,7 +1,7 @@
 #!/bin/bash
 # lib/migrations/site/003-site-class.sh
 #
-# ADR-0036 / nwp/ops#153: add the per-site `class:` key — the third axis, beside
+# NWP-ADR-0036 / nwp/ops#153: add the per-site `class:` key — the third axis, beside
 # `canonical:` (content flow) and `maturity:` (code flow). Class answers "what IS
 # this site, and therefore which DATA invariants apply to it?"
 #
@@ -10,7 +10,7 @@
 # It adds the key as null and nothing else. Auto-classifying would be the exact
 # failure this axis exists to prevent: writing `class: service` onto a Moodle
 # site the migration has never looked inside is a machine asserting "this site
-# has no members" on no evidence — and under ADR-0036 that assertion is what
+# has no members" on no evidence — and under NWP-ADR-0036 that assertion is what
 # switches the Art.9 consent gate off. A null key is honest ("nobody has said
 # yet") and fails closed everywhere it is consulted.
 #
@@ -42,7 +42,7 @@ migrate_002_to_003() {
     yq eval -i '.class = null' "$config"
 
     # A comment the operator will actually see when they open the file.
-    yq eval -i '.class line_comment = "ADR-0036: member-paired|member-standalone|demo|service — declare via `pl class set '"$site_name"' <class>`; authoritative copy is classes/'"$site_name"'.class.yml"' "$config" 2>/dev/null || true
+    yq eval -i '.class line_comment = "NWP-ADR-0036: member-paired|member-standalone|demo|service — declare via `pl class set '"$site_name"' <class>`; authoritative copy is classes/'"$site_name"'.class.yml"' "$config" 2>/dev/null || true
 
     yq eval -i '.schema_version = 3' "$config"
 

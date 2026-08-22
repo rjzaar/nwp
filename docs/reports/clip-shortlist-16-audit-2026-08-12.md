@@ -9,7 +9,7 @@ human authors. Not gold, not a pick, not validated.
 > actually followed. You **cannot check the labels** — there are none worth checking
 > (§7.3), and the corpus itself is derivative-cleared-pending, password-gated and
 > **local-only**, so no transcript text, candidate excerpt, rationale or deep link appears
-> in this repository or in this document. `nwp/nwp` is publicly mirrored (ADR-0039). The
+> in this repository or in this document. `nwp/nwp` is publicly mirrored (NWP-ADR-0039). The
 > artefacts live on `mini` at `~/clip-pool/shortlist/`.
 
 ---

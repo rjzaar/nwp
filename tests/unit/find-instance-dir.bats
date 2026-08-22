@@ -3,7 +3,7 @@
 #
 # sites/ is the PRIMARY in-repo per-site location (F17/F23 layout). The
 # ~/nwp-instances overlay is an OPTIONAL operator overlay (role manifest,
-# _global, _servers) that takes precedence when present. F33/ADR-0021, which
+# _global, _servers) that takes precedence when present. F33/NWP-ADR-0021, which
 # planned to deprecate sites/, were superseded/rejected — resolving to sites/
 # must NOT print any deprecation warning.
 
@@ -55,7 +55,7 @@ teardown() {
   [[ -z "${result}" ]]
 }
 
-@test "resolving ./sites is SILENT — no deprecation warning (F33 superseded, ADR-0021 rejected)" {
+@test "resolving ./sites is SILENT — no deprecation warning (F33 superseded, NWP-ADR-0021 rejected)" {
   unset NWP_INSTANCES_DIR
   rm -rf "${HOME}/nwp-instances"
   mkdir -p "${SCRIPT_DIR}/sites/somereal"

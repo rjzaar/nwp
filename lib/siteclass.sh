@@ -1,11 +1,11 @@
 #!/bin/bash
 ################################################################################
 # lib/siteclass.sh — per-site CLASS: what a site IS, and therefore which data
-# invariants bind it. ADR-0036 / nwp/ops#153, ops#154.
+# invariants bind it. NWP-ADR-0036 / nwp/ops#153, ops#154.
 #
 # THE THIRD AXIS
 # --------------
-# ADR-0030 already gives a site two orthogonal axes:
+# NWP-ADR-0030 already gives a site two orthogonal axes:
 #   canonical:  dev|live|prod                    which host is true for CONTENT
 #   maturity:   incubating|stabilizing|production how carefully CODE changes
 # Neither answers "does the Art.9 consent gate apply here?" — a question about
@@ -67,7 +67,7 @@ siteclass_dir()          { echo "${NWP_SITECLASS_DIR:-${PROJECT_ROOT:-$HOME/nwp}
 # ops#326 (engine/site separation): REAL instance declarations live in the
 # PRIVATE OVERLAY repo (private/classes/ — its own reviewed git repo, remote
 # nwp/private), searched AFTER the shipped classes/ (which carries only the
-# sample pair: ssd, nwd). This preserves the ADR-0036 "reviewable in an MR"
+# sample pair: ssd, nwd). This preserves the NWP-ADR-0036 "reviewable in an MR"
 # property — the MR simply lives on the overlay repo — without shipping the
 # operator's estate in the engine tree. A site declared in BOTH dirs is
 # contradictory and FAILS CLOSED (siteclass_of → cannot-verify:duplicate-…).

@@ -15,7 +15,7 @@ set -euo pipefail
 # STILL FAIL-CLOSED: any precondition/post-condition failure exits non-zero and
 # produces NO "clean" artifact, so a failed sanitize can never yield a dump that
 # downstream treats as sanitized (P67's required default: abort rather than pass
-# raw PII). ADR-0031 plane 5b = students' learning records + `tool_policy`
+# raw PII). NWP-ADR-0031 plane 5b = students' learning records + `tool_policy`
 # consent acceptances; those are handled explicitly below (never silently dropped).
 #
 # NOTE (ops#110): the DDEV in-place path in lib/database-router.sh
@@ -52,7 +52,7 @@ set -euo pipefail
 #   - $CFG->prefix resolved; scratch DB `<dbname>_sanitize_scratch` creatable.
 #   - version.php present (confirms this really is a Moodle root, not Drupal).
 #
-# TABLES TO COVER — ADR-0031 plane 5b "Moodle learning/user state"
+# TABLES TO COVER — NWP-ADR-0031 plane 5b "Moodle learning/user state"
 # (names are UNPREFIXED; prepend the resolved $CFG->prefix). This is the
 # minimum inventory the operator must classify (DROP / TRUNCATE / ANONYMISE);
 # it is NOT exhaustive — audit the live schema, and a plugin that adds PII-
@@ -88,7 +88,7 @@ set -euo pipefail
 #     badge_issued, certificate/customcert issues
 #
 #   Consent (IRREVERSIBLE acceptance rows — handle explicitly, do NOT silently
-#   drop; ADR-0031 D5/plane 5b call these out by name):
+#   drop; NWP-ADR-0031 D5/plane 5b call these out by name):
 #     tool_policy_acceptances   (+ tool_policy / tool_policy_versions context)
 #
 #   Communications / logs (TRUNCATE — free-text PII):
@@ -97,7 +97,7 @@ set -euo pipefail
 #
 #   moodledata (SEPARATE surface, NOT in the DB): user/private files,
 #     sessions, temp, trashdir, and profile pictures under filedir may carry
-#     PII. ADR-0031 D8 notes moodledata "joins the backup surface (it is in
+#     PII. NWP-ADR-0031 D8 notes moodledata "joins the backup surface (it is in
 #     zero backups today)". The sanitizer (or a sibling step) must scrub/omit
 #     user-uploaded files; it is out of scope for the SQL pass but MUST be
 #     handled before any Moodle backup is treated as sanitized.
@@ -207,7 +207,7 @@ if [ "$VERIFY_ONLY" = true ]; then
 fi
 
 ################################################################################
-# moodle_sanitize — IMPLEMENTED (ops#76 / ADR-0031 plane 5b).
+# moodle_sanitize — IMPLEMENTED (ops#76 / NWP-ADR-0031 plane 5b).
 #
 # Security model — identical to lib/sanitizers/standard.sh + mayo.sh:
 #   The LIVE DB is READ-ONLY. Dump it once → load that dump into a throwaway
@@ -477,7 +477,7 @@ _moodle_restore_dev_admin() {
 }
 
 # Consent (tool_policy_acceptances) — handled EXPLICITLY, never silently dropped
-# (ADR-0031 D5). The anonymised fixture users never accepted any policy, so the
+# (NWP-ADR-0031 D5). The anonymised fixture users never accepted any policy, so the
 # per-user acceptance rows are TRUNCATED and the action is logged. The policy
 # DEFINITIONS (<prefix>tool_policy / <prefix>tool_policy_versions) are site
 # config, not PII, and are KEPT so the staging site still has its policy set.
@@ -638,7 +638,7 @@ moodle_sanitize() {
     # moodledata is a SEPARATE surface (not in the DB): user/private files,
     # profile pictures under filedir, sessions/, temp/, trashdir/. This SQL pass
     # does NOT touch it. A Moodle backup is not "sanitized" until a sibling step
-    # scrubs/omits moodledata (ADR-0031 D8). Documented, explicit deferral.
+    # scrubs/omits moodledata (NWP-ADR-0031 D8). Documented, explicit deferral.
     log "NOTE: moodledata file-scrub (user/private files, filedir profile pics,"
     log "      sessions/temp/trashdir) is OUT OF SCOPE for this SQL pass and MUST be"
     log "      handled by a sibling step before this backup is treated as sanitized."

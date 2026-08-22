@@ -30,10 +30,10 @@ fi
 
 # canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
-# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# deploy-gate.sh: hardware+signature gate on prod-writes (NWP-ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
-# pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless paired.
+# pair.sh: paired-site versioning guard (NWP-ADR-0031/ops#75); no-op unless paired.
 source "$PROJECT_ROOT/lib/pair.sh"
 
 # Script start time
@@ -236,7 +236,7 @@ prod_maintenance_set() {
     elif [ "$state" == "0" ]; then
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
         # NO pl VERB — `pl drush` is stg|live only and prod writes are operator-gated
-        # (ADR-0024/0028), so the sanctioned recovery is the rollback verb.
+        # (NWP-ADR-0024/0028), so the sanctioned recovery is the rollback verb.
         print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
         print_error "  pl rollback list ${SITENAME:-<site>}"
         print_error "  pl rollback execute ${SITENAME:-<site>} prod"
@@ -252,7 +252,7 @@ prod_maintenance_set() {
 }
 
 # Get recipe value from nwp.yml
-# F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser).
+# F36 A-C2: yq-first per NWP-ADR-0015 (replaces legacy AWK YAML parser).
 get_recipe_value() {
     local recipe=$1
     local key=$2
@@ -264,7 +264,7 @@ get_recipe_value() {
 }
 
 # Get Linode server configuration
-# F36 A-C2: yq-first per ADR-0015.
+# F36 A-C2: yq-first per NWP-ADR-0015.
 get_linode_config() {
     local server_name=$1
     local field=$2
@@ -372,9 +372,9 @@ ${BOLD}OPTIONS:${NC}
     -s N, --step=N          Resume from step N
     --dry-run               Show what would be done without making changes
     --code-only             Signal a code/config-only intent to the pair guard
-                            (ADR-0031 D6) — satisfies the UID-lock rule for a paired
+                            (NWP-ADR-0031 D6) — satisfies the UID-lock rule for a paired
                             provider/consumer prod deploy.
-    --override-pair         Proceed past a paired-site guard (ADR-0031). Ledgered in
+    --override-pair         Proceed past a paired-site guard (NWP-ADR-0031). Ledgered in
                             private/pairs/<pair>.log. For paired sites only.
     --override-snapshot     Proceed with the destructive rsync --delete even when the
                             fail-closed pre-deploy WEBROOT snapshot could not be taken
@@ -456,7 +456,7 @@ validate_deployment() {
     local prod_server prod_domain prod_path prod_method
 
     if command -v yaml_get_site_field &> /dev/null; then
-        # Check if site has production_config (F36 A-C2: yq-first per ADR-0015)
+        # Check if site has production_config (F36 A-C2: yq-first per NWP-ADR-0015)
         prod_method=$(site="$base_name" yq eval \
             '.sites[env(site)].production_config.method | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
             "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
@@ -1263,14 +1263,14 @@ main() {
     if ! maturity_guard_deploy "$base_name" "stg2prod"; then
         exit 1
     fi
-    # Pair guard (ADR-0031/ops#75): refuse a paired promotion that breaks
+    # Pair guard (NWP-ADR-0031/ops#75): refuse a paired promotion that breaks
     # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
     # No-op for unpaired sites; fail-closed on a declared-but-missing contract.
     if ! pair_guard "$base_name" "prod" "stg2prod" "$CODE_ONLY" "$OVERRIDE_PAIR"; then
         exit 1
     fi
 
-    # Hardware+signature gate on the production write (ADR-0028). No-op on the
+    # Hardware+signature gate on the production write (NWP-ADR-0028). No-op on the
     # test tier (unconfigured); on ver it requires a live Solo touch.
     if [ "${DRY_RUN:-false}" != "true" ]; then
         # stg2prod rsyncs the staging webroot only — it pushes NO database (no

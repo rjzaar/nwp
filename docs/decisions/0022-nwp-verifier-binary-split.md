@@ -1,20 +1,20 @@
-# ADR-0022: nwp-verifier Binary Split for the Verifier Role
+# NWP-ADR-0022: nwp-verifier Binary Split for the Verifier Role
 
-> **Naming note.** The verifier binary is named after the role it performs (`verifier`), not after any specific host that carries the role. Earlier internal references (after the operator's own historical host name for this role) are preserved in ADR-0019; that ADR will be rewritten by [F34](../proposals/F34-role-label-proposal-rewrite.md) to use the verifier role label.
+> **Naming note.** The verifier binary is named after the role it performs (`verifier`), not after any specific host that carries the role. Earlier internal references (after the operator's own historical host name for this role) are preserved in NWP-ADR-0019; that ADR will be rewritten by [F34](../proposals/F34-role-label-proposal-rewrite.md) to use the verifier role label.
 
-**Status:** Superseded by [ADR-0026](0026-nwp-server-capability-agent.md) (operator, 2026-07-18, nwp/ops#95). The `nwp-verifier` build target was renamed/re-scoped to the **`nwp-server` AI-free capability agent**; production deploy authority is [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md). This ADR is retained for history — it is not a pending decision.
+**Status:** Superseded by [NWP-ADR-0026](0026-nwp-server-capability-agent.md) (operator, 2026-07-18, nwp/ops#95). The `nwp-verifier` build target was renamed/re-scoped to the **`nwp-server` AI-free capability agent**; production deploy authority is [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md). This ADR is retained for history — it is not a pending decision.
 **Date:** 2026-05-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Threat-model boundary at the verifier; AI-free build-time guarantee
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md), [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md), [ADR-0020](0020-tiered-architecture-model.md), [F32](../proposals/F32-tiered-architecture-implementation.md)
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md), [NWP-ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md), [NWP-ADR-0020](0020-tiered-architecture-model.md), [F32](../proposals/F32-tiered-architecture-implementation.md)
 
 ## Context
 
-ADR-0017 establishes the verifier role: a host that is the sole writer to production, runs no AI code, and stays offline by default. ADR-0019 layers hardware-rooted keys on top of that mode.
+NWP-ADR-0017 establishes the verifier role: a host that is the sole writer to production, runs no AI code, and stays offline by default. NWP-ADR-0019 layers hardware-rooted keys on top of that mode.
 
-[ADR-0020](0020-tiered-architecture-model.md) introduces a single-binary architecture for NWP: `pl` runs on every host, configuration determines the role, and feature flags gate behaviour. That works cleanly for the authoring / CI / AI hosts. For the verifier it raises a question: should the same binary run there, with feature flags disabling AI / SaaS / outbound network?
+[NWP-ADR-0020](0020-tiered-architecture-model.md) introduces a single-binary architecture for NWP: `pl` runs on every host, configuration determines the role, and feature flags gate behaviour. That works cleanly for the authoring / CI / AI hosts. For the verifier it raises a question: should the same binary run there, with feature flags disabling AI / SaaS / outbound network?
 
-The operator's threat model, formalised in CLAUDE.md and ADR-0017, requires that **AI never touches a host with production-write capability**. "Touches" includes the binary itself: even if a feature flag disables AI at runtime, the AI adapter code is *present* in the binary, importable by any process that can read the file. That code might (in some future supply-chain compromise) be loaded via library injection, called via a debugger, or invoked by a side-channel. The threat model is strict enough that *the verifier's binary must contain no AI code at all*.
+The operator's threat model, formalised in CLAUDE.md and NWP-ADR-0017, requires that **AI never touches a host with production-write capability**. "Touches" includes the binary itself: even if a feature flag disables AI at runtime, the AI adapter code is *present* in the binary, importable by any process that can read the file. That code might (in some future supply-chain compromise) be loaded via library injection, called via a debugger, or invoked by a side-channel. The threat model is strict enough that *the verifier's binary must contain no AI code at all*.
 
 This is a **build-time guarantee**, not a runtime guarantee. Configuration cannot satisfy it.
 
@@ -46,7 +46,7 @@ Distributed as a separately-signed reproducible build. Installed on the verifier
 
 ### Option 4: Four binaries (one per role)
 
-**Rejected** for the reasons in [ADR-0020](0020-tiered-architecture-model.md): package skew, four installation paths, four bug surfaces, no benefit over Option 3 for non-verifier roles. The threat-model argument that justifies splitting the verifier does not apply to the AI host (which by design *runs* AI), the CI host (which processes untrusted code in containers anyway), or the authoring host (which is the operator's primary workstation).
+**Rejected** for the reasons in [NWP-ADR-0020](0020-tiered-architecture-model.md): package skew, four installation paths, four bug surfaces, no benefit over Option 3 for non-verifier roles. The threat-model argument that justifies splitting the verifier does not apply to the AI host (which by design *runs* AI), the CI host (which processes untrusted code in containers anyway), or the authoring host (which is the operator's primary workstation).
 
 ## Decision
 
@@ -55,7 +55,7 @@ Adopt **Option 3**: a separately-built `nwp-verifier` binary for the verifier ro
 - Build system (`Makefile` / `bin/build`) gains a `nwp-verifier` target alongside `nwp`.
 - `nwp-verifier` is built from the same source tree but with build tags / Cargo features / Bash script-includes that exclude the AI, CI, and SaaS modules.
 - `nwp-verifier` is reproducible: identical bit-for-bit output from a checkout + the official build environment. Build provenance recorded via SLSA-style attestations or equivalent.
-- `nwp-verifier` is signed by the operator's hardware-rooted key (per [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md)) and distributed to the verifier through the same offline channel as production deploy artefacts.
+- `nwp-verifier` is signed by the operator's hardware-rooted key (per [NWP-ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md)) and distributed to the verifier through the same offline channel as production deploy artefacts.
 - The verifier host runs `nwp-verifier` only. `nwp` is not installed there.
 - All other roles (authoring, CI, AI, mirror-store, voice-agent, etc.) run `nwp`.
 - The shared CLI surface — `pl deploy`, `pl verify`, `pl status` — works on both binaries; commands not relevant to the verifier (`pl install`, `pl ai *`, `pl ci *`) are absent from `nwp-verifier` and produce a "command not available in nwp-verifier" error.
@@ -72,7 +72,7 @@ The Rancher project distributes both k3s (convenience-focused, broadly inclusive
 
 ### One binary split, no more
 
-The expense of a binary split is real (build matrix, distribution, version skew). [ADR-0020](0020-tiered-architecture-model.md) explicitly rejected splitting binaries by tier or by role for non-verifier roles. The verifier is the *only* role that justifies a build-time boundary; every other capability separation is achieved by configuration, sandboxed subprocess, or both.
+The expense of a binary split is real (build matrix, distribution, version skew). [NWP-ADR-0020](0020-tiered-architecture-model.md) explicitly rejected splitting binaries by tier or by role for non-verifier roles. The verifier is the *only* role that justifies a build-time boundary; every other capability separation is achieved by configuration, sandboxed subprocess, or both.
 
 ### The smaller binary is itself a security feature
 
@@ -80,7 +80,7 @@ The expense of a binary split is real (build matrix, distribution, version skew)
 
 ### Reproducible build closes the supply-chain loop
 
-The signed-deploy chain in ADR-0017 already requires reproducible builds for production artefacts. Extending that requirement to `nwp-verifier` itself means the operator can independently verify (from a checkout + the documented build environment) that the binary on the verifier was built from the public source. This is the SLSA Level 3+ pattern; it is straightforward for a Bash/PHP-shaped codebase like NWP.
+The signed-deploy chain in NWP-ADR-0017 already requires reproducible builds for production artefacts. Extending that requirement to `nwp-verifier` itself means the operator can independently verify (from a checkout + the documented build environment) that the binary on the verifier was built from the public source. This is the SLSA Level 3+ pattern; it is straightforward for a Bash/PHP-shaped codebase like NWP.
 
 ## Consequences
 
@@ -117,7 +117,7 @@ The signed-deploy chain in ADR-0017 already requires reproducible builds for pro
 
 **For the operator's existing setup:**
 1. Build `nwp-verifier` v0.31.0 on the build host.
-2. Sign the artefact per ADR-0019.
+2. Sign the artefact per NWP-ADR-0019.
 3. Transfer to the verifier through the existing offline channel.
 4. Install on the verifier; remove the previous `nwp` installation from the verifier.
 5. Verify a representative deploy works end-to-end.
@@ -137,7 +137,7 @@ The signed-deploy chain in ADR-0017 already requires reproducible builds for pro
 
 ## Related Decisions
 
-- [ADR-0017](0017-distributed-build-deploy-pipeline.md) — establishes the verifier role and the AI-free constraint.
-- [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) — hardware-rooted keys on the verifier; signing covers `nwp-verifier` artefacts as well as deploy artefacts.
-- [ADR-0020](0020-tiered-architecture-model.md) — single-binary tier model; this ADR is the one justified exception.
+- [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) — establishes the verifier role and the AI-free constraint.
+- [NWP-ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) — hardware-rooted keys on the verifier; signing covers `nwp-verifier` artefacts as well as deploy artefacts.
+- [NWP-ADR-0020](0020-tiered-architecture-model.md) — single-binary tier model; this ADR is the one justified exception.
 - [F32](../proposals/F32-tiered-architecture-implementation.md) Phase D — implements the build target and verifier installation procedure.

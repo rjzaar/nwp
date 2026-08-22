@@ -25,7 +25,7 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
-# yaml helpers (yaml_get_all_sites / yaml_get_site_field) per ADR-0015 (yq-first)
+# yaml helpers (yaml_get_all_sites / yaml_get_site_field) per NWP-ADR-0015 (yq-first)
 source "$PROJECT_ROOT/lib/yaml-write.sh" 2>/dev/null || true
 # ops#236: lock-vs-vendor truth. `composer audit --locked` grades a DECLARATION;
 # this grades the code on disk.

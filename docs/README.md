@@ -181,7 +181,7 @@ Security documentation and best practices:
 | [Data Security Best Practices](security/data-security-best-practices.md) | Two-tier secrets, AI safety, hardening |
 | [SEO Setup](security/seo-setup.md) | SEO and robots.txt configuration |
 | [Design Decisions](security/design-decisions.md) | Security architecture rationale |
-| ~~[SECURITY.md](SECURITY.md)~~ | ⚠️ **Superseded 2026-07-25** — obsolete threat model + 8 non-existent commands. Read `CLAUDE.md` § Threat Model and ADR-0017/0024/0026/0028 instead |
+| ~~[SECURITY.md](SECURITY.md)~~ | ⚠️ **Superseded 2026-07-25** — obsolete threat model + 8 non-existent commands. Read `CLAUDE.md` § Threat Model and NWP-ADR-0017/0024/0026/0028 instead |
 
 ### Active Proposals
 

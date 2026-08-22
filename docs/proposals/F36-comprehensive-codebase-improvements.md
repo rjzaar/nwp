@@ -4,7 +4,7 @@
 > points still apply to NWC. Forward-looking work is tracked in
 > `~/central/NWC-ARCHITECTURE.md` §13/§14 and ADRs at
 > `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/`. AVC
-> remains live as comparison per ADR-0015; this doc isn't being rewritten.
+> remains live as comparison per NWC-ADR-0015; this doc isn't being rewritten.
 
 **Status:** PROPOSED
 **Created:** 2026-05-18
@@ -13,14 +13,14 @@
 **Depends On:** none (this proposal coordinates work; phases are independently shippable)
 **Breaking Changes:** none in P0–P1; some P2 items deprecate legacy parsers
 **Estimated Effort:** ~6 phases over 4–8 weeks of part-time work; quick-wins phase is ~1 day
-**Architecture decision records:** no new ADRs required; this proposal *implements* gaps in ADR-0015, ADR-0017, ADR-0019, ADR-0022
+**Architecture decision records:** no new ADRs required; this proposal *implements* gaps in NWP-ADR-0015, NWP-ADR-0017, NWP-ADR-0019, NWP-ADR-0022
 
 > **Why this proposal exists.** A multi-agent audit on 2026-05-18 (five
 > parallel Explore agents covering documentation, code architecture,
 > security, testing, and CI/CD) surfaced a consistent picture: the
 > architecture is sound and the threat model is intact, but execution
 > trails design in several load-bearing areas. The F28 verifier spine is
-> half-built, ADR-0015's yq-first rule is violated in three places,
+> half-built, NWP-ADR-0015's yq-first rule is violated in three places,
 > deployment scripts are 95% duplicated across six files, and the F32 /
 > F33 / F34 proposals are merged in code but still marked `PROPOSED` in
 > docs/. None of these are emergencies; together they are the difference
@@ -33,7 +33,7 @@
 
 **Overall posture: GOOD.** No critical security failures, no live data
 exposure, no AI-prod boundary breaches. The paranoid threat model is
-intact. The F28 / ADR-0017 distributed-pipeline design is sound; what
+intact. The F28 / NWP-ADR-0017 distributed-pipeline design is sound; what
 remains is plumbing.
 
 **Headline recommendations (top 5):**
@@ -42,7 +42,7 @@ remains is plumbing.
    and `lib/bundle-verify.sh` libraries are complete, but `.gitlab-ci.yml`
    has no job that calls them. The verifier has no producer.
 2. **Activate signed-commit verification** (P0). `.gitlab-ci.yml:114–123`
-   is a `echo "placeholder"` with `allow_failure: true`. ADR-0017's "trust
+   is a `echo "placeholder"` with `allow_failure: true`. NWP-ADR-0017's "trust
    flows through signatures" property is not yet enforced.
 3. **Fix `StrictHostKeyChecking=no` in `lib/safe-ops.sh:52`** (P0). A 5-
    minute change. Persistent MITM window on every prod status check.
@@ -113,7 +113,7 @@ code without improving the threat model.
 | # | Issue | Severity | Notes |
 |---|---|---|---|
 | C1 | Six deploy scripts share ~4,000 lines of duplicated logic | P1 | `dev2stg`, `stg2prod`, `prod2stg`, `stg2live`, `live2stg`, `live2prod` |
-| C2 | Three AWK YAML parsers violate ADR-0015 (yq-first) | P1 | `pl:334–391`, `stg2prod.sh:270–282`, `prod2stg.sh` |
+| C2 | Three AWK YAML parsers violate NWP-ADR-0015 (yq-first) | P1 | `pl:334–391`, `stg2prod.sh:270–282`, `prod2stg.sh` |
 | C3 | `eval set -- "$PARSED"` pattern in 8 scripts | P1 | `backup`, `copy`, `delete`, `schedule`, `restore`, `security`, `stg2prod`, `live` |
 | C4 | `eval "$(get_server_config ...)"` in `sync.sh:~435` | P0 | If config contains shell metacharacters, executes them |
 | C5 | 7 commands lack `set -euo pipefail` | P2 | `report`, `dev2stg`, `stg2prod`, `uninstall_nwp`, `prod2stg`, `testos`, `todo` |
@@ -130,7 +130,7 @@ code without improving the threat model.
   scripts to source it. Estimated ~3,000 lines recovered.
 - **A-C2 (P1):** Replace all three AWK parsers with `yq eval` calls. Add
   a CI grep gate: `grep -RE '^\s*awk .*yaml' scripts/ lib/` exits
-  non-zero. Per ADR-0015. ~80 lines removed.
+  non-zero. Per NWP-ADR-0015. ~80 lines removed.
 - **A-C3 (P1):** Replace `eval set -- "$PARSED"` with array-based
   argument parsing (`while [[ $# -gt 0 ]]; do case ...`). Eight files,
   ~30 min each.
@@ -162,7 +162,7 @@ code without improving the threat model.
 | # | Issue | Severity | Notes |
 |---|---|---|---|
 | S1 | `StrictHostKeyChecking=no` in `lib/safe-ops.sh:52` | P0 | Persistent MITM window, not just first-connect |
-| S2 | CI `verify-signature` is `echo` placeholder with `allow_failure: true` | P0 | ADR-0017's signature-trust property not enforced |
+| S2 | CI `verify-signature` is `echo` placeholder with `allow_failure: true` | P0 | NWP-ADR-0017's signature-trust property not enforced |
 | S3 | Artifact signing key would live on AI-accessible `ci-host` (when F28 lands) | P1 | Defense-in-depth — mitigated by verifier verifying offline |
 | S4 | `.gitleaks.toml` hostname rules are hand-maintained | P2 | Drift risk as infrastructure changes |
 | S5 | `lib/safe-ops.sh` reads `.secrets.data.yml` on AI-accessible machines | P2 | Internal-only; no exposure unless caller logs output |
@@ -179,7 +179,7 @@ code without improving the threat model.
   `keys/signers/`. Flip `allow_failure: true` → `false`. Requires
   configuring commit signing first; ~2 h once keys are in place.
 - **A-S3 (P1):** When F28 ships, ensure runner-artifact signing key is
-  *not* the prod-trust key. Document in ADR-0017 §"Key separation" that
+  *not* the prod-trust key. Document in NWP-ADR-0017 §"Key separation" that
   ci-host signing is contained by the verifier's offline signature
   check. Consider Solo 2C+ ssh-sk for runner key later.
 - **A-S4 (P2):** Generate `.gitleaks.toml` host-name rules from a
@@ -362,7 +362,7 @@ Stats live on a dedicated **`stats` git branch**, not on `main`:
 ### 6.5.5 Free security signals
 
 The same infrastructure yields two posture indicators that align with
-ADR-0017's "trust flows through signatures, not machines":
+NWP-ADR-0017's "trust flows through signatures, not machines":
 
 - **`build.bundle.sign-seconds` spike.** A sign job that suddenly
   takes 3× p95 is worth investigating — could be legit (larger
@@ -414,7 +414,7 @@ ADR-0017's "trust flows through signatures, not machines":
 
 Three themes recur across all five audit angles:
 
-**Theme 1 — F28 / ADR-0017 spine is unfinished.** The libraries are
+**Theme 1 — F28 / NWP-ADR-0017 spine is unfinished.** The libraries are
 written, the verifier is designed, but the CI plumbing that feeds it
 doesn't exist. Until A-O1 + A-O2 + A-S2 land, the distributed
 build/deploy story is aspirational. **This is the single most
@@ -446,7 +446,7 @@ Audit agents consistently called out these as strengths. Hands off:
 - **`lib/bundle-build.sh` + `lib/bundle-verify.sh`** — F28 artifact
   signing library is solid. Hard-fail on signature failure; no
   partial-verify fallback. Just needs CI wiring.
-- **Two-tier secrets (ADR-0004)** — `.secrets.yml` vs
+- **Two-tier secrets (NWP-ADR-0004)** — `.secrets.yml` vs
   `.secrets.data.yml` split is correctly implemented; no leaks found.
 - **`lib/sanitize.sh`** — explicitly *does not* reset passwords to a
   known value in SQL dumps. Comment cites the threat. Good.
@@ -480,7 +480,7 @@ Highest leverage, lowest risk. Do these first.
 - A-O3: Pin DDEV base image (5 min)
 - A-D2: COMMAND_INVENTORY recount (1–2 h)
 
-### Phase 1 — F28 / ADR-0017 CI spine (4–6 h)
+### Phase 1 — F28 / NWP-ADR-0017 CI spine (4–6 h)
 
 Single-purpose phase: light up the verifier's data feed.
 
@@ -508,7 +508,7 @@ Highest mechanical reward.
 
 ### Phase 3 — yq-first enforcement (½ week)
 
-Cleans up an ADR-0015 violation.
+Cleans up an NWP-ADR-0015 violation.
 
 - A-C2: Replace AWK parsers with `yq` in `pl`, `stg2prod.sh`, `prod2stg.sh`
 - Add CI grep gate forbidding new `awk` YAML parsers
@@ -581,7 +581,7 @@ This proposal is **DONE** when:
 - **Open question:** Should `lib/` and `scripts/lib/` be merged
   (A-C8)? Need an operator decision before Phase 6.
 - **Open question:** Keep GitHub Actions in parallel with GitLab CI, or
-  treat GitHub as mirror-only and drop the workflows? Per ADR-0021
+  treat GitHub as mirror-only and drop the workflows? Per NWP-ADR-0021
   GitLab is canonical, but the GitHub leakage gate provides a useful
   belt-and-braces. Recommendation: keep both, but enforce config parity
   via A-O8.
@@ -610,7 +610,7 @@ audit angle, total wall time ~3 minutes. Source agents:
   `.verification.yml`, `.verification-ai-progress.yml`; checked
   pre-commit and CI integration; computed coverage ratios.
 - **CI/CD** — mapped `.gitlab-ci.yml` (745 lines) end-to-end against
-  ADR-0017; compared with `.github/workflows/`; assessed F28 wiring
+  NWP-ADR-0017; compared with `.github/workflows/`; assessed F28 wiring
   status.
 
 Findings cross-validate. Three findings (F28 spine, signed commits,

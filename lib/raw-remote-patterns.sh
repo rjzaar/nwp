@@ -2,7 +2,7 @@
 #
 # The idioms `pl drush` / `pl moodle cli` / `pl moodle plugin deploy` were built
 # to retire: raw remote one-liners that bypass the dry-run default, the typed
-# live confirm, the live.enabled check, the ADR-0028 deploy gate, pair_guard,
+# live confirm, the live.enabled check, the NWP-ADR-0028 deploy gate, pair_guard,
 # the fate manifest and the rollback ledger (CLAUDE.md, "everything goes
 # through pl"; recorded failure: the 2026-07-28 ops#149 scp+sudo-cp deploy).
 #

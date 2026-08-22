@@ -30,10 +30,10 @@ source "$PROJECT_ROOT/lib/ssh.sh"
 source "$PROJECT_ROOT/lib/rollback.sh"
 # canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
-# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# deploy-gate.sh: hardware+signature gate on prod-writes (NWP-ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
-# pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless the site
+# pair.sh: paired-site versioning guard (NWP-ADR-0031/ops#75); no-op unless the site
 # is declared paired (paired_with:) — fail-closed on a declared-but-missing contract.
 source "$PROJECT_ROOT/lib/pair.sh"
 # config-drift.sh: Vortex-style config-as-code gate around live `drush updatedb`
@@ -1189,7 +1189,7 @@ run_live_db_updates() {
         case "$_drift_rc" in
             0) print_status "OK" "Database updates applied (updatedb, config-drift verified)" ;;
             1) print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
-               print_error "Recover through pl — no ssh (the ADR-0028 gate, the live.enabled flag and the ledger all apply):"
+               print_error "Recover through pl — no ssh (the NWP-ADR-0028 gate, the live.enabled flag and the ledger all apply):"
                print_error "  pl drush ${base_name} --tier=live --execute -- updatedb -y"
                print_error "  pl drush ${base_name} --tier=live --execute -- cr"
                print_error "  pl drush ${base_name} --tier=live --execute -- sset system.maintenance_mode 0"
@@ -1209,7 +1209,7 @@ run_live_db_updates() {
             # unrun + the site in maintenance while the deploy reported success).
             # Return non-zero so the caller ABORTS (maintenance stays ON for recovery).
             print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
-            print_error "Recover through pl — no ssh (the ADR-0028 gate, the live.enabled flag and the ledger all apply):"
+            print_error "Recover through pl — no ssh (the NWP-ADR-0028 gate, the live.enabled flag and the ledger all apply):"
             print_error "  pl drush ${base_name} --tier=live --execute -- updatedb -y"
             print_error "  pl drush ${base_name} --tier=live --execute -- cr"
             print_error "  pl drush ${base_name} --tier=live --execute -- sset system.maintenance_mode 0"
@@ -1284,7 +1284,7 @@ live_maintenance_set() {
     elif [ "$state" == "0" ]; then
         # A failed maintenance-OFF leaves the site stuck at 503 — make it LOUD.
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
-        print_error "Fix through pl — no ssh (the ADR-0028 gate and the ledger apply):"
+        print_error "Fix through pl — no ssh (the NWP-ADR-0028 gate and the ledger apply):"
         print_error "  pl drush ${base_name} --tier=live --execute -- sset system.maintenance_mode 0"
         print_error "  pl drush ${base_name} --tier=live --execute -- cr"
     else
@@ -1464,7 +1464,7 @@ ${BOLD}OPTIONS:${NC}
     --override-canonical    Push content even though the site is NOT canonical: dev.
                             OVERWRITES the canonical content source. Warns loudly and
                             records who/when in private/canonical/<site>.log.
-    --override-pair         Proceed past a paired-site guard (ADR-0031): provider-first
+    --override-pair         Proceed past a paired-site guard (NWP-ADR-0031): provider-first
                             ordering, the D6 UID-lock/--code-only rule, or a red pair.
                             Ledgered in private/pairs/<pair>.log. For paired sites only.
     --override-snapshot     Proceed with the destructive rsync --delete even when the
@@ -2212,7 +2212,7 @@ main() {
     if ! maturity_guard_deploy "$BASE_NAME" "stg2live"; then
         exit 1
     fi
-    # Pair guard (ADR-0031/ops#75): for a paired site (ssc↔nwc, ssd↔nwd) refuse a
+    # Pair guard (NWP-ADR-0031/ops#75): for a paired site (ssc↔nwc, ssd↔nwd) refuse a
     # promotion that violates provider-first ordering, the D6 UID-lock/--code-only
     # rule, or a red pair. No-op for unpaired sites; fail-closed on a declared pair
     # whose contract is missing. --override-pair is the ledgered escape.
@@ -2239,7 +2239,7 @@ main() {
         fi
     fi
 
-    # Hardware+signature gate on the live write (ADR-0028). No-op on the test
+    # Hardware+signature gate on the live write (NWP-ADR-0028). No-op on the test
     # tier (unconfigured); on ver it requires a live Solo touch. Skipped for
     # a dry run (nothing is written).
     if [ "${DRY_RUN:-false}" != "true" ]; then

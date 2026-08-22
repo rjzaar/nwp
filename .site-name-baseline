@@ -90,7 +90,6 @@ docs/handover-unfork-ops3.md	19
 docs/history/P54-verification-fixes/baseline-state.md	2
 docs/history/P54-verification-fixes/change-log.md	4
 docs/library-manifest.yml	20
-docs/onboarding/adrs.md	1
 docs/onboarding/architecture-brief.md	3
 docs/onboarding/coder-intro.md	6
 docs/onboarding/deploy-pipeline.md	2

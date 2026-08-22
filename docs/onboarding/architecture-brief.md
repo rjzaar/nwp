@@ -75,7 +75,7 @@ If you see an "editorial" word in a PR description, it lives in one of these fiv
 ### 3b. Governance + audit
 
 - **`nwc_governance`** — the `governance_action` audit entity. Every state change writes here. **Removing a governance write is a regression** even if tests pass.
-- **`nwc_decision_log`** — public-facing Decision Log; visibility tiers (Stewards / Members / Public) enforced by ADR-0010.
+- **`nwc_decision_log`** — public-facing Decision Log; visibility tiers (Stewards / Members / Public) enforced by NWC-ADR-0010.
 
 ### 3c. Cross-site integration
 

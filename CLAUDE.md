@@ -52,7 +52,7 @@ NWP operates under a **paranoid + open-source + local-first** threat model. When
 ### Trust Assumptions
 
 - **Third-party SaaS is distrusted by default.** Prefer self-hosted, open-source alternatives even when they require more setup (e.g., Headscale over Tailscale, Gotify over Pushover, GitLab self-hosted over GitLab.com).
-  - **Bounded SaaS exception for PSTN voice/SMS access** — see [ADR-0018](docs/decisions/0018-twilio-bounded-saas-for-pstn.md). The `prefer self-hosted` rule holds everywhere else; this is the single documented exception, scoped to the audio transport layer only. Do not cite ADR-0018 as a precedent for other SaaS additions — each is evaluated on its own merits.
+  - **Bounded SaaS exception for PSTN voice/SMS access** — see [NWP-ADR-0018](docs/decisions/0018-twilio-bounded-saas-for-pstn.md). The `prefer self-hosted` rule holds everywhere else; this is the single documented exception, scoped to the audio transport layer only. Do not cite NWP-ADR-0018 as a precedent for other SaaS additions — each is evaluated on its own merits.
 - **AI agents (including Claude) are distrusted for production access.** No AI-run machine may hold a key that reaches a production server. AI's blast radius is bounded to dev/stg/live and CI.
 - **Hardware-rooted keys for irreversible actions.** Anything that writes to prod must be gated by a hardware security token with user presence + PIN (Solo 2C+ NFC, Trussed-based open firmware — YubiKey is explicitly rejected due to closed firmware).
 - **Trust flows through signatures, not machines.** Artifacts are trusted because they carry a valid minisign signature from a known key, not because they came from a "trusted" host. This is the load-bearing property that lets an AI-driven build host (mmt) feed an air-gapped deploy host (mons) without compromising prod.
@@ -79,7 +79,7 @@ NWP operates under a **paranoid + open-source + local-first** threat model. When
 - **Don't put mons on the Headscale mesh.** mons is offline by default and connects only while actively deploying, via a phone hotspot or dedicated cellular modem — never via the home LAN and never as a Headscale member alongside met/mini. During deploys mons reaches `git.nwpcode.org` over public HTTPS (with signature verification) and reaches prod through a dedicated one-to-one WireGuard tunnel where mons and prod are the only peers and prod's sshd binds only to the tunnel interface. Don't suggest adding mons to Headscale or putting its traffic over the home router.
 - **Prefer open-source, self-hosted, local-first tools** when recommending new infrastructure. If a SaaS is the only reasonable option, flag the trade-off explicitly.
 
-See [ADR-0017: Distributed Build/Deploy Pipeline](docs/decisions/0017-distributed-build-deploy-pipeline.md) for the full architecture and rationale.
+See [NWP-ADR-0017: Distributed Build/Deploy Pipeline](docs/decisions/0017-distributed-build-deploy-pipeline.md) for the full architecture and rationale.
 
 ## STANDING ORDER: everything goes through `pl`
 
@@ -102,7 +102,7 @@ ssh host 'free -h; uptime'                    pl server health <name>
 ```
 
 **Why this is a rule and not a preference.** The `pl` verbs are where the guarantees live:
-the dry-run default, the typed live confirm, the `live.enabled` check, the ADR-0028 deploy
+the dry-run default, the typed live confirm, the `live.enabled` check, the NWP-ADR-0028 deploy
 gate, `pair_guard`, the fate manifest, the rollback ledger, the no-secret-printing rule,
 the php-version and `max_input_vars` assertions that stop a Moodle upgrade from stranding a
 site in maintenance mode. A hand-rolled `ssh`+`sudo` one-liner reproduces the *effect* of a
@@ -147,7 +147,7 @@ enumerating served nginx roots before `pl server roots` was written. Take the re
 approving the shift and the second human dev existing — the two conditions of the
 ruling above — so there is no flag to remember, and no way to be in team mode with
 nobody available to be the second pair of eyes. This is the same declared-fact
-pattern `cmd_release`'s ADR-0028 dispensation already used: *"inert today, correct
+pattern `cmd_release`'s NWP-ADR-0028 dispensation already used: *"inert today, correct
 forever, and it arms without anyone remembering to arm it."*
 
 **`.nwp-review-mode` is a GENERATED PROJECTION, not a policy.** `private/` is a
@@ -189,7 +189,7 @@ nearly bit for real: `.nwp-review-mode` was silently gitignored on first writing
 absent in CI — and because the fallback is `team`, that surfaced as CI holding
 everything rather than as two-person review silently switched off.
 
-See [ADR-0037](docs/decisions/0037-review-mode-follows-approvers.md) (renumbered from a duplicate 0032, ops#319).
+See [NWP-ADR-0037](docs/decisions/0037-review-mode-follows-approvers.md) (renumbered from a duplicate 0032, ops#319).
 
 ## STANDING ORDER: a check that has never been proven to fail is not a check
 
@@ -414,7 +414,7 @@ Rules:
   starts."* One command records it (`--adopt` covers credentials the registry
   does not know yet — 3 of the first 4 real exposures were undeclared). It then
   appears in `pl todo`, reddens `pl rag`, and **fails a prod bring-up closed**:
-  `pl canonical set <site> prod` and every prod write through the ADR-0028 gate
+  `pl canonical set <site> prod` and every prod write through the NWP-ADR-0028 gate
   (`pl stg2prod`, `pl live2prod`) REFUSE while any debt is open, naming the
   entries. `NWP_ROTATION_DEBT_OVERRIDE="<why>"` is the only way past and it is
   ledgered to `private/rotation-debt-overrides.log`.
@@ -426,7 +426,7 @@ Rules:
 - **Every token has three names** — the `.secrets.yml` key, the registry `id`, and
   the live GitLab bot/token name. Use the crosswalk in the registry / `~/central/TOKEN-REGISTRY-*.md`; don't conflate them.
 - **`.secrets.yml:gitlab.api_token` is NOT the root admin PAT.** That claim is stale.
-  Since the 2026-07-18 ADR-0024 cutover the slot holds the non-admin group bot
+  Since the 2026-07-18 NWP-ADR-0024 cutover the slot holds the non-admin group bot
   `group_9_bot` / `nwp-automation-dev` (`is_admin: false`, Developer). It **can**
   create merge requests on `nwp/nwp`; it cannot manage deploy keys, CI variables or
   project access tokens. Don't route work around it on the assumption that it is
@@ -488,7 +488,7 @@ Rules:
 - `servers/` - Per-server infrastructure (F17 Phase 8, formerly F23):
   - `servers/<name>/.nwp-server.yml` - Server identity (gitignored plaintext; SOPS-encrypted version comes with F18)
   - `servers/<name>/{email,linode,nginx,demo}/` - Generic mechanism: installers, hooks, snippets, provisioning scripts. **Engine-tracked.**
-  - `servers/<name>/{nginx/conf.d,system,php,postfix,letsencrypt}/` - Per-host **IDENTITY**: vhosts with real domains, the operator crontab, mail aliases, ufw, authorized keys, inventories. **NOT engine-tracked** (ops#326 / [ADR-0039](docs/decisions/0039-instance-state-in-private-overlay-repos.md)) — the engine repo is publicly mirrored.
+  - `servers/<name>/{nginx/conf.d,system,php,postfix,letsencrypt}/` - Per-host **IDENTITY**: vhosts with real domains, the operator crontab, mail aliases, ufw, authorized keys, inventories. **NOT engine-tracked** (ops#326 / [NWP-ADR-0039](docs/decisions/0039-instance-state-in-private-overlay-repos.md)) — the engine repo is publicly mirrored.
   - **Each server is its own PRIVATE git repo, in place**: `servers/<name>/.git`, remote `nwp/server-<name>`. The files never move, so every `pl` verb reads the same paths; only the repo boundary moves. `pl doctor` (`host_check_server_repos`) fails when a host dir holds state with no repo, has no remote, has unpushed commits, or is dirty — and prints the exact command to settle it.
   - After a `git pull` that lands an engine-side split, restore the captured state with `git -C servers/<name> checkout -- .`
 - `scripts/commands/` - All executable commands (accessed via `pl` CLI)

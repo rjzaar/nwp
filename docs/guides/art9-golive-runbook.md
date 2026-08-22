@@ -164,7 +164,7 @@ pl drush nwc --tier=live --execute -- state:set system.maintenance_mode 1 -y
 pl drush nwc --tier=live --execute -- cr
 
 # STANDING RULE: --code-only. A full-DB push rewrites UIDs and severs the
-# UID-locked ssc/ssd OIDC SSO identities. See ADR-0029.
+# UID-locked ssc/ssd OIDC SSO identities. See NWP-ADR-0029.
 #
 # Rehearse first — --dry-run snapshots and previews the rsync, then aborts
 # before any DB write, permission change or service reload:
@@ -177,7 +177,7 @@ pl stg2live nwc --code-only
 > `pl stg2live` — there is no "pl deploy" verb, and this runbook prescribed one
 > until 2026-07-26 — is what carries the
 > `--code-only` primitive, the fail-closed PROFILE-CHANGE GUARD, the pre-deploy
-> webroot snapshot and the ADR-0031 paired-site ordering check. `pl live2prod
+> webroot snapshot and the NWP-ADR-0031 paired-site ordering check. `pl live2prod
 > nwc --code-only` is the same step for the prod leg.
 
 This retires the freeze (it becomes a documented no-op) and brings in Trialing
@@ -237,7 +237,7 @@ pl drush nwc --tier=live --execute -- php:script art9_nwd_journey.php
 > `pl drush <site> --tier=live --execute --script=<local.php>` stages a local
 > `.php` outside the docroot (0600, `www-data`), runs it via `drush php:script`,
 > and removes it on every exit path — inheriting the dry-run default, the
-> ADR-0028 gate and the `live.enabled` check that a hand-rolled `scp`+`ssh`
+> NWP-ADR-0028 gate and the `live.enabled` check that a hand-rolled `scp`+`ssh`
 > silently drops. Two gotchas are handled inside the verb rather than left to
 > callers: a literal `--` is inserted before the script's own arguments (drush
 > otherwise claims them: *"The --base-url option does not exist"*), and callers

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# scripts/commands/pair.sh — paired-site contract surface (ADR-0031 / ops#75)
+# scripts/commands/pair.sh — paired-site contract surface (NWP-ADR-0031 / ops#75)
 #
 # Read-only inspection + manual state management for the pair contract that
 # lib/pair.sh (pair_guard) consumes. This command NEVER touches a live site.
@@ -27,7 +27,7 @@ source "$PROJECT_ROOT/lib/pair.sh"
 
 show_help() {
     cat <<EOF
-${BOLD}NWP Pair — paired-site contract surface (ADR-0031 / ops#75)${NC}
+${BOLD}NWP Pair — paired-site contract surface (NWP-ADR-0031 / ops#75)${NC}
 
 ${BOLD}USAGE:${NC}
     pl pair <subcommand> [args]
@@ -141,7 +141,7 @@ cmd_status() {
     done
     echo ""
     print_info "Contract version = $cv. 'provider'/'consumer' columns = last recorded deployed contract_version per tier."
-    print_info "A consumer promotion is refused while its provider column is behind (or '-') for that tier (ADR-0031 D5)."
+    print_info "A consumer promotion is refused while its provider column is behind (or '-') for that tier (NWP-ADR-0031 D5)."
 }
 
 cmd_check() {

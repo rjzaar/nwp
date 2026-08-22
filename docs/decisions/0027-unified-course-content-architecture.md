@@ -1,4 +1,4 @@
-# ADR-0027: Unified Course-Content Architecture — one canonical model, federation by overlay, and the trust-ceremony spectrum
+# NWP-ADR-0027: Unified Course-Content Architecture — one canonical model, federation by overlay, and the trust-ceremony spectrum
 
 **Status:** Accepted (2026-07-09) — supersedes F30 (specifics), amends P70 (attribution → member-level/CC0)
 **Date:** 2026-07-08 (accepted 2026-07-09)
@@ -13,9 +13,9 @@ pipeline), [F29](../proposals/F29-mayo-comprehensive-integration.md) (mayo integ
 [P67](../proposals/P67-per-site-workflow-maturity.md),
 [P70](../proposals/P70-audience-variants-and-learnersourced-stories.md),
 [Pedagogy Guild briefing](../pedagogy/learning-science-foundations.md),
-[ADR-0012](0012-cc0-public-domain-dedication.md) (CC0),
-[ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust-through-signatures),
-[ADR-0005](0005-distributed-contribution-governance.md).
+[NWP-ADR-0012](0012-cc0-public-domain-dedication.md) (CC0),
+[NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust-through-signatures),
+[NWP-ADR-0005](0005-distributed-contribution-governance.md).
 
 ---
 
@@ -51,9 +51,9 @@ supersedes F30's *specifics*, adopts F30's *architecture*, and positions the oth
    never the content.
 4. **Content that passed its origin site's checks flows freely.** The receiving side does not
    re-run the origin's checks; it **verifies provenance** (a signature that the content passed those
-   checks) — the NWP threat model's *"trust flows through signatures, not machines"* (ADR-0017).
+   checks) — the NWP threat model's *"trust flows through signatures, not machines"* (NWP-ADR-0017).
 5. **Content is attributed to the *member*, not the individual author**, and is **CC0**
-   (ADR-0012). This one choice satisfies safeguarding + copyright + trust simultaneously (Decision 6).
+   (NWP-ADR-0012). This one choice satisfies safeguarding + copyright + trust simultaneously (Decision 6).
 
 ---
 
@@ -145,7 +145,7 @@ travels and how many users it becomes canonical for:
 ### 6. Attribution is member-level and CC0 — one move, three wins
 
 Content leaving a site is attributed to the **member organisation** (e.g. *mayo*), **not** the
-individual author, and is **CC0** (ADR-0012).
+individual author, and is **CC0** (NWP-ADR-0012).
 
 > **Invariant (absolute, all sites, no exceptions):** *No individual contributor is ever
 > identifiable once content has left its origin site.* Identity is retained **only inside the origin
@@ -161,7 +161,7 @@ This single rule satisfies:
 - **Copyright** — CC0 public-domain dedication means no attribution chains and no per-contributor
   clearance to merge, share, or relicense within the federation (the copyright gate operates on the
   member's attestation, not N individual authors).
-- **Trust** — the member's **signature** is the unit of provenance (ADR-0017), exactly the
+- **Trust** — the member's **signature** is the unit of provenance (NWP-ADR-0017), exactly the
   granularity Decisions 4–5 verify against.
 
 ```
@@ -215,14 +215,14 @@ a shared adapter test-suite.
   Interest Group  ──promote──▶  Audience Guild  ──birth──▶  Federation member site
   (audience tag,               (owns its variant/story       (own community + users +
    zero overhead,               overlay; routing authority     safeguarding boundary;
-   ADR-0002)                    + score; incubating)           overlay travels with it)
+   NWP-ADR-0002)                    + score; incubating)           overlay travels with it)
         │ triple-test:                │ ops#48 maturity:              │ content still a
         │ bottleneck + 5 members      │ incubating→stabilizing        │ CANONICAL OVERLAY,
         │ + distinct credentialing    │ →production                   │ never a fork
 ```
 
   A new audience starts as one block in `interest-groups.yml` (an `application_tag` like `youth`).
-  If it earns routing authority (ADR-0002 triple-test — the Media-from-Video-IG precedent), it is
+  If it earns routing authority (NWP-ADR-0002 triple-test — the Media-from-Video-IG precedent), it is
   **promoted to an audience guild** that owns that audience's `variants`/`contributed` atoms — and
   **structurally cannot touch `core`** (it has no `core` atom to edit; the invariant stays with
   Theology/Sojourners). If it grows a full community, it is **birthed into a federation member site**
@@ -263,10 +263,10 @@ revision already works.
 - **F30 needs a rewrite** to current naming, or a note that this ADR + ops#61 supersede its
   specifics; leaving F30 as-is invites the same drift again.
 - Member signing keys (who holds mayo's key, how it is provisioned) is a new key-management surface
-  (fits ADR-0017's model but must be specified).
+  (fits NWP-ADR-0017's model but must be specified).
 
 **Supersedes / amends**
-- **Retires F30** (operator decision 5): F30 is replaced by a "superseded by ADR-0027" note; its
+- **Retires F30** (operator decision 5): F30 is replaced by a "superseded by NWP-ADR-0027" note; its
   *architecture* is adopted here, its *specifics* (naming, paths, S05 schema, content in `sites/ss/`)
   are dropped. The buildable cross-site federation work moves to a new re-grounded ops issue.
 - **Amends P70:** attribution/`author` handling changes to member-level + CC0 (Decision 6); the
@@ -301,8 +301,8 @@ revision already works.
    keeping an element the strict instructional load-bearing test would cut — **bounded**: named
    explicitly per item by the Pedagogy Guild, and never applied to the opening.
 4. **Member signing key** — **each member holds its own key**, provisioned at onboarding; mechanics
-   fold into F28 / ADR-0017 key management.
-5. **F30 disposition** — **retire F30** (replace with a "superseded by ADR-0027" note); the buildable
+   fold into F28 / NWP-ADR-0017 key management.
+5. **F30 disposition** — **retire F30** (replace with a "superseded by NWP-ADR-0027" note); the buildable
    cross-site federation work moves to a new **re-grounded ops issue** (blocked on F26/F28).
 
 ## Deferred to the Pedagogy Guild

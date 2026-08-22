@@ -3,9 +3,9 @@ set -euo pipefail
 
 ################################################################################
 # pl class — per-site CLASS: what a site IS, therefore which invariants apply.
-# ADR-0036 / nwp/ops#153, ops#154.
+# NWP-ADR-0036 / nwp/ops#153, ops#154.
 #
-# The third per-site axis, beside the two from ADR-0030:
+# The third per-site axis, beside the two from NWP-ADR-0030:
 #   pl canonical  content-flow  (dev|live|prod)          where truth lives
 #   pl maturity   code-flow     (incubating|…|production) how carefully code moves
 #   pl class      data/identity (this)                    what the site IS
@@ -104,7 +104,7 @@ cmd_show() {
     if [ -n "$one" ]; then sites="$one"; else sites="$(_class_all_sites)"; fi
     [ -n "$sites" ] || { print_info "No sites found under sites/"; return 0; }
 
-    print_header "Site classes (what each site IS — ADR-0036)"
+    print_header "Site classes (what each site IS — NWP-ADR-0036)"
     printf "  ${BOLD}%-16s %-20s %-14s %-10s %s${NC}\n" "SITE" "CLASS" "ART.9 POSTURE" "ART.9" "NOTE"
     printf "  %-16s %-20s %-14s %-10s %s\n" "----------------" "--------------------" "--------------" "----------" "----"
 
@@ -328,7 +328,7 @@ cmd_set() {
         # (NO-PROBE / NO-DEMO-PROBE / DEMO-MODE-OFF) until an operator runs
         # the probes and records real readings — scaffolding is not attestation.
         cat > "$decl" <<EOF
-# classes/${site}.class.yml — site class declaration (ADR-0036 / ops#162)
+# classes/${site}.class.yml — site class declaration (NWP-ADR-0036 / ops#162)
 # TRACKED on purpose: nwp.yml is never committed and sites/* is gitignored, so
 # neither can carry a claim a reviewer needs to see.
 site: ${site}
@@ -363,7 +363,7 @@ EOF
         print_status "OK" "wrote $decl (demo-shaped Art.9 evidence skeleton)"
     else
         cat > "$decl" <<EOF
-# classes/${site}.class.yml — site class declaration (ADR-0036)
+# classes/${site}.class.yml — site class declaration (NWP-ADR-0036)
 # TRACKED on purpose: nwp.yml is never committed and sites/* is gitignored, so
 # neither can carry a claim a reviewer needs to see.
 site: ${site}

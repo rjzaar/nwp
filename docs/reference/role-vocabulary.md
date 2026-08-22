@@ -1,6 +1,6 @@
 # Role vocabulary — the public NWP nomenclature
 
-**Status:** Canonical (per ADR-0020, authored as F32 Phase A)
+**Status:** Canonical (per NWP-ADR-0020, authored as F32 Phase A)
 **Audience:** All NWP contributors. Everyone writing or reviewing public
 documentation must use these labels — never bare hostnames.
 
@@ -33,11 +33,11 @@ to a concrete hostname lives only in the operator's private overlay
 | `transcription-gpu` | Whisper Vulkan / CUDA. GPU-resident. | AI-tier. |
 | `mirror-store` | F24-style corpus mirror. Always-on, large-disk, holds working trees mirrored from `authoring`. | CI-tier. |
 | `rag-backend` | X03-style local RAG service (sqlite-vec + FTS5). Serves the voice-agent / coding agents. | CI-tier; reads `mirror-store`. |
-| `ver` | Offline signed-deploy **ver**ifier + backup custodian. Holds the hardware-rooted signing key; pulls DR backups from prod (ADR-0025). Reaches prod for **hardware-gated / irreversible** deploys and as a fallback (per ADR-0024, no longer the *sole* prod writer). | Prod-trust tier. Air-gapped except for outbound WireGuard. Never AI-accessible. |
+| `ver` | Offline signed-deploy **ver**ifier + backup custodian. Holds the hardware-rooted signing key; pulls DR backups from prod (NWP-ADR-0025). Reaches prod for **hardware-gated / irreversible** deploys and as a fallback (per NWP-ADR-0024, no longer the *sole* prod writer). | Prod-trust tier. Air-gapped except for outbound WireGuard. Never AI-accessible. |
 | `verifier` / `signed-deploy` | Long-form synonyms for `ver` in deploy-context narration. | Same as `ver`. |
 | `gitlab-host` | Self-hosted GitLab + artefact distribution. | Trusted by build tier; distrusted by `verifier` (signatures, not paths). |
-| `prod-cluster` | User-facing Drupal sites. Receives signed deploys; runs the `prod-agent` to self-apply (ADR-0026). | Public-facing; tightly hardened. |
-| `prod-agent` | The minimal, AI-free `nwp-server` agent that runs ON `prod-cluster`: pull+verify a signed bundle, apply (roll back on failure), snapshot→sanitize→publish (fail-closed PII gate), rollback, local status. A build target of `nwp`, not a separate repo (ADR-0022/0026). | Prod-trust tier. Holds exactly three one-way keys (read-only pull, write-only-own-repo publish, minisign pubkey). Zero AI code, zero control-plane creds. |
+| `prod-cluster` | User-facing Drupal sites. Receives signed deploys; runs the `prod-agent` to self-apply (NWP-ADR-0026). | Public-facing; tightly hardened. |
+| `prod-agent` | The minimal, AI-free `nwp-server` agent that runs ON `prod-cluster`: pull+verify a signed bundle, apply (roll back on failure), snapshot→sanitize→publish (fail-closed PII gate), rollback, local status. A build target of `nwp`, not a separate repo (NWP-ADR-0022/0026). | Prod-trust tier. Holds exactly three one-way keys (read-only pull, write-only-own-repo publish, minisign pubkey). Zero AI code, zero control-plane creds. |
 
 These labels are stable. Renaming a role label is a breaking change to
 proposals, ADRs, and the example configs that reference it.
@@ -115,8 +115,8 @@ hostnames will be blocked by the pre-commit hook (locally) and by the
 
 ## 5. Related
 
-- [ADR-0020 — Tiered architecture model](../decisions/0020-tiered-architecture-model.md)
-- [ADR-0021 — Public-only repo scope](../decisions/0021-public-only-repo-scope.md)
+- [NWP-ADR-0020 — Tiered architecture model](../decisions/0020-tiered-architecture-model.md)
+- [NWP-ADR-0021 — Public-only repo scope](../decisions/0021-public-only-repo-scope.md)
 - [F32 — Tiered architecture implementation](../proposals/F32-tiered-architecture-implementation.md)
 - [F33 — Repository topology refactor](../proposals/F33-repository-topology-refactor.md)
 - [F34 — Role-label proposal rewrite](../proposals/F34-role-label-proposal-rewrite.md)

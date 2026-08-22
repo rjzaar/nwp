@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# lint-yq-first.sh — yq-first enforcement (ADR-0015 / F36 A-C2) that can see
+# lint-yq-first.sh — yq-first enforcement (NWP-ADR-0015 / F36 A-C2) that can see
 # more than one line at a time.
 #
 # WHY THIS FILE EXISTS
@@ -29,7 +29,7 @@
 #        verify.sh parsers hide: `' "$VERIFICATION_FILE"`).
 #
 #   Non-YAML awk (du output, port parsing, printf formatting, `awk "BEGIN{…}"`
-#   arithmetic) is untouched, as ADR-0015 intends.
+#   arithmetic) is untouched, as NWP-ADR-0015 intends.
 #
 # ---------------------------------------------------------------------------
 # VARIABLE SCOPING — the ops#196 correctness fix (2026-08-02)
@@ -494,7 +494,7 @@ if [ "$UPDATE_BASELINE" -eq 1 ]; then
     sticky=""
     [ -f "$BASELINE" ] && sticky="$(grep '^#=' "$BASELINE" || true)"
     {
-        echo "# .yq-first-baseline — pre-existing AWK YAML parsers (ADR-0015)."
+        echo "# .yq-first-baseline — pre-existing AWK YAML parsers (NWP-ADR-0015)."
         echo "# SHRINK-ONLY: entries may be DELETED (when converted to yq) but never added"
         echo "# by hand. Regenerate with: scripts/ci/lint-yq-first.sh --update-baseline"
         echo "# Key = <path>::<enclosing shell function>."
@@ -538,7 +538,7 @@ done
 
 if [ "$new" -gt 0 ]; then
     echo ""
-    echo "ERROR: $new AWK YAML parser(s) introduced. Use yq instead (ADR-0015)."
+    echo "ERROR: $new AWK YAML parser(s) introduced. Use yq instead (NWP-ADR-0015)."
     echo "       See lib/ci-stats.sh and pl get_site_field for the yq pattern."
 fi
 if [ "$stale" -gt 0 ]; then

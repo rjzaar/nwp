@@ -36,7 +36,7 @@ One page each, task-oriented, no assumed knowledge. **Start here.**
 
 | Guide | What it covers |
 |-------|----------------|
-| [ver-setup.md](ver-setup.md) | Set up `ver` / the AI-free `nwp-server` build: trust posture, `pl build-server`, the three-key credential ledger, restic backups (ADR-0025), verify/apply/rollback, smoke tests |
+| [ver-setup.md](ver-setup.md) | Set up `ver` / the AI-free `nwp-server` build: trust posture, `pl build-server`, the three-key credential ledger, restic backups (NWP-ADR-0025), verify/apply/rollback, smoke tests |
 | [ver-provisioning-runbook.md](ver-provisioning-runbook.md) | **Turnkey provisioning sequence for `ver`** (ops#25): signed tool kit, sealed keystore (FIDO2), Solo enrollment checklist, one-way keys, tunnel, first backup pull |
 | [ver-soloW-setup-walkthrough.md](ver-soloW-setup-walkthrough.md) | Walkthrough for enrolling the Solo W hardware token |
 | [nwp-server-operations.md](nwp-server-operations.md) | Operating the AI-free `nwp-server` agent on a prod host |
@@ -89,7 +89,7 @@ One page each, task-oriented, no assumed knowledge. **Start here.**
 
 | Guide | Why |
 |-------|-----|
-| [verifier-operations.md](verifier-operations.md) | Describes the F21 SSH-rsync/blue-green pipeline and the old `verifier` binary name. Predates the ADR-0022/0026 binary split and the `ver` / `prod-agent` vocabulary. Use [ver-setup.md](ver-setup.md). |
+| [verifier-operations.md](verifier-operations.md) | Describes the F21 SSH-rsync/blue-green pipeline and the old `verifier` binary name. Predates the NWP-ADR-0022/0026 binary split and the `ver` / `prod-agent` vocabulary. Use [ver-setup.md](ver-setup.md). |
 | [verifier-mayo-bootstrap.md](verifier-mayo-bootstrap.md) | Interim bootstrap guide, superseded by the above. |
 
 ---

@@ -1,10 +1,10 @@
 # =============================================================================
-# classes/registry.yml — the CLOSED set of site classes (ADR-0036 / ops#153)
+# classes/registry.yml — the CLOSED set of site classes (NWP-ADR-0036 / ops#153)
 # =============================================================================
 #
 # A site's CLASS answers "what IS this site, and therefore which data
 # invariants apply to it?" It is the third per-site axis, orthogonal to the two
-# that already exist (ADR-0030):
+# that already exist (NWP-ADR-0030):
 #
 #   canonical:  dev | live | prod                 which host is true for CONTENT
 #   maturity:   incubating|stabilizing|production how carefully CODE changes
@@ -44,7 +44,7 @@ registry_version: 1
 # NOTE on `estate:` below — INFORMATIONAL ONLY, read by no code. A site is
 # classed if and only if a <site>.class.yml exists in the shipped classes/ or
 # the private overlay (private/classes/, ops#326); these lists record which
-# sites each class is INTENDED for, as ratification work-to-do (ADR-0036
+# sites each class is INTENDED for, as ratification work-to-do (NWP-ADR-0036
 # §Migration). The engine ships only the sample pair's declarations; real
 # instances are declared and reviewed in the overlay repo.
 decision_procedure:
@@ -76,9 +76,9 @@ classes:
         class.
     invariants:
       art9_consent_gate: REQUIRED          # delegated to the pair provider
-      erasure_channel: REQUIRED            # ops#81 / ADR-0035 OP→RP
+      erasure_channel: REQUIRED            # ops#81 / NWP-ADR-0035 OP→RP
       pair_contract: REQUIRED              # pairs/<consumer>.pair-contract.yml
-      uid_lock_code_only: REQUIRED         # ADR-0029 D6 — no full-DB to coupled tiers
+      uid_lock_code_only: REQUIRED         # NWP-ADR-0029 D6 — no full-DB to coupled tiers
       sanitize_on_downcopy: REQUIRED       # live2stg / prod2stg default-sanitize
       real_member_pii: YES
 
@@ -155,7 +155,7 @@ classes:
       No non-operator accounts at all. Publishes content to anonymous visitors,
       or is internal tooling with no web audience. Distinguished from demo by
       having no user accounts to reset rather than synthetic ones.
-    estate: []                             # operator to ratify — see ADR-0036 §Migration
+    estate: []                             # operator to ratify — see NWP-ADR-0036 §Migration
     art9:
       posture_required: none-stored
       why: >-

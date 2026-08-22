@@ -1,11 +1,11 @@
-# ADR-0033: NWP Console multi-tenancy — projects, the Scope choke point, and what it is NOT
+# NWP-ADR-0033: NWP Console multi-tenancy — projects, the Scope choke point, and what it is NOT
 
 **Status:** Accepted (2026-07-26, operator)
 **Date:** 2026-07-26
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** Console v2 Stage 1
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) (distributed actors, offline
-deploy-host boundary), [ADR-0028](0028-ver-single-operator-human-gated-workstation.md) (deploy gate),
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (distributed actors, offline
+deploy-host boundary), [NWP-ADR-0028](0028-ver-single-operator-human-gated-workstation.md) (deploy gate),
 `scripts/console/README.md`, `scripts/console/app/scope.py`
 
 ---

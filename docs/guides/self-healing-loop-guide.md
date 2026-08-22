@@ -191,9 +191,9 @@ webhook respawn path closes the MR and re-queues the issue with a retry).
 The loop ends at **merged code**. Getting merged code onto live servers is the
 separate deploy pipeline (signed bundles → verification → apply), and its prod
 half is still human-driven pending the `ver` machine (ops#25) and the
-runner-resident model in ADR-0024. The `*.example.com` test tier is
+runner-resident model in NWP-ADR-0024. The `*.example.com` test tier is
 AI-deployable under A14; real prod is not. See
-`docs/onboarding/deploy-pipeline.md` and ADR-0017/0022/0024/0026.
+`docs/onboarding/deploy-pipeline.md` and NWP-ADR-0017/0022/0024/0026.
 
 ---
 
@@ -228,7 +228,7 @@ least-privilege `ops_note_token` from `.secrets.yml`.
 | runaway loop | daily cap 5, one issue per tick, retry budget 3, `touch ~/nwp/.loop-paused` on the ai-host stops it within 30 min |
 | loop piles onto a busy shared box (LLM in use, CI job running, low RAM/high load) | resource preflight defers the tick — exit 0, nothing claimed, retried next tick (§2.5b, ops#109) |
 | issue spam | idempotent upserts, real-fleet filter, auto-close on green (`.rag-sync-paused` pauses the sync) |
-| anything reaching real prod | out of scope of this loop entirely (the ver boundary, ADR-0024) |
+| anything reaching real prod | out of scope of this loop entirely (the ver boundary, NWP-ADR-0024) |
 
 ---
 
@@ -241,7 +241,7 @@ least-privilege `ops_note_token` from `.secrets.yml`.
 | 2 | `pl rag --sync-issues` + 04:30 cron (grades become tickets) | ✅ done, running | ops#6 D1 |
 | 3 | agent-loop wired to nwp/ops: fix-repo routing, prompt selector, RAG column in `pl status`; live on the ai-host | ✅ done 2026-07-03 | ops#41, MR !38 |
 | **4** | **prove + harden (CURRENT)** — see checklist below | ⬜ in progress | — |
-| 5 | deploy half: `ver` prod agent, signed-bundle apply, phone/WebAuthn approval | ⬜ future, gated | ops#4/#25, ADR-0024/0026 |
+| 5 | deploy half: `ver` prod agent, signed-bundle apply, phone/WebAuthn approval | ⬜ future, gated | ops#4/#25, NWP-ADR-0024/0026 |
 
 ### Stage 4 checklist (the "how to proceed" part — roughly in order)
 
@@ -258,7 +258,7 @@ least-privilege `ops_note_token` from `.secrets.yml`.
 3. ⬜ **Downscope the loop's token**: `~/.nwp-agent-loop.env` currently holds a
    broad api-scope token; now that the loop reaches multiple repos, a dedicated
    bot user with membership only on the mapped projects bounds the blast
-   radius (same linchpin concern as ADR-0024 flagged).
+   radius (same linchpin concern as NWP-ADR-0024 flagged).
 4. ⬜ Small fixes: rag-auto issue **titles** don't update on grade flips
    (body/labels do); keep the ai-host's `~/nwp` from going stale again (ssh-config
    entry or a daily pull — it sat 6 weeks behind once).
@@ -369,4 +369,4 @@ Logs: `~/nwp/logs/agent-loop.log` (ai-host and dev), `~/nwp/logs/rag-sync.log`
 - `~/central/nwc-internal/OPERATING-MODEL.md` — the operating model this implements (private)
 - `docs/handover-ops6-self-healing-loop.md` — design + gating rationale for the sync and routing
 - `docs/onboarding/agent-loop-primer.md` — the loop internals for PR reviewers (v1 predates the ops#41 routing; §1's "same repo" assumption is superseded by this guide)
-- `docs/onboarding/deploy-pipeline.md`, ADR-0017 / 0022 / 0024 / 0026 — the deploy half and its trust boundaries
+- `docs/onboarding/deploy-pipeline.md`, NWP-ADR-0017 / 0022 / 0024 / 0026 — the deploy half and its trust boundaries

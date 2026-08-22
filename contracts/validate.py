@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # (schema file, a VALID payload, an INVALID payload + why it must fail)
 CASES = [
-    # `sub` is the Drupal UUID, not the serial uid (ADR-0031 D9 / ops#83, shipped
+    # `sub` is the Drupal UUID, not the serial uid (NWP-ADR-0031 D9 / ops#83, shipped
     # 03672e2). This sample carried a uid ("4210") long after the code moved to
     # uuid() — the fixture itself was the last uid-era artifact, and it is what
     # made the drift invisible.

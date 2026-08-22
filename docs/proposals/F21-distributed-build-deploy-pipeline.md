@@ -9,7 +9,7 @@
 **Estimated Effort:** ~13 phases, multi-week buildout
 **Architecture decision record:** [`docs/decisions/0017-distributed-build-deploy-pipeline.md`](../decisions/0017-distributed-build-deploy-pipeline.md)
 
-> **Why this proposal exists.** ADR-0017 captures the architectural *decision*
+> **Why this proposal exists.** NWP-ADR-0017 captures the architectural *decision*
 > behind a distributed build/deploy pipeline. This proposal is the
 > *implementation plan* — a phased, numbered work breakdown that can be
 > tracked in the roadmap, milestone'd as phases complete, and pointed at by
@@ -30,7 +30,7 @@ unsanitized data all share one trust domain. As AI takes a larger share of
 day-to-day code authoring, this single-tier model becomes the dominant
 risk in NWP's threat model.
 
-F21 implements the distributed pipeline described in ADR-0017:
+F21 implements the distributed pipeline described in NWP-ADR-0017:
 
 1. **build-tier** (`mirror-store` + `ai-host`) does build/test/lint on home hardware.
 2. **`signed-deploy`** is a separate AI-free machine that holds prod SSH keys on a
@@ -52,8 +52,8 @@ but not trusted; `signed-deploy` is trusted only because the things it accepts m
 be signed by a key the operator controls offline, and the things it does
 require a hardware token touch.
 
-This proposal does not duplicate ADR-0017's threat-model discussion.
-Read ADR-0017 first; this document handles the phasing, the success
+This proposal does not duplicate NWP-ADR-0017's threat-model discussion.
+Read NWP-ADR-0017 first; this document handles the phasing, the success
 criteria, and the affected NWP scripts.
 
 ---
@@ -82,7 +82,7 @@ criteria, and the affected NWP scripts.
 - **Public release of any specific site source code.** That is a separate
   decision per site.
 - **Replacing the four-state deployment model** (dev → stg → live → prod
-  per ADR-0013). F21 refactors what happens at the "prod" step; the
+  per NWP-ADR-0013). F21 refactors what happens at the "prod" step; the
   upstream state machine is unchanged.
 
 ---
@@ -125,7 +125,7 @@ Independently, daily on prod:
 
 ## 4. Phased Implementation
 
-The 14 phases below mirror the implementation notes in ADR-0017. They are
+The 14 phases below mirror the implementation notes in NWP-ADR-0017. They are
 sequenced so phases 1 through 4 (including the user-space-only Phase 3a)
 are reversible — no hardware tokens, no `signed-deploy`, nothing outside of the
 operator's home directory on the affected machines. Phases 5–8 require hardware
@@ -166,7 +166,7 @@ MagicDNS base domain `nwp.headscale`. $0 incremental cost.
 3. Implement a pilot pipeline (lint + build + test) for one NWP-managed
    project. (`nwp/nwp` — lint:bash, test:unit, test:integration all pass)
 4. Capture runner credentials in the infra tier of NWP secrets (per
-   ADR-0004). (pending — runner token in GitLab, not yet in `.secrets.yml`)
+   NWP-ADR-0004). (pending — runner token in GitLab, not yet in `.secrets.yml`)
 
 **Completion notes:** Runner online and idle in GitLab. Pipeline 186:
 verify-signature, lint:bash, test:unit, test:integration all pass on
@@ -381,7 +381,7 @@ Scripts and configs landed; Solo 2C+ pending for hardware key enrollment.
 5. Enroll a resident `ed25519-sk` key on each Solo 2C+ with `verify-required`
    (PIN) and `resident` (key-on-token) flags.
 6. Bake the deploy-approval public key into the `signed-deploy` image.
-7. Configure on-demand cellular connectivity. Per [ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md),
+7. Configure on-demand cellular connectivity. Per [NWP-ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md),
    `signed-deploy` is now an always-on Headscale peer, so this step is only
    load-bearing for the *deploy client* (laptop or phone), not for
    `signed-deploy` itself. Both forms are explicitly supported and validated in
@@ -406,7 +406,7 @@ the `signed-deploy`↔prod path is the only way in.
 
 **Goal:** Prove that the "Drupal SA-CORE drops on travel day, laptop
 not in bag" scenario is handled end-to-end with only a phone + Solo
-2C+, per [ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md)
+2C+, per [NWP-ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md)
 § *Deploy client forms* (form 3).
 
 This phase does not change `signed-deploy`, prod, or credentials — it validates
@@ -436,7 +436,7 @@ must be green first.
    and timings in `docs/guides/signed-deploy-operations.md` under a new
    "Deploying from phone-only" section. Include screenshots of the
    deploy-script prompt on a small screen and flag any diff-review
-   limitations (per ADR-0019 § Deploy client forms, caveat about
+   limitations (per NWP-ADR-0019 § Deploy client forms, caveat about
    reviewing diffs on a phone).
 7. **Failure-mode drill.** Exercise at least: (a) touch timeout, (b)
    NFC reader glitch mid-deploy, (c) Headscale key expiry, (d) lost
@@ -445,7 +445,7 @@ must be green first.
 
 **Success:** A complete deploy of the Phase 5 pilot site has been
 executed from a phone-only client, on cellular-only network, with
-every credential use gated by a Solo 2C+ touch. The ADR-0019
+every credential use gated by a Solo 2C+ touch. The NWP-ADR-0019
 traveling-security-update scenario is no longer hypothetical.
 
 **Non-goals:**
@@ -541,7 +541,7 @@ and forward-compatible migrations.
    to the shared DB without breaking the still-live previous slot.
 4. Codify the migration discipline (expand-contract default; INSTANT/ONLINE
    acceptable; brief RO window only for unavoidable exclusive-lock changes
-   per ADR-0013).
+   per NWP-ADR-0013).
 5. Wire `pl` so the existing `stg2live` and `live2stg` paths can target
    the new slot mechanism behind a feature flag.
 
@@ -702,7 +702,7 @@ in each site's own project, not here.
 | Sanitizer false negative publishes PII | Output regex sweep; human review of first N snapshots; "AI may propose, human MUST review" rule on sanitizer code; tabletop drill in Phase 13 |
 | `signed-deploy` hardware loss / theft | LUKS full-disk encryption; offsite backup Solo 2C+; documented bootstrap drill |
 | Hardware token shipping delay | Order tokens in Phase 1, not Phase 5 — they have weeks of lead time from EU |
-| Blue-green migration breaks live slot | Forward-compat-by-default; CI canary "old code on new schema"; expand-contract pattern; brief RO window tolerance per ADR-0013 |
+| Blue-green migration breaks live slot | Forward-compat-by-default; CI canary "old code on new schema"; expand-contract pattern; brief RO window tolerance per NWP-ADR-0013 |
 
 ### Medium Risk
 
@@ -749,7 +749,7 @@ in the phase definitions in Section 4.
 
 ## 8. Open Questions
 
-Carried over from ADR-0017 § "Open Questions" — to be resolved as
+Carried over from NWP-ADR-0017 § "Open Questions" — to be resolved as
 implementation proceeds and recorded back into the ADR when settled:
 
 - Where does `signed-deploy` physically live (same room, different room, different
@@ -774,7 +774,7 @@ implementation proceeds and recorded back into the ADR when settled:
 
 ## 9. Out of Scope
 
-Same as ADR-0017 § "Out of scope":
+Same as NWP-ADR-0017 § "Out of scope":
 
 - Migration of any specific site's source code to public repos
 - Migration of production sites from current hosts to US east-coast Linode
@@ -786,11 +786,11 @@ Same as ADR-0017 § "Out of scope":
 
 ## 10. Cross-references
 
-- **[ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)** —
+- **[NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)** —
   the architecture decision record this proposal implements.
-- **[ADR-0004](../decisions/0004-two-tier-secrets-architecture.md)** —
+- **[NWP-ADR-0004](../decisions/0004-two-tier-secrets-architecture.md)** —
   Two-tier secrets; preserved unchanged.
-- **[ADR-0013](../decisions/0013-four-state-deployment-model.md)** —
+- **[NWP-ADR-0013](../decisions/0013-four-state-deployment-model.md)** —
   Four-state deployment; preserved unchanged.
 - **F17 (Project Separation)** — F21 depends on the per-site config layer
   F17 introduced; `signed-deploy` identifies sites by their `sites/<name>/.nwp.yml`.

@@ -1,4 +1,4 @@
-# ADR-0032 Sanitising Suite — Session Handoff / State-of-Things
+# NWP-ADR-0032 Sanitising Suite — Session Handoff / State-of-Things
 
 **Written:** 2026-07-23 · **Covers:** one long working session (2026-07-20) + follow-up checks (07-21, 07-23)
 **Purpose:** hand the full picture to another conversation — what was built, where it lives, what's proven, what's only-in-conversation, and what remains. Read this **with** the ops issues (esp. ops#114 umbrella + ops#116).
@@ -10,7 +10,7 @@
 
 ## 1. TL;DR — what this session accomplished
 
-Designed, built, tested, and **merged** the ADR-0032 non-production data-refresh & sanitising suite for the coupled Drupal+Moodle fleet, then validated it against real databases. The single most important outcome:
+Designed, built, tested, and **merged** the NWP-ADR-0032 non-production data-refresh & sanitising suite for the coupled Drupal+Moodle fleet, then validated it against real databases. The single most important outcome:
 
 > **Found and fixed a CRITICAL cross-stack SSO bug:** the Drupal sanitisers (`standard.sh`, `mayo.sh`) did **not** use the shared OIDC email hash — they used positional `user<uid>@example.com` while Moodle used `<hash>@sanitized.test`. So a sanitised `nwc↔ssc` dev refresh would have produced **mismatched emails across the two stacks and broken the SSO join**. Fixed so both stacks hash identically; **proven** at the data layer.
 
@@ -20,7 +20,7 @@ Everything is on `main`. The only work left genuinely needs a real prod host or 
 
 ## 2. Where everything lives (all MERGED to `origin/main`, tip was `0fcec0b`)
 
-### Commits (newest→oldest, the ADR-0032 body)
+### Commits (newest→oldest, the NWP-ADR-0032 body)
 | Commit | What |
 |---|---|
 | `9d70b43` | **SSO fix** — Drupal sanitisers use the shared OIDC email hash |
@@ -54,7 +54,7 @@ Everything is on `main`. The only work left genuinely needs a real prod host or 
 - Tests: `tests/unit/test-{moodle-full,pii-gate-artifact,moodle-fixture-load,server-backup-resolve,prod-guard}.bats`, additions to `test-oidc-email.bats` and `test-sanitize-dispatch.bats`. **Full unit suite 686/686.**
 
 ### Ops issues (all OPEN — nothing closed)
-- **ops#114** — ADR-0032 umbrella (has the "fully merged" consolidation + residuals table). **Start here.**
+- **ops#114** — NWP-ADR-0032 umbrella (has the "fully merged" consolidation + residuals table). **Start here.**
 - **ops#110** — ssc sanitiser Path A wiring (code complete, merged)
 - **ops#111** — Flow A (built, live-validated, merged)
 - **ops#112** — Flow B (built, merged)
@@ -66,7 +66,7 @@ Everything is on `main`. The only work left genuinely needs a real prod host or 
 
 ## 3. The architecture in one paragraph (so the next conversation gets it)
 
-Two independent flows. **Flow A (dev copy):** on the prod host, `moodle-full.sh` sanitises the DB into a scratch copy (`moodle.sh`), scrubs moodledata **omit-and-placeholder** (`moodle-dataroot.sh` → empty `filedir` + a manifest; **no user file bytes ever copied**), gates it (`pii_gate_scan_artifact`), and publishes a `.tar.gz` bundle `{db.sql.gz, dataroot-manifest}` via `server-publish`. The dev/stg side (`pl fixture-load`) verifies + imports the DB, rebuilds an empty moodledata scaffold locally, and (best-effort) `moosh file-dbcheck` prunes orphaned rows. Because the file scrub is omit-and-placeholder, **moodledata needs no byte transport for dev copies** — that's the key insight that made this tractable. **Flow B (DR backup):** `nwp-server backup` sends **raw** DB + files + **moodledata** to `ver` only (restic), honoring the ADR-0025 "raw→ver only" invariant. Cross-stack SSO is preserved by the **deterministic OIDC email hash** (`oidc-email.sh`, shared salt) — the same real email → the same `<hash>@sanitized.test` on **both** stacks.
+Two independent flows. **Flow A (dev copy):** on the prod host, `moodle-full.sh` sanitises the DB into a scratch copy (`moodle.sh`), scrubs moodledata **omit-and-placeholder** (`moodle-dataroot.sh` → empty `filedir` + a manifest; **no user file bytes ever copied**), gates it (`pii_gate_scan_artifact`), and publishes a `.tar.gz` bundle `{db.sql.gz, dataroot-manifest}` via `server-publish`. The dev/stg side (`pl fixture-load`) verifies + imports the DB, rebuilds an empty moodledata scaffold locally, and (best-effort) `moosh file-dbcheck` prunes orphaned rows. Because the file scrub is omit-and-placeholder, **moodledata needs no byte transport for dev copies** — that's the key insight that made this tractable. **Flow B (DR backup):** `nwp-server backup` sends **raw** DB + files + **moodledata** to `ver` only (restic), honoring the NWP-ADR-0025 "raw→ver only" invariant. Cross-stack SSO is preserved by the **deterministic OIDC email hash** (`oidc-email.sh`, shared salt) — the same real email → the same `<hash>@sanitized.test` on **both** stacks.
 
 ---
 

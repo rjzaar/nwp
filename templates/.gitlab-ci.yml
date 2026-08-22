@@ -11,7 +11,7 @@
 # - JUnit reporting for all test types
 # - Coverage reporting
 #
-# NOTE: Deploy stages were removed in F24 Phase 3 Step 1 per ADR-0017
+# NOTE: Deploy stages were removed in F24 Phase 3 Step 1 per NWP-ADR-0017
 # (no AI-accessible runner may hold a prod SSH key). The replacement
 # build-artifact -> mons signed-bundle handoff is tracked in F28.
 

@@ -1862,7 +1862,7 @@ cmd_handoff() {
 }
 
 ################################################################################
-# Subcommand: backup <name> — BOX-LEVEL disaster recovery (ADR-0025)
+# Subcommand: backup <name> — BOX-LEVEL disaster recovery (NWP-ADR-0025)
 #
 # THE GAP THIS CLOSES. On 2026-08-01 the estate had, for the box serving every
 # live site: per-site logical snapshots (`pl backup <site> --remote`), host
@@ -1872,16 +1872,16 @@ cmd_handoff() {
 # met's stick pull still names the pre-split box) nothing leaving the host.
 #
 # WHAT THIS IS, ARCHITECTURALLY. It is NOT a new backup engine. It is the
-# CONTROL-HOST FRONT DOOR to the ADR-0025 agent: this command never carries the
+# CONTROL-HOST FRONT DOOR to the NWP-ADR-0025 agent: this command never carries the
 # data. It preflights headroom, installs/refreshes the AI-free `nwp-server`
 # artifact, and invokes `nwp-server backup --host` ON the box, which writes a
 # restic repo LOCAL to the box. The custodian (`ver`) later PULLS. Prod holds no
-# credential that can delete the durable copy — the ADR-0025 invariant is
+# credential that can delete the durable copy — the NWP-ADR-0025 invariant is
 # preserved because the driver is a caller, not a courier.
 #
 # WHAT IT DELIBERATELY DOES NOT DO. It does not pull the archive to this
 # workstation. This workstation is in the dev/AI tier and the archive is raw
-# member data; ADR-0025 §"the two flows must stay separate" makes that a
+# member data; NWP-ADR-0025 §"the two flows must stay separate" makes that a
 # threat-model violation, not a convenience trade-off.
 ################################################################################
 SRVBK_AGENT_DIR="/opt/nwp-server"
@@ -2106,7 +2106,7 @@ cmd_backup() {
       restore-test)
         local repo; repo=$(_srvbk_repo "$server")
         print_header "Restore drill · ${server}"
-        print_info "A backup that has not been test-restored is not a backup (ADR-0025)."
+        print_info "A backup that has not been test-restored is not a backup (NWP-ADR-0025)."
         # Restore a random SAMPLE of real files out of the newest box snapshot
         # into a scratch directory, then compare each one byte-for-byte with the
         # file still on disk. Sampling is deliberate: a full 7 GB restore on a
@@ -2212,7 +2212,7 @@ RESTORETEST
         print_header "Schedule · box-level DR on '${server}'"
         print_info "A scheduled on-box archive protects against deletion, a bad deploy and"
         print_info "corruption. It does NOT protect against loss of the host — nothing does"
-        print_info "until a pull tier drains this repo off the box (ADR-0025)."
+        print_info "until a pull tier drains this repo off the box (NWP-ADR-0025)."
         "${PROJECT_ROOT}/scripts/commands/host.sh" schedule "$server" install \
             --name="$cron_id" --schedule="$cron_expr" --command="$cron_cmd" \
             $( ((auto_yes)) && echo --execute )
@@ -2309,7 +2309,7 @@ Subcommands:
                                       DRY-RUN unless --apply; --apply is gated
                                       on `nginx -t` and never overwrites an
                                       existing conf. Prints the rollback.
-  backup <name>         BOX-LEVEL disaster recovery (ADR-0025). Drives the
+  backup <name>         BOX-LEVEL disaster recovery (NWP-ADR-0025). Drives the
                         AI-free nwp-server agent ON the box to write an
                         encrypted restic archive of /etc, /usr/local, /root,
                         /opt, every webroot and moodledata, every database, and

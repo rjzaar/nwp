@@ -937,7 +937,7 @@ cmd_reset_paired() {
     impact_warn "PAIRED WIPE: ${prov} AND ${cons} are both destroyed by this one command — approving it approves both."
     impact_warn "${prov} is the SSO IDENTITY PROVIDER for ${cons}. Every account it holds is dropped and re-created from the golden; ${cons}'s OIDC links are only valid again because its own DB is rolled back to the SAME cut (${DEMO_PAIR_LABEL} cut $(demo_pair_cut_id_of "$cut"))."
     impact_keep "The paired cut manifest (${cut}) and both golden images — verified together before this report was built"
-    impact_warn "If this run dies between the halves the pair is left INCONSISTENT until it is re-run; the provider is restored first (ADR-0031 D5) so re-running repairs it."
+    impact_warn "If this run dies between the halves the pair is left INCONSISTENT until it is re-run; the provider is restored first (NWP-ADR-0031 D5) so re-running repairs it."
     impact_render
 
     if [[ "$dry_run" == "true" ]]; then
@@ -968,7 +968,7 @@ cmd_reset_paired() {
         demo_feedback_sync "$prov" "$tier" demo_drush "$pproj" || true
     fi
 
-    # --- 5. Restore, PROVIDER FIRST (ADR-0031 D5) ----------------------------
+    # --- 5. Restore, PROVIDER FIRST (NWP-ADR-0031 D5) ----------------------------
     # The provider is the identity origin. If the run dies between the halves,
     # the consumer still holds the OLD locks against accounts the provider has
     # just restored — recoverable by re-running. The reverse order would leave
@@ -2325,7 +2325,7 @@ cmd_golden_live() {
 # A half of a demo PAIR must never be reset alone AT A TIER WHERE THE PAIR
 # EXISTS: the other half's SSO identities are locked against this one's
 # accounts. Refuse and point at the paired path. (--force is NOT an escape
-# hatch; re-capturing the pair is. ADR-0031 D9 both-or-nothing.)
+# hatch; re-capturing the pair is. NWP-ADR-0031 D9 both-or-nothing.)
 #
 # Scoped by "does the partner actually have an instance at this tier", so a tier
 # where only one half exists still resets single-site. At live that question is
@@ -2841,7 +2841,7 @@ cmd_reset_live() {
 #   * BOTH ARTIFACT SETS STAGED AND RE-VERIFIED ON THE BOX BEFORE EITHER SITE IS
 #     TOUCHED. Transfer is the likeliest failure; this moves it entirely in front
 #     of the first wipe.
-#   * PROVIDER FIRST (ADR-0031 D5). The identity origin is restored first, so
+#   * PROVIDER FIRST (NWP-ADR-0031 D5). The identity origin is restored first, so
 #     re-running repairs a partial run.
 #   * ONE WRITER + THE BOX'S OWN PAIR LOCK for the whole run, so this cannot
 #     interleave with the box-resident nightlies (which know nothing about it).
@@ -3005,7 +3005,7 @@ _cmd_reset_paired_live_body() {
     cut="$(demo_pair_cut_file "$pdir")"
 
     print_header "Paired demo reset: ${label} (live)"
-    print_info "Provider: ${prov}   Consumer: ${cons}   (restored in that order — ADR-0031 D5)"
+    print_info "Provider: ${prov}   Consumer: ${cons}   (restored in that order — NWP-ADR-0031 D5)"
 
     # --- 1. ONE CUT, OR NOTHING ---------------------------------------------
     demo_golden_verify "$pdir" "$prov" || {
@@ -4172,7 +4172,7 @@ demo_login_uri() {
     else
         proj="$(demo_project_dir "$site" "$tier" 2>/dev/null)" || proj=""
         if [[ -n "$proj" && -f "$proj/.ddev/config.yaml" ]]; then
-            # yq, never awk (ADR-0015 / lint-yq-first). demo_yq resolves the
+            # yq, never awk (NWP-ADR-0015 / lint-yq-first). demo_yq resolves the
             # user-local installs the console host needs.
             local yqb; yqb="$(demo_yq 2>/dev/null || true)"
             if [[ -n "$yqb" ]]; then

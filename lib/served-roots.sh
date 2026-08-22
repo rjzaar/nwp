@@ -42,7 +42,7 @@
 #     GitLab plus the live fleet; a heavy op OOM-killed it for 5-8 minutes on
 #     2026-07-25. `pl server health <server>` remains the REQUIRED preflight
 #     before anything heavy — this verb is deliberately not heavy.
-#  5. yq-FIRST. Every YAML read goes through yq (ADR-0015 / lint:yq-first).
+#  5. yq-FIRST. Every YAML read goes through yq (NWP-ADR-0015 / lint:yq-first).
 #     The awk in this file parses nginx output and `ls`, never YAML.
 #
 # WHAT COUNTS AS "SERVED"
@@ -400,7 +400,7 @@ served_roots_infra_match() {
 }
 
 # ---------------------------------------------------------------------------
-# Declaration loading — yq only (ADR-0015). Populates SR_DECL[] as
+# Declaration loading — yq only (NWP-ADR-0015). Populates SR_DECL[] as
 # "name|path|domain|gated|source".
 #
 # A declaration is attributed to <server> when it names the server, names its

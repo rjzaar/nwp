@@ -21,7 +21,7 @@
 #
 # WHAT IT IS NOT: a sandbox against an adversarial AI. Evasion (bash -c,
 # eval, base64) is out of scope by design — the threat model handles
-# adversarial AI by architecture (the ADR-0017 offline-deploy-host
+# adversarial AI by architecture (the NWP-ADR-0017 offline-deploy-host
 # boundary), not by hooks the AI can read. F4 is a seatbelt against habit.
 #
 # HEAD-TOKEN GUARD (meta-pass2 §2.4): the patterns are applied only to
@@ -267,7 +267,7 @@ fi
 # ---------------------------------------------------------------------------
 deny "BLOCKED by the F4 raw-remote gate (ops#319): this Bash command runs the forbidden raw-remote idiom [$idiom]:
     ${segment:0:200}
-Raw ssh/scp/sudo one-liners bypass every guarantee the pl verbs carry: the dry-run default, the typed live confirm, live.enabled, the ADR-0028 deploy gate, pair_guard, the fate manifest and the rollback ledger (CLAUDE.md standing order, 2026-07-28; recorded failure: ops#149). Use the pl verb instead:
+Raw ssh/scp/sudo one-liners bypass every guarantee the pl verbs carry: the dry-run default, the typed live confirm, live.enabled, the NWP-ADR-0028 deploy gate, pair_guard, the fate manifest and the rollback ledger (CLAUDE.md standing order, 2026-07-28; recorded failure: ops#149). Use the pl verb instead:
 $(verb_for "$idiom")
 If the verb is broken or missing for your case, FIX THE VERB — that is the standing order, not a preference. If this exact raw command is genuinely necessary right now, re-run it with a ledgered override:
     NWP_RAW_REMOTE_OK='<why>' <your command>

@@ -316,7 +316,7 @@ get_category_name() {
 # Get category note (operator guidance shown under the header); empty for most
 get_category_note() {
     case "$1" in
-        editor) echo "AI-assistant extensions are intentionally excluded (a live AI with editor+shell reach violates ADR-0028 on the ver deploy box — add manually on dev only). Extensions come from Open VSX, not the MS Marketplace. Secrets hygiene is applied because PATs previously leaked into VSCodium local history (ops#25)." ;;
+        editor) echo "AI-assistant extensions are intentionally excluded (a live AI with editor+shell reach violates NWP-ADR-0028 on the ver deploy box — add manually on dev only). Extensions come from Open VSX, not the MS Marketplace. Secrets hygiene is applied because PATs previously leaked into VSCodium local history (ops#25)." ;;
         *)      echo "" ;;
     esac
 }

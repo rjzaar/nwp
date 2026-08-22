@@ -2,7 +2,7 @@
 # NOTE: no `set -euo pipefail` — SOURCED library (ops#111 lesson: forcing -e/-u
 # onto a caller leaks into the bats runner and breaks CI test:unit).
 ################################################################################
-# lib/prod-guard.sh — fail-closed guard for the sanitiser chain (ops#113 / ADR-0032).
+# lib/prod-guard.sh — fail-closed guard for the sanitiser chain (ops#113 / NWP-ADR-0032).
 #
 # WHY THIS SHAPE (reinterpreting local_datacleaner's "never run on production"):
 # NWP's prod-native sanitisers (lib/sanitizers/{standard,mayo,moodle}.sh) RUN ON

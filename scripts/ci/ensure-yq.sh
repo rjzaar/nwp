@@ -5,7 +5,7 @@
 #
 # WHY: the `nwp`-tagged runners are SHELL executors, so `image:` is ignored and
 # apt-get in before_script is a permission-denied no-op. yq v4 is the sanctioned
-# YAML reader (ADR-0015); jobs that read YAML fail closed without it — which is
+# YAML reader (NWP-ADR-0015); jobs that read YAML fail closed without it — which is
 # correct, but only if the job PROVISIONS yq rather than shipping permanently
 # red. Four jobs (test:unit, test:verification, lint:secrets, and since ops#165
 # boundary:classify) each carried their own copy-pasted inline bootstrap; a

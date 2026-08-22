@@ -7,9 +7,9 @@
 **Depends On:** None (this proposal is the foundation)
 **Breaking Changes:** No (additive; pre-commit hook + CI step)
 **Estimated Effort:** ~4 phases; one weekend
-**Architecture decision records:** [ADR-0021](../decisions/0021-public-only-repo-scope.md)
+**Architecture decision records:** [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md)
 
-> **Why this proposal exists.** The public/private boundary specified by [ADR-0021](../decisions/0021-public-only-repo-scope.md) needs mechanical enforcement, not maintainer discipline. P61 installs a `gitleaks` pre-commit hook (locally; can be bypassed) plus a CI hard-fail step (cannot be bypassed) with a custom ruleset for operator-specific patterns. After P61 lands, no new commit to a public repo can introduce hostname / personal-name / hardcoded-path leakage without an explicit policy override.
+> **Why this proposal exists.** The public/private boundary specified by [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) needs mechanical enforcement, not maintainer discipline. P61 installs a `gitleaks` pre-commit hook (locally; can be bypassed) plus a CI hard-fail step (cannot be bypassed) with a custom ruleset for operator-specific patterns. After P61 lands, no new commit to a public repo can introduce hostname / personal-name / hardcoded-path leakage without an explicit policy override.
 
 ---
 
@@ -38,7 +38,7 @@ After P61 lands, every subsequent commit to the public repo is gated; the public
 ## 3. Non-Goals
 
 - This proposal does **not** retrospectively scrub existing history. The operator has elected to restart the public repository (single fresh commit); historical scrubbing becomes moot. Any future need for retrospective scrubbing is a separate operation using `git filter-repo`.
-- This proposal does **not** define what the role labels are; that is [ADR-0020](../decisions/0020-tiered-architecture-model.md).
+- This proposal does **not** define what the role labels are; that is [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md).
 - This proposal does **not** rewrite existing proposals; that is [F34](F34-role-label-proposal-rewrite.md).
 - This proposal does **not** itself remove the operator's per-site directories from the public repo; that is [F33](F33-repository-topology-refactor.md).
 
@@ -256,7 +256,7 @@ The gate is additive at every layer; rollback at any phase leaves the codebase i
 
 ## 10. Related decisions and proposals
 
-- [ADR-0021](../decisions/0021-public-only-repo-scope.md) — establishes the public/private scope this gate enforces.
+- [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) — establishes the public/private scope this gate enforces.
 - [F33](F33-repository-topology-refactor.md) — moves per-site directories to the private overlay; this gate ensures the move is not undone by future commits.
 - [F34](F34-role-label-proposal-rewrite.md) — rewrites existing proposals; this gate ensures rewrites stay clean.
 - The operator's separate copyright work (private; not referenced here by path) — supplies the dual-licence wording, the DCO text, and the per-author audit requirement that this proposal's infrastructure supports.

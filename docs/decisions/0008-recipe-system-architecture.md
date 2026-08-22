@@ -1,4 +1,4 @@
-# ADR-0008: Recipe System Architecture
+# NWP-ADR-0008: Recipe System Architecture
 
 **Status:** Accepted
 **Date:** 2025-12-15 (original design), refined 2026-01-14
@@ -417,9 +417,9 @@ recipes:
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - Established YAML as config format
-- **ADR-0010: TUI Framework Design** (pending) - Interactive option selection
-- **ADR-0013: Four-State Deployment Model** (pending) - Environment-specific options
+- **NWP-ADR-0002: YAML-Based Configuration** - Established YAML as config format
+- **NWP-ADR-0010: TUI Framework Design** (pending) - Interactive option selection
+- **NWP-ADR-0013: Four-State Deployment Model** (pending) - Environment-specific options
 
 ## Future Enhancements
 

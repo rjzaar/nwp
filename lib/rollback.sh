@@ -69,7 +69,7 @@ rollback_migrate_legacy() {
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/rollback-remote.sh"
 
-# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op
+# deploy-gate.sh: hardware+signature gate on prod-writes (NWP-ADR-0028); no-op
 # unless configured (ver) — the AI test tier (A14) is unaffected. Needed here
 # because a REMOTE rollback restores DBs + nginx on the live/prod host — a
 # prod write that must pass the same gate as a deploy (ops#79 finding 7).
@@ -376,7 +376,7 @@ rollback_execute() {
 
     # Both remote shapes restore on a live/prod host and share the same gates.
     if [ "$type" = "remote" ] || [ "$type" = "moodle-remote" ]; then
-        # Hardware+signature gate (ADR-0028/ops#79): a remote rollback writes
+        # Hardware+signature gate (NWP-ADR-0028/ops#79): a remote rollback writes
         # DBs + nginx config on the live/prod host. Gate it exactly like a
         # deploy. Local-DDEV rollbacks (below) never prompt; dry runs write
         # nothing so they are exempt.

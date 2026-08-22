@@ -1,4 +1,4 @@
-# ADR-0012: CC0 Public Domain Dedication
+# NWP-ADR-0012: CC0 Public Domain Dedication
 
 **Status:** Accepted (superseded in part by composite recommendation 2026-05-17 — see "2026-05-17 amendment" below)
 **Date:** 2026-01-14
@@ -272,8 +272,8 @@ Just declare it public domain.
 
 ## Related Decisions
 
-- **ADR-0005: Distributed Contribution Governance** - Contributors must agree to CC0
-- **ADR-0014: Git Hooks for Documentation Enforcement** (pending) - License info in headers
+- **NWP-ADR-0005: Distributed Contribution Governance** - Contributors must agree to CC0
+- **NWP-ADR-0014: Git Hooks for Documentation Enforcement** (pending) - License info in headers
 
 ## Biblical Foundation
 

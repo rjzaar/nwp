@@ -39,7 +39,7 @@
 #
 # WHERE THE FACT LIVES, AND WHY THIS FILE WAS REWRITTEN ONCE. The first version
 # invented `.nwp-review-mode` as an independent switch. Then `cmd_release` turned
-# out to ALREADY key the ADR-0028 dispensation off `approvers:` in the secrets
+# out to ALREADY key the NWP-ADR-0028 dispensation off `approvers:` in the secrets
 # registry — the same fact, with the same stated philosophy ("adding the name is
 # the entire switch... inert today, correct forever"). Two declarations of one
 # fact, free to disagree, is exactly the drift the operator asked to avoid, so the

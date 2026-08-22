@@ -16,7 +16,7 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/rollback.sh"
-# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# deploy-gate.sh: hardware+signature gate on prod-writes (NWP-ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected. lib/rollback.sh calls
 # deploy_gate_require before executing a REMOTE (live/prod host) rollback;
 # sourced explicitly here too so the dependency is visible at the command level.

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# ver backup pull — drain prod's restic snapshots into ver's durable repo (ADR-0025).
+# ver backup pull — drain prod's restic snapshots into ver's durable repo (NWP-ADR-0025).
 #
 # `ver` is the offline, hardware-keyed custodian. During its scheduled online
 # session it reaches a prod host over the dedicated WireGuard tunnel and PULLS new
@@ -30,7 +30,7 @@ set -euo pipefail
 #                          monthly). Use for user-data/PII repos to honour the
 #                          30-day erasure promise (ops#127/#124). Default: unset.
 #   --kind raw|sanitized   declare the source's data class. `raw` (unsanitised,
-#                          PII, ADR-0025) REQUIRES an erasure ceiling: this
+#                          PII, NWP-ADR-0025) REQUIRES an erasure ceiling: this
 #                          command FAILS CLOSED unless --keep-within is also set,
 #                          so a RAW source can never silently fall through to the
 #                          tiered daily/weekly/monthly (~1yr) policy. `sanitized`
@@ -50,7 +50,7 @@ RESTIC="$(command -v restic || echo restic)" RESTIC_PUB=""
 KEEP_DAILY=7 KEEP_WEEKLY=8 KEEP_MONTHLY=12 CHECK_SUBSET="5%"
 # ops#127: erasure-window ceiling. When set (e.g. "30d"), forget uses
 # `--keep-within <DUR>` — restic keeps every snapshot within the window and
-# removes ALL older ones, so RAW (unsanitised, ADR-0025) user data cannot
+# removes ALL older ones, so RAW (unsanitised, NWP-ADR-0025) user data cannot
 # survive past the window. Required for user-data (PII) sites to honour the
 # 30-day erasure promise (ops#124/#123). Empty = legacy daily/weekly/monthly.
 KEEP_WITHIN=""

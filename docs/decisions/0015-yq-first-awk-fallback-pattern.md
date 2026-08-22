@@ -1,4 +1,4 @@
-# ADR-0015: yq-First with AWK Fallback Pattern
+# NWP-ADR-0015: yq-First with AWK Fallback Pattern
 
 **Status:** Accepted
 **Date:** 2026-01-13 (v0.21.0 YAML consolidation)
@@ -284,8 +284,8 @@ fi
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - Why YAML
-- **ADR-0009: Five-Layer YAML Protection** - Write safety
+- **NWP-ADR-0002: YAML-Based Configuration** - Why YAML
+- **NWP-ADR-0009: Five-Layer YAML Protection** - Write safety
 - **P17: YAML Parser Consolidation** - v0.21.0 consolidation effort
 
 ## Alternatives Considered

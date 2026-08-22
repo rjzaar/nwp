@@ -10,10 +10,10 @@
 > `nwp-server`, the hardware deploy gate, or signature-based trust — all of which
 > are now the core of how NWP treats production. For the current model read:
 > - `CLAUDE.md` § Threat Model (canonical)
-> - ADR-0017 — distributed build/deploy pipeline
-> - ADR-0024 — self-deploying prod
-> - ADR-0026 — the binary split
-> - ADR-0028 — `ver` as a single-operator, human-gated workstation
+> - NWP-ADR-0017 — distributed build/deploy pipeline
+> - NWP-ADR-0024 — self-deploying prod
+> - NWP-ADR-0026 — the binary split
+> - NWP-ADR-0028 — `ver` as a single-operator, human-gated workstation
 >
 > **2. Eight of the commands it tells you to run do not exist.** They never did, or
 > they were renamed long ago. Substitutions:

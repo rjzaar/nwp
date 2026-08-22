@@ -1,9 +1,9 @@
-# Moodle promotion substrate — `pl moodle-promote` / `pl moodle-smoke` (ADR-0031 D8)
+# Moodle promotion substrate — `pl moodle-promote` / `pl moodle-smoke` (NWP-ADR-0031 D8)
 
 > **Status: SHIPPED (substrate + OAuth wiring descriptors), enabling a live pair
 > is operator-gated.** This is the Moodle-stack analogue of the settings.php
 > rewrite + `drush cr` the Drupal promotion commands do. **Date:** 2026-07-10.
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
 > D8 (Moodle promotion substrate); **F26** (OIDC — native `simple_oauth`
 > `/oauth/userinfo`, route `simple_oauth.userinfo`).
 
@@ -12,7 +12,7 @@
 `pl` was built to move a **Drupal** site through the tiers: it rewrites
 `html/sites/default/settings.local.php` and runs `drush cr`. A Moodle site has
 none of that — no drush, a `config.php` instead of `settings.php`, a `moodledata`
-dir, and `$CFG->wwwroot` baked into the DB. ADR-0031 D8 requires a per-type
+dir, and `$CFG->wwwroot` baked into the DB. NWP-ADR-0031 D8 requires a per-type
 substrate so `pl` can promote a Moodle tier at all. This is that substrate.
 
 ## What it delivers
@@ -39,7 +39,7 @@ Mapping to the Drupal steps:
 
 - **Non-canonical tiers only.** `moodle_write_config` REFUSES any tier that is
   not `dev`/`stg`/`test`. A `live`/`prod` Moodle root holds real students'
-  records (ADR-0031 plane 5b) and is **never** rewritten by the pipeline.
+  records (NWP-ADR-0031 plane 5b) and is **never** rewritten by the pipeline.
 - **Off unless configured.** A site whose `project.type != moodle` is a no-op.
   Even for a Moodle site, the settings writer refuses until a
   `.moodle.tiers.<tier>.wwwroot` is present — so the fleet's Moodle sites (which
@@ -124,7 +124,7 @@ then **prints** the wwwroot DB-rewrite + cache-purge commands for the operator.
 ## Operator TODOs to actually enable a live Moodle pair
 
 1. **Register + configure** the Moodle site: add the `moodle.tiers.<tier>` block
-   (above) and, per ADR-0031 D4, register `ssc`/`ssd` in `nwp.yml`.
+   (above) and, per NWP-ADR-0031 D4, register `ssc`/`ssd` in `nwp.yml`.
 2. **Provision the DB password secret** for non-ddev tiers:
    `moodle.<site>.<tier>.db_password` in `.secrets.data.yml`
    (data-secret tier — not readable by AI).
@@ -140,7 +140,7 @@ then **prints** the wwwroot DB-rewrite + cache-purge commands for the operator.
    `php admin/cli/replace.php --search=<old> --replace=<new> --non-interactive`
    then `php admin/cli/purge_caches.php` — printed by `--apply`, run by the
    operator. **Never** against a live/prod site.
-8. **`moodledata`** joins the backup surface (ADR-0031 D8 — it is in zero backups
+8. **`moodledata`** joins the backup surface (NWP-ADR-0031 D8 — it is in zero backups
    today). The sanitizer/backup work owns scrubbing user-uploaded files.
 9. **Flip `oauth.enabled: true`** and run `pl moodle-smoke <consumer> --tier=<t>
    --run` (a token round-trip stays F26-gated).

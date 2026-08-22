@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# ADR-0031 D6 — pair MEMBERSHIP resolution, and the inversion that made the
+# NWP-ADR-0031 D6 — pair MEMBERSHIP resolution, and the inversion that made the
 # UID-lock guard inert.
 #
 # THE DEFECT THIS FILE PINS (2026-07-27)

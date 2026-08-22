@@ -13,7 +13,7 @@
 #   [projection-contradiction]  :90  claims the loop is paused; measured ARMED on mini
 #   [projection-contradiction]  :21  issue map stops at #53; highest issue opened is ops#332
 #   [projection-contradiction]  :42  issue map stops at #4;  highest issue opened is ops#332
-#   [projection-contradiction]  :78  calls ADR-0024 Proposed; its Status line says Accepted
+#   [projection-contradiction]  :78  calls NWP-ADR-0024 Proposed; its Status line says Accepted
 #   [unprojected-state]              no generated state block in …
 #
 # That run needed the live estate (an ssh probe to the ai-host, the forge API).
@@ -129,17 +129,17 @@ EOF
 }
 
 @test "9. calling an Accepted ADR 'Proposed' is a finding (the status line is the oracle)" {
-    # ADR-0001 is Accepted in this tree; the check reads its Status line, not a copy.
+    # NWP-ADR-0001 is Accepted in this tree; the check reads its Status line, not a copy.
     printf '# doc\nDeploy authority: `docs/decisions/0001-*` (**Proposed**, gated on A14).\n' > "$TMP/doc.md"
     run lint_with "$TMP/doc.md" "$(loop_json armed)" "$(issues_json 332)"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"calls ADR-0001 Proposed; its Status line says Accepted"* ]]
+    [[ "$output" == *"calls NWP-ADR-0001 Proposed; its Status line says Accepted"* ]]
 }
 
 @test "10. an ADR mentioned with no status claim is not a finding" {
-    printf '# doc\nSee ADR-0001 for the DDEV decision.\n' > "$TMP/doc.md"
+    printf '# doc\nSee NWP-ADR-0001 for the DDEV decision.\n' > "$TMP/doc.md"
     run lint_with "$TMP/doc.md" "$(loop_json armed)" "$(issues_json 332)"
-    [[ "$output" != *"calls ADR-0001"* ]]
+    [[ "$output" != *"calls NWP-ADR-0001"* ]]
 }
 
 @test "11. the escape hatch lets a document quote a stale sentence in order to explain it" {

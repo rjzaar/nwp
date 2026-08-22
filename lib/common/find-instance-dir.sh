@@ -6,7 +6,7 @@
 # private operator overlay (role manifest, _global config, _servers); when it
 # exists it takes precedence so overlay users keep their current behaviour.
 # (F33, which planned to deprecate sites/ in favour of the overlay, was
-# SUPERSEDED, and ADR-0021 was rejected — sites/ is not deprecated.)
+# SUPERSEDED, and NWP-ADR-0021 was rejected — sites/ is not deprecated.)
 #
 # Resolution order:
 #   1. $NWP_INSTANCES_DIR if set

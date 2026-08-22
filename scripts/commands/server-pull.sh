@@ -3,7 +3,7 @@ set -euo pipefail
 ################################################################################
 # nwp-server pull — fetch a signed bundle over HTTPS, then verify it fail-closed.
 #
-# This is the "pull+verify" capability (ADR-0024). It reuses lib/minisign.sh and
+# This is the "pull+verify" capability (NWP-ADR-0024). It reuses lib/minisign.sh and
 # lib/bundle-verify.sh unchanged — the prod agent adds transport, not a second
 # verification path. Verification is the SAME contract the build tier signs
 # against: extract, validate structure, minisign-verify the manifest against the

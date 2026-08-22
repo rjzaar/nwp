@@ -296,7 +296,7 @@ will replace it eventually?"
 Two honest answers:
 
 **Answer A — Yes, build Option 2 now.** The traveling-security-update
-scenario from [ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md)
+scenario from [NWP-ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md)
 is the same shape as the "notify me when away" scenario — being away
 from home is the exact moment notifications matter most, and the exact
 moment the current setup fails. The ~1 hour cost is small, the
@@ -448,9 +448,9 @@ Deliberately not a success criterion:
   this proposal inherits
 - **[F21 Phase 1: Headscale](F21-distributed-build-deploy-pipeline.md)**
   — the long-term dependency for Option 1
-- **[ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)**
+- **[NWP-ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)**
   — the Headscale-as-control-plane decision
-- **[ADR-0019: verifier Always-On with Hardware-Rooted Keys](../decisions/0019-verifier-always-on-hardware-rooted-keys.md)**
+- **[NWP-ADR-0019: verifier Always-On with Hardware-Rooted Keys](../decisions/0019-verifier-always-on-hardware-rooted-keys.md)**
   — parallel remote-access concern; same traveling-operator scenario
 - **[`docs/guides/gotify.md`](../guides/gotify.md)** — current Gotify
   operator guide; § Reachability is the section this proposal modifies

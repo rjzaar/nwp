@@ -1,4 +1,4 @@
-# ADR-0036: Site classes — what a site IS, and therefore which invariants apply
+# NWP-ADR-0036: Site classes — what a site IS, and therefore which invariants apply
 
 **Status:** Accepted (2026-08-09 — ops#234 operator ruling of 2026-08-07 ordered the demo-class attestations; the machinery is merged and in force — `lib/siteclass.sh` + `pl class`, 73 tests via !289, gate-status/deploy class-aware — and the attestations are executed: `classes/ssc|rgs|ssd|nwd.class.yml` are declared in-tree)
 **Date:** 2026-07-28
@@ -7,10 +7,10 @@
 unsatisfiable on an unpaired site), ops#137 (the ship-together invariant),
 ops#118 (the consent gate itself), ops#149 (`sites/rgs/.nwp.yml`), ops#103
 (canonical plugin source)
-**References:** [ADR-0030](0030-per-site-canonical-maturity-axes.md) (the two
+**References:** [NWP-ADR-0030](0030-per-site-canonical-maturity-axes.md) (the two
 existing per-site axes — this ADR adds the third and does not disturb them),
-[ADR-0031](0031-paired-site-versioning-and-promotion.md) (pair contract, D6
-`--code-only`), [ADR-0035](0035-erasure-propagation-op-to-rp.md),
+[NWP-ADR-0031](0031-paired-site-versioning-and-promotion.md) (pair contract, D6
+`--code-only`), [NWP-ADR-0035](0035-erasure-propagation-op-to-rp.md),
 `lib/moodle-gate.sh`, `lib/pair.sh`, `scripts/commands/contracts.sh`
 (`key-rotation` — the conditional-arm pattern this ADR generalises).
 
@@ -44,7 +44,7 @@ only one of them can possibly answer it.
 
 ### What already exists, and what this must not duplicate
 
-ADR-0030 gives every site **two orthogonal axes**, both shipped and enforced:
+NWP-ADR-0030 gives every site **two orthogonal axes**, both shipped and enforced:
 
 | Axis | Values | Question it answers | Enforced in |
 |---|---|---|---|
@@ -118,7 +118,7 @@ Changing one never implies the others. `rgs` is `class: member-standalone`
 whatever its maturity; promoting rgs to `maturity: production` would harden how
 its *code* ships and would not alter its Art.9 posture by one line.
 
-**Critically, the defaults differ, and deliberately.** ADR-0030 says absent
+**Critically, the defaults differ, and deliberately.** NWP-ADR-0030 says absent
 `maturity` = `incubating` = today's behaviour, because a permissive default on
 the code axis costs a little review ceremony. On the **data** axis a permissive
 default would mean "assume no members, assume no special-category data" — an
@@ -258,7 +258,7 @@ its three real blockers, none of which this ADR pretends to solve:
 ### 5. Relationship to the deploy boundary (`ver`)
 
 The class axis is **advisory about data, never about deploy authority**. It does
-not touch the ADR-0017 deploy-host boundary, the A14 test-tier rule, or
+not touch the NWP-ADR-0017 deploy-host boundary, the A14 test-tier rule, or
 `deploy_gate_require`. A `service` class does not make a prod write acceptable to
 an AI-run host; `maturity: production` and the deploy-host boundary continue to govern
 that, unchanged. Guard ordering is unchanged:

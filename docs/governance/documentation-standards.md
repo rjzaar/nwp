@@ -511,7 +511,7 @@ See the [ROADMAP](../../ROADMAP.md) for future plans.
 
 **Good cross-references:**
 - "See the [Database Backup Guide](../guides/backup-restore.md#database-backups) for step-by-step instructions."
-- "This implements the architecture defined in [ADR-0001](../decisions/0001-two-tier-secrets.md)."
+- "This implements the architecture defined in [NWP-ADR-0001](../decisions/0001-two-tier-secrets.md)."
 - "For security implications, see [Data Security Best Practices](../security/data-security-best-practices.md)."
 
 **Bad cross-references:**

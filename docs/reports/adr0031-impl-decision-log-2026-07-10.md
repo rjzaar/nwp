@@ -1,4 +1,4 @@
-# ADR-0031 implementation — decision log (2026-07-10, autonomous)
+# NWP-ADR-0031 implementation — decision log (2026-07-10, autonomous)
 
 Operator directive: do items 1–5, max-effort test+fix as I go, research decisions myself + proceed +
 log them, then run complete tests on everything testable and fix bugs. Report when finished.

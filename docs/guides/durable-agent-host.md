@@ -32,7 +32,7 @@ Operator-stated 2026-08-02, and permanent. This is **never**, not *not yet*.
   real user data, so a live-tier credential on an AI-run host is within the
   threat model.
 - The `ai-host` **MUST NEVER** hold anything that reaches prod. Prod belongs to
-  the `ver` role alone (ADR-0028), which is offline by default and provisioned
+  the `ver` role alone (NWP-ADR-0028), which is offline by default and provisioned
   by the operator, in person, from the operator's own store.
 
 That rule is enforced in code, two ways, both fail-closed:
@@ -99,7 +99,7 @@ list and no shell history on either machine.
 
 | Excluded | Why |
 |----------|-----|
-| Anything reaching **prod** | The boundary above. Prod is the `ver` role's alone (ADR-0028). |
+| Anything reaching **prod** | The boundary above. Prod is the `ver` role's alone (NWP-ADR-0028). |
 | `ver` credentials, deploy-gate `ed25519-sk` hardware keys | Deploy tier. The operator provisions those in person. |
 | `.secrets.data.yml` (production DB, SSH, SMTP) | Operator-only tier; AI is deny-ruled from it. It is not on the host and must not be put there. |
 | Any Linode API token | Reaches production infrastructure from the AI-readable tier. `linode.provision_token` did exactly that once and was revoked. |
@@ -197,6 +197,6 @@ ssh <ai-host> 'cd ~/nwp && ./pl drush nwd --tier=live --execute -- status'
 
 - `CLAUDE.md` — threat model, actor glossary, the `pl`-first standing order
 - `docs/reference/role-vocabulary.md` — why this guide names roles, not hosts
-- ADR-0017 — distributed build/deploy pipeline
-- ADR-0028 — the `ver` role and the hardware-gated deploy gate
+- NWP-ADR-0017 — distributed build/deploy pipeline
+- NWP-ADR-0028 — the `ver` role and the hardware-gated deploy gate
 - `pl secrets --help` — `provision`, `adopt`, `verify-copy`, `audit --locations`

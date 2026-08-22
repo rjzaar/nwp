@@ -102,4 +102,4 @@ by reading it.
 | Everyday backup and restore | `docs/guides/howto-backup-restore.md` |
 | Deploying a change | `docs/guides/howto-deploy.md` |
 | Disaster recovery | `docs/guides/howto-dr-chain.md` |
-| The trust model | `CLAUDE.md` § Threat Model, and ADR-0017, 0024, 0028 |
+| The trust model | `CLAUDE.md` § Threat Model, and NWP-ADR-0017, 0024, 0028 |

@@ -1,4 +1,4 @@
-# `pairs/` — versioned pair contracts (ADR-0031 D2 / ops#75)
+# `pairs/` — versioned pair contracts (NWP-ADR-0031 D2 / ops#75)
 
 This directory holds the **pair contracts** that `lib/pair.sh` (`pair_guard`)
 and `scripts/commands/pair-smoke.sh` consume — one file per pair, named
@@ -62,7 +62,7 @@ and refuses.
 > `sites/ssc/.nwp.yml`, which looked like configuration but could not name a
 > site. `pl pair check ssc live` (a full-DB push to the tier whose UID-locks D6
 > exists to protect) answered **ALLOW** for months. Reading membership from the
-> committed contract is ADR-0031 D2 ("the contract is the versioned artifact")
+> committed contract is NWP-ADR-0031 D2 ("the contract is the versioned artifact")
 > carried through to the choke-point, and it is what lets
 > `tests/unit/test-pair-membership.bats` assert the real pair binds.
 

@@ -75,7 +75,7 @@ package, split it (generalise the code → token/config/template; move the value
 ## 6. Backup + build-prod (operator topology — see the session plan)
 
 - **Backup the instance** = push the root project repo (code + `config/sync`) to a
-  **private** git project + back up DB/files (`pl backup` / restic per ADR-0025).
+  **private** git project + back up DB/files (`pl backup` / restic per NWP-ADR-0025).
 - **Build prod** = clone the instance repo → `composer install` → `site:install social`
   + recipes → `drush cim` (config) → seed content (recipe-content or a sanitised DB
   copy through the deploy pipeline) → register in `nwp.yml`.

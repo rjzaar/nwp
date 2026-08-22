@@ -50,7 +50,7 @@ Overnight autonomous run. **Nothing was deployed. Nothing merged itself. Everyth
 2. **ssc custom plugins have no git home** — the ssc repo's only remote is Moodle upstream, so #118's commit is
    local-only (archived as `ssc-118-artifact/ops-118-moodle-art9-gate.{bundle,patch}`). **Recommend:** create a
    GitLab home (e.g. `nwp/ss-moodle-plugins`) so ssc work is reviewable/mergeable. Governance call — not done unilaterally.
-3. **#120 ADR-0032 validation** needs a **disposable Linode** (you authorised it) — I left this for a deliberate
+3. **#120 NWP-ADR-0032 validation** needs a **disposable Linode** (you authorised it) — I left this for a deliberate
    pass rather than spin up billable infra unattended at the tail of a long run. It's the clear next infra step.
 4. **ops#127 DR sanitiser** (merged) applies on the **offline ver/prod hosts by hand** — it's `REVIEW:` for that reason.
 

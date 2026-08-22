@@ -10,12 +10,17 @@
 #
 #   1. dead-file-links  — every repo-relative markdown link resolves to a file
 #                         that exists (tried relative-to-file AND relative-to-root).
-#   2. dead-adr-refs    — every `ADR-NNNN` mention resolves to docs/decisions/NNNN-*.md.
+#   2. dead-adr-refs    — every `NWP-ADR-NNNN` mention resolves to
+#                         docs/decisions/NNNN-*.md. ENGINE SERIES ONLY, and only
+#                         where the reference says so (ops#383): a bare number
+#                         names no series and is refused by `lint:adr-namespace`
+#                         instead; `NWC-`/`AVC-` numbers live in profile repos
+#                         this gate cannot see, so it says nothing about them.
 #   3. raw-remote-cli   — no runbook prescribes a raw `ssh … drush …` or
 #                         `ssh … admin/cli/…` one-liner. Those are the
 #                         exact idioms `pl drush` and `pl moodle cli` were built
 #                         to retire: they bypass the dry-run default, the
-#                         ADR-0028 deploy gate, the live.enabled flag, the
+#                         NWP-ADR-0028 deploy gate, the live.enabled flag, the
 #                         no-secret-printing rule and the rollback ledger — at
 #                         go-live, when it matters most. This one IS a prose
 #                         assertion, but it is mechanical (a command shape, not
@@ -30,7 +35,7 @@
 #                         template's shape, and no ADR number names two files.
 #                         Both shapes were live when this check was written:
 #                         two 0032-*.md files coexisted for three days, and
-#                         ADR-0034's status was a `- **Status:**` list item no
+#                         NWP-ADR-0034's status was a `- **Status:**` list item no
 #                         Status-grep in the estate could see — recorded in
 #                         ops#318 as "no Status line at all". A status the
 #                         tooling cannot parse is a status it silently stops
@@ -116,6 +121,11 @@
 #   pl doc-truth --json       machine-readable summary to stdout
 #   pl doc-truth --memory[=DIR]  lint the AI auto-memory corpus (host-side);
 #                             exit 2 CANNOT VERIFY where the corpus is unreadable
+#   pl doc-truth --adr-namespace  every ADR reference names WHICH series it
+#                             means (lint:adr-namespace, ops#383). No baseline
+#                             and no override by design; exit 2 CANNOT VERIFY
+#                             if the corpus is unreadable.
+#   pl doc-truth --adr-namespace-list   the same, machine-readable
 #   pl doc-truth --projection[=FILE]  the injected read-first document's
 #                             hand-written claims vs LIVE measurements
 #                             (host-side; exit 2 where it cannot be read)
@@ -145,9 +155,22 @@ MEMORY_DIR="${NWP_MEMORY_DIR:-$HOME/.claude/projects/$(printf '%s' "$PROJECT_ROO
 
 # Docs excluded from the gate: historical archives + teaching docs that contain
 # deliberately-illustrative example links (not real targets).
+# `docs/onboarding/*` WAS excluded here and no longer is (ops#383). The wholesale
+# directory exemption is exactly the failure mode this file's own escape-hatch
+# comment warns about: it "quietly covers a live instruction". It covered one for
+# three months. docs/onboarding/adrs.md invented a whole third ADR numbering
+# scheme — banded 10/20/30/40/50/60/70 — with six numbers naming no file in any
+# repo, and shipped it to every new coder as the reviewer's index. No gate ever
+# opened the file, so nobody noticed between 2026-05-20 and 2026-08-22.
+#
+# Narrowing cost NOTHING, which is the argument for having done it sooner:
+# measured 2026-08-22 with the directory scanned, `--all` reports ZERO findings
+# across all eleven files, so no baseline row was needed. Proven scanned rather
+# than assumed — a deliberate dead link injected into docs/onboarding/README.md
+# fired `dead-link`, and was then reverted.
 skip_file(){
     case "$1" in
-        docs/archive/*|docs/onboarding/*|docs/governance/documentation-standards.md) return 0 ;;
+        docs/archive/*|docs/governance/documentation-standards.md) return 0 ;;
     esac
     return 1
 }
@@ -307,7 +330,7 @@ dead_command_ref_hits(){
 #       EXACTLY ONE `**Status:**` line in the template's shape (template.md:3,
 #       column 0). Zero is a decision whose state nobody recorded; two is the
 #       correction-by-accretion pattern (a second status stacked on a stale
-#       first). The shape is strict ON PURPOSE: ADR-0034 carried its status as
+#       first). The shape is strict ON PURPOSE: NWP-ADR-0034 carried its status as
 #       a `- **Status:** ` list item, which every Status-grep in the estate
 #       missed — ops#318 recorded it as "no Status line at all". A status the
 #       tooling cannot parse is a status nothing checks.
@@ -344,11 +367,32 @@ collect_drift(){
             [ -e "$reldir/$target" ] || [ -e "$PROJECT_ROOT/$target" ] || echo "dead-link|$rel|$target"
         done < <(grep -oE '\]\([^)]+\)' "$file" 2>/dev/null | sed -E 's/^\]\(//; s/\)$//')
 
+        # 2. dead-adr — resolve ONLY the ENGINE series, and only when the
+        #    reference says it means the engine series (ops#383).
+        #
+        #    This used to extract a bare `ADR-[0-9]{4}` and resolve it against
+        #    docs/decisions/. That is a guess, not a resolution: three series
+        #    wrote that same token, so a bare number resolved here and reported
+        #    GREEN while naming a document in some other repo. Measured before
+        #    the fix: 904 such references across the site trees, 22 distinct
+        #    numbers, every one green and every one pointing at the wrong ADR.
+        #
+        #    Now the prefix carries the namespace. `NWP-ADR-NNNN` is ours and
+        #    must resolve. `NWC-ADR-NNNN` / `AVC-ADR-NNNN` belong to profile
+        #    repos this gate cannot see, so it says nothing about them rather
+        #    than resolving them against the wrong directory — silence is the
+        #    honest answer to "is a file in another repo present?".
+        #
+        #    A BARE reference is not checked here at all, because there is
+        #    nothing to check: it names no series. `lint:adr-namespace` is the
+        #    gate that refuses it, and it has no baseline, so bareness cannot
+        #    accumulate behind this check's back.
         while IFS= read -r adr; do
-            num="${adr#ADR-}"
+            num="${adr#NWP-ADR-}"
             case "$ADR_RESERVED" in *" $num "*) continue ;; esac
-            compgen -G "$PROJECT_ROOT/docs/decisions/${num}-*.md" >/dev/null 2>&1 || echo "dead-adr|$rel|ADR-$num"
-        done < <(grep -oE 'ADR-[0-9]{4}' "$file" 2>/dev/null | sort -u)
+            compgen -G "$PROJECT_ROOT/docs/decisions/${num}-*.md" >/dev/null 2>&1 \
+                || echo "dead-adr|$rel|NWP-ADR-$num"
+        done < <(grep -oE 'NWP-ADR-[0-9]{4}' "$file" 2>/dev/null | sort -u)
 
         # 3. raw-remote-cli — an `ssh …` line that runs drush or a Moodle
         #    admin/cli script directly. Reported as "file:line" so a rewrite is
@@ -515,6 +559,18 @@ main(){
         --memory=*) MEMORY_DIR="${1#*=}"; run_memory_check ;;
         --projection)   run_projection_check ;;
         --projection=*) PROJECTION_FILE="${1#*=}"; run_projection_check ;;
+        # --adr-namespace (ops#383): the operator-facing surface for
+        # `lint:adr-namespace`. It lives in scripts/ci/ like every other lint,
+        # but the standing order is that everything goes through a `pl` verb —
+        # and this is the check an author most wants to run locally, right
+        # after fixing a citation, rather than discovering it in CI. Delegates
+        # to the ONE implementation (the same pattern `pl verify gates` uses for
+        # lint-gate-redproof.sh); it does not reimplement the rule, because a
+        # policy expressed in two places is a policy that drifts.
+        --adr-namespace)
+            exec "$REPO_ROOT/scripts/ci/lint-adr-namespace.sh" ;;
+        --adr-namespace=--list|--adr-namespace-list)
+            exec "$REPO_ROOT/scripts/ci/lint-adr-namespace.sh" --list ;;
         "")         ;;
         *) print_error "unknown arg: $1"; usage; exit 2 ;;
     esac

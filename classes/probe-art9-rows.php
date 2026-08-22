@@ -1,7 +1,7 @@
 <?php
 /**
  * probe-art9-rows.php — the re-attestation probe behind an Art.9 `none-stored`
- * exemption (ADR-0036 / nwp/ops#153).
+ * exemption (NWP-ADR-0036 / nwp/ops#153).
  *
  * Prints the three readings a classes/<site>.class.yml attestation records:
  *

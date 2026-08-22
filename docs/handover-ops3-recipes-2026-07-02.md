@@ -153,7 +153,7 @@ planning/research."
   contrib status on D10, how Open Social/Thunder/Varbase/Drupal CMS ship starter content,
   moderation-state-aware import patterns, Workspaces, data_policy/tool_policy
   reconsent-on-version-bump as the canonical-document pattern.
-- **D — governance grounding**: ADR-0008/0014/0015 + guild seed YAMLs (charter content vs
+- **D — governance grounding**: NWC-ADR-0008/0014/0015 + guild seed YAMLs (charter content vs
   structure), federation/operator authority statements in package docs +
   `~/central/nwc-internal/` (OPENSOCIAL-ARCHITECTURE-DECISION, PUBLISH-SCRUB-MANIFEST),
   the nwc_copyright "posture" design; explicit list of gaps where no decision exists.

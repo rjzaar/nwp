@@ -46,7 +46,7 @@ sites:
 | | **incubating** (default) | **stabilizing** | **production** |
 |---|---|---|---|
 | Who edits code | operator + Claude directly on dev | same, but on branches | branches only (canonical: prod already enforces this) |
-| Gate before live | none — direct `pl stg2live` (A14 test tier) | **merged, CI-green `main`** — direct stg2live from a dirty tree/branch refused | **signed bundle + `nwp-server` verify/apply** (or the ADR-0024 protected runner once its 3 preconditions land); WebAuthn-gated merge |
+| Gate before live | none — direct `pl stg2live` (A14 test tier) | **merged, CI-green `main`** — direct stg2live from a dirty tree/branch refused | **signed bundle + `nwp-server` verify/apply** (or the NWP-ADR-0024 protected runner once its 3 preconditions land); WebAuthn-gated merge |
 | Agent-loop | may auto-work `agent-eligible` issues, MR → human merge | same (MR-only is already the loop's contract) | may *propose* MRs only; deploy never automatic |
 | Real-world examples | scratch sites, nwt/nwd fixtures, nwc today | nwc after its content cutover; mt/cathnet/dir1 once users depend on them | avc/mayo real prod, future paying sites |
 | Direct `pl stg2live` | ✅ allowed | ⚠ only from clean, merged main (`canonical_enforce_branch_policy deploy`-style check, plus CI-green) | ❌ refused — points at the signed-bundle path |
@@ -68,7 +68,7 @@ same as ops#33.
 ## 3. Direct answers to the operator's questions
 
 1. **"When ver is set up, will the pipeline go through `ai-host` and my direct dev→live work
-   change?"** — **No.** Three sources agree: the A14 grant (ADR-0024 header, 2026-07-01)
+   change?"** — **No.** Three sources agree: the A14 grant (NWP-ADR-0024 header, 2026-07-01)
    scopes the direct/AI deploy path to the `*.example.com` test fleet explicitly and
    permanently ("this grant does NOT extend AI write access" to real prod);
    `nwp-server-operations.md` encodes it in the CI rule (`test tier: on_success. real
@@ -126,9 +126,9 @@ same as ops#33.
    site-by-site (`pl maturity set mt stabilizing`, etc.) the same way canonical phases
    are being set.
 
-Deliberately NOT in scope: building the ADR-0024 runner (own preconditions), wiring
+Deliberately NOT in scope: building the NWP-ADR-0024 runner (own preconditions), wiring
 per-site deploys into .gitlab-ci.yml (the `production` class only *refuses* direct
-paths until the signed path is chosen per ADR-0024/0026 — it does not invent a new one).
+paths until the signed path is chosen per NWP-ADR-0024/0026 — it does not invent a new one).
 
 ## 5. The branched test site (work with Claude while live serves users)
 
@@ -149,7 +149,7 @@ pl delete nwct                  # twin is disposable; backups auto-archived (ops
   absent + nothing to point at).
 - The real site keeps serving; its content authority is whatever its `canonical` says;
   code changes reach it only through the merge → its-class-gate path.
-- This is the ADR-0016 parallel-install pattern (nwt/nwd) generalized to ad-hoc twins.
+- This is the NWP-ADR-0016 parallel-install pattern (nwt/nwd) generalized to ad-hoc twins.
 - **Gap to close (small):** `pl copy --branch=<ref>` (or `pl branch <site> <ref>`) to do
   the copy+switch+composer-install in one verb; `install.sh`'s `source_git` clone has no
   `-b` flag either. One flag + ~20 lines each.
@@ -214,7 +214,7 @@ same ~20-line change.
 | dev → stg | `pl dev2stg` | yes (`sanitize_staging_db`, default on) |
 | live → stg | `pl live2stg` | **NO — raw pull** (grep: zero sanitize references) |
 | prod → stg | `pl prod2stg` | **NO — raw pull** |
-| prod-side (designed) | `nwp-server publish` (ADR-0026) | sanitize ON prod + fail-closed PII gate → write-only publish; built, not yet the default plumbing |
+| prod-side (designed) | `nwp-server publish` (NWP-ADR-0026) | sanitize ON prod + fail-closed PII gate → write-only publish; built, not yet the default plumbing |
 
 Gap: the ops#33 guard messages say "sanitized live→dev is the path" but `live2stg` pulls
 raw. Fix (small, P67 item): `live2stg`/`prod2stg` gain a default-on sanitize step (same
@@ -241,7 +241,7 @@ API plumbing.
 ## 6. Decision points for the operator
 
 1. Adopt `maturity:` as the field name (keeps 08 Part IV vocabulary) vs `workflow:`.
-   **Recommend `maturity`** — the vision docs, ADR-0024's incubating/production language,
+   **Recommend `maturity`** — the vision docs, NWP-ADR-0024's incubating/production language,
    and future ADR all already speak it.
 2. Confirm the invalid-combination refusals in §2's matrix (esp. incubating+prod).
 3. Confirm one-way-by-default graduation (downgrade = typed confirm + ledger).
@@ -255,9 +255,9 @@ API plumbing.
 
 ## 7. Sources (for the future reader)
 
-ADR-0013 (four-state model), ADR-0017 (distributed pipeline, key separation), ADR-0022
-(nwp-server build target), **ADR-0024** (runner-resident prod, A14 grant + scoping,
-incubating-vs-production deploy gates, 3 preconditions), ADR-0025 (DR to ver), ADR-0026
+NWP-ADR-0013 (four-state model), NWP-ADR-0017 (distributed pipeline, key separation), NWP-ADR-0022
+(nwp-server build target), **NWP-ADR-0024** (runner-resident prod, A14 grant + scoping,
+incubating-vs-production deploy gates, 3 preconditions), NWP-ADR-0025 (DR to ver), NWP-ADR-0026
 (nwp-server capability agent, three-key ledger), role-vocabulary.md;
 `08-VISION…` **Part IV (maturity tiers, graduation one-way)** + Part III-A (control
 plane); PRINCIPLES §2/§3/§6/§8; self-healing-loop-guide (agent-loop = fix half only);

@@ -1,12 +1,12 @@
-# ADR-0029: nwc authorization model — a domain-layer choke-point, machine-id guild resolution, fail-closed floors
+# NWP-ADR-0029: nwc authorization model — a domain-layer choke-point, machine-id guild resolution, fail-closed floors
 
 **Status:** Proposed
 **Date:** 2026-07-09
 **Decision Makers:** Robert Karsten Zaar (draft; operator to accept)
 **Related Issues:** P73 (editorial authorization hardening, Phases A+B merged on
 `unfork/open-social-13`), ops#62 (NWC onboarding / Class-3 preservation)
-**References:** [ADR-0005](0005-distributed-contribution-governance.md) (governance),
-[ADR-0027](0027-unified-course-content-architecture.md) (canonical content + member-level
+**References:** [NWP-ADR-0005](0005-distributed-contribution-governance.md) (governance),
+[NWP-ADR-0027](0027-unified-course-content-architecture.md) (canonical content + member-level
 attribution), CLAUDE.md (Security Red Flags),
 the nwp deep-audit recommendations of 2026-07-09
 (`docs/reports/nwp-deep-audit-recommendations-2026-07-09.md`, stream ②, "the next P73s"),
@@ -162,7 +162,7 @@ the remaining services converge instead of each re-inventing a gate.
   H5→H6→H7→H8→L1 on top; fix H1/H2/H3/H4/M1/M3/M5/M7 directly in parallel.
 - Do **not** wire the governance UI/API until H7 (`ScopeGrantService::grant()` /
   `LegislationService::enactDirect()`) lands — it is cheap to fix while unwired.
-- This ADR is the authorization companion to ADR-0027's content model: ADR-0027 severs
+- This ADR is the authorization companion to NWP-ADR-0027's content model: NWP-ADR-0027 severs
   *individual identity* at the site boundary (member-level, CC0); this ADR ensures the
   *acting identity inside* a site is authentic and authorized.
 

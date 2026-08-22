@@ -27,7 +27,7 @@ should be running; remove the loop cron from **dev** (mini is canonical per the 
 `.secrets.yml:gitlab.api_token` (== `~/.nwp-agent-loop.env:GITLAB_TOKEN`, same token). Live-verified:
 name "nwp-api", scopes `[api, read_api, read_repository, write_repository]`, authenticates as
 **`root`, `is_admin:true`**, exp 2027-04-07 — and it is **sourced by the unpaused loop every 30 min.**
-This is the ADR-0024 linchpin: with a full-`api` admin token on an AI host, "AI never reaches prod"
+This is the NWP-ADR-0024 linchpin: with a full-`api` admin token on an AI host, "AI never reaches prod"
 is false at the control-plane root, regardless of the signed-artifact chain. **MUST-FIX-BEFORE-MONS.**
 → Revoke; reissue Developer-role, non-admin, no-`api`; admin → WebAuthn-only sessions.
 
@@ -66,12 +66,12 @@ not the deny list; do not rely on deny rules as a security boundary.
   445-493`): every mutation `2>/dev/null`, no exit check, unconditional `return 0`; the lone
   anonymize query hits a Drupal-only table → on Moodle/other, **no anonymization, "sanitized"
   printed anyway.** Generalized ops#68. → check exit codes, fail loud, gate via `pii_gate_scan`.
-- **H3 · ADR-0024 runner is a bare `git pull` + `pl stg2live` — no signature verification** (ops#52).
+- **H3 · NWP-ADR-0024 runner is a bare `git pull` + `pl stg2live` — no signature verification** (ops#52).
   The canonical routine-prod path is signature-free by design → a GitLab compromise ships to prod.
 - **H4 · AI-held SSH reaches the GitLab host** (`~/.ssh/nwp`,`gitlab_linode` → `97.107.137.88`, which
   hosts live test sites AND `git.nwpcode.org`). Fine for A14 test tier, but once GitLab is the
   deploy-authority root, an AI shell there hollows the WebAuthn gate. → separate GitLab from AI shell
-  reach before ADR-0024 flips on.
+  reach before NWP-ADR-0024 flips on.
 - **H5 · TOFU ver-kit bootstrap** — kit verified with the pubkey shipped *inside the kit*; only guard
   is a manual, skippable key-ID check. → make it a required, scripted checklist step.
 - **H6 · Account-scoped Linode token + GitLab admin password in AI-readable `.secrets.yml`.** Registry
@@ -146,8 +146,8 @@ fail-open plumbing, and the good pattern is applied unevenly.** The inconsistenc
 ## The mons-readiness blockers (ordered)
 1. Kill BOTH root-admin PATs (C1, C2); reissue Developer-role non-admin; re-verify via
    `GET /personal_access_tokens/self` + `/user`. 2. Solo W WebAuthn enroll; admin WebAuthn-only.
-3. Minisign key off AI disk / hardware ceremony (C4). 4. Amend ADR-0024 → verify-then-apply (ops#52).
-5. Provision mons' 3 one-way keys (ADR-0026). 6. Separate GitLab from AI shell reach (H4). 7. Stop
+3. Minisign key off AI disk / hardware ceremony (C4). 4. Amend NWP-ADR-0024 → verify-then-apply (ops#52).
+5. Provision mons' 3 one-way keys (NWP-ADR-0026). 6. Separate GitLab from AI shell reach (H4). 7. Stop
 the dev loop; correct OPERATING-MODEL (C0).
 
 ---
@@ -193,11 +193,11 @@ holds in the tooling.** The P1 cluster (dev/CI/shared-server blast radius):
   `dev live prod`, rejects `stg`), 0014 (git-hooks machinery that doesn't exist), 0021 (records the
   *rejected* separate-repo option as the decision).
 - **No ADR for the biggest 2026 decision — the un-fork to Open Social 13** (nwc=canonical 2.0, avc
-  frozen, nw1 archived). Lives only in memory/ops/handovers. **ADR-0027 is Status: Proposed + not in
+  frozen, nw1 archived). Lives only in memory/ops/handovers. **NWP-ADR-0027 is Status: Proposed + not in
   the index** yet is cited as binding-parent by P71/P72/P73. P73 (approved auth model) has no ADR.
 - **F26 nwc↔ss OIDC is being built on a stale, contradicting spec** (F26 still says avc-issuer + its
   §2 forbids the extension) — on a DO-NOT-MERGE auth branch. Reconcile before it merges.
-- **F28 depends on superseded ADR-0019** yet ADR-0027 cites it as load-bearing for federation.
+- **F28 depends on superseded NWP-ADR-0019** yet NWP-ADR-0027 cites it as load-bearing for federation.
 - **Onboarding suite (`docs/onboarding/`) actively misleads** — cites nonexistent ADR numbers +
   ~11 modules that don't exist + "Open Social 12" + paused auto-deploy. Rewrite or stamp SUPERSEDED.
 - **Roadmap / milestones / CHANGELOG are dead since ~April** — a second, false source of truth vs
@@ -211,7 +211,7 @@ publish PII-gate fixed, test-mons↔tp1 1:1-WireGuard proven, the tailnet-vs-ADR
 stale ~/.config PATs already shredded. Remaining is the operator/hardware half of ops#25.
 MUST-FIX-BEFORE-MONS from this tree:
 - **Signing-key custody (the biggest):** `keys/minisign/nwp-deploy.key` on the AI-reachable dev disk
-  (one agent reports it **passwordless** per the ADR-0019 interim), **+ a stray copy in
+  (one agent reports it **passwordless** per the NWP-ADR-0019 interim), **+ a stray copy in
   `~/nwp-ops23/keys/minisign/`**; no key-rotation/compromise runbook. This is the trust root the whole
   mons chain verifies against.
 - **`mons-operational-readiness.md` contradicts the trust model** — tells you to `cd ~/nwp` on mons
@@ -340,7 +340,7 @@ rule; secret-name `.gitignore` denies; scrub Mazenod/RE + prod IP from *publishe
 `example.nwp.v2.yml` from the mirror.
 
 **TIER 4 — decision record:** ⑭ write the **un-fork ADR** (biggest undocumented decision); accept+index
-**ADR-0027**; ADR for the **P73 model**; correct ADR-0013/0014/0021 (asserting falsehoods as
+**NWP-ADR-0027**; ADR for the **P73 model**; correct NWP-ADR-0013/0014/0021 (asserting falsehoods as
 "Accepted"); **wire `pl doc-truth` into CI** + extend it to parse Status; fix the "paused" fiction and
 the dead roadmap/milestones/CHANGELOG.
 

@@ -1,5 +1,5 @@
 # =============================================================================
-# pairs/ssd.pair-contract.yml — REAL pair contract (ADR-0031 D2 / ops#75)
+# pairs/ssd.pair-contract.yml — REAL pair contract (NWP-ADR-0031 D2 / ops#75)
 # =============================================================================
 #   nwd (Drupal/Open Social demo, PROVIDER)  ↔  ssd (Moodle demo, CONSUMER)
 #
@@ -36,7 +36,7 @@ contract_version: 3           # monotonically increasing INTEGER; bump = expand-
 provider: nwd                 # Drupal demo — OIDC issuer, copyright source, feedback sink
 consumer: ssd                 # Moodle demo — SSO client, copyright receiver (throwaway users)
 
-# --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
+# --- F28 signed-bundle linkage (NWP-ADR-0031 D5) --------------------------------
 dependencies:
   provider_bundle: "nwd@0.5.0"
   consumer_bundle: "auth_nwc@1.2.0"     # ss-moodle-plugins (ops#118 gate + ops#93 privacy)
@@ -54,7 +54,7 @@ demo:
   enabled: true
   paired_golden: true         # `pl demo golden nwd --with-pair` captures BOTH
   paired_reset: true          # a reset restores BOTH to one logical cut
-  # Provider-first (ADR-0031 D5): the identity origin is restored first, so an
+  # Provider-first (NWP-ADR-0031 D5): the identity origin is restored first, so an
   # aborted reset can never leave the consumer holding locks against accounts
   # the provider has not brought back.
   restore_order: provider-first
@@ -193,7 +193,7 @@ boundary:
     consumer_paths:
       - "scripts/demo/**"                # IN-REPO: ssd rebuild/wire/seed/posture
 
-# --- Data rails (ADR-0031 D2/D6) ---------------------------------------------
+# --- Data rails (NWP-ADR-0031 D2/D6) ---------------------------------------------
 identity:
   # Demo twin: user state is throwaway, so NO UID-lock constraint and NO
   # coupled tiers. A full-DB push is permitted on every tier — the D6

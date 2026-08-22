@@ -72,7 +72,7 @@ In addition to the above:
 
 - [ ] Does the change affect user-visible behaviour? Pull up the dev site (`https://nwc-dev.ddev.site/`) and **manually exercise the changed path**. Don't skip this.
 - [ ] Does it interact with the editorial state machine ([architecture-brief §editorial-pipeline](./architecture-brief.md#editorial-pipeline))? Watch for changes that bypass the state transitions.
-- [ ] Does it interact with the Decision Log visibility tiers (ADR-0010)? Stewards-tier content must never become member-visible by accident.
+- [ ] Does it interact with the Decision Log visibility tiers (NWC-ADR-0010)? Stewards-tier content must never become member-visible by accident.
 - [ ] Does it touch the `field_content_visibility` default? Open Social content access depends on this — wrong default = either site goes 403 or leaks.
 
 ### 6. Special checks for T3

@@ -40,7 +40,7 @@
 #     non-estate IP, and a site nginx really does serve with no .nwp.yml at all.
 #     Undeclared means "nothing here explains this" — it is the beginning of an
 #     investigation, and this library will never emit a removal command.
-#  5. yq-FIRST for YAML (ADR-0015) and yq -p=json for the API body. No jq
+#  5. yq-FIRST for YAML (NWP-ADR-0015) and yq -p=json for the API body. No jq
 #     dependency, no regex-scraping of JSON.
 #
 # WHAT IT GRADES RED (rc=1) — and, just as deliberately, what it does not:
@@ -144,7 +144,7 @@ dns_inv_records() {
 }
 
 # ---------------------------------------------------------------------------
-# Declaration loading — yq only (ADR-0015).
+# Declaration loading — yq only (NWP-ADR-0015).
 #
 # Populates, in the caller's scope:
 #   DNS_DECL_SRC[fqdn]   where the declaration lives (human-readable)

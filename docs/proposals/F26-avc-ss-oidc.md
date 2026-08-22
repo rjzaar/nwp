@@ -1,7 +1,7 @@
 ## F26: NWC↔SS OIDC Single Sign-On
 
 **Status:** SIGNED OFF (2026-07-10, operator) — approved to build. OIDC SSO is the
-sanctioned path for the paired sites (ssc↔nwc, ssd↔nwd) per ADR-0031 / ops#73–76.
+sanctioned path for the paired sites (ssc↔nwc, ssd↔nwd) per NWP-ADR-0031 / ops#73–76.
 **Implementation caveat:** the code MR (nwp!49) must first reconcile the issuer to
 **nwc** (not avc) per the 2026-07-09 deep audit before it merges — the design decision
 is signed off here; the stale-spec reconcile is a merge gate on the implementation.
@@ -9,12 +9,12 @@ is signed off here; the stale-spec reconcile is a merge gate on the implementati
 > **Issuer reconcile (2026-07-10).** This spec was authored (2026-04-12) when **avc**
 > was the canonical Drupal site, so its body named avc as the OIDC issuer/provider and
 > §2 treated nwc as out of scope. Both are now stale: avc is **frozen** and **nwc** is
-> the canonical 2.0 site (the un-fork to Open Social 13), and ADR-0031 makes the pairing
+> the canonical 2.0 site (the un-fork to Open Social 13), and NWP-ADR-0031 makes the pairing
 > **ssc↔nwc / ssd↔nwd**. This pass reconciles the design to **nwc as the issuer** and
 > lifts the §2 clause that forbade the nwc↔ss extension (that extension is exactly what
 > is now signed off). The nwp!49 code branch was already nwc-branded; this brings the
 > spec into line. Filename kept as `F26-avc-ss-oidc.md` to preserve inbound links (e.g.
-> ADR-0031); the *title* is now NWC↔SS.
+> NWP-ADR-0031); the *title* is now NWC↔SS.
 
 **Created:** 2026-04-12
 **Author:** Robert Karsten Zaar (with AI assistance)
@@ -93,16 +93,16 @@ The load-bearing design decisions are:
    API; no Cloudflare token is needed and the preview flow doesn't
    require a CDN.
 
-### 1.3 Relationship to ADR-0017, ADR-0031, F21, F23
+### 1.3 Relationship to NWP-ADR-0017, NWP-ADR-0031, F21, F23
 
-F26 sits entirely inside the dev tier under ADR-0017 — preview
+F26 sits entirely inside the dev tier under NWP-ADR-0017 — preview
 environments are built on the mirror-store, sanitized fixtures come from the
 F21 Phase 6 sanitizer, and the wildcard TLS automation runs on the
 mirror-store runner. Prod sites (production nwc + production SS) are
 reconfigured at deploy time through the F28 pipeline, not by F26
 directly. F23 provides the site environment layout (`sites/nwc/dev`,
 `sites/ss/dev`) that the preview provisioning script consumes.
-ADR-0031 is the parent contract for the pair: it names the nwc↔ss
+NWP-ADR-0031 is the parent contract for the pair: it names the nwc↔ss
 OIDC edge as the **identity rail** (the UID-lock couples ssc's user
 state to nwc's site content) and requires the per-environment issuer
 URL to become live `.nwp.yml` config (`oauth2:` / `paired_with:`).
@@ -126,14 +126,14 @@ URL to become live `.nwp.yml` config (`oauth2:` / `paired_with:`).
 ### Non-goals
 
 - Not a general SSO for all NWP sites. F26 is the **nwc↔ss pair**
-  specifically (ssc↔nwc live, ssd↔nwd demo, per ADR-0031). Adding a
+  specifically (ssc↔nwc live, ssd↔nwd demo, per NWP-ADR-0031). Adding a
   *further* site to this SSO graph is out of scope and would require
   a separate proposal. *(The original spec named avc↔ss and treated
   nwc as out of scope; that clause is superseded — avc is frozen and
   nwc is the canonical issuer. The nwc↔ss edge is the very extension
   this proposal now sanctions.)*
 - Not a social-login replacement. "Log in with Google" is not in
-  scope and is explicitly rejected (ADR-0017's SaaS stance).
+  scope and is explicitly rejected (NWP-ADR-0017's SaaS stance).
 - Not a SAML deployment. OIDC is sufficient and cheaper to
   operate on both sides.
 - Not a replacement for Moodle's existing course-access controls.
@@ -267,7 +267,7 @@ Requirements:
 
 Cloudflare is explicitly **not** used for this flow. Reason: the
 DNS already lives at Linode, and adding Cloudflare would create a
-new SaaS dependency purely for TLS automation. ADR-0017's
+new SaaS dependency purely for TLS automation. NWP-ADR-0017's
 self-hosted-first rule applies and Cloudflare is not a documented
 exception.
 
@@ -384,8 +384,8 @@ serves a valid wildcard cert end-to-end.
 Configure prod nwc as the issuer, prod SS as the client. Announce
 the migration window. Flip the flag. Keep the old Moodle-native
 login path available for 30 days as a fallback, then remove it.
-Per ADR-0031 D5 the **provider (nwc) promotes first, consumer (ss)
-second**; and per ADR-0031 D6, once real ssc users hold UID-locks
+Per NWP-ADR-0031 D5 the **provider (nwc) promotes first, consumer (ss)
+second**; and per NWP-ADR-0031 D6, once real ssc users hold UID-locks
 against nwc's live tier, full-DB pushes that renumber nwc live uids
 are forbidden (they would sever every SSO identity).
 
@@ -405,8 +405,8 @@ are forbidden (they would sever every SSO identity).
 
 ## 7. References
 
-- [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
-- [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) — paired-site contract; the nwc↔ss identity rail
+- [NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
+- [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) — paired-site contract; the nwc↔ss identity rail
 - [F21](F21-distributed-build-deploy-pipeline.md) — mirror-store infrastructure + sanitizer
 - [F23](F23-site-environment-layout.md) — site layout dev/stg split
 - [F28](F28-unified-pipeline.md) — unified pipeline (consumer of preview plumbing)

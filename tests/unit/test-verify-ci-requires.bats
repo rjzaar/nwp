@@ -273,7 +273,7 @@ EOF
     [ "$output" = "ddev" ]
 }
 
-# --- the yq reader's own edges (get_item_requires is yq, not awk: ADR-0015) ---
+# --- the yq reader's own edges (get_item_requires is yq, not awk: NWP-ADR-0015) ---
 
 @test "get_item_requires prints NOTHING for an item with no requires: key" {
     _requires_fixture

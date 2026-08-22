@@ -13,7 +13,7 @@
 #                      canonical source). Code/config-only deploys still flow.
 #   canonical: prod  — prod is the source. live/dev are downstream sanitized
 #                      copies; additionally code work is branch-only with a
-#                      protected, CI-gated main (ADR-0024).
+#                      protected, CI-gated main (NWP-ADR-0024).
 #
 # The phase lives in the global nwp.yml per site (sites.<name>.canonical) and
 # is ENFORCED here, not just documented: guard functions below are called by
@@ -312,7 +312,7 @@ canonical_warn_dev_content() {
     return 0
 }
 
-# canonical: prod ⇒ branch-only work + deploys from clean main (ADR-0024).
+# canonical: prod ⇒ branch-only work + deploys from clean main (NWP-ADR-0024).
 #   $1 site, $2 mode: "work" (dev2stg) | "deploy" (stg2live/stg2prod/live2prod)
 #   work:   refuse UNCOMMITTED changes sitting on main (work belongs on a
 #           branch); committed main state and feature branches are fine.
@@ -433,7 +433,7 @@ canonical_deploy_manifest() {
 #                dirty tree are refused.
 #   production  — direct SSH/rsync deploys refused outright; deploys go via
 #                the signed-bundle path (pl build-server / server-pull /
-#                server-apply) or the ADR-0024 protected runner once its
+#                server-apply) or the NWP-ADR-0024 protected runner once its
 #                preconditions land. WebAuthn-gated merge is the authority.
 #
 # Same contract as the canonical phase: absent field = incubating (zero
@@ -523,8 +523,8 @@ maturity_guard_deploy() {
         production)
             print_error "REFUSED: '$site' is maturity: production — direct $cmd deploys are not allowed."
             print_info  "Production code ships via the signed-bundle path:"
-            print_info  "  pl build-server && pl server-pull ... && pl server-apply ...   (ADR-0026)"
-            print_info  "or the protected prod-deploy runner once ADR-0024's preconditions land."
+            print_info  "  pl build-server && pl server-pull ... && pl server-apply ...   (NWP-ADR-0026)"
+            print_info  "or the protected prod-deploy runner once NWP-ADR-0024's preconditions land."
             print_info  "To change the class (ledgered): pl maturity set $site stabilizing"
             return 1 ;;
     esac

@@ -1,8 +1,8 @@
 #!/bin/bash
 ################################################################################
-# lib/deploy-gate.sh — hardware + signature gate on prod-writes (ADR-0028)
+# lib/deploy-gate.sh — hardware + signature gate on prod-writes (NWP-ADR-0028)
 #
-# The load-bearing control from ADR-0028: no `pl` command reaches a live/prod
+# The load-bearing control from NWP-ADR-0028: no `pl` command reaches a live/prod
 # server without (a) a live operator Solo touch on (b) a valid ed25519-sk
 # signature from an authorized signer. This lib provides that gate as a single
 # call the prod-write verbs make right after their canonical guard.
@@ -186,7 +186,7 @@ deploy_gate_require() {
         local rq=0
         _dg_require_enforced || rq=$?
         if [ "$rq" -eq 0 ]; then
-            _dg_err "Hardware signature gate REQUIRED but not configured (ADR-0028):"
+            _dg_err "Hardware signature gate REQUIRED but not configured (NWP-ADR-0028):"
             _dg_err "  need $(_dg_allowed_signers) and an sk key at ~/.ssh/id_ed25519_sk[_*]. Aborting."
             return 1
         fi
@@ -197,7 +197,7 @@ deploy_gate_require() {
             # name the path so the operator can fix it rather than divine it.
             local blind_dir
             blind_dir="$(dirname -- "${_DG_REQUIRE_BLIND%%,*}")"
-            _dg_err "CANNOT VERIFY whether the deploy gate is REQUIRED here (ADR-0028):"
+            _dg_err "CANNOT VERIFY whether the deploy gate is REQUIRED here (NWP-ADR-0028):"
             _dg_err "  marker location: $_DG_REQUIRE_BLIND"
             _dg_err "  Its directory exists but is not searchable as $(id -un 2>/dev/null || echo "${USER:-this user}"),"
             _dg_err "  so a marker pinning fail-closed could be sitting in it unseen. That is NOT"

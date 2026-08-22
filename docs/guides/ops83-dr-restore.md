@@ -2,14 +2,14 @@
 
 **Scope:** restoring or rebuilding either half of the nwc (provider) ↔ ssc (consumer) pair
 without severing the F26 UID-lock. `ver` role-vocab; no real prod domain
-(`<example-prod-domain>`); no secrets. Implements ADR-0031 **D9**; pairs with
+(`<example-prod-domain>`); no secrets. Implements NWP-ADR-0031 **D9**; pairs with
 `pairs/ssc.pair-contract.yml` (`identity.sub_stability`, `identity.restore`).
 
 ---
 
 ## 0. The gap this closes
 
-ADR-0031 **D5** says code rollback is safe per-site because contract changes are
+NWP-ADR-0031 **D5** says code rollback is safe per-site because contract changes are
 expand-contract. That is true for **code** and **false for a DB restore that renumbers Drupal
 uids.** The UID-lock binds `mdl_user.idnumber == OIDC sub == Drupal account`. Any operation
 that changes a provider account's identity anchor — a full-DB push (blocked by `--code-only`),
@@ -60,7 +60,7 @@ consistency. Neither alone is sufficient.
 > code has ever *recorded* an anchor, so it used to read "no anchor" as "no locks to orphan" and
 > **pass**. The pre-checks above were the only thing refusing; satisfying them is what removed the
 > refusal. That is now closed: an unrecorded counterpart position is `CANNOT VERIFY` and refuses.
-> See [ADR-0034](../decisions/0034-paired-restore-identity-invariant-enforcement.md).
+> See [NWP-ADR-0034](../decisions/0034-paired-restore-identity-invariant-enforcement.md).
 
 ### 2b. Declare the cut — the BOTH branch
 
@@ -148,7 +148,7 @@ today is liveness only (JWKS 200, endpoints up):
 - **Live now:** `sub_stability: uuid` (the durable anchor) is deployed on the nwc live tier.
 - **Standing operator rule until the gate lands:** the both-or-forward rule (§1B) and the
   pre-checks (§2). Do not restore a coupled-tier half without the join snapshot + ledger.
-- **Phased build (tracked under ops#83 / ADR-0031 ops C / ops#49):**
+- **Phased build (tracked under ops#83 / NWP-ADR-0031 ops C / ops#49):**
   1. the **provider identity ledger** (append-only, per-backup) — the only trustworthy reconcile
      source; **BUILT** (`scripts/f26/nwc-identity-ledger.sh dump|verify`);
   2. the **`pair_guard` restore choke-point** that enforces the pre-checks; **BUILT**
@@ -164,5 +164,5 @@ today is liveness only (JWKS 200, endpoints up):
 
 `pairs/ssc.pair-contract.yml` → `identity.sub_stability: uuid` and the `identity.restore` block
 (`invariant: both-or-forward`, `ledger: provider`, `reconcile: from-ledger`,
-`pre_check_required: true`). Governed by ADR-0031 **D9** with the D5 carve-out (code rollback ≠
+`pre_check_required: true`). Governed by NWP-ADR-0031 **D9** with the D5 carve-out (code rollback ≠
 identity restore).

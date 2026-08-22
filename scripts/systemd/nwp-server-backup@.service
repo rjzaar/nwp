@@ -1,10 +1,10 @@
-# NWP nwp-server DR backup — per-site instantiated service (ADR-0032 Flow B / ADR-0025).
+# NWP nwp-server DR backup — per-site instantiated service (NWP-ADR-0032 Flow B / NWP-ADR-0025).
 #
 # Instance = site name, e.g.  nwp-server-backup@ss.service
 # Config comes from /etc/nwp-server/<site>.env (EnvironmentFile below), which sets
 # at least SITE_DIR and RESTIC_PUB. See nwp-server-backup.env.example.
 #
-# This runs the RAW DR backup (ADR-0025): raw DB + files → a restic repo LOCAL to
+# This runs the RAW DR backup (NWP-ADR-0025): raw DB + files → a restic repo LOCAL to
 # this prod host. `ver` later PULLS it into its durable immutable repo. This host
 # holds no credential that can delete ver's copy.
 #

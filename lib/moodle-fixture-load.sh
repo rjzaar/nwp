@@ -6,11 +6,11 @@
 # does not depend on errexit.
 ################################################################################
 # lib/moodle-fixture-load.sh — dev/stg CONSUMER of a sanitised Moodle fixture
-# bundle (ADR-0032 Flow A, increment 2b).
+# bundle (NWP-ADR-0032 Flow A, increment 2b).
 #
 # This is the reusable, testable CORE of the loader. It runs on the DEV/STG/CI
 # tier (NEVER on the prod host — the prod agent nwp-server deliberately has no
-# load verb, ADR-0026). It takes a `<site>-sanitized-<ts>.tar.gz` bundle
+# load verb, NWP-ADR-0026). It takes a `<site>-sanitized-<ts>.tar.gz` bundle
 # produced by server-publish (moodle-full: {db.sql.gz, dataroot-manifest}) and:
 #
 #   1. moodle_fixture_verify_extract — re-runs the INDEPENDENT PII gate over the
@@ -88,7 +88,7 @@ moodle_scaffold_empty_dataroot() {
         mkdir -p "$dr/$d" || { mfl_err "cannot scaffold $dr/$d"; return 1; }
     done
     {
-        echo "scrubbed-by: lib/moodle-fixture-load.sh (ADR-0032 Flow A loader)"
+        echo "scrubbed-by: lib/moodle-fixture-load.sh (NWP-ADR-0032 Flow A loader)"
         echo "strategy: omit-and-placeholder (empty filedir, rebuilt on the dev/stg side)"
         echo "note: kept mdl_files rows render 'file missing' placeholders (expected)"
         echo "prune-hint: moosh file-dbcheck   # drop orphaned mdl_files rows on this copy"

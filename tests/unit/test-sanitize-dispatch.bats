@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# nwp/ops#76 — ADR-0031 Phase D: promotion-pipeline type dispatch.
+# nwp/ops#76 — NWP-ADR-0031 Phase D: promotion-pipeline type dispatch.
 # Verifies the Drupal-vs-Moodle sanitize dispatch is config-driven, off unless a
 # Moodle target is hit, and that the Moodle handler fails closed. These tests run
 # with NO ddev/drush available — they exercise the config path and stub only.

@@ -259,7 +259,7 @@ YAML
 # ── The two shapes the awk parser this file used to carry got WRONG ──────────
 #
 # lint:yq-first flagged that parser on !436 (pipeline 2252, job 19405) as an
-# ADR-0015 violation. These two cases are why it was also a defect, not only a
+# NWP-ADR-0015 violation. These two cases are why it was also a defect, not only a
 # style breach — both were RED against the awk version and are the reason the
 # rewrite is a fix rather than a reformat.
 
@@ -292,7 +292,7 @@ YAML
     mk_plain_site cons
     add_clip_review prov
     cat > "$PROJECT_ROOT/pairs/x.pair-contract.yml" <<YAML
-provider: "prov"   # the identity origin (ADR-0031 D5)
+provider: "prov"   # the identity origin (NWP-ADR-0031 D5)
 consumer: cons
 demo:
   enabled: true

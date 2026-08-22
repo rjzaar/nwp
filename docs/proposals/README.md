@@ -59,7 +59,7 @@ each renamed file's header.
 | F25 | `docs/proposals/F19-baseline-reset-cleanup.md` | NWP core, slid into freed slot |
 | F26 | `docs/proposals/F20-solveit-methodology.md` | NWP core, slid into freed slot |
 | F23 Phase 9 | `sites/avc/docs/proposals/A03-oauth2-guild-sync.md` | AVC-specific extracted |
-| (new) | `docs/proposals/F21-distributed-build-deploy-pipeline.md` | New NWP F21, implements ADR-0017 |
+| (new) | `docs/proposals/F21-distributed-build-deploy-pipeline.md` | New NWP F21, implements NWP-ADR-0017 |
 
 The **P##** series was deliberately **not** renumbered. P50–P60 are
 referenced from ~60 verification scenario files and would have a large
@@ -114,7 +114,7 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 
 ### In Progress (NWP core)
 
-- **F21** — Distributed Build/Deploy Pipeline (build-tier build, verifier deploy) — *implements [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)*; Phase 3a ✅ complete (2026-04-08), Phase 10 dry-run skeleton landed (2026-04-08), phases 1–2, 4–9, 11–13 outstanding
+- **F21** — Distributed Build/Deploy Pipeline (build-tier build, verifier deploy) — *implements [NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)*; Phase 3a ✅ complete (2026-04-08), Phase 10 dry-run skeleton landed (2026-04-08), phases 1–2, 4–9, 11–13 outstanding
 
 ### Pending (see [roadmap.md](../governance/roadmap.md))
 

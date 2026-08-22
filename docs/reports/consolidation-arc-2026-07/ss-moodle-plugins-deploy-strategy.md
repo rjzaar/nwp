@@ -22,7 +22,7 @@ of the **already-mature** guarded deploy in `scripts/commands/moodle.sh` +
   clone;
 - for the **live tier**: delegates verbatim to the **existing** `pl moodle plugin deploy
   <site> … --tier=live` guarded path (per-plugin rsync `--delete`, pre-deploy DB+code
-  snapshot, `admin/cli/upgrade.php` under maintenance, `purge_caches.php`, ADR-0028
+  snapshot, `admin/cli/upgrade.php` under maintenance, `purge_caches.php`, NWP-ADR-0028
   deploy-gate, typed impact confirm). AI stays test-tier; real prod stays mons/operator-gated.
 
 This is **Option 1 as the command surface, using Option 4's mechanism for dev and the
@@ -72,7 +72,7 @@ production-safe half and is the retirement of the old `scp+rm -rf+cp` idiom:
 - maturity guard + pair guard (code-only ⇒ passes coupled-tier rule);
 - **AMD freshness gate** — refuses to ship a plugin whose `amd/src/*.js` has no fresh
   `amd/build/*.min.js` (`moodle_amd_freshness_check`);
-- **ADR-0028 deploy-gate** (`deploy_gate_require`) — Solo-touch on live `--apply`;
+- **NWP-ADR-0028 deploy-gate** (`deploy_gate_require`) — Solo-touch on live `--apply`;
 - typed **impact confirm** on live;
 - **pre-deploy snapshot** (DB gzip via creds read from remote `config.php`, never on argv;
   plugin-dir tar — never moodledata) → recorded as a `moodle-remote` rollback entry;
@@ -95,7 +95,7 @@ The recommendation **feeds** this path; it does not touch it.
 **Why it wins here**
 
 - **Reuses** the mature, boundary-correct guarded live path unchanged — smallest new
-  surface, keeps the mons/ADR-0028 gate intact.
+  surface, keeps the mons/NWP-ADR-0028 gate intact.
 - Repo layout = Moodle layout ⇒ zero path-mapping machinery needed.
 - Symlink dev makes the **repo the working copy**: Moodle runs it live, `grunt amd` writes
   `amd/build` back through the symlink into the repo (so committed build artifacts stay in
@@ -314,4 +314,4 @@ NWP internal (verified in-tree 2026-07-25):
 - `scripts/commands/moodle.sh`, `lib/moodle-deploy.sh` — existing guarded build/deploy/upgrade/backup/rollback + `.moodle.plugins[]` manifest reader.
 - `sites/ssc/.nwp.yml`, `sites/ssc/dev/` (upstream `moodle/moodle` clone with loose untracked plugins), `~/nwptoolkit/moodle/plugins/` (stale third copy incl. `auth/nwc_oauth2` decoy).
 - `docs/reports/consolidation-arc-2026-07/{README.md,decision-log.md}` — arc guardrails (AI=test-tier, mons/operator-gated prod, `--code-only` for nwc-paired live), Plane-2 decision to home ssc plugins in `nwp/ss-moodle-plugins`.
-- ADR-0028 (deploy-gate Solo touch), ADR-0029 (paired-site `--code-only`).
+- NWP-ADR-0028 (deploy-gate Solo touch), NWP-ADR-0029 (paired-site `--code-only`).

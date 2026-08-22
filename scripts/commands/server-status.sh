@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# nwp-server status — LOCAL health as JSON (ADR-0024 "status (local JSON)").
+# nwp-server status — LOCAL health as JSON (NWP-ADR-0024 "status (local JSON)").
 #
 # This is the prod-agent's status verb. Unlike the fleet `pl status`/`pl rag`
 # (which read the whole fleet and, for server stats, call a distrusted SaaS API),

@@ -2,12 +2,12 @@
 #
 # pl forge — the sanctioned way to work on the forge box (the `gitlab-host`
 # role),
-# across both of its planes (ops#331, ADR-0038).
+# across both of its planes (ops#331, NWP-ADR-0038).
 #
 # WHY THIS EXISTS. The forge box had exactly one credential — an unrestricted
 # key in ~gitlab/.ssh/authorized_keys, where `gitlab` carries
 # `(ALL) NOPASSWD: ALL` — so *every* interaction with it, down to reading how
-# much RAM is free, authenticated as root-on-box. ADR-0038 splits that into
+# much RAM is free, authenticated as root-on-box. NWP-ADR-0038 splits that into
 # named, scoped identities; this verb is what makes the split real, because a
 # scheme that only exists in an authorized_keys file is a scheme the next
 # session routes around with a raw `ssh`.
@@ -18,7 +18,7 @@
 #                  writes go over the named full-control key (nwp-forge-ops).
 #   APPLICATION    GitLab REST. Users, SSH keys, memberships, CI variables,
 #   plane          deploy keys. Needs the forge-admin PAT, which the OPERATOR
-#                  mints (ADR-0038 plane 2). Until it exists, every verb here
+#                  mints (NWP-ADR-0038 plane 2). Until it exists, every verb here
 #                  that needs it REFUSES BY NAME — never a crash, never a silent
 #                  skip, never a guess.
 #
@@ -139,7 +139,7 @@ _refuse_no_admin() {
     echo "               command'), so user/key/membership/CI-variable work has no SSH path at"
     echo "               all — it is REST-only, and REST needs an admin token."
     echo
-    print_hint "OPERATOR step (ADR-0038 plane 2), then re-run:"
+    print_hint "OPERATOR step (NWP-ADR-0038 plane 2), then re-run:"
     echo "    pl secrets steps ${ADMIN_REGISTRY_ID}"
     return 2
 }
@@ -566,7 +566,7 @@ cmd_user_create() { # <username> --name=… --email=… [--admin] [--execute] [-
     printf '  name    %s\n  email   %s\n  admin   %s\n  password  none is set or sent — GitLab mails a set-password link\n' \
         "$name" "$email" "$( [ "$admin" -eq 1 ] && echo YES || echo no )"
     if [ "$admin" -eq 1 ]; then
-        print_warning "an ADMIN user is being requested — ADR-0038 scopes admin to ONE bot (${ADMIN_REGISTRY_ID})."
+        print_warning "an ADMIN user is being requested — NWP-ADR-0038 scopes admin to ONE bot (${ADMIN_REGISTRY_ID})."
     fi
     if [ "$execute" -eq 0 ]; then print_info "DRY RUN — nothing sent. Re-run with --execute."; return 0; fi
     if [ "$yes" -eq 0 ]; then
@@ -1067,7 +1067,7 @@ cmd_members_add() { # <project|group> <user> --level=… [--execute] [--yes]
     if ! lvl="$(_access_level "$level")"; then
         print_error "REFUSED: --level must be one of reporter | developer | maintainer (got '${level:-none}')"
         echo "  guest is below anything ops#331 needs; owner and admin are NOT grantable here —"
-        echo "  ADR-0038 keeps instance-level privilege to the one declared bot."
+        echo "  NWP-ADR-0038 keeps instance-level privilege to the one declared bot."
         return 2
     fi
     local ns rc; ns="$(_resolve_namespace "$where")"; rc=$?
@@ -1118,19 +1118,19 @@ cmd_ci_var() {
         list) [ -n "${2:-}" ] || { print_error "usage: pl forge ci-var list <project>"; return 2; }
               _read_only_api "ci variables" "/projects/${2//\//%2F}/variables" ;;
         set)  _admin_token_present || { _refuse_no_admin; return 2; }
-              # ADR-0038 makes this a NAMED prohibition rather than a habit: the
+              # NWP-ADR-0038 makes this a NAMED prohibition rather than a habit: the
               # nwc-project pipeline has an unactivated sign:minisign job whose
               # variables would put the minisign SECRET KEY and its PASSWORD on
               # met — an AI host — collapsing the one property that keeps forge
               # control away from prod.
               if [ "${3:-}" = "MINISIGN_SECRET_KEY" ] || [ "${3:-}" = "MINISIGN_PASSWORD" ]; then
-                  print_error "REFUSED: ${3} must never be set as a CI variable (ADR-0038 §minisign)"
+                  print_error "REFUSED: ${3} must never be set as a CI variable (NWP-ADR-0038 §minisign)"
                   echo "  Setting it would place the artifact-signing secret on an AI-run runner and"
                   echo "  break 'trust flows through signatures, not machines' — the property that"
                   echo "  makes forge control safe to grant at all."
                   return 1
               fi
-              print_error "not yet implemented: write verbs land with the credential (ADR-0038 §Migration)"; return 2 ;;
+              print_error "not yet implemented: write verbs land with the credential (NWP-ADR-0038 §Migration)"; return 2 ;;
         *) print_error "usage: pl forge ci-var list <project> | set <project> <KEY> <value>"; return 2 ;;
     esac
 }
@@ -1140,7 +1140,7 @@ cmd_deploy_key() {
         list) [ -n "${2:-}" ] || { print_error "usage: pl forge deploy-key list <project>"; return 2; }
               _read_only_api "deploy keys" "/projects/${2//\//%2F}/deploy_keys" ;;
         add)  _admin_token_present || { _refuse_no_admin; return 2; }
-              print_error "not yet implemented: write verbs land with the credential (ADR-0038 §Migration)"; return 2 ;;
+              print_error "not yet implemented: write verbs land with the credential (NWP-ADR-0038 §Migration)"; return 2 ;;
         *) print_error "usage: pl forge deploy-key list <project> | add"; return 2 ;;
     esac
 }
@@ -1159,7 +1159,7 @@ cmd_retire_legacy_key() {
     print_success "nwp-forge-ops verified (shell + sudo)"
     print_warning "2/3 servers/${FORGE_SERVER}/.nwp-server.yml still names ssh_key: ~/.ssh/gitlab_linode"
     echo "      Switch that FIRST, run \`pl server health ${FORGE_SERVER}\`, and only then retire."
-    print_error "3/3 NOT IMPLEMENTED — deliberately. This is ADR-0038 §Migration step 4 and it"
+    print_error "3/3 NOT IMPLEMENTED — deliberately. This is NWP-ADR-0038 §Migration step 4 and it"
     echo "      lands as its own reviewed change, after the ops#331 GitLab-side rehoming."
     return 2
 }
@@ -1168,7 +1168,7 @@ cmd_retire_legacy_key() {
 usage() {
     cat <<EOF
 pl forge — work on the forge box (the 'gitlab-host' role) through named, scoped identities
-           (ops#331, ADR-0038). Read-only by default.
+           (ops#331, NWP-ADR-0038). Read-only by default.
 
 BOX PLANE (jailed read-only key — nwp-forge-probe):
   pl forge status | health | services | certs | backups | disk | version
@@ -1180,7 +1180,7 @@ DIAGNOSIS:
   pl forge doctor [--live]     which identities exist; --live proves the jail over the wire
   pl forge whoami              which credential is in play, and whether it is REALLY admin
 
-APPLICATION PLANE (GitLab REST — needs the forge-admin PAT, ADR-0038 plane 2):
+APPLICATION PLANE (GitLab REST — needs the forge-admin PAT, NWP-ADR-0038 plane 2):
   pl forge users list|show <u>
   pl forge user create <username> --name='…' --email='…' [--admin] [--execute]
   pl forge keys list [<user>]

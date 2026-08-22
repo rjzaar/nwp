@@ -2,7 +2,7 @@
 # `pl server backup <name>` — the control-host front door to box-level DR.
 #
 # THE THING THIS COMMAND MUST NEVER DO is bring the archive here. It is raw
-# member data and this workstation is the dev/AI tier; ADR-0025 keeps the DR
+# member data and this workstation is the dev/AI tier; NWP-ADR-0025 keeps the DR
 # flow (raw → ver only) and the publish flow (sanitised → git host → dev)
 # separate, and conflating them breaks the boundary the whole threat model
 # rests on. So the first test is not about backups at all — it is about the
@@ -64,7 +64,7 @@ teardown() { rm -rf "${TEST_ROOT}"; }
 @test "the archive is never copied to this workstation" {
   # No scp, no `rsync` pulling from the box, no `restic ... --target` that
   # resolves locally. If this ever changes, raw member data lands in the AI
-  # tier and ADR-0025's inviolable split is gone.
+  # tier and NWP-ADR-0025's inviolable split is gone.
   run bash -c "sed -n '/^cmd_backup()/,/^}/p;/_srvbk_/,/^}/p' '$S' | grep -nE '(^|[^[:alnum:]])scp |rsync .*:.* [^:]*\$'"
   [ -z "$output" ]
 }

@@ -162,7 +162,7 @@ oidc_email_sanitize() {
 # salt, row by row — the SQL-side analogue of oidc_email_batch. Used by the
 # prod-native sanitisers so BOTH stacks (Drupal + Moodle) map the same real email
 # to the same fake email, preserving the cross-stack OIDC/SSO join in a sanitised
-# copy (ADR-0032; F26 §3.3).
+# copy (NWP-ADR-0032; F26 §3.3).
 #
 # Usage: oidc_email_rewrite_sql <query_fn> <apply_fn> <table> <id_col> <email_col> [where]
 #   <query_fn> "<sql>"  → must echo TSV rows "id<TAB>email"; e.g. the sanitiser's sq()

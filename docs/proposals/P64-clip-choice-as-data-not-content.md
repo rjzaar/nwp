@@ -11,7 +11,7 @@
 
 The clip-review pipeline (`avc_clip_review`, soon to port to `nwc_clip_review`) treats a curated video clip as **editorial content** stored in the per-course catalog YAML, alongside title/text/sources. An "apply" decision means opening a GitLab MR against `nwp/courses` that mutates a `video:` block inside `courses_v3/catalog/<course>.yaml`. The MR machinery is in `MrGeneratorService::openMr()` and the catalog-mutation logic is in `MrGeneratorService::applyVideoBlock()`.
 
-This is structurally wrong. The clip-review module is purpose-built for **iterating clip choices frequently** — slots, suggestions, snippets, signals, dashboards, dual-attestation review via Media Guild (ADR-0017). Iteration-heavy operational data does not belong in slow-moving human-edited course content. The mismatch is what makes the YAML-editing fragile, and it is what makes every routine clip swap a MR-review-and-merge ceremony rather than a transactional operation.
+This is structurally wrong. The clip-review module is purpose-built for **iterating clip choices frequently** — slots, suggestions, snippets, signals, dashboards, dual-attestation review via Media Guild (NWC-ADR-0017). Iteration-heavy operational data does not belong in slow-moving human-edited course content. The mismatch is what makes the YAML-editing fragile, and it is what makes every routine clip swap a MR-review-and-merge ceremony rather than a transactional operation.
 
 The smoke test on 2026-05-22 surfaced one concrete consequence of the mismatch: the regex in `applyVideoBlock()` silently no-ops on every current catalog file, so the production pipeline opens zero real MRs and falls back to writing JSON request files into a private directory that nobody is reading.
 
@@ -145,17 +145,17 @@ Three resolution options, ordered by simplicity:
 Other downstream consumers to audit before catalog strip:
 - **SS Moodle**'s catalog reader (covered in R6 risk above; resolved by NWC cutover timing).
 - **nwp/courses static-site renderer** (if any exists in the future) — same JSON:API path applies.
-- **External forkers** (per fork-seam ADR-0017) — they may read catalog `video:`; documenting the catalog-as-read-cache option preserves the fork's contract.
+- **External forkers** (per fork-seam NWC-ADR-0017) — they may read catalog `video:`; documenting the catalog-as-read-cache option preserves the fork's contract.
 
 ### Review gate
 
 A28 implicitly leaned on MR review as the human gate before a clip swap goes live. That gate disappears under this proposal. Two ways to restore it cleanly:
 
-1. **Dual-attestation per Media Guild (ADR-0017).** Two Media Guild members independently propose the same swap on the same slot. Their suggestions match per the matching-rule tolerances defined in `VIDEO_GUILD_v3.md`. The apply is automatic on match. This is review-by-structure, not review-by-gatekeeper, and it's exactly what the Media Guild was promoted to provide.
+1. **Dual-attestation per Media Guild (NWC-ADR-0017).** Two Media Guild members independently propose the same swap on the same slot. Their suggestions match per the matching-rule tolerances defined in `VIDEO_GUILD_v3.md`. The apply is automatic on match. This is review-by-structure, not review-by-gatekeeper, and it's exactly what the Media Guild was promoted to provide.
 
 2. **Pending-state on `clip_choice`.** Add a `status` field (`pending` / `live`). Apply writes a `pending` row; a Master-tier Media Guild member (or guild-admin) flips it to `live`. The player reads only `live` rows. Equivalent to MR review, in-app, without the GitLab round-trip.
 
-These compose: dual-attestation suggestions go straight to `live`; solo suggestions stay `pending` until a Master flips them. This mirrors ADR-0011's pipeline-operator scoping cleanly.
+These compose: dual-attestation suggestions go straight to `live`; solo suggestions stay `pending` until a Master flips them. This mirrors NWP-ADR-0011's pipeline-operator scoping cleanly.
 
 ### Audit trail
 

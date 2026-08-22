@@ -1,4 +1,4 @@
-# ADR-0002: YAML-Based Configuration
+# NWP-ADR-0002: YAML-Based Configuration
 
 **Status:** Accepted
 **Date:** 2026-01-08

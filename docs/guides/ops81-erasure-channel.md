@@ -107,7 +107,7 @@ AI-accessible build/agent host. The receiver is auth-adjacent + destructive → 
 
 `pairs/ssc.pair-contract.yml` carries the 7th surface `erasure` (`provider_min: 0.6.0`
 `nwc_moodle_erase`, `consumer_min: 1.0.0` `local_nwc_erase`, schema
-`contracts/erasure.command.schema.json`) + its `boundary.erasure` paths. Feeds ADR-0031 as the
+`contracts/erasure.command.schema.json`) + its `boundary.erasure` paths. Feeds NWP-ADR-0031 as the
 resolution of the un-propagated-erasure open question.
 
 - **P0 (this change):** land `erasure.command.schema.json`, the pair-contract surface + boundary,

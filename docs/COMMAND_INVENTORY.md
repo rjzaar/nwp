@@ -838,7 +838,7 @@ also carried a private site instance into a publicly mirrored engine tree.
 - Coder Management: 4 (coders, coder-setup, bootstrap-coder, setup-ssh)
 - Site Pipelines: 1 (pipeline; the retired per-site scraper verb survives only as a deprecation shim)
 - Podcast Hosting: 1 (podcast)
-- Distributed Pipeline (ADR-0017): 1 (`pl ai-host` — LLM-host utilities; on-disk filename retained per F34 / role-vocabulary)
+- Distributed Pipeline (NWP-ADR-0017): 1 (`pl ai-host` — LLM-host utilities; on-disk filename retained per F34 / role-vocabulary)
 
 **Commands with Multiple Verification Points:**
 - install.sh: 6 verification points (drupal, moodle, gitlab, podcast, resume, migration)

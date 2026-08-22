@@ -1,185 +1,208 @@
-# ADRs — Architecture Decision Records
+# ADRs — the decisions a reviewer needs to recognise
 
-**Audience:** Coder, recognizing which ADRs apply to a PR under review.
-**Status:** v1 — 2026-05-20.
-**Read time:** 10 minutes (or look up by number as needed).
+**Audience:** Coder, recognizing which decisions apply to a PR under review.
+**Status:** v2 — 2026-08-22 (ops#383; supersedes the v1 numbered cheat-sheet).
+**Read time:** 10 minutes.
 
-This is the reviewer's index of NWC's architectural decisions. Each entry summarizes one ADR — what it decided, why it was decided, and which kind of PR makes you want to check it.
+This is a **reviewer's orientation page, not a decision register.** The register is
+the profile repo's own `docs/decisions/` directory; this page tells you what the
+decisions there *feel like* when they show up in a diff, so you recognise one
+before you approve something that contradicts it.
 
-The full ADRs live at `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/adr-XXXX-*.md`. This page is the cheat sheet.
+## Which series, and how to cite it
 
-If you only remember three things:
+Two ADR series exist and their numbers collide. Always write the prefix:
 
-1. **A PR that contradicts an ADR is at minimum a T3.** It needs a new ADR superseding the old one. No quiet contradictions.
-2. **An ADR is amended, not edited.** If a PR's diff includes changes to an existing ADR file (other than a `Superseded by: ADR-XXXX` line), reject and ask for a new ADR.
-3. **When in doubt, check whether the ADR is `Accepted` or `Superseded`.** Superseded ADRs document history; Accepted ones constrain new code.
+- **`NWC-ADR-NNNN`** — the **nwc site profile** decisions. Files live in the nwc
+  profile repo at `profiles/custom/nwc/docs/decisions/NNNN-slug.md`. Everything
+  on this page except where noted is one of these.
+- **`NWP-ADR-NNNN`** — the **engine** decisions, in this repo at
+  [`docs/decisions/`](../decisions/index.md). Infrastructure, deploy pipeline,
+  secrets, verification.
+
+`NWC-ADR-0017` (Media Guild promotion) and `NWP-ADR-0017` (distributed
+build/deploy pipeline) are different documents about different things. A bare
+`ADR-0017` names neither, which is why `lint:adr-namespace` rejects it. <!-- adr-namespace:literal -->
+
+> **What v1 of this page got wrong, recorded so it is not re-invented.** It
+> assigned its own numbers — 0020, 0021, 0022, 0023, 0030, 0031, 0032, 0040,
+> 0050, 0051, 0060, 0061, 0070 — banded 10/20/30/40/50/60/70 so its sections
+> would sort tidily. Six of those numbers named no file in any repo. The rest
+> collided with real engine ADRs: its "Editorial state machine" at 0020 read as
+> the engine's *tiered architecture model*, and its "Copyright clearance gate"
+> at 0023 pointed at a number the engine has deliberately left reserved. The
+> numbers bought formatting and cost correctness, so they are gone. Nothing was
+> renumbered to fix this — the invented numbers were simply deleted, because
+> they were never anybody's identifiers.
+
+## If you only remember three things
+
+1. **A PR that contradicts an ADR is at minimum a T3.** It needs a new ADR
+   superseding the old one. No quiet contradictions.
+2. **An ADR is amended, not edited.** If a PR's diff changes an existing ADR
+   file (other than adding a `Superseded by:` line), reject and ask for a new ADR.
+3. **Check `Accepted` vs `Superseded`.** Superseded ADRs document history;
+   Accepted ones constrain new code.
 
 ---
 
 ## Decisions affecting most PRs
 
-### ADR-0001 — NWC is the platform
-**Status:** Accepted. **Touches:** anything claiming to be "the framework".
+**NWC is the platform, not a framework** — `NWC-ADR-0001`. NWC is a real, named
+product with a canonical deployment; it is not a generic CMS anybody instantiates.
+Forks are allowed but must rename. *You'll see this when* an agent PR refactors
+`nwc_*` modules into something prefix-neutral, or proposes a "framework layer".
+That is scope creep against a settled decision — push back.
 
-Decision: NWC is a real, named product with a canonical deployment. It is not a generic CMS framework. Forks are allowed but must rename. PRs that try to "generalize" NWC into something reusable should be pushed back.
+**Three guilds plus Stewards** — `NWC-ADR-0002`. Guilds, Stewards and Interest
+Groups are distinct things with distinct authority; an Interest Group has **zero**
+routing authority. Promoting one to a guild is gated on a triple-test (sustained
+bottleneck + enough eligible members + a named steward). *You'll see this when* a
+PR grants routing or approval power to something that is currently an IG.
 
-**You'll see this when:** an agent PR refactors `nwc_*` modules into something prefix-neutral. Reject — that's scope creep against a settled decision.
+**Decision visibility tiers** — `NWC-ADR-0010`. The public Decision Log has three
+tiers: `Stewards`, `Members`, `Public`. New decision-log nodes default to
+`Stewards`; broadening is an explicit per-node act. *You'll see this when* a PR
+touches `field_visibility_tier` defaults or the access check in
+`nwc_decision_log`. Watch for defaults silently shifting outward.
 
----
+**Two-site topology** — `NWC-ADR-0015`. NWC runs as a canonical site plus a demo
+site; both are first-class, both deploy from the same repo. The Moodle side is
+paired to each. *You'll see this when* a PR fixes something in the canonical site
+without mentioning the demo. Ask explicitly whether it applies to both: a
+profile-local diff auto-applies via the rsync, but an infra change (nginx, ddev)
+must be checked on both.
 
-### ADR-0010 — Decision Log visibility tiers
-**Status:** Accepted. **Touches:** `nwc_decision_log`, anything that publishes "decisions".
-
-Decision: The public Decision Log has three tiers — `Stewards`, `Members`, `Public`. Stewards-only content must never become member-visible by accident. The default visibility for new decision-log nodes is `Stewards`; broadening to `Members` or `Public` is an explicit per-node act.
-
-**You'll see this when:** PR touches `field_visibility_tier` defaults or modifies the access check in `nwc_decision_log`. Watch for defaults silently shifting.
-
----
-
-### ADR-0015 — Two-site topology
-**Status:** Accepted. **Touches:** any cross-site config, `field_content_visibility`.
-
-Decision: NWC runs as `nwc.nwpcode.org` (canonical) + `nwd.nwpcode.org` (demo). Both are first-class production. Both deploy from the same repo via the parallel-install pattern (see ADR-0016). Saint School (Moodle) is paired: `ssc` ↔ `nwc`, `ssd` ↔ `nwd`.
-
-**You'll see this when:** a PR fixes something in `nwc` but doesn't mention `nwd`. Ask explicitly: does this apply to both? If the diff is profile-local, it auto-applies via the rsync; if it touches infra (nginx, ddev), check both.
-
----
-
-### ADR-0016 — `nwd` deployment pattern (parallel install)
-**Status:** Accepted. **Touches:** deploy pipeline, profile changes.
-
-Decision: `nwd` deploys by *rsyncing* the same `profiles/custom/nwc/` tree into the `nwd` codebase, not via Drupal multisite. Both sites share zero runtime state. The deploy pipeline does this rsync automatically; PRs against `nwp/nwc` apply to both.
-
-**You'll see this when:** the deploy pipeline log shows two rsync steps. If one fails, both should fail — never silently deploy to only one.
+**Parallel-install deployment, not multisite** — `NWC-ADR-0016`. The demo site
+deploys by *rsyncing* the same `profiles/custom/nwc/` tree into a second codebase.
+The two sites share zero runtime state. *You'll see this when* the deploy log
+shows two rsync steps. If one fails, both must fail — never a silent half-deploy.
 
 ---
 
 ## Decisions affecting editorial PRs
 
-### ADR-0020 — Editorial state machine
-**Status:** Accepted. **Touches:** `nwc_editorial`, anything modifying `EditorialStateService`.
+**The editorial state machine is template-driven** — `NWC-ADR-0006`. This is the
+big one for editorial work, and it decides three things people often cite
+separately:
 
-Decision: All state transitions of `editorial_revision` go through `EditorialStateService::advance()`. Direct writes to the `state` field are forbidden. Guards (copyright, hotfix justification, trial completion) live in the service, not in callers.
+- All state transitions of `editorial_revision` go through the state service.
+  Direct writes to the `state` field are forbidden.
+- A revision's `change_kind` (typo, pedagogical, doctrinal, hotfix…) selects
+  which review stages it **skips**, via templates declared as constants. Adding a
+  new template is a T3 decision.
+- The guards — copyright clearance, hotfix justification, trial completion —
+  live **in the service**, not in its callers. In particular, a revision cannot
+  leave copyright clearance without a recorded clearance (justification, a
+  cleared-by user, a timestamp).
 
-**You'll see this when:** any change to `nwc_editorial/`. Look for `$rev->set('state', ...)` outside the service — that's an immediate reject.
+*You'll see this when* any change lands in `nwc_editorial/`. Look for a direct
+`set('state', …)` outside the service, a new `CHANGE_*` constant, or a guard being
+made optional. All three are reject-or-escalate.
 
----
+**Anti-self-review (Policy Z)** — `NWC-ADR-0007`. Reviewers may hold several
+skills, but nobody reviews their own work; the pairing rule excludes the task
+author. *You'll see this when* a PR touches pool resolution or pairing config —
+`anti_self_review` quietly flipping to false is the failure mode.
 
-### ADR-0021 — Template-driven stage skipping
-**Status:** Accepted. **Touches:** `EditorialRevision::CHANGE_*` constants, `getStagePath()`.
+**Solo approval only via an auditable scope grant** — `NWC-ADR-0008`. One-person
+approval is legitimate *only* as an explicit, recorded grant, never as an implicit
+fallback when no second reviewer is available. *You'll see this when* a PR adds a
+"if no reviewer is available, proceed" branch. That is the decision inverted.
 
-Decision: A revision's `change_kind` (typo, pedagogical, doctrinal, hotfix, etc.) determines which review stages it skips. Templates are defined in `EditorialRevision` constants; adding a new template is a T3 decision.
+**Role-based routing** — `NWC-ADR-0009`. Approval routing keys off roles, not
+badge predicates. *You'll see this when* a PR starts computing eligibility from
+accumulated badges — that is the rejected alternative.
 
-**You'll see this when:** PR adds a new `CHANGE_*` constant or modifies `EditorialStateService::getStagePath()`. Requires ADR amendment.
+**Pipeline-origin content is first-class** — `NWC-ADR-0011`. Auto-generated
+content enters the same pipeline as human-authored content, with operator
+accountability attached; it is not exempt and not silently published.
 
----
-
-### ADR-0022 — Trial feedback A1–E3 classification
-**Status:** Accepted. **Touches:** `nwc_trialing_guild`, `TrialFeedbackHandler`.
-
-Decision: Trial feedback uses a fixed A1–E3 classification mapped to four outcomes (`fold`, `revise`, `halt`, `escalate`). The classification table is part of the contract; new classes can be added but existing ones cannot be reassigned without a superseding ADR.
-
-**You'll see this when:** PR changes `TrialFeedbackHandler::classify()` or its lookup table. Adding a new class is T2; reassigning an existing one is T3.
-
----
-
-### ADR-0023 — Copyright clearance gate
-**Status:** Accepted. **Touches:** `nwc_copyright`, `nwc_copyright_guild`.
-
-Decision: A revision cannot leave `in_copyright_clearance` without a recorded clearance (justification text + cleared-by user + timestamp). Enforced by `EditorialStateService::advance()`. Cross-site sync to Moodle's `tool_policy` happens on `approved` transition.
-
-**You'll see this when:** PR touches the copyright gate or the Moodle sync trigger. Removing the gate or making clearance optional is a T3-level architectural concern.
-
----
-
-## Decisions affecting cross-site PRs
-
-### ADR-0030 — Cross-site POST authentication (shared secret)
-**Status:** Accepted. **Touches:** `nwc_feedback`, cross-site bridge routes.
-
-Decision: Cross-site POSTs (Moodle → Drupal, Drupal → Moodle) authenticate via a shared secret in the `X-NWC-Shared-Secret` header, not OAuth. This is because OAuth's interactive auth code flow can't be used for server-to-server batched POSTs. The simple_oauth interceptor must be bypassed on these routes via `_oauth_skip_auth: TRUE`.
-
-**You'll see this when:** PR adds or modifies a cross-site route. If `_oauth_skip_auth` is missing, the route returns 401 before the controller runs — request changes.
+**ADRs live in files, synced to entities** — `NWC-ADR-0013`. The files are
+canonical; the in-site `decision_record` entities are a projection for
+presentation. *You'll see this when* a PR edits the entity as though it were the
+source. It is not.
 
 ---
 
-### ADR-0031 — Moodle plugin compatibility
-**Status:** Accepted. **Touches:** `local-nwc-copyright-sync`, `auth-nwc-oauth2`.
+## Decisions affecting content and deployment PRs
 
-Decision: Moodle plugins must be schema-defensive across Moodle 4.x minor versions. Use `$DB->get_columns()` to detect schema and adapt; never assume a column exists. Moodle 4.4 moved `tool_policy.name` → `tool_policy_versions.name`; future minor versions may move more.
+**Demo content policy** — `NWC-ADR-0014`. The shipped curriculum content is demo
+content for the platform: reviewed upstream during authoring, published on
+install, and never updated in place — updates arrive as new draft revisions
+entering the receiving site's own workflow, and local edits win.
 
-**You'll see this when:** PR touches Moodle plugin code. Look for raw `$DB->set_field('tool_policy', 'name', ...)` — should be guarded by a schema check.
+**Two-tier deployment (trial → production)** — `NWC-ADR-0012`. The trial tier is
+the gate between "approved in editorial" and "shown to the trialing guild".
+Content does not skip it.
 
----
+**Media Guild, dual attestation** — `NWC-ADR-0017`. The Media Guild was promoted
+from an Interest Group and reviews by *structure*, not by gatekeeper: two members
+independently proposing the same change on the same slot is the approval. Its
+remit is explicitly **not** theological formation — that routes to the formation
+guild. *You'll see this when* a clip/media PR asks for a single-approver path, or
+routes a formation question to Media.
 
-### ADR-0032 — OAuth as SSO mechanism
-**Status:** Accepted. **Touches:** `nwc_oauth_bridge`, `auth-nwc-oauth2`.
-
-Decision: NWC Drupal is the OAuth issuer; Saint School Moodle is the client. Token lifetime is 1 hour; refresh 30 days. Auth-related PRs are auto-T3 and require Rob.
-
-**You'll see this when:** any PR touching OAuth scopes, token lifetimes, or client registration. Always page Rob for these.
-
----
-
-## Decisions affecting governance + audit PRs
-
-### ADR-0040 — Governance audit completeness
-**Status:** Accepted. **Touches:** `nwc_governance`.
-
-Decision: Every state transition, every approval, every deploy stage must write a `governance_action`. Audit writes are part of the transaction — if the audit fails, the action rolls back. Removing or weakening audit writes is a regression even if tests pass.
-
-**You'll see this when:** PR touches `EditorialStateService` or `deploy-on-merge.sh`. Look for missing `governance_action::create()` calls relative to the actions taken.
+**Guild leveling** — `NWC-ADR-0018`. Levels are within-guild; there is no
+cross-guild shared level layer. Sojourners transitions into Theology by a defined
+path.
 
 ---
 
-## Decisions affecting deploy / infrastructure PRs
+## Engine decisions that reach into profile PRs
 
-### ADR-0050 — Deploy pipeline stages + tier gate
-**Status:** Accepted. **Touches:** `~/nwp/scripts/agent-loop/`, `pl` commands.
+These are `NWP-` series and live in [this repo's register](../decisions/index.md):
 
-Decision: The pipeline runs dev → stg → tier-gate → live with smoke checks at each stage. T1 + T2 auto-promote to live; T3 stops at stg. Snapshots taken before every `stg2live`. Auto-rollback on smoke failure.
-
-**You'll see this when:** PR touches `deploy-on-merge.sh`, `pl` commands, or smoke check URLs. These are T3 infrastructure changes.
-
----
-
-### ADR-0051 — Pause loop, not break loop
-**Status:** Accepted. **Touches:** `agent-loop.sh`.
-
-Decision: The agent loop has a single-file kill switch (`/home/rob/nwp/.loop-paused`). Any other way of stopping the loop (renaming scripts, removing cron entries, etc.) is forbidden — it makes resume harder.
-
-**You'll see this when:** A PR removes or refactors the kill-switch mechanism. Reject; the simplicity is the point.
+- **`NWP-ADR-0017`** — distributed build/deploy pipeline. Trust flows through
+  signatures, not machines; no AI-accessible host writes to prod. This is why you
+  cannot SSH to a live host, and why deploys originate from the offline box.
+- **`NWP-ADR-0004`** — two-tier secrets. `.secrets.yml` (infrastructure, readable)
+  versus `.secrets.data.yml` (user data, not). A PR moving a credential across
+  that line is an operator action, not a coder one.
+- **`NWP-ADR-0028`** — the human-gated deploy workstation, and the hardware-token
+  gate on prod writes.
+- **`NWP-ADR-0037`** — review mode follows `approvers:`. It decides whether one
+  approval or two is required, and it is declared in exactly one place.
 
 ---
 
-## Open / draft ADRs
+## There is no "draft ADR" you can implement
 
-These are decisions Rob has marked as "considered, not yet accepted". You won't see PRs against them yet.
-
-- **ADR-0060 (draft)** — Decision Log digest emails (under design)
-- **ADR-0061 (draft)** — Cross-stack search federation (Drupal + Moodle unified)
-- **ADR-0070 (draft)** — Trial cohort size and selection (not in MVP)
-
-If the agent ever opens a PR claiming to implement a draft ADR, push back hard — it's reading future intent as present commitment.
+v1 of this page listed three drafts (digest emails, cross-stack search
+federation, trial cohort sizing) under invented numbers. They were never ADRs and
+had no files. **If a PR claims to implement a draft ADR, push back hard** — it is
+reading future intent as present commitment. A decision that is not written down,
+with a number and a status, is not a decision yet.
 
 ---
 
-## How to write a new ADR (if you ever need to)
+## How to write a new ADR, if a PR is missing one
 
-You probably won't need to author one (Rob's the architect), but if a PR is missing one and you can sketch the shape:
+You probably won't author one, but if a PR needs one and you can sketch the shape:
 
-1. Pick the next number in sequence.
-2. File at `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/adr-XXXX-short-slug.md`.
-3. Header: `# ADR-XXXX: <Title>`, then `**Status:** Proposed | Accepted | Superseded by ADR-YYYY`.
-4. Body sections: `## Context`, `## Decision`, `## Consequences`, `## Alternatives considered`.
-5. Reference from PR description: `**Self-flag:** ⚠ ADR change (ADR-XXXX draft attached)`.
+1. Take the next unused number **in the series you are writing for** — the profile
+   series for profile decisions, the engine series for engine decisions. Never
+   reuse a number, and never renumber an existing ADR.
+2. File it as `NNNN-short-slug.md` in that repo's `docs/decisions/`. The filename
+   stays bare; the directory is the namespace.
+3. Header: `# NWC-ADR-NNNN: <Title>` (or `NWP-` for engine), then
+   `**Status:** Proposed | Accepted | Superseded by <PREFIX>-ADR-NNNN` — exactly
+   one `**Status:**` line, in that shape, or `pl doc-truth`'s `adr-hygiene` check
+   fails the build.
+4. Body: `## Context`, `## Decision`, `## Consequences`, `## Alternatives considered`.
+5. Reference it from the PR description with the prefix. Bare `ADR-NNNN` fails
+   `lint:adr-namespace`.
 
-For agent-generated PRs, the agent should produce the ADR alongside the code change. If it didn't, that's a T3 reject.
+For agent-generated PRs the agent should produce the ADR alongside the code
+change. If it didn't, that is a T3 reject.
 
 ---
 
 ## See also
 
-- `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/` — the actual ADR files
-- [architecture-brief.md](./architecture-brief.md) — what the ADRs are talking *about*
-- [pr-review-checklist.md §6](./pr-review-checklist.md#6-special-checks-for-t3) — when to demand an ADR draft
+- [`docs/decisions/index.md`](../decisions/index.md) — the engine register, and
+  the full statement of the namespace rule
+- [architecture-brief.md](./architecture-brief.md) — what the decisions are
+  talking *about*
+- [pr-review-checklist.md §6](./pr-review-checklist.md#6-special-checks-for-t3) —
+  when to demand an ADR draft

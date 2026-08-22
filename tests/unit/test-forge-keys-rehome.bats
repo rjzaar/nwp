@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
 # tests/unit/test-forge-keys-rehome.bats — `pl forge keys rehome`, the ops#331
-# migration verb, plus the write half of the application plane (ADR-0038
+# migration verb, plus the write half of the application plane (NWP-ADR-0038
 # §Migration step 3: `pl forge keys|user|members`).
 #
 # THE DEFECT THIS GUARDS

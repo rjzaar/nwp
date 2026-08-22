@@ -9,7 +9,7 @@
 #             sftp:<backup-user>@10.66.<N>.1:/var/backups/nwp-server/<site>
 #   to_repo   ver's durable repo, e.g. /srv/ver-backups/<site>
 #   kind      DATA CLASS (mandatory — the session fails closed without it):
-#               raw        unsanitised user data (PII, ADR-0025). Gets a HARD
+#               raw        unsanitised user data (PII, NWP-ADR-0025). Gets a HARD
 #                          30-day erasure ceiling (ver-backup-pull --keep-within
 #                          30d) so no RAW snapshot outlives the erasure promise
 #                          (ops#127/#124). Override the window with raw:<DUR>,

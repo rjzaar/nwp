@@ -136,7 +136,7 @@ scripts/commands/.rollback/**
 # mistake costs friction, not protection.
 !.nwp-review-mode
 
-# Pair contracts (ADR-0031 / ops#75): the template + the committable per-pair
+# Pair contracts (NWP-ADR-0031 / ops#75): the template + the committable per-pair
 # contracts (versions + public URLs only — no secrets). Deployed-version + RAG
 # STATE lives in private/pairs/ which the private/ deny rule above keeps out.
 !pair-contract.example.yml
@@ -150,7 +150,7 @@ scripts/commands/.rollback/**
 !contracts/
 !contracts/**
 
-# Site class declarations (ADR-0036 / ops#153): the closed class registry plus
+# Site class declarations (NWP-ADR-0036 / ops#153): the closed class registry plus
 # one declaration per site, saying what that site IS and therefore which data
 # invariants bind it. These MUST be tracked — that is the whole design. nwp.yml
 # is never committed and sites/* is ignored above, so neither can carry a claim
@@ -172,7 +172,7 @@ scripts/commands/.rollback/**
 !lib/
 !lib/**
 
-# nwp-server build-target manifests (ADR-0022/0024). The assembled artifact
+# nwp-server build-target manifests (NWP-ADR-0022/0024). The assembled artifact
 # (build/out/) is a build product and stays ignored; only the manifests track.
 !build/
 build/*
@@ -334,7 +334,7 @@ servers/**/*.env
 # SSH key contents (keep directory but ignore all keys)
 keys/*
 !keys/.gitkeep
-# Public keys only — the deploy-gate authorization list (ADR-0028, ops#79).
+# Public keys only — the deploy-gate authorization list (NWP-ADR-0028, ops#79).
 # Safe and intended to be distributed in-repo; contains no private material.
 !keys/allowed_signers
 

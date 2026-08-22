@@ -1,7 +1,7 @@
-# Moodle plugin manifest + installer + lockfile — design (ADR-0031 Phase A / ops#73)
+# Moodle plugin manifest + installer + lockfile — design (NWP-ADR-0031 Phase A / ops#73)
 
 > **Status: DESIGN — NOT YET WIRED.** This document specifies the file
-> formats/schemas and the reconcile mechanics for the Moodle side of ADR-0031
+> formats/schemas and the reconcile mechanics for the Moodle side of NWP-ADR-0031
 > (plane 3). The example artifacts below are *illustrative* — they are not
 > installed by any code yet and MUST NOT be treated as the source of truth for
 > any live site. Wiring (the `pl`-managed installer + lockfile emission) is the
@@ -9,12 +9,12 @@
 > run on the build host (see the companion runbook,
 > [`ops73-phase-a-reconcile-runbook.md`](ops73-phase-a-reconcile-runbook.md)).
 > **Date:** 2026-07-10. **Author:** AI (Phase-A planning session, read-only).
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
 > D3 (tagging), D4 (repo boundaries — manifest + installer + lockfile).
 
 ---
 
-## 0. Why this exists (the drift ADR-0031 D4 names)
+## 0. Why this exists (the drift NWP-ADR-0031 D4 names)
 
 The Moodle side has **no taggable boundary today**: custom plugins sit as
 untracked files inside upstream-Moodle clones, the two GitLab plugin repos have
@@ -271,7 +271,7 @@ adds `auth_nwc_oauth2` only once F26 review lands and it is actually installed.
 
 Read-only finding: global `nwp.yml` registers `ss`, `ssd`, and **`ssc1`** — but
 the site directory is `sites/ssc` (moodledata `ssc1_moodledata`). So **`ssc` is
-effectively unregistered / name-mismatched** (ADR-0031: "ssc is not registered
+effectively unregistered / name-mismatched** (NWP-ADR-0031: "ssc is not registered
 in global `nwp.yml` at all — its guards evaluate invisible defaults"). Both
 `sites/ssc/.nwp.yml` and `sites/ssd/.nwp.yml` exist per-site.
 
@@ -282,8 +282,8 @@ the template goes in `example.nwp.yml`). The stanza each site needs:
 # in nwp.yml under sites:  (template mirror in example.nwp.yml)
   ssc:
     project:
-      type: moodle              # ⚠ nothing reads project.type yet (ADR-0031 ops D) — set it now so it's ready
-    paired_with: nwc            # ADR-0031 provider; consumed by ops C pair_guard (dead key until then)
+      type: moodle              # ⚠ nothing reads project.type yet (NWP-ADR-0031 ops D) — set it now so it's ready
+    paired_with: nwc            # NWP-ADR-0031 provider; consumed by ops C pair_guard (dead key until then)
     canonical: live             # real students → user state canonical (D6 directional invariant)
     maturity: ...               # operator assigns per P67
   ssd:
@@ -330,7 +330,7 @@ compatible; no live write in this branch):
 
 ---
 
-## 6. Sequencing (ADR-0031 Implementation Notes: A → B → C)
+## 6. Sequencing (NWP-ADR-0031 Implementation Notes: A → B → C)
 
 1. **This branch (Phase-A plan):** design (this doc) + runbook. No live writes.
 2. **Reconcile (operator + AI on build host):** runbook §1–§5 — settle drift,

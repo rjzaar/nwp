@@ -1,4 +1,4 @@
-# ADR-0032: Non-Production Data Refresh & File-Store Handling — two flows, omit-and-placeholder, no raw bytes across the boundary
+# NWP-ADR-0032: Non-Production Data Refresh & File-Store Handling — two flows, omit-and-placeholder, no raw bytes across the boundary
 
 **Status:** Accepted (2026-07-23) — implementation merged to `main`; see `docs/reports/adr-0032-session-handoff.md`. Live-host validation (prod publish + restic backup + supervised OAuth E2E) tracked in ops#120.
 **Date:** 2026-07-20
@@ -6,9 +6,9 @@
 **Related Issues:** ops#110 (ssc DB sanitiser wired, Path A), ops#111 (Flow A — full Moodle
 sanitised artifact), ops#112 (Flow B — moodledata DR backup), ops#113 (prod guards),
 ops#114 (this ADR umbrella), ops#84 (moodledata scrubber)
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust-through-signatures,
-sanitise-on-prod), [ADR-0025](0025-production-backup-to-ver.md) (two-flow invariant: raw→ver only),
-[ADR-0026](0026-nwp-server-capability-agent.md) (three-key one-way ledger), [ADR-0031](0031-paired-site-versioning-and-promotion.md)
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust-through-signatures,
+sanitise-on-prod), [NWP-ADR-0025](0025-production-backup-to-ver.md) (two-flow invariant: raw→ver only),
+[NWP-ADR-0026](0026-nwp-server-capability-agent.md) (three-key one-way ledger), [NWP-ADR-0031](0031-paired-site-versioning-and-promotion.md)
 (plane 5b: moodledata = PII/minors' records; D8: moodledata in zero backups)
 **Research basis:** two max-research sweeps 2026-07-20 — external best-practice (8 findings, all
 3-0 adversarially verified) + internal architecture map. Key sources: Catalyst `local_datacleaner`,
@@ -22,7 +22,7 @@ Oracle Data Safe (deterministic masking).
 NWP must produce safe, repeatable developer/staging copies of a **coupled Drupal + Moodle fleet**
 joined by OIDC SSO (`nwc` ↔ `ssc`, `nwd` ↔ `ssd`), under a paranoid, local-first, open-source
 threat model: **sanitisation happens on the production host, raw user data must never leave prod,
-and artifacts are trusted via cryptographic signatures rather than trusted hosts** (ADR-0017).
+and artifacts are trusted via cryptographic signatures rather than trusted hosts** (NWP-ADR-0017).
 
 A complete, fail-closed **Drupal DB** refresh pipeline already exists end-to-end (prod-native
 scratch-DB sanitiser → independent PII gate → HTTP-PUT fixture with a write-only deploy token).
@@ -32,7 +32,7 @@ The **Moodle** side and the **file store** (both stacks) are the gap:
   ops#110, wired for `ssc` via the prod-native path (Path A).
 - The moodledata scrubber (`lib/sanitizers/moodle-dataroot.sh`) exists but is **not composed into
   any pipeline**.
-- **moodledata is in zero backups** (ADR-0031 D8) and has **no host→host transport** anywhere.
+- **moodledata is in zero backups** (NWP-ADR-0031 D8) and has **no host→host transport** anywhere.
 - Drupal `private/` files are similarly excluded from backups.
 
 The open question this ADR answers: *what is the best-possible refresh architecture given what NWP
@@ -62,7 +62,7 @@ transports and both honouring the immovable constraints.
 | **B — DR backup** | disaster recovery | **raw** DB + **raw** files + **raw** moodledata | **`ver` only** (encrypted) | `server-backup` restic → `ver-backup-pull` |
 
 Flow A never moves file bytes. Flow B is the **only** place raw moodledata moves, and it goes to
-`ver` (prod-trust) over the restic path that already exists — this preserves ADR-0025's invariant
+`ver` (prod-trust) over the restic path that already exists — this preserves NWP-ADR-0025's invariant
 (*raw → ver only; the sanitised/dev channel must never see raw data*).
 
 ### File-store handling: omit-and-placeholder + optional prune
@@ -135,7 +135,7 @@ missing nightly timer. Raw snapshots reach **only** `ver`. Tracked in **ops#112*
 Signing *release artifacts* (packages, images, tarballs) is now common. Signing a *sanitised test
 fixture* specifically is **not** common industry practice and is **overkill for most orgs** — a
 leaked or stale fixture is already PII-free, so its blast radius is bounded by sanitisation, not by
-a signature. ADR-0017 deliberately left the fixture channel unsigned (PII sweep + write-only token).
+a signature. NWP-ADR-0017 deliberately left the fixture channel unsigned (PII sweep + write-only token).
 
 For NWP the marginal cost is near-zero (minisign already runs on the code channel) and it closes one
 minor hole: a compromised git-host serving a **downgraded/stale** fixture to the dev tier
@@ -149,7 +149,7 @@ it. Recorded here so the reasoning is not re-litigated.
 **Positive**
 - The file-store problem is dissolved rather than solved by brute force — no raw byte transport for
   dev copies; the empty scaffold + `moosh` prune yields a working, PII-free dev site.
-- moodledata finally enters the backup surface (Flow B), closing the ADR-0031 D8 "zero backups" gap.
+- moodledata finally enters the backup surface (Flow B), closing the NWP-ADR-0031 D8 "zero backups" gap.
 - Every immovable constraint is honoured: raw→ver only; sanitise-on-prod; key siloed on prod;
   fail-closed two-gate; three-key ledger.
 - NWP's `oidc-email.sh` is ratified as the deterministic-cross-store mechanism the wider ecosystem

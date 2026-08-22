@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nwpcode.org/schemas/nwp-yml-v3.json",
   "title": "nwp.yml v3",
-  "description": "NWP per-operator instance configuration. v3 introduces tier presets, role-bound hosts, feature flags with adapter selectors (per ADR-0020 + F32 Phase A). See docs/reference/nwp.yml.md for prose documentation.",
+  "description": "NWP per-operator instance configuration. v3 introduces tier presets, role-bound hosts, feature flags with adapter selectors (per NWP-ADR-0020 + F32 Phase A). See docs/reference/nwp.yml.md for prose documentation.",
   "type": "object",
   "additionalProperties": true,
   "required": ["nwp"],

@@ -27,7 +27,7 @@ cohorts. So ssd's user rows are **references into nwd's account set**.
 
 Restore one half alone and those references dangle: ssd holds locks against
 accounts nwd no longer has (or, worse, against uuids nwd has since reissued).
-ADR-0031 D9 already names this hazard for the real ssc↔nwc pair and states the
+NWP-ADR-0031 D9 already names this hazard for the real ssc↔nwc pair and states the
 invariant — *restore BOTH halves to one logical cut*. The demo pair runs that
 restore **every night, unattended**, so Phase 2 makes "one logical cut" a
 mechanically verified fact rather than an operator convention.
@@ -91,7 +91,7 @@ Order is the safety property — everything that can refuse refuses *first*:
    nightly digest is one issue: Drupal watchdog + PHP log; Moodle failed
    scheduled tasks + error/failure/denied events from the standard logstore +
    PHP log (fail-OPEN — a harvest failure never blocks a reset);
-5. restore **provider first** (ADR-0031 D5): if the run dies between halves the
+5. restore **provider first** (NWP-ADR-0031 D5): if the run dies between halves the
    consumer holds *old* locks against accounts the provider has already
    restored — recoverable by re-running. The reverse order is not;
 6. reseed the provider's demo matrix + re-push the hashed invite codes;

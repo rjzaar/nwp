@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# ADR-0024: no lib/ code may SSH+sudo to the GitLab box to create projects.
+# NWP-ADR-0024: no lib/ code may SSH+sudo to the GitLab box to create projects.
 # The token path (gitlab_api_create_project) is the only sanctioned creator.
 
 LIB_DIR="${BATS_TEST_DIRNAME}/../../lib"
@@ -10,9 +10,9 @@ LIB_DIR="${BATS_TEST_DIRNAME}/../../lib"
   [ -z "$output" ]
 }
 
-@test "gitlab_create_project is a fail-closed ADR-0024 stub (no ssh escalation)" {
+@test "gitlab_create_project is a fail-closed NWP-ADR-0024 stub (no ssh escalation)" {
   run bash -c "sed -n '/^gitlab_create_project() {/,/^}/p' '$LIB_DIR/git.sh'"
-  [[ "$output" == *"ADR-0024"* ]]
+  [[ "$output" == *"NWP-ADR-0024"* ]]
   [[ "$output" != *"ssh "* ]]
 }
 

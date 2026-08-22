@@ -89,7 +89,7 @@ Core integration DONE (see `handover-nw2-build.md`): nw2 = un-forked OS13 + all 
     an nwp/ops issue (partly done: `--sync-issues`); wire the **agent-loop to nwp/ops** with the
     fix-repo routing + prompt-template selector (designed, gated in `handover-ops6-*`); fold the RAG
     grade into the `pl status` table. **[auto]** design/dev-side; agent-eligible promotion **[gate]**.
-20. **A14 decision** — self-deploying-prod authority (ADR-0024). Provision the `ctl` seat /
+20. **A14 decision** — self-deploying-prod authority (NWP-ADR-0024). Provision the `ctl` seat /
     phone-approval. **[gate]** — unblocks every prod-touching path above.
 21. **Finish the Part VIII `pl <verb>` backlog** — only `pl secrets`/`rag`/`issue` are
     registry/API-driven so far. **[auto]** incrementally.

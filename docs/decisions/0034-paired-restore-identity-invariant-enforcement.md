@@ -1,4 +1,4 @@
-# ADR-0034: Paired-restore identity invariant — enforcement
+# NWP-ADR-0034: Paired-restore identity invariant — enforcement
 
 **Status:** Proposed (ops#83)
 <!-- Status normalised to the template's column-0 shape (ops#319): as a
@@ -6,13 +6,13 @@
      estate, and ops#318 recorded this ADR as having "no Status line at all". -->
 
 - **Date:** 2026-07-28
-- **Supersedes:** nothing. **Amends:** [ADR-0031](0031-paired-site-versioning-and-promotion.md) **D9**.
-- **Related:** [ADR-0029](0029-nwc-authorization-model.md), `pairs/ssc.pair-contract.yml`,
+- **Supersedes:** nothing. **Amends:** [NWP-ADR-0031](0031-paired-site-versioning-and-promotion.md) **D9**.
+- **Related:** [NWP-ADR-0029](0029-nwc-authorization-model.md), `pairs/ssc.pair-contract.yml`,
   `docs/guides/ops83-dr-restore.md`
 
 ## Why a second ADR
 
-ADR-0031 **D9** already *decides* the invariant: `sub` is the durable UUID anchor (A), and a
+NWP-ADR-0031 **D9** already *decides* the invariant: `sub` is the durable UUID anchor (A), and a
 coupled-tier restore is **both-or-forward** (B). That decision is sound and is not reopened here.
 
 This ADR records what D9 did not: **what the enforcement actually refuses, and what it must

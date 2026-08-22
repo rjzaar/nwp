@@ -15,7 +15,7 @@ set -euo pipefail
 #
 # WHY: PL-STG2LIVE-INTEGRATION-DESIGN-2026-07-19.md §6 P1-4 requires the un-fork
 # `pm:uninstall` and every other live drush step to route through `pl drush`
-# ("via pl drush, raw ssh refused") so the deploy gate (ADR-0028), the
+# ("via pl drush, raw ssh refused") so the deploy gate (NWP-ADR-0028), the
 # live.enabled flag and the config-driven host resolution apply uniformly — the
 # guard vocabulary block at the top of §6 names GATE = lib/deploy-gate.sh.
 #
@@ -44,7 +44,7 @@ source "$REPO_ROOT/lib/common.sh"
 source "$REPO_ROOT/lib/ssh.sh"
 # server-resolver.sh: get_server_config (live.server → server ip/user).
 [ -f "$REPO_ROOT/lib/server-resolver.sh" ] && source "$REPO_ROOT/lib/server-resolver.sh"
-# deploy-gate.sh: hardware+signature gate on live writes (ADR-0028). No-op
+# deploy-gate.sh: hardware+signature gate on live writes (NWP-ADR-0028). No-op
 # unless configured (ver); the AI test tier is unaffected.
 source "$REPO_ROOT/lib/deploy-gate.sh"
 
@@ -110,7 +110,7 @@ ${BOLD}BEHAVIOUR:${NC}
     --tier=live         DRY-RUN BY DEFAULT — prints the exact remote command
                         and runs nothing. Add --execute to run it. On --execute
                         it honours live.enabled, requires the deploy gate
-                        (ADR-0028), and refuses if no live server is configured.
+                        (NWP-ADR-0028), and refuses if no live server is configured.
 
 ${BOLD}EXAMPLES:${NC}
     pl drush nwc --tier=live -- cr                    # dry-run: prints command
@@ -202,7 +202,7 @@ esac
 # verb, not a licence for a one-liner — file it." This is that verb.
 #
 # The staged copy inherits everything the verb already guarantees: the live
-# dry-run default, the ADR-0028 deploy gate, the live.enabled check and the
+# dry-run default, the NWP-ADR-0028 deploy gate, the live.enabled check and the
 # host resolution. A hand-rolled `scp && ssh sudo -u www-data drush` reproduces
 # the effect and drops all four.
 #
@@ -523,7 +523,7 @@ run_live() {
         return 0
     fi
 
-    # Hardware+signature gate on the live write (ADR-0028). No-op on the test
+    # Hardware+signature gate on the live write (NWP-ADR-0028). No-op on the test
     # tier (unconfigured); on ver it requires a live Solo touch. Fail-closed.
     deploy_gate_require "$BASE_NAME" "live" \
         "run drush on live: drush ${DRUSH_ARGS[*]}" || exit 1

@@ -6,7 +6,7 @@ WHAT THESE TESTS PIN:
     that one boundary (run_pl_cached) and the pane must render decisions with
     their recommendation AND open MRs with a GitLab deep-link.
   * Approve-on-an-MR is a LINK, never a POST: no route on this host may merge
-    (ADR-0032 — the console host is AI-reachable; the merge click happens on
+    (NWP-ADR-0032 — the console host is AI-reachable; the merge click happens on
     the MR page as the operator themselves).
   * Every write is a note tagged [console-review] SERVER-side — the tag is what
     the next session searches for, so a client that omits it must not matter.
@@ -123,7 +123,7 @@ def test_pane_renders_decisions_and_mrs(mod, monkeypatch):
 
 
 def test_no_merge_route_exists(mod):
-    """ADR-0032: nothing on this host may merge. If someone adds a merge
+    """NWP-ADR-0032: nothing on this host may merge. If someone adds a merge
     route, this fails and the diff gets the conversation it deserves."""
     for r in mod.app.routes:
         assert "merge" not in getattr(r, "path", ""), r.path

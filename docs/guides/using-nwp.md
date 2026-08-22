@@ -68,8 +68,8 @@ capability.** Trust flows through **signatures**, not machines.
 | `pl build-server` | assemble the AI-free `nwp-server` artifact (allowlist + fail-closed deny-scan) |
 | `pl publish <site>` | publish a **sanitized** artifact (fail-closed PII gate) to its own repo |
 | `pl rollback list` / `pl rollback execute` | manage / execute deploy rollback |
-| `pl server-backup --site-dir DIR` | prod-side raw restic DR snapshot (ADR-0025) |
-| `pl ver-pull --from … --to …` | `ver` drains prod's snapshots, prunes, verifies (ADR-0025) |
+| `pl server-backup --site-dir DIR` | prod-side raw restic DR snapshot (NWP-ADR-0025) |
+| `pl ver-pull --from … --to …` | `ver` drains prod's snapshots, prunes, verifies (NWP-ADR-0025) |
 
 > **Verifying commands exist:** everything above dispatches through `pl` (explicit
 > case or the `scripts/commands/<name>.sh` fallback). Note the DR pull command is
@@ -77,7 +77,7 @@ capability.** Trust flows through **signatures**, not machines.
 > `pl apply` / `pl pull` verb — pull+verify+apply live inside the AI-free artifact
 > (`lib/bundle-verify.sh`, `lib/rollback.sh`) and were **validated end-to-end on
 > 2026-07-02** on a disposable prod-boundary test host (nwp/ops#23), the `publish`
-> verb excepted (mis-wired — see [`ver-setup.md`](ver-setup.md) §5 and ADR-0026's
+> verb excepted (mis-wired — see [`ver-setup.md`](ver-setup.md) §5 and NWP-ADR-0026's
 > validation record).
 
 ## 3. The self-driving loop
@@ -93,7 +93,7 @@ commands rather than doing the work by hand.
      pl issue create ──────────►  agent-loop (issue → MR)          [AI tier]
           ▲                                │
           │                                ▼
-          │                        human MERGE approval            ← the A14 / ADR-0024 boundary
+          │                        human MERGE approval            ← the A14 / NWP-ADR-0024 boundary
           │                                │  (WebAuthn / hardware-gated)
           │                                ▼
           │                        signed bundle → prod
@@ -120,9 +120,9 @@ fixes**. The human approves merges and watches `pl status`. This is what ends th
   summarised in §3 above.
 - **Runbooks** — the operator's private `SECURITY-REMEDIATION`, `UNFORK`, and
   `PUBLISH-SCRUB` runbooks for each workstream.
-- **ADRs** — [ADR-0020 tiered model](../decisions/0020-tiered-architecture-model.md),
-  [ADR-0022 binary split](../decisions/0022-nwp-verifier-binary-split.md),
-  [ADR-0024 self-deploying prod / deploy authority](../decisions/0024-self-deploying-prod-supersedes-verifier.md),
-  [ADR-0026 the `nwp-server` capability agent](../decisions/0026-nwp-server-capability-agent.md),
-  [ADR-0025 backup to `ver`](../decisions/0025-production-backup-to-ver.md).
+- **ADRs** — [NWP-ADR-0020 tiered model](../decisions/0020-tiered-architecture-model.md),
+  [NWP-ADR-0022 binary split](../decisions/0022-nwp-verifier-binary-split.md),
+  [NWP-ADR-0024 self-deploying prod / deploy authority](../decisions/0024-self-deploying-prod-supersedes-verifier.md),
+  [NWP-ADR-0026 the `nwp-server` capability agent](../decisions/0026-nwp-server-capability-agent.md),
+  [NWP-ADR-0025 backup to `ver`](../decisions/0025-production-backup-to-ver.md).
 - **[`../README.md`](../README.md)** — the full documentation index.

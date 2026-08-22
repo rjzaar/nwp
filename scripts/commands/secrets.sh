@@ -5,7 +5,7 @@ set -uo pipefail
 #
 # Registry-driven secret lifecycle. Values live in .secrets.yml; this command
 # reads the TOKENLESS registry (private/secrets-registry.yml) for metadata and
-# assists rotation WITHOUT ever storing a credential on this host (ADR-0017).
+# assists rotation WITHOUT ever storing a credential on this host (NWP-ADR-0017).
 #
 # Usage:
 #   pl secrets status                 list every secret + expiry (no secret read)
@@ -241,7 +241,7 @@ entry_canonical_loc(){ # idx
 #      make another copy of a credential that is on its way out" both describe a
 #      BROKEN entry. A never-minted one is not broken, it is empty, and the two
 #      need different actions — repair versus mint. Following `pl forge`'s
-#      refusal (ADR-0038) and the estate rule, that reads as exit 2 CANNOT
+#      refusal (NWP-ADR-0038) and the estate rule, that reads as exit 2 CANNOT
 #      VERIFY, never a silent success and never a generic failure.
 #
 #  (b) LET THE FLAG GO. `status: not-provisioned` is read in eleven places here
@@ -1262,7 +1262,7 @@ cmd_debt(){
   fi
   print_error "$n open rotation debt record(s)."
   print_warning "These BLOCK a prod bring-up (pl canonical set <site> prod, and every prod"
-  print_warning "write through the ADR-0028 deploy gate: pl stg2prod / pl live2prod)."
+  print_warning "write through the NWP-ADR-0028 deploy gate: pl stg2prod / pl live2prod)."
   print_hint "discharge: pl secrets rotate <id>   ·   surface remediated only: pl secrets expose <id> --close"
   return 1
 }
@@ -1462,7 +1462,7 @@ cmd_lint(){
       # `rotate --due` and the daily liveness cron were all skipping a credential
       # that EXISTS — and nothing in the tree could say so. Its location is an
       # `@file` outside .secrets.yml precisely BECAUSE it is an admin credential
-      # (ADR-0038 keeps it out of the AI-readable tier), so the exclusion and the
+      # (NWP-ADR-0038 keeps it out of the AI-readable tier), so the exclusion and the
       # danger selected for each other.
       #
       # Only the fail-open direction is extended. The mirror ("expected a value
@@ -1530,7 +1530,7 @@ cmd_lint(){
       # exist is its correct state, not a phantom location. The sibling checks
       # at "scope must be probeable" and "consumers" already skip this status
       # for the same reason; this one did not, so a registry entry written
-      # ahead of an operator mint (the ADR-0038 forge-admin PAT, and any future
+      # ahead of an operator mint (the NWP-ADR-0038 forge-admin PAT, and any future
       # specified-but-unminted credential) could not be linted clean. The
       # INVERSE is still caught, one check above: not-provisioned WITH a value
       # is a warning.
@@ -2243,7 +2243,7 @@ _probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) �
     # `IdentityFile ~/.ssh/gitlab_linode` for the forge box, so the previous
     # invocation authenticated with THAT key and returned rc=0 for a probe key
     # that was not installed anywhere at all (measured 2026-08-10 while building
-    # the ADR-0038 identities). Every ssh probe in this registry — and every
+    # the NWP-ADR-0038 identities). Every ssh probe in this registry — and every
     # NEGATIVE one, which is the whole point of being able to record a limit —
     # was therefore answering about the wrong credential.
     local -a sargs=(-F /dev/null -o IdentityAgent=none
@@ -3074,7 +3074,7 @@ cmd_verify_copy(){
 #   The value goes over ssh on STDIN, never in argv — it must not appear in
 #   `ps` on either machine, nor in either shell history.
 #
-# THE PROD BOUNDARY (operator-stated 2026-08-02, permanent; ADR-0028):
+# THE PROD BOUNDARY (operator-stated 2026-08-02, permanent; NWP-ADR-0028):
 #   The `ver` role owns prod, alone, and is offline by default. It is never fed
 #   a credential by an AI-run host. The rule is *never*, not *not yet*.
 #
@@ -3240,7 +3240,7 @@ cmd_provision(){
     if [ "$forbidden" = 1 ]; then
       canonval=""
       print_error "  REFUSED  $t"
-      print_error "  '$host' is prod territory (ADR-0028). An AI-run host does not provision it — the operator does, in person."
+      print_error "  '$host' is prod territory (NWP-ADR-0028). An AI-run host does not provision it — the operator does, in person."
       print_error "  This refusal has no --force and no env override: the rule is never, not not-yet."
       return 1
     fi
@@ -3598,7 +3598,7 @@ cmd_capabilities(){
     "deploy-keys|/api/v4/projects/$proj/deploy_keys"
     "ci-variables|/api/v4/projects/$proj/variables"
     "proj-tokens|/api/v4/projects/$proj/access_tokens"
-    # ops#331 / ADR-0038 — THIS ROW USED TO BE A BLIND PROBE.
+    # ops#331 / NWP-ADR-0038 — THIS ROW USED TO BE A BLIND PROBE.
     # It was `/api/v4/users?per_page=1&without_project_bots=true`, and
     # `GET /users` is available to EVERY authenticated user, not just admins.
     # Measured 2026-08-10, all ten rows printed `admin-users: yes` — including
@@ -3821,7 +3821,7 @@ cmd_consumers(){
 #   pl secrets inject <site> --tier=stg|live [--dry-run|--apply]
 #
 # Injects the env-specific $config overrides + the cross-site link secrets
-# onto a LIVE box, WITHOUT ever reading a raw secret value off live (ADR-0017).
+# onto a LIVE box, WITHOUT ever reading a raw secret value off live (NWP-ADR-0017).
 #   • Drupal (project.type=drupal): writes the rsync-excluded, include-at-
 #     generate_live_settings file  settings.local.overrides.php  (NOT
 #     settings.local.php, which is nuked every deploy — design §3.5/§5.3),
@@ -4062,7 +4062,7 @@ cmd_inject(){
 
   # Confirm: typed name on live (last-recovery-ish); standard on stg.
   if [ "$tier" = "live" ]; then
-    # Hardware/signature deploy gate (ADR-0028) — no-op unless configured on ver.
+    # Hardware/signature deploy gate (NWP-ADR-0028) — no-op unless configured on ver.
     if declare -F deploy_gate_require >/dev/null; then
       deploy_gate_require "$base" "live" "inject cross-site config/secrets ($platform)" || die "deploy gate refused — aborting inject"
     fi
@@ -4142,7 +4142,7 @@ cmd_inject(){
     [ "$ok" = "1" ] || return 1
   fi
 
-  print_success "inject complete — $base ($platform, tier=$tier). No value was printed (ADR-0017)."
+  print_success "inject complete — $base ($platform, tier=$tier). No value was printed (NWP-ADR-0017)."
 }
 
 ################################################################################
@@ -4233,7 +4233,7 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
                                    --host=<role>                   re-push declared copies
                                  FAIL-CLOSED: only hosts named in the registry's
                                  ai_provisionable_hosts: may be written at all, and prod-trust
-                                 roles are refused even if allowlisted (ADR-0028). No flag,
+                                 roles are refused even if allowlisted (NWP-ADR-0028). No flag,
                                  env var or config key overrides the prod refusal.
   pl secrets probe-scaffold <#|id> [--force]
                                  write a starter probe: block so the entry's SCOPE claim is checkable.
@@ -4254,7 +4254,7 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets inject <site> --tier=stg|live [--dry-run|--apply]
                                  registry-driven env-config + cross-site token injection (§6 P0-4):
                                  Drupal → settings.local.overrides.php + drush cr; Moodle → admin/cli/cfg.php.
-                                 DRY-RUN default; prints key-paths + targets ONLY, never values (ADR-0017).
+                                 DRY-RUN default; prints key-paths + targets ONLY, never values (NWP-ADR-0017).
   pl secrets lint                BOTH directions: registry->file AND file->registry (undeclared keys),
                                  stored_in grammar, phantom paths, 0600 permissions. Exit 1 on any.
   pl secrets scan [--quiet]      leak sweep over transcripts, logs, history — EXIT 1 on any hit

@@ -1,4 +1,4 @@
-# ADR-0028: ver as a single-operator, human-gated desktop workstation
+# NWP-ADR-0028: ver as a single-operator, human-gated desktop workstation
 
 > **Numbering note (2026-07-09).** This ADR took the next sequential number, 0028.
 > The deep-audit recommendations doc (`docs/reports/nwp-deep-audit-recommendations-2026-07-09.md`)
@@ -9,26 +9,26 @@
 **Date:** 2026-07-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** nwp/ops#25 (`ver`/ver provisioning), nwp/ops#28 (deploy-authority topology)
-**Amends:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) and
-[ADR-0026](0026-nwp-server-capability-agent.md) — the *operating posture* of the
+**Amends:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) and
+[NWP-ADR-0026](0026-nwp-server-capability-agent.md) — the *operating posture* of the
 ver host only (not the deploy-authority topology, not the signature-trust model).
 **Supersedes:** the "minimal server / no desktop / no browser / no AI tooling"
 posture in `docs/guides/ver-provisioning-runbook.md` §2, the two-Solo **K/W**
 role split in §4, and the `cd ~/nwp` / mesh framing in the operational-readiness
 guide under `docs/guides/`.
-**References:** ADR-0017, [ADR-0022](0022-nwp-verifier-binary-split.md),
-[ADR-0024](0024-self-deploying-prod-supersedes-verifier.md),
-[ADR-0025](0025-production-backup-to-ver.md), ADR-0026, CLAUDE.md (threat model),
+**References:** NWP-ADR-0017, [NWP-ADR-0022](0022-nwp-verifier-binary-split.md),
+[NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md),
+[NWP-ADR-0025](0025-production-backup-to-ver.md), NWP-ADR-0026, CLAUDE.md (threat model),
 `docs/reports/nwp-deep-audit-recommendations-2026-07-09.md` (streams ①/⑤).
 
 ---
 
 ## Context
 
-ADR-0017 establishes an offline-by-default host ("ver", role `ver`) as the
+NWP-ADR-0017 establishes an offline-by-default host ("ver", role `ver`) as the
 production-write boundary: the AI-capable tier signs artifacts; ver verifies
 signatures locally and reaches prod only over a dedicated 1:1 WireGuard tunnel.
-ADR-0022/0026 add that the host runs a **separately-built, AI-free** artifact
+NWP-ADR-0022/0026 add that the host runs a **separately-built, AI-free** artifact
 (`nwp-server`) — no AI/CI/SaaS code in the binary at all.
 
 The ops#25 provisioning work (MR !37) implemented this as a **minimal, headless
@@ -86,7 +86,7 @@ ver is a **single-operator, human-gated desktop workstation**, running the **ful
   autonomous loop, MCP server, or any AI process with shell/execution access may run
   on ver** — that is what "AI-free" means here and it is inviolable.
 
-### Retained invariants (unchanged from ADR-0017/0026 — the actual security)
+### Retained invariants (unchanged from NWP-ADR-0017/0026 — the actual security)
 - **Offline-by-default.** Network default-off; online only in deliberate windows.
   **No Headscale/tailnet membership** (ops#25 decision, 2026-07-03). Connectivity is
   outbound HTTPS to the GitLab host plus the per-session 1:1 WireGuard tunnel per
@@ -99,7 +99,7 @@ ver is a **single-operator, human-gated desktop workstation**, running the **ful
   command, a `pl` bug under test, or a browser compromise cannot push to prod without
   the physical touch on a signature it cannot forge. This gate — not the absence of a
   browser — is the property the whole design rests on.
-- **Canonical phase guards** (dev|live|prod, ADR-0013-successor) keep non-prod `pl`
+- **Canonical phase guards** (dev|live|prod, NWP-ADR-0013-successor) keep non-prod `pl`
   testing safely in dev/local; a test command cannot silently act on prod.
 
 ### Signing

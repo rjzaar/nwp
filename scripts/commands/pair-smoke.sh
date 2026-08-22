@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# scripts/commands/pair-smoke.sh — paired-site onboarding smoke (ADR-0031 D5)
+# scripts/commands/pair-smoke.sh — paired-site onboarding smoke (NWP-ADR-0031 D5)
 #
 # After ANY promotion of either half of a pair (nwc↔ssc, nwd↔ssd) the pair
 # smoke runs the onboarding 5-URL set against both halves of that tier:
@@ -40,7 +40,7 @@ source "$PROJECT_ROOT/lib/pair.sh"
 
 show_help() {
     cat <<EOF
-${BOLD}NWP Pair Smoke — onboarding 5-URL check (ADR-0031 D5)${NC}
+${BOLD}NWP Pair Smoke — onboarding 5-URL check (NWP-ADR-0031 D5)${NC}
 
 ${BOLD}USAGE:${NC}
     pl pair-smoke <consumer> [OPTIONS]
@@ -232,7 +232,7 @@ fi
 # "<example-prod-domain>", failed, and the pair went RED — permanently.
 #
 # The cost was not a red badge. `pl moodle plugin deploy` and `pl stg2live`
-# refuse to promote onto a RED pair (ADR-0031 D5), so the only way to ship
+# refuse to promote onto a RED pair (NWP-ADR-0031 D5), so the only way to ship
 # anything became `--override-pair` — used 18+ times in one week. A guard that is
 # overridden every single time it fires is not a guard; it is a speed bump that
 # teaches people to reach for the override. ssd has been RAG-red since

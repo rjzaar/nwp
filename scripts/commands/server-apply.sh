@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# nwp-server apply — verify a signed bundle and apply it on THIS host (ADR-0024).
+# nwp-server apply — verify a signed bundle and apply it on THIS host (NWP-ADR-0024).
 #
 # Orchestration (nothing here is bespoke deploy logic — the bundle carries its
 # own signed, idempotent apply):
@@ -9,7 +9,7 @@ set -euo pipefail
 #      and scripts SHA-256 against the manifest. A bundle that does not verify is
 #      never applied.
 #   2. (opt-in) take a pre-apply restic DR snapshot for the offline custodian
-#      (--snapshot -> scripts/commands/server-backup.sh, ADR-0025).
+#      (--snapshot -> scripts/commands/server-backup.sh, NWP-ADR-0025).
 #   3. Run the bundle's OWN scripts in order: pre-deploy.sh -> apply.sh ->
 #      post-deploy.sh (F28 §3.3/§3.5). These are signed as part of the bundle,
 #      are required to be idempotent, and fail loud (writing a marker that the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# nwp/ops D — ADR-0031 D8: Moodle promotion SUBSTRATE (lib/moodle-promote.sh).
+# nwp/ops D — NWP-ADR-0031 D8: Moodle promotion SUBSTRATE (lib/moodle-promote.sh).
 # Exercises the settings writer, tier fail-closed, vhost generator, wwwroot
 # rewrite plan, OIDC wiring (issuer per tier), and the off-unless-configured
 # no-op — all on throwaway fixtures, with NO ddev/drush/network and NO secrets.

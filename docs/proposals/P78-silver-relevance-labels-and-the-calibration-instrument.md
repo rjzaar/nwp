@@ -201,7 +201,7 @@ class are rejected by the aggregator.
   soundness or the correct reading of a magisterial or saintly text. **Theology's call.**
 - **`ABSTAIN-PEDAGOGY`** — the topical match is visible but the decision turns on formation fit:
   right depth, safe framing, presumed prior formation. **The Media Guild's remit is explicitly
-  "not theological formation"** (ADR-0017), so this is the formation guild's call, not a
+  "not theological formation"** (NWC-ADR-0017), so this is the formation guild's call, not a
   retrieval question at all.
 
 The method file forbids abstaining out of uncertainty — that is a grade with `confidence: low`.
@@ -683,7 +683,7 @@ committed here, as `docs/reports/clip-judge-consistency-2026-08-11.json`, per §
 
 ## 6. Where each artefact may live — a rights constraint that changes the shape of the delivery
 
-**`nwp/nwp` is publicly mirrored** to `github.com/rjzaar/nwp` (ADR-0039). The corpus is
+**`nwp/nwp` is publicly mirrored** to `github.com/rjzaar/nwp` (NWP-ADR-0039). The corpus is
 `derivative-cleared-pending` and password-gated. Therefore:
 
 | artefact | home | why |

@@ -38,7 +38,7 @@ ${BOLD}PHASES (who owns the content):${NC}
     live  content changes on live ONLY; dev gets sanitized live→dev copies;
           dev→live CONTENT pushes are refused (--code-only deploys still flow)
     prod  prod is the source; live/dev are downstream sanitized copies;
-          code work is branch-only with a protected CI-gated main (ADR-0024)
+          code work is branch-only with a protected CI-gated main (NWP-ADR-0024)
 
 ${BOLD}OPTIONS:${NC}
     -y, --yes    Skip the confirmation prompt (transition is still ledgered)
@@ -195,7 +195,7 @@ cmd_set() {
             print_info "prod becomes the content source of truth:"
             print_info "  • content changes on prod ONLY; live/dev are downstream sanitized copies"
             print_info "  • content pushes toward live AND prod will be REFUSED"
-            print_info "  • code work is branch-only; deploys only from a clean, CI-gated main (ADR-0024)"
+            print_info "  • code work is branch-only; deploys only from a clean, CI-gated main (NWP-ADR-0024)"
             ;;
         dev)
             print_warning "dev becomes the content source of truth — the NEXT dev→live push OVERWRITES live content."

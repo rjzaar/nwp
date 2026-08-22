@@ -73,7 +73,7 @@ ISSUE_MAX_PAGES = int(_env("NWP_CONSOLE_ISSUE_MAX_PAGES", "4"))
 # DATA comes from `pl decisions --json` (one queue, one source — ops#295);
 # this list only bounds the write path, the same way OPS_PROJECT bounds issue
 # writes. Approve itself is a deep-link: no merge credential exists here
-# (ADR-0032 — a machine never merges, and this host is AI-reachable).
+# (NWP-ADR-0032 — a machine never merges, and this host is AI-reachable).
 REVIEW_MR_PROJECTS = [
     p.strip()
     for p in _env("NWP_CONSOLE_REVIEW_MR_PROJECTS", "nwp/nwp,nwp/nwc").split(",")

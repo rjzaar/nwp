@@ -41,7 +41,7 @@ headscale URL) live in the **gitignored** `nwp.yml` under `settings.console`
    `main.py` that fails the build if a new route forgets any of it. **Inert
    until an owner creates a project** — with none, behaviour is byte-identical
    to the pre-project console. See
-   [ADR-0033](../../docs/decisions/0033-console-multi-tenant-projects.md) and
+   [NWP-ADR-0033](../../docs/decisions/0033-console-multi-tenant-projects.md) and
    [howto-console-projects](../../docs/guides/howto-console-projects.md).
 
 ## Deploy / operate (from the workstation)

@@ -2,7 +2,7 @@
 set -euo pipefail
 ################################################################################
 # ver-seal-keystore.sh — seal/unseal `ver`'s restic secrets with a FIDO2 token
-# (Solo 2-class) via age-plugin-fido2-hmac (ADR-0025; ops#25).
+# (Solo 2-class) via age-plugin-fido2-hmac (NWP-ADR-0025; ops#25).
 #
 # The restic repo passwords on `ver` are SEALED AT REST: encrypted to an age
 # identity derived from the hardware token's FIDO2 hmac-secret extension. They

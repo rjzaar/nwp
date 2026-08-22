@@ -145,7 +145,7 @@ Upstream branch: upstream/main
 
 Recent upstream commits:
 a1b2c3d Update CLAUDE.md security restrictions
-e4f5g6h Add ADR-0015: Multi-tier governance model
+e4f5g6h Add NWP-ADR-0015: Multi-tier governance model
 h7i8j9k Fix backup retention policy
 k0l1m2n Update documentation standards
 n3o4p5q Add migrate-secrets command
@@ -191,7 +191,7 @@ Strategy: merge
 
 Recent upstream commits:
 a1b2c3d Update CLAUDE.md security restrictions
-e4f5g6h Add ADR-0015: Multi-tier governance model
+e4f5g6h Add NWP-ADR-0015: Multi-tier governance model
 h7i8j9k Fix backup retention policy
 
 Sync with upstream? (Y/n) y
@@ -221,7 +221,7 @@ Review decisions:
 Current status:
 a1b2c3d (HEAD -> main) Merge remote-tracking branch 'upstream/main'
 b2c3d4e Update CLAUDE.md security restrictions
-c3d4e5f Add ADR-0015: Multi-tier governance model
+c3d4e5f Add NWP-ADR-0015: Multi-tier governance model
 ```
 
 ### Sync with Rebase
@@ -261,7 +261,7 @@ Mode: DRY RUN (no changes will be made)
 
 Recent upstream commits:
 a1b2c3d Update CLAUDE.md security restrictions
-e4f5g6h Add ADR-0015: Multi-tier governance model
+e4f5g6h Add NWP-ADR-0015: Multi-tier governance model
 
 [i] [DRY RUN] Would run: git merge upstream/main
 ```

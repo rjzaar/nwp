@@ -75,7 +75,7 @@ reachable prod (deferred to the disposable-Linode prod-leg validation step). bas
 
 ## [2026-07-24] ops79-server-apply-gating-deferred (needs research)
 **Decision:** Do NOT blindly add `deploy_gate_require` to server-apply.sh. It is the `nwp-server apply`
-verb (ADR-0024) running on the AI-free prod host: already gated by minisign bundle verification (fail-closed)
+verb (NWP-ADR-0024) running on the AI-free prod host: already gated by minisign bundle verification (fail-closed)
 + dry-run-by-default (`--execute`). A Solo-touch gate is wrong there (no Solo/dev key on that host → would
 fail-closed on every apply). The report's grep finding ("no deploy_gate_require") was too literal.
 **Basis:** read of scripts/commands/server-apply.sh (minisign verify @ :90-93, --execute @ :121).
@@ -184,7 +184,7 @@ merged or deployed (test-tier + REVIEW guardrails hold). Overnight workflow batc
   5. P1 scripts/nwp-daily-audit — pull from met (back online) into the repo + pl schedule wiring.
 **EXCLUDED from unattended work (need review / not tool-code / risky):** consent app-code arc
 (#117/#123/#125/#118/#93/#121 — nwc/ssc profile, legal-sensitive), config-as-code ops#63 (existing branch
-to reconcile), #120 ADR-0032 (needs a Linode), local/browse compaction (live deploy). These are specced in
+to reconcile), #120 NWP-ADR-0032 (needs a Linode), local/browse compaction (live deploy). These are specced in
 the plan for careful/reviewed handling.
 **Reversible-how:** all outputs are unmerged REVIEW branches; nothing deployed.
 
@@ -274,12 +274,12 @@ load 0.31. met's failures = BOOT instability (kernel "VFS cannot mount root" pan
 ROUTER being unhealthy (which failed verify.sh's test-site creation → the "instant fail" pipelines; fixed
 via `ddev poweroff` to recreate the router). Task#10 re-scoped: diagnose met's boot/disk/kernel reliability,
 NOT throttle CI. Auto-merge landed everything once CI was green.
-**Remaining (deliberate infra / human):** test-tier browser OIDC round-trip + #120 ADR-0032 (throwaway Linode);
+**Remaining (deliberate infra / human):** test-tier browser OIDC round-trip + #120 NWP-ADR-0032 (throwaway Linode);
 secondary P4 (#125/#122/#121/#93); #119 DPO wording.
 
 ## [2026-07-25] #120 BLOCKED on Linode token scope; pivot to dev work
 **Blocker:** linode.api_token is NOT authorized for /linode/instances (create/list) — scope-limited (likely
-DNS-only). Cannot provision a throwaway Linode. #120 ADR-0032 live validation needs a real host → OPERATOR
+DNS-only). Cannot provision a throwaway Linode. #120 NWP-ADR-0032 live validation needs a real host → OPERATOR
 must supply a linodes:read_write token or provision the node. tp1 (172.234.37.46) host-key changed (rebuilt)
 — not cleanly reusable.
 **Pivot (no Linode needed):** (a) consent browser OIDC round-trip on the dev ddev sites (nwc-dev↔ssc-dev are
@@ -2948,7 +2948,7 @@ all (no keypair → `/.well-known/jwks.json` was **500**, 0 scopes, no client) �
 **Paired design (decided):** the PAIR CONTRACT is the source, not a new registry — `demo.enabled:
 true` is the opt-in, so the real ssc↔nwc pair is structurally invisible to the nightly wipe.
 `pl demo golden nwd --with-pair` captures both halves and writes `pair.cut.json` binding them by
-sha256; a paired reset refuses unless both goldens still match the cut (ADR-0031 D9 both-or-
+sha256; a paired reset refuses unless both goldens still match the cut (NWP-ADR-0031 D9 both-or-
 nothing, mechanically enforced instead of by convention). Reset = verify-both → idle-guard-both →
 harvest-both-into-one-spool → restore PROVIDER-FIRST → reseed → re-assert consumer (oidc/posture/
 courses) and RETURN NON-ZERO if that fails.
@@ -2982,7 +2982,7 @@ found while fixing it, both missed by the review:**
 thin `demo_reset_manifest` wrapper (reset → build → render) so `cmd_reset`/`cmd_reset_live` are
 behaviourally unchanged. The paired path does `impact_reset` → build provider → build consumer →
 pair-only warnings (both-sites-in-one-approval; provider-is-the-IdP; mid-run inconsistency is
-repaired by re-running, provider-first per ADR-0031 D5) → `impact_render` → dry-run stop →
+repaired by re-running, provider-first per NWP-ADR-0031 D5) → `impact_render` → dry-run stop →
 `impact_confirm standard "ERASE BOTH <prov> and <cons> …"`. **ONE report, ONE question, both sites
 named.** Strength is `standard`, not `typed`, by lib/impact.sh's own definition — a verified golden
 cut survives the wipe, so a recovery path exists; `typed` is reserved for destroying the LAST
@@ -3485,7 +3485,7 @@ against the stashed pre-fix files: 7 call sites, exactly the set the programme p
    mode, with the new code half-deployed and both consent gates open. Rewritten to
    `pl stg2live nwc --code-only` (rehearse with `--dry-run` first), which is the verb that actually
    carries `--code-only`, the fail-closed PROFILE-CHANGE GUARD, the pre-deploy webroot snapshot and
-   the ADR-0031 pair ordering.
+   the NWP-ADR-0031 pair ordering.
 2. **Five root scripts were deleted; six guides never noticed.** `./backup.sh`, `./restore.sh`,
    `./dev2stg.sh`, `./stg2prod.sh`, `./report.sh` — verified absent. 118 invocations across
    training-booklet, developer-workflow, working-with-claude-securely, migration-sites-tracking,
@@ -3502,7 +3502,7 @@ against the stashed pre-fix files: 7 call sites, exactly the set the programme p
 5. **The instruction printed while a live site is dark was raw ssh.** 7 `print_error` call sites in
    `stg2live.sh` / `live2prod.sh` / `stg2prod.sh` told the operator to run
    `sudo -u www-data …/vendor/bin/drush … sset system.maintenance_mode 0` on the host — bypassing the
-   ADR-0028 deploy gate, the `live.enabled` flag and the rollback ledger, at the one moment the
+   NWP-ADR-0028 deploy gate, the `live.enabled` flag and the rollback ledger, at the one moment the
    operator is least likely to argue. `lib/moodle-deploy.sh` already did it right; the Drupal path
    was the outlier.
 
@@ -3548,7 +3548,7 @@ the 118 live invocations through, because it could not distinguish a proposal fr
 ### Decision: `pl drush` for the live tier; `pl rollback` for prod — and NO pl VERB said out loud
 
 The four `stg2live` recovery strings became `pl drush <site> --tier=live --execute -- …`. Correct and
-complete: that verb exists, is dry-run by default, honours `live.enabled` and calls the ADR-0028 gate.
+complete: that verb exists, is dry-run by default, honours `live.enabled` and calls the NWP-ADR-0028 gate.
 
 The prod-tier strings (`live2prod`, `stg2prod`) could **not** take the same treatment: `pl drush` is
 `stg|live` only, and the v2 site schema carries no `production:` block at all (`live2prod.sh`'s
@@ -3669,7 +3669,7 @@ no CI job can see cannot be observed to be wrong — which is exactly how this o
 
 So `pair_scan` now reads, in order: (0) `pairs/*.pair-contract.yml` `provider:`/`consumer:` —
 **source of truth**; (1) `sites/<site>/.nwp.yml` `paired_with:`; (2) `nwp.yml`
-`sites.<site>.paired_with`. This is ADR-0031 D2 ("the CONTRACT, not the pair, is the versioned
+`sites.<site>.paired_with`. This is NWP-ADR-0031 D2 ("the CONTRACT, not the pair, is the versioned
 artifact") carried through to the choke-point instead of stopping at the doc. Sources 1 and 2 stay
 honoured — `ssd` uses one — and must **agree**; disagreement is ambiguity.
 
@@ -4227,7 +4227,7 @@ The premise that "the D5 guard will refuse an ssd deploy until nwd is recorded a
 turned out to be **false, and in the worse direction**. `pair_guard` resolves membership via
 `yaml_get_site_field <site> paired_with` against the **global `nwp.yml`** — and no site in
 the fleet declares it. `pl pair check ssd live` returned **ALLOW** before anything was
-recorded: the guard was not satisfied, it was inert. ADR-0031's D5 ordering and D6
+recorded: the guard was not satisfied, it was inert. NWP-ADR-0031's D5 ordering and D6
 identity-coupling refusals were firing for nobody.
 
 We recorded the provider (true: the issuer is provisioned and serving), then **armed** the
@@ -4237,7 +4237,7 @@ directions rather than asserting it:
 | state | `pl pair check ssd live` |
 |---|---|
 | armed, provider recorded @ cv3 | **ALLOW** |
-| armed, provider record hidden  | **REFUSE** — "provider must promote first (ADR-0031 D5)" |
+| armed, provider record hidden  | **REFUSE** — "provider must promote first (NWP-ADR-0031 D5)" |
 | armed, record restored         | **ALLOW** |
 
 **Left for the operator, deliberately:** the same inertness covers the *real* `ssc↔nwc`
@@ -4295,7 +4295,7 @@ paired reset that quietly resets one half.
 
 That gap is not cosmetic, and tonight demonstrated it: nwd is reset nightly and ssd is not,
 so the next tick deletes nwd uid=21 while ssd keeps `idnumber=f7fb7bcd-…` pointing at it —
-a severed UID-lock, exactly the both-or-forward hazard ADR-0031 D9 names. On this pair it
+a severed UID-lock, exactly the both-or-forward hazard NWP-ADR-0031 D9 names. On this pair it
 is survivable (`uid_lock: false`, throwaway users, a fresh code makes a fresh pair) but the
 demo tier is where that machinery is supposed to be proven.
 

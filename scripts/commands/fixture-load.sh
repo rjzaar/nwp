@@ -2,7 +2,7 @@
 set -uo pipefail
 ################################################################################
 # pl fixture-load — load a sanitised Moodle fixture bundle into a dev/stg site
-# (ADR-0032 Flow A, consumer glue). Runs on the DEV/STG tier, NEVER on prod.
+# (NWP-ADR-0032 Flow A, consumer glue). Runs on the DEV/STG tier, NEVER on prod.
 #
 # Composes the tested loader core (lib/moodle-fixture-load.sh) with the
 # environment steps it deliberately leaves out: FETCH the bundle over HTTPS with

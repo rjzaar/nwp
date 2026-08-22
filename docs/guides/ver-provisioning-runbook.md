@@ -11,12 +11,12 @@
 > *why*. Roles per [`role-vocabulary.md`](../reference/role-vocabulary.md);
 > resolve any role to your concrete box with `pl host ver` (private
 > instance manifest — bare hostnames never appear in-repo).
-> **ADRs:** ADR-0024 (deploy authority — runner-resident model canonical per
-> ops#28), ADR-0025 (custodian-pull backups), ADR-0026 (the `nwp-server`
-> capability agent; renumbered from a duplicate ADR-0024 — lands with MR !28),
-> ADR-0022 (AI-free build split).
+> **ADRs:** NWP-ADR-0024 (deploy authority — runner-resident model canonical per
+> ops#28), NWP-ADR-0025 (custodian-pull backups), NWP-ADR-0026 (the `nwp-server`
+> capability agent; renumbered from a duplicate NWP-ADR-0024 — lands with MR !28),
+> NWP-ADR-0022 (AI-free build split).
 
-> **⚠ AMENDED BY [ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md) (2026-07-09).**
+> **⚠ AMENDED BY [NWP-ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md) (2026-07-09).**
 > ver is now a **single-operator desktop workstation running the full `pl`
 > surface**, with **browser-based AI allowed** (read-only, human-gated — **no live
 > AI agent / loop / MCP on the box**). This supersedes §2's "minimal server / no
@@ -44,7 +44,7 @@
 | 7 | Sealed keystore + escrow (`ver-seal-keystore.sh`) | **AI-PREPARED** script, **OPERATOR + HARDWARE** run | token touch per unseal |
 | 8 | Issue the one-way keys (`ver-provision.sh issue-keys`) | **AI-PREPARED** script, **OPERATOR** registers public halves | registration = browser session with WebAuthn |
 | 9 | WireGuard 1:1 tunnel(s) | **OPERATOR** (template provided) | private keys generated per-side, never transported |
-| 10 | First backup pull + smoke tests | **OPERATOR** (scripts do the work) | first run is supervised by policy (ADR-0025) |
+| 10 | First backup pull + smoke tests | **OPERATOR** (scripts do the work) | first run is supervised by policy (NWP-ADR-0025) |
 
 Everything marked AI-PREPARED exists on branch `feat/ops25-ver-provision`:
 `scripts/ver-provision/` (4 scripts + pins example), `templates/ver-*.tmpl`,
@@ -52,7 +52,7 @@ this runbook.
 
 > **⚠ Connectivity decision needed (flagged on ops#25).** The issue's first
 > checkbox says "join `ver` to the tailnet", but the threat model (CLAUDE.md)
-> and ADR-0017/0025 say the opposite: **`ver` never joins the mesh** — it is
+> and NWP-ADR-0017/0025 say the opposite: **`ver` never joins the mesh** — it is
 > offline by default and goes online only per session, via (a) outbound
 > HTTPS to `<gitlab-host>` for bundle pulls and (b) the dedicated 1:1
 > WireGuard tunnel per prod host for backup drains, ideally over a hotspot /
@@ -86,7 +86,7 @@ signature per restic's docs). The kit build fails closed without pins.
 ## 2. On `ver` — base OS + posture  *(OPERATOR)*
 
 - [ ] Current Ubuntu/Debian install, **full-disk encryption** (LUKS; ideally
-      Solo-touch unlock via `systemd-cryptenroll --fido2-device`). **Per ADR-0028 a
+      Solo-touch unlock via `systemd-cryptenroll --fido2-device`). **Per NWP-ADR-0028 a
       desktop is fine** (operator workstation) and a **browser is permitted** for
       reference/AI — but **no live AI agent, loop, or MCP server** ever runs on the
       box, and the full `pl` checkout is expected (`cd ~/nwp`). ("No AI on ver" =
@@ -125,7 +125,7 @@ it off the other screen; the key is public, only its *authenticity* matters.
 
 ## 4. Solo enrollment checklist  *(OPERATOR + HARDWARE)*
 
-> **ADR-0028 (2026-07-09) supersedes the K/W split below.** Both tokens are now
+> **NWP-ADR-0028 (2026-07-09) supersedes the K/W split below.** Both tokens are now
 > **WebAuthn** tokens: **Solo W** (primary carry) + **Solo W2** (independently
 > enrolled backup — FIDO2 keys can't be cloned, so register W2 *separately* on
 > GitLab, it is not a copy). Do the **Solo W** subsection for *both* (label the
@@ -134,7 +134,7 @@ it off the other screen; the key is public, only its *authenticity* matters.
 > part-built Solo K, **factory-reset it** and re-enrol it as Solo W. Full operator
 > steps: [`ver-soloW-setup-walkthrough.md`](ver-soloW-setup-walkthrough.md).
 
-### Solo K — the keystore token (stays with `ver`)  *(DEFERRED per ADR-0028 — skip for the deploy-half fast path)*
+### Solo K — the keystore token (stays with `ver`)  *(DEFERRED per NWP-ADR-0028 — skip for the deploy-half fast path)*
 
 - [ ] Physically label it `K` (tape/engrave).
 - [ ] Set a FIDO2 PIN (8+ digits, in the vault):
@@ -152,7 +152,7 @@ it off the other screen; the key is public, only its *authenticity* matters.
 ### Solo W — the WebAuthn token (your carry token)
 
 This one is **the linchpin precondition for the canonical runner-resident
-ADR-0024**: production deploy authority = the right to merge / run the ▶ job in
+NWP-ADR-0024**: production deploy authority = the right to merge / run the ▶ job in
 GitLab, and that right must live **only** in a WebAuthn session — never in a
 token file on any AI-reachable machine.
 
@@ -169,7 +169,7 @@ token file on any AI-reachable machine.
 - [ ] **Linchpin sweep (pairs with this):** confirm no `api`-/`Maintainer`-scope
       GitLab token exists on any AI-reachable machine — bot tokens are
       Developer/`read_repository` only (`pl secrets check` covers the
-      registry-known ones; the ADR-0024 admin-PAT downscope decision is still
+      registry-known ones; the NWP-ADR-0024 admin-PAT downscope decision is still
       open — see the linchpin memory/ops notes).
 - [ ] Only after all of the above may the protected `prod-deploy` runner work
       proceed (separate issue; not part of ops#25).
@@ -239,7 +239,7 @@ Generate each side's keypair **on that side**; exchange only public keys.
       read-only sftp prompt rooted at the repo parent — try `put`; it must fail);
       `wg-quick down verprod<N>`.
 
-## 8. First backup, end to end  *(OPERATOR; supervised first run per ADR-0025)*
+## 8. First backup, end to end  *(OPERATOR; supervised first run per NWP-ADR-0025)*
 
 ```bash
 # on the prod host (the nwp-server artifact is already deployed there):
@@ -282,5 +282,5 @@ the tunnel down on every exit path**.
 
 - [`ver-setup.md`](ver-setup.md) — concepts, trust posture, smoke-test table
 - [`nwp-single-machine.md`](nwp-single-machine.md) — the same build as the minimal one-machine install
-- ADR-0017 · ADR-0022 · ADR-0024 · ADR-0025 · ADR-0026 (post-MR !28 numbering)
+- NWP-ADR-0017 · NWP-ADR-0022 · NWP-ADR-0024 · NWP-ADR-0025 · NWP-ADR-0026 (post-MR !28 numbering)
 - `scripts/ver-provision/` — the four scripts this runbook drives

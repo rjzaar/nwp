@@ -36,7 +36,7 @@ refusal is a safety feature, not a bug.
 |-------|----------------|--------|
 | **Canonical content guard** | that pushing a database outward will not overwrite content that real people created on the server (ops#33) | `canonical_guard_content_push()` |
 | **Maturity guard** | that the site's code-flow class permits this deploy (P67/ops#48) | `maturity_guard_deploy()` |
-| **Pair guard** | that a paired site's ordering and identity-lock rules are respected (ADR-0031/ops#75) | `pair_guard()` |
+| **Pair guard** | that a paired site's ordering and identity-lock rules are respected (NWP-ADR-0031/ops#75) | `pair_guard()` |
 | **Pre-deploy snapshot** | that a full webroot snapshot was taken **before** the destructive `rsync --delete`. **Fail-closed** — if the snapshot cannot be taken, the deploy stops | — |
 | **Maintenance mode** | that maintenance mode was actually switched on. **Fail-closed** — if switching it on fails, the deploy aborts *before* `rsync --delete`, not after | — |
 
@@ -47,7 +47,7 @@ deploy continue, which could delete files with no recoverable snapshot.
 
 | Option | What it does | Ledger |
 |--------|--------------|--------|
-| `--code-only` | Deploy code and configuration only; do **not** push the database. This is the correct shape for any site whose real content lives on the server, and it satisfies the identity-lock rule for paired sites (ADR-0031 D6). | — |
+| `--code-only` | Deploy code and configuration only; do **not** push the database. This is the correct shape for any site whose real content lives on the server, and it satisfies the identity-lock rule for paired sites (NWP-ADR-0031 D6). | — |
 | `--override-canonical` | Push content even though the site is not canonical `dev`. **Overwrites the canonical content source.** | `private/canonical/<site>.log` |
 | `--override-pair` | Proceed past a paired-site guard — wrong ordering, the identity-lock rule, or a red pair. | `private/pairs/<pair>.log` |
 | `--override-snapshot` | Proceed with the destructive `rsync --delete` even though the pre-deploy webroot snapshot could not be taken. **The deletion is then UNRECOVERABLE.** | `private/snapshots/<site>.log` |

@@ -1,15 +1,15 @@
-# ADR-0039: Instance names and instance state live in private overlay repos; the engine ships only the sample pair
+# NWP-ADR-0039: Instance names and instance state live in private overlay repos; the engine ships only the sample pair
 
 **Status:** Accepted
 **Date:** 2026-08-10
 **Decision Makers:** Robert Zaar (operator ruling 2026-08-09, recorded on nwp/ops#326)
 **Related Issues:** nwp/ops#326, nwp/ops#101
-**Amends:** [ADR-0036](0036-site-classes-and-invariant-sets.md) in part — the
+**Amends:** [NWP-ADR-0036](0036-site-classes-and-invariant-sets.md) in part — the
 "tracked = in the engine repo" premise.
-**Supersedes in part:** the withdrawal rationale of ADR-0021 (public-only repo
+**Supersedes in part:** the withdrawal rationale of NWP-ADR-0021 (public-only repo
 scope), which relied on a leakage gate that never covered *site names*.
-**Relates to:** [ADR-0031](0031-paired-site-versioning-and-promotion.md),
-[ADR-0037](0037-review-mode-follows-approvers.md) (the projection precedent),
+**Relates to:** [NWP-ADR-0031](0031-paired-site-versioning-and-promotion.md),
+[NWP-ADR-0037](0037-review-mode-follows-approvers.md) (the projection precedent),
 F33 §10 (the phased move-out this revives).
 
 ## Context
@@ -42,7 +42,7 @@ engine:
 The naïve fix (gitignore it all) collides head-on with two doctrines that are
 **both correct**:
 
-- **ADR-0036 reviewability:** "A claim that decides whether the Art.9 consent
+- **NWP-ADR-0036 reviewability:** "A claim that decides whether the Art.9 consent
   gate applies to a live formation site has to be reviewable in a merge
   request." Gitignoring a class declaration makes it unreviewable.
 - **The 2026-07-25 versioning lesson:** load-bearing host state that lives only
@@ -75,7 +75,7 @@ not "tracked in the engine repo".**
 
 4. **The engine's CI must never need a private fact.** Where it seems to,
    either the check belongs to the overlay, or the fact deserves a
-   *projection* (the `.nwp-review-mode` pattern from ADR-0037). Applied: the
+   *projection* (the `.nwp-review-mode` pattern from NWP-ADR-0037). Applied: the
    CI boundary and key-rotation jobs run against the **sample** pair contract;
    nginx capture-hygiene runs against a **shipped fixture** plus the real
    capture when a checkout has one.
@@ -100,7 +100,7 @@ not "tracked in the engine repo".**
 - The public mirror stops disclosing instance names and infrastructure identity
   as new work lands; the baseline holds the remaining debt and can only shrink.
 - Reviewability is preserved, not traded away: overlay repos have their own MRs,
-  which in solo mode (ADR-0037) is a click, not a process.
+  which in solo mode (NWP-ADR-0037) is a click, not a process.
 - The versioning lesson is preserved: `pl doctor` now asks the *stronger*
   question — is `servers/<host>/` a repo, with a remote, pushed and clean? — and
   a host directory holding state with no repo is a named failure rather than a
@@ -124,7 +124,7 @@ not "tracked in the engine repo".**
 
 | Alternative | Why not |
 |---|---|
-| Gitignore instance state, full stop | Breaks ADR-0036 reviewability and re-creates the 2026-07-25 "versioned only if someone remembers" gap. |
+| Gitignore instance state, full stop | Breaks NWP-ADR-0036 reviewability and re-creates the 2026-07-25 "versioned only if someone remembers" gap. |
 | Move the files to `private/servers/<host>/` | Every verb that reads `servers/<host>/…` would need repointing, and several read the path directly with no override. Moving the *repo boundary* costs nothing; moving the *path* costs everything. |
 | A tracked deny-list, or a hashed one | The list would be the leak. Short lowercase names fall to dictionary attack in milliseconds. |
 | Per-name rows in the baseline | Index churn, and post-scrub the rows would still group files by which unknown name they shared — a re-identification aid. |

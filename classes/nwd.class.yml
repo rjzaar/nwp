@@ -1,4 +1,4 @@
-# classes/nwd.class.yml — site class declaration (ADR-0036 / ops#162 / ops#234)
+# classes/nwd.class.yml — site class declaration (NWP-ADR-0036 / ops#162 / ops#234)
 # TRACKED on purpose: nwp.yml is never committed and sites/* is gitignored, so
 # neither can carry a claim a reviewer needs to see.
 #

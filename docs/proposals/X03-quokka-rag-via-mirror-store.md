@@ -35,7 +35,7 @@ question is **where the corpus and the index should live**. The `ai-host`
 with the existing voice/coding LLM tenants for disk and compute.
 
 The `mirror-store` role (CPU-heavy, large-disk, always-on, F24 Phase 1)
-is the designated home-compute tier per ADR-0017 and already serves as
+is the designated home-compute tier per NWP-ADR-0017 and already serves as
 NWP's tree mirror. It has enormous headroom for an index and indexer.
 
 ### 1.2 Proposed solution
@@ -71,7 +71,7 @@ Network overhead is ~10–30 ms per query over LAN or Headscale. The voice
 pipeline is already 2–4 seconds per turn (whisper + ollama + piper); the
 RAG round-trip is imperceptible inside it.
 
-### 1.3 Relationship to X02, F24, and ADR-0017
+### 1.3 Relationship to X02, F24, and NWP-ADR-0017
 
 - **X02** shipped Phase 0 (direct-mic push-to-talk) ahead of X03. X03 is
   additive: a new step in the existing voice-agent loop. It does not
@@ -81,7 +81,7 @@ RAG round-trip is imperceptible inside it.
   X03 generalises that pattern to "everything the operator authors,"
   with the same `git fetch + merge --ff-only` contract where a canonical
   remote exists and a bounded rsync fallback where it doesn't.
-- **ADR-0017** names the `mirror-store` as the home-compute tier and the
+- **NWP-ADR-0017** names the `mirror-store` as the home-compute tier and the
   `ai-host` as the day-to-day agent tier. Both are AI-capable, neither
   has prod access. A RAG service on `mirror-store` serving the `ai-host`
   is entirely within the existing trust boundary — no new paths cross
@@ -187,7 +187,7 @@ No network dependency.
 - Indexing and re-embedding on the `ai-host` would compete with Ollama
   for CPU / iGPU time and degrade the voice agent's first-token latency
   — the thing X02 explicitly budgets for.
-- The `ai-host` is the day-to-day agent tier (ADR-0017); adding
+- The `ai-host` is the day-to-day agent tier (NWP-ADR-0017); adding
   "always-on indexer" as another tenant muddies its role and couples
   voice-loop availability to indexer health.
 
@@ -449,7 +449,7 @@ query stats, fallback rates.
 - **F21: Distributed Build/Deploy Pipeline** — defines the `ai-host`
   and `mirror-store` roles
 - **F24: NWP Tree Mirror** — the mirror pattern this proposal extends
-- **[ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** — trust boundaries this proposal inherits
+- **[NWP-ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** — trust boundaries this proposal inherits
 - **[CLAUDE.md § Threat Model](../../CLAUDE.md)** — local-first inference
   rule this proposal complies with
 

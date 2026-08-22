@@ -1,4 +1,4 @@
-# ADR-0004: Two-Tier Secrets Architecture
+# NWP-ADR-0004: Two-Tier Secrets Architecture
 
 **Status:** Accepted
 **Date:** 2026-01-08

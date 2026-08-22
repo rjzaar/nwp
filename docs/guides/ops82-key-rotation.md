@@ -3,7 +3,7 @@
 **Scope:** rotating the nwc (Drupal / `simple_oauth`) OIDC signing keypair without
 breaking the ssc (Moodle) SSO pair. `ver` role-vocab; no real prod domain
 (`<example-prod-domain>`); no secrets are printed. Pairs with
-`pairs/ssc.pair-contract.yml` (`oidc.key_rotation`) and ADR-0031.
+`pairs/ssc.pair-contract.yml` (`oidc.key_rotation`) and NWP-ADR-0031.
 
 > This document describes the LIVE rotation procedure. Do **not** run it as part of
 > ops#82 — ops#82 is design + a read-only behaviour check; the working F26 SSO is
@@ -336,7 +336,7 @@ corollary. Assert on the JWKS modulus.
 |---|---|
 | `nwd → ssd` demo, `*.<example-test-domain>` test tier | AI-runnable (A14 test-tier scope). This is the rehearsal path. |
 | Real `nwc → ssc` **live** | **Operator.** A rotation invalidates issued tokens; run it in a change window with a human present. |
-| Real **prod** | **Operator + offline-deploy-host gated.** Prod writes go through the offline deploy host (role vocab; see ADR-0017) under hardware-token presence; no AI-accessible machine holds a key that reaches prod. Nothing in this runbook may be executed against prod from an AI-run host — the AI half stops at producing the signed change and the go/no-go evidence. |
+| Real **prod** | **Operator + offline-deploy-host gated.** Prod writes go through the offline deploy host (role vocab; see NWP-ADR-0017) under hardware-token presence; no AI-accessible machine holds a key that reaches prod. Nothing in this runbook may be executed against prod from an AI-run host — the AI half stops at producing the signed change and the go/no-go evidence. |
 
 The read-only steps (§1, §3 verification, §8 step 1, `pl contracts key-rotation`,
 `pl pair smoke`, `pl link verify`) are safe to run anywhere and are the AI's half of the

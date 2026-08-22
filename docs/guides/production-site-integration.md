@@ -1344,5 +1344,5 @@ All scripts live in the NWP repo and are copied to their target machines:
 - [verifier-operations.md](./verifier-operations.md) -- verifier deploy procedures (site-specific)
 - [verifier-mayo-bootstrap.md](./verifier-mayo-bootstrap.md) -- Initial bootstrap (superseded by verifier-operations.md)
 - [migration-workflow.md](./migration-workflow.md) -- Content migration from other platforms
-- [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) -- F21 pipeline architecture
+- [NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) -- F21 pipeline architecture
 - [F21 proposal](../proposals/F21-distributed-build-deploy-pipeline.md) -- Implementation plan with phase status

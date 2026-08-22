@@ -22,7 +22,7 @@
 #
 # An env var that names a file wins over the local default. Neither readable
 # (or an empty/malformed list) → exit 2 CANNOT VERIFY, never exit 0 — the
-# ADR-0037 direction: "I could not read the policy" must never look like a
+# NWP-ADR-0037 direction: "I could not read the policy" must never look like a
 # pass. The CI job surfaces exit 2 as a visible non-pass (see .gitlab-ci.yml).
 #
 # DENY-LIST FORMAT (one entry per line; blank lines and # comments ignored):

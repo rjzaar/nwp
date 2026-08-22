@@ -45,9 +45,9 @@ ecosystem practice (web-verified), (D) governance/ADR grounding.
    (update text without re-consent) worth copying. Imported content under moderation
    defaults to draft unless a state is set — so "enters as draft for local review" is the
    natural, supported behavior when we want it.
-5. **Governance already decided more than the code implements** (agent D): ADR-0014 —
+5. **Governance already decided more than the code implements** (agent D): NWC-ADR-0014 —
    seed content is not privileged; it's authored content that went through the pipeline
-   *upstream during authoring*. ADR-0001 — forks replace the "particulars" (legal text,
+   *upstream during authoring*. NWC-ADR-0001 — forks replace the "particulars" (legal text,
    branding, demo) and own their editorial authority entirely; no cross-federation
    editorial body exists. Explicit gaps: no decision on install-time approval state; no
    ADR for the reconsent design; `FORK_GUIDE.md` referenced by three ADRs but unwritten;
@@ -57,22 +57,22 @@ ecosystem practice (web-verified), (D) governance/ADR grounding.
 
 The unifying principle — **review happens where authorship happens; installation is not
 authorship.** Upstream's editorial pipeline reviewed the content before it shipped
-(ADR-0014); the receiving site's pipeline governs what happens to it *after* it lands.
+(NWC-ADR-0014); the receiving site's pipeline governs what happens to it *after* it lands.
 Push-updates in place are forbidden; updates arrive as drafts for local review.
 
 | Class | Examples | Install-time | Post-install updates | Provenance |
 |---|---|---|---|---|
 | **1. Structure** | vocabularies, destination terms, guild groups/taxonomies | hook_install / config as today — active immediately (structure, not editorial content) | config updates via hook_update_N as today | logger only (fine) |
 | **2. Canonical governed documents** | legal texts (Terms/Privacy/AUP/CC0); later: covenant/charter *canonical* texts | versioned entity minted from the site's OWN canonical source (see §3 — the module ships TEMPLATES, not our texts) | new version = new revision + re-consent (minor-change flag skips re-consent); on the authoring site, versions come FROM the editorial pipeline | version + change_summary + effective_date in entity fields (not log-string parsing) |
-| **3. Editorial content** | help book, course/session content, authored charter prose | recipe `content/` dirs, UUID-keyed, **published**, provenance-stamped — the reviewed output of upstream's pipeline (ADR-0014); a fresh site must be usable (a draft Help book that 404s serves no one) | NEVER updated in place. Updates ship as new draft revisions (hook_update_N / drush verb; later Entity Share pull) entering the receiving site's workflow; local edits always win (skip-if-modified) | import manifest: package version + UUID set + content hash recorded in state at import |
+| **3. Editorial content** | help book, course/session content, authored charter prose | recipe `content/` dirs, UUID-keyed, **published**, provenance-stamped — the reviewed output of upstream's pipeline (NWC-ADR-0014); a fresh site must be usable (a draft Help book that 404s serves no one) | NEVER updated in place. Updates ship as new draft revisions (hook_update_N / drush verb; later Entity Share pull) entering the receiving site's workflow; local edits always win (skip-if-modified) | import manifest: package version + UUID set + content hash recorded in state at import |
 | **4. Fixtures** | nwc_demo, nwc_devel sample content, test generators | hook_install on demo/devel recipes only — never canonical sites (site-mode guard as built) | none — reset/cleanup verbs instead | site-mode stamp + per-entity notes (as built) |
 
-**Install-time approval state — the decision ADR-0014 left open:** shipped Class-3
+**Install-time approval state — the decision NWC-ADR-0014 left open:** shipped Class-3
 content installs **published**, because upstream review already happened and the package
 version + manifest records exactly what was shipped. The receiving site's editorial
 authority is exercised over (a) whether to apply the recipe at all (tiers are opt-in),
 (b) every subsequent update (drafts), and (c) local divergence (their edits are never
-overwritten). For a fork this matches ADR-0001: the gift transfers; they own it.
+overwritten). For a fork this matches NWC-ADR-0001: the gift transfers; they own it.
 
 ## 3. Class 2 in detail — the nwc_copyright resolution (the trigger case)
 
@@ -87,7 +87,7 @@ never shipped as live text):
 2. **Fail-closed template gate:** `DataPolicySync` REFUSES to sync any document whose
    metadata says `template: true` — it logs "replace with your own legal text" instead of
    enforcing consent to a placeholder. A fresh operator literally cannot ship our (or
-   blank) legal texts live. This makes ADR-0001's "fork must replace the particulars"
+   blank) legal texts live. This makes NWC-ADR-0001's "fork must replace the particulars"
    mechanical instead of aspirational.
 3. Our real texts move per-site (editing home stays `~/central/legal` + sync.sh, which is
    already the workflow), pointed at by `canonical_dir` in settings.local.php — same
@@ -208,7 +208,7 @@ must describe YOUR actual practice; statute citations can't be find/replaced).
 ## 5. What this deliberately does NOT do
 
 - No forced local re-review of shipped content at install (rejected: breaks fresh-site
-  usability, contradicts ADR-0014's "reviewed upstream", and the ecosystem has no
+  usability, contradicts NWC-ADR-0014's "reviewed upstream", and the ecosystem has no
   precedent); the workflow bite-point is updates + local divergence.
 - No content signing per-entity (no Drupal prior art) — provenance rides the already-
   signed package (minisign chain) + the import manifest.

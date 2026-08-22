@@ -45,7 +45,7 @@ CONTRACT="$(demo_pair_contract_for "$SITE")" || {
 
 # Demo-tier only. Minting a token for a member account on a real pair is not a
 # probe, it is impersonation. Keyed off the contract's declared demo flag, not
-# the site name (ADR-0036).
+# the site name (NWP-ADR-0036).
 if [[ "$(demo_pair_get "$CONTRACT" '.demo.enabled' 'false')" != "true" ]]; then
     print_error "REFUSED: $CONTRACT does not declare demo.enabled: true."
     print_error "This probe mints an access token for an account. That is a DEMO-tier"

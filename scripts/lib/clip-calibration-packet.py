@@ -15,7 +15,7 @@ assessor. Handing that same file to three people would silently break two things
    rater therefore gets their own seed.
 2. **Anti-self-review has nowhere to live.** `media-guild.yml` declares
    `pairing.anti_self_review: true # pair never includes the task author
-   (ADR-0006)`, and P75 3.1 measured it as NOT BUILT ("grep returns nothing").
+   (NWP-ADR-0006)`, and P75 3.1 measured it as NOT BUILT ("grep returns nothing").
    An exclusion applied at RENDER time still ships the item; applied at BUILD
    time the item is not in the rater's packet at all.
 
@@ -44,7 +44,7 @@ afterwards — not perfect at the human.
 RIGHTS (P78 6) — ENFORCED, NOT REQUESTED
 ----------------------------------------
 The `.md` carries <=600-character excerpts of a `derivative-cleared-pending`,
-password-gated corpus, and `nwp/nwp` is publicly mirrored (ADR-0039). This
+password-gated corpus, and `nwp/nwp` is publicly mirrored (NWP-ADR-0039). This
 builder REFUSES to write a member-facing document anywhere inside the engine
 repository. The join map and the answers template carry no corpus TEXT — but the
 join map carries the withheld `lp_id`, so "no corpus text" is not the same as
@@ -71,7 +71,7 @@ Usage:
                              [--exclusions=<json>] [--min-items=N] [--json]
 
   --exclusions  {"rater_id": ["A1.01", "B2.03"], ...}  learning points that
-                rater authored or suggested a candidate for (ADR-0006).
+                rater authored or suggested a candidate for (NWP-ADR-0006).
 """
 import collections
 import hashlib
@@ -248,7 +248,7 @@ def main():
     for label, d in (("--out", dest), ("--keys-out", keys)):
         if d == repo or d.startswith(repo + os.sep):
             die("REFUSED: %s %s is inside the engine repository (%s), which is "
-                "publicly mirrored (ADR-0039). A calibration packet carries "
+                "publicly mirrored (NWP-ADR-0039). A calibration packet carries "
                 "<=%d-character excerpts of a derivative-cleared-pending corpus, "
                 "and the join map carries the learning-point addresses the "
                 "packet withholds. Neither may be written there (P78 6). Write "

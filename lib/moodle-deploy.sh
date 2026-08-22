@@ -852,7 +852,7 @@ moodle_plugin_version_local() {
 }
 
 ################################################################################
-# PER-TREE PLUGIN LOCKFILE (ops#73 / ADR-0031 D4 — "lock flows up")
+# PER-TREE PLUGIN LOCKFILE (ops#73 / NWP-ADR-0031 D4 — "lock flows up")
 #
 # The Moodle analogue of composer.lock: for each plugin `pl moodle plugin
 # deploy --apply` ships to a tier, record WHAT shipped (version.php version +

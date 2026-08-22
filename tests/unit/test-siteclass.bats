@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# ADR-0036 / nwp/ops#153, ops#154 — per-site CLASS and the evidenced-N/A rule.
+# NWP-ADR-0036 / nwp/ops#153, ops#154 — per-site CLASS and the evidenced-N/A rule.
 #
 # THE DEFECT UNDER TEST
 #   `pl moodle gate-status rgs` reports mod/depthcontent [UNGATED]. The gate
@@ -571,7 +571,7 @@ PHP
 # ops#326: the private overlay — instance declarations resolve from
 # private/classes/ AFTER the shipped classes/; a site declared in BOTH is
 # contradictory and fails closed. Reviewability is preserved because private/
-# is its own reviewed git repo (ADR-0039 shape).
+# is its own reviewed git repo (NWP-ADR-0039 shape).
 # =============================================================================
 
 @test "ops#326: a declaration in the private overlay resolves (search path)" {

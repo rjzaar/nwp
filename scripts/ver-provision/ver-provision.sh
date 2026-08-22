@@ -2,7 +2,7 @@
 set -euo pipefail
 ################################################################################
 # ver-provision.sh — one-shot, idempotent provisioning the OPERATOR runs ON `ver`
-# (the offline signed-deploy verifier + DR-backup custodian; ops#25, ADR-0025).
+# (the offline signed-deploy verifier + DR-backup custodian; ops#25, NWP-ADR-0025).
 #
 # Ships inside the signed ver-kit (see prepare-ver-kit.sh). Self-contained: no
 # nwp checkout, no repo libs, no network. Fail-closed throughout: nothing is
@@ -29,7 +29,7 @@ set -euo pipefail
 #                 sanitize → fail-closed PII gate → write-only-token upload,
 #                 validated 2026-07-02; nwp/ops#23).
 #
-# Credential ledger this provisions on `ver` (ADR-0024/0025/0026):
+# Credential ledger this provisions on `ver` (NWP-ADR-0024/0025/0026):
 #   1. bundle-pull  (read-only)   pull signed bundles from the artifact host
 #   2. restic-pull  (read-only)   drain prod's local restic repo over the 1:1
 #                                 WireGuard tunnel (forced-command, sftp -R)
@@ -160,7 +160,7 @@ do_issue_keys(){
   echo
   if [ "$WITH_PUBLISH" = y ]; then
     echo "3. sanitized-publish → deploy key with WRITE access on the sanitized-"
-    echo "   artifact project ONLY (write-only-to-its-own-repo; ADR-0024 ledger):"
+    echo "   artifact project ONLY (write-only-to-its-own-repo; NWP-ADR-0024 ledger):"
     echo
     sed 's/^/     /' "$KEYS/sanitized-publish_ed25519.pub"
     echo
@@ -183,7 +183,7 @@ do_check(){
   done
   [ -f "$PUB" ] && c_ok "pinned minisign pubkey present" || { c_err "pinned pubkey missing: $PUB"; fail=1; }
 
-  # No PAT-shaped or api-scope token may exist on this host (the ADR-0024
+  # No PAT-shaped or api-scope token may exist on this host (the NWP-ADR-0024
   # linchpin, applied to ver). glpat-/glrt-/glsoat- are GitLab token prefixes.
   local hits
   hits="$(grep -rlE 'gl(pat|rt|soat)-[A-Za-z0-9_-]{10,}' "$ETC" /root/.config /root/.ssh /home/*/.config /home/*/.ssh 2>/dev/null || true)"

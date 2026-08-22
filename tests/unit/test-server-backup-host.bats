@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# `nwp-server backup --host` + lib/server-backup-host.sh — the BOX scope (ADR-0025).
+# `nwp-server backup --host` + lib/server-backup-host.sh — the BOX scope (NWP-ADR-0025).
 #
 # WHAT THESE PIN, AND WHY THEY ARE THE TESTS THEY ARE
 #

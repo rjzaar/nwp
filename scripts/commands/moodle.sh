@@ -529,7 +529,7 @@ cmd_plugin_deploy() {
         i=$((i+1))
     done
 
-    # 6. deploy gate (ADR-0028 solo-touch) — skipped on dry-run (nothing written)
+    # 6. deploy gate (NWP-ADR-0028 solo-touch) — skipped on dry-run (nothing written)
     if [ "$mode" = "apply" ] && [ "$tier" = "live" ]; then
         deploy_gate_require "$BASE" "live" "rsync ${#plugins[@]} Moodle plugin dir(s) → live webroot (per-plugin --delete)" || return 1
     fi
@@ -691,7 +691,7 @@ cmd_plugins_sync() {
         print_info "The live half is NOT reimplemented here. Run:"
         print_info "  pl moodle plugin deploy ${BASE} --tier=live $( [ "$mode" = apply ] && echo --apply )"
         print_info "It resolves each plugin from this cache, asserts the Art.9 gate, runs the"
-        print_info "freshness gate, ADR-0028 deploy gate, typed confirm, snapshot and rsync."
+        print_info "freshness gate, NWP-ADR-0028 deploy gate, typed confirm, snapshot and rsync."
     fi
     return 0
 }
@@ -807,7 +807,7 @@ echo PRESENT \$c \$g \$f; fi"
         echo ""
     fi
 
-    # Class-aware verdict (ops#153/ADR-0036): the [UNGATED] rows above are scan
+    # Class-aware verdict (ops#153/NWP-ADR-0036): the [UNGATED] rows above are scan
     # facts and stand as printed; a valid none-stored exemption reclassifies
     # only the verdict — the same siteclass_art9_exempt predicate the deploy
     # gate consults, so status and deploy can never disagree.
@@ -1401,7 +1401,7 @@ cmd_policy() {
 #     support_name:    Saint School Support    # $CFG->supportname
 #     noreply_address: <sitekey>@<estate-domain>          # $CFG->noreplyaddress
 #
-# Report-only by DEFAULT (like `policy`). --apply takes the ADR-0028 deploy
+# Report-only by DEFAULT (like `policy`). --apply takes the NWP-ADR-0028 deploy
 # gate and a typed impact confirm, writes through admin/cli/cfg.php, and then
 # RE-READS every field to verify — a write this verb did not confirm is a
 # failure, not a success.
@@ -2078,7 +2078,7 @@ cmd_plugin_drift() {
 }
 
 ################################################################################
-# plugin lock — report the per-tree plugin lockfile (ops#73 / ADR-0031 D4)
+# plugin lock — report the per-tree plugin lockfile (ops#73 / NWP-ADR-0031 D4)
 #
 #   pl moodle plugin lock <site>
 #
@@ -2110,7 +2110,7 @@ cmd_plugin_lock() {
 # Replaces the hand idiom (scp *.mbz + ssh 'sudo -u www-data php
 # admin/cli/restore_backup.php …' per file) with one verb that keeps the
 # guarantees:
-#   * dry-run DEFAULT; a LIVE --apply takes the ADR-0028 deploy gate and the
+#   * dry-run DEFAULT; a LIVE --apply takes the NWP-ADR-0028 deploy gate and the
 #     typed impact confirm;
 #   * accepts ONLY files named backup-moodle2-course-*.mbz — no traversal, no
 #     symlinks, no shell-hostile names (the names end up in remote commands);
@@ -2406,7 +2406,7 @@ cmd_course_restore() {
         return 0
     fi
 
-    # ---- live gates (ADR-0028 + fate manifest + typed confirm) --------------
+    # ---- live gates (NWP-ADR-0028 + fate manifest + typed confirm) --------------
     if [ "$tier" = "live" ]; then
         deploy_gate_require "$BASE" "live" "restore ${#files[@]} course mbz file(s) into live Moodle via admin/cli/restore_backup.php" || return 1
         impact_reset
@@ -2623,7 +2623,7 @@ cmd_course_restore() {
 #     it back through --apply to undo the run exactly.
 #   * a row whose stored content is already byte-identical is not rewritten at
 #     all, so a second run is a true no-op and does not churn timemodified.
-#   * live additionally takes the ADR-0028 deploy gate, a computed fate
+#   * live additionally takes the NWP-ADR-0028 deploy gate, a computed fate
 #     manifest and a typed confirm.
 ################################################################################
 
@@ -2747,7 +2747,7 @@ cmd_content_sync() {
         return 0
     fi
 
-    # ---- live gates (ADR-0028 + fate manifest + typed confirm) --------------
+    # ---- live gates (NWP-ADR-0028 + fate manifest + typed confirm) --------------
     if [ "$tier" = "live" ]; then
         deploy_gate_require "$BASE" "live" "sync ${count} learning point(s) of depth content into live Moodle" || { rm -f "$payload"; return 1; }
         impact_reset

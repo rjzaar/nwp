@@ -1,4 +1,4 @@
-# ADR-0007: Verification Schema v2 Design
+# NWP-ADR-0007: Verification Schema v2 Design
 
 **Status:** Accepted
 **Date:** 2026-01-10
@@ -265,9 +265,9 @@ Keep v1 schema, add progress tracking in separate file.
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - Established YAML as config format
-- **ADR-0005: Distributed Contribution Governance** - Enabled multi-developer collaboration
-- **ADR-0009: Five-Layer YAML Protection System** (pending) - Security constraints on YAML parsing
+- **NWP-ADR-0002: YAML-Based Configuration** - Established YAML as config format
+- **NWP-ADR-0005: Distributed Contribution Governance** - Enabled multi-developer collaboration
+- **NWP-ADR-0009: Five-Layer YAML Protection System** (pending) - Security constraints on YAML parsing
 
 ## Future Enhancements
 

@@ -6,7 +6,7 @@ The console can show a person **only the sites of the projects they belong to**.
 This guide takes you from "another dev needs access" to "they can see exactly
 the Saint School / Narrow Way sites and nothing else".
 
-See [ADR-0033](../decisions/0033-console-multi-tenant-projects.md) for the
+See [NWP-ADR-0033](../decisions/0033-console-multi-tenant-projects.md) for the
 design and — importantly — for what this boundary is *not*.
 
 > **Read this first.** Project scoping is an **application** boundary. Anyone

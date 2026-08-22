@@ -1,4 +1,4 @@
-# ADR-0038: Forge-box identity scheme — named scoped keys, and a bounded forge-admin credential tier
+# NWP-ADR-0038: Forge-box identity scheme — named scoped keys, and a bounded forge-admin credential tier
 
 **Status:** Proposed (Linux plane IMPLEMENTED and installed; application plane MINTED by the operator
 2026-08-10 and its write half — `pl forge keys backup|rehome|restore|verify`, `pl forge user create`,
@@ -6,7 +6,7 @@
 **Date:** 2026-08-10
 **Decision Makers:** Robert Karsten Zaar (operator ruling, 2026-08-10), with AI implementation
 **Related Issues:** nwp/ops#331 (AI hosts hold root SSH keys on the forge), ops#330, ops#214
-**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0017](0017-distributed-build-deploy-pipeline.md), [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md), [ADR-0026](0026-nwp-server-capability-agent.md), [ADR-0028](0028-ver-single-operator-human-gated-workstation.md), [ADR-0037](0037-review-mode-follows-approvers.md)
+**References:** [NWP-ADR-0004](0004-two-tier-secrets-architecture.md), [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md), [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md), [NWP-ADR-0026](0026-nwp-server-capability-agent.md), [NWP-ADR-0028](0028-ver-single-operator-human-gated-workstation.md), [NWP-ADR-0037](0037-review-mode-follows-approvers.md)
 
 ## Context
 
@@ -57,7 +57,7 @@ keys for what you actually do). This ADR is the shape.
 
 ### The tier rule this ADR must confront honestly
 
-`CLAUDE.md` and [ADR-0004](0004-two-tier-secrets-architecture.md) say:
+`CLAUDE.md` and [NWP-ADR-0004](0004-two-tier-secrets-architecture.md) say:
 
 > **Admin and backup-decryption credentials do not belong in `.secrets.yml`.** It is the tier this
 > file tells you that you MAY read. `pl secrets lint` fails with `TIER:` on them; moving one to
@@ -95,7 +95,7 @@ boundary that makes the amendment safe to grant.
 - **Pros:** honours the tier rule as literally written; no admin credential in the AI-readable tier.
 - **Cons:** the AI is deny-ruled from `.secrets.data.yml`, so `pl forge users|keys|ci-var` could
   never authenticate. The operator's click list is unchanged. This option satisfies the letter of
-  ADR-0004 by delivering none of the ruling's purpose — a correct-looking answer to the wrong
+  NWP-ADR-0004 by delivering none of the ruling's purpose — a correct-looking answer to the wrong
   question.
 
 ### Option 4 (chosen): Named + scoped Linux keys, plus a BOUNDED forge-admin tier
@@ -176,15 +176,15 @@ that widening any of them goes red rather than going unnoticed**
 | Boundary | Why |
 |---|---|
 | the **live box** `<live-box-ip>` data tier (site DBs, `moodledata`, `settings.php`) | different host, different credential; forge admin is not host access |
-| the **offline deploy host** (`ver`) | offline by default, no Headscale membership, no AI-reachable key — ADR-0017's air gap |
-| **`ver`** | the ADR-0028 single-operator gate; a Solo touch is a human, not a token |
+| the **offline deploy host** (`ver`) | offline by default, no Headscale membership, no AI-reachable key — NWP-ADR-0017's air gap |
+| **`ver`** | the NWP-ADR-0028 single-operator gate; a Solo touch is a human, not a token |
 | **future prod** (any site whose `pl canonical` phase is `prod`) | the phase-keyed guard, per CLAUDE.md: never key off a site's name |
 | the **Linode API** | a DNS/provision token is a different provider entirely; the 2026-07-27 `linode.provision_token` incident is the precedent for why these do not get bundled |
 | **the minisign signing key** | see the section below — this is the one that would make forge control reach prod |
 
 ### ⚠️ The minisign signing key — LOUD FINDING, verified 2026-08-10
 
-The property that makes it safe to hand an AI control of the forge is ADR-0017's:
+The property that makes it safe to hand an AI control of the forge is NWP-ADR-0017's:
 
 > **Trust flows through signatures, not machines.** Artifacts are trusted because they carry a valid
 > minisign signature from a known key, not because they came from a "trusted" host.
@@ -207,7 +207,7 @@ not even have minisign installed; the nwp CI pipeline has no signing job and no
 - It is **operational, not aspirational**: it signs `contracts/SHA256SUMS.minisig` (the P74
   intersite trust root), `lib/bundle-build.sh` manifests, and the `ver-kit` that is the offline deploy host's first
   trust anchor.
-- The successor control is **inert here**: ADR-0028 moves per-deploy authorization to an
+- The successor control is **inert here**: NWP-ADR-0028 moves per-deploy authorization to an
   `ed25519-sk` Solo touch, but `keys/allowed_signers` does not exist on this machine, so
   `deploy_gate_require()` takes its "not configured — proceeding without it" branch.
 - This is already recorded as **C4, MUST-FIX-BEFORE-OFFLINE-DEPLOY**, in
@@ -275,7 +275,7 @@ Invariants, each of which already has a precedent in this tree:
 **Why the ruling is safe to grant at all.** Three independent reasons, and the ADR depends on all
 three, so each is stated as a checkable fact rather than a reassurance:
 
-1. **The forge holds no member data.** It is code + artifact distribution (ADR-0017's transport
+1. **The forge holds no member data.** It is code + artifact distribution (NWP-ADR-0017's transport
    row: *"trusted as transport, not as authority"*). Site databases and `moodledata` are on other
    boxes.
 2. **No `ssd`/`nwd` unix users exist on it** — measured above. The ruling's premise is that the
@@ -418,6 +418,6 @@ never checked is not a limit.
 
 - **Sensitive paths touched:** `scripts/commands/secrets.sh` (privilege probe + ssh isolation),
   `servers/nwpcode/system/*` (new forced command). Both are deliberate and central to the change.
-- **This ADR grants the AI a new capability.** Under [ADR-0037](0037-review-mode-follows-approvers.md)
+- **This ADR grants the AI a new capability.** Under [NWP-ADR-0037](0037-review-mode-follows-approvers.md)
   the estate is in `solo` mode: the operator's merge click is the approval, and the AI holds a bot
   token and cannot merge. That is the intended gate for a change of this kind.

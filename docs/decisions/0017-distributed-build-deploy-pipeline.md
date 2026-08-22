@@ -1,10 +1,10 @@
-# ADR-0017: Distributed Build/Deploy Pipeline (build-tier build, verifier deploy)
+# NWP-ADR-0017: Distributed Build/Deploy Pipeline (build-tier build, verifier deploy)
 
-**Status:** Accepted (2026-04-08 — implementation started; F21 Phases 1, 2, 3a complete). **Deploy-authority half amended by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (Accepted 2026-06-28; not yet operational):** the "verifier is the sole prod-writer" model is replaced by *self-deploying prod* (a protected runner resident on the prod host; no off-box prod credential) — but until ADR-0024's preconditions land, this ADR's offline deploy host + hardware token remains the active gate for real user-facing production. The build-tier / signing / sanitise-on-prod / no-AI-on-prod-path properties below are unchanged.
+**Status:** Accepted (2026-04-08 — implementation started; F21 Phases 1, 2, 3a complete). **Deploy-authority half amended by [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (Accepted 2026-06-28; not yet operational):** the "verifier is the sole prod-writer" model is replaced by *self-deploying prod* (a protected runner resident on the prod host; no off-box prod credential) — but until NWP-ADR-0024's preconditions land, this ADR's offline deploy host + hardware token remains the active gate for real user-facing production. The build-tier / signing / sanitise-on-prod / no-AI-on-prod-path properties below are unchanged.
 **Date:** 2026-04-07
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —
-**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0005](0005-distributed-contribution-governance.md), [ADR-0006](0006-contribution-workflow.md), [ADR-0009](0009-five-layer-yaml-protection.md), [ADR-0013](0013-four-state-deployment-model.md), [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md)
+**References:** [NWP-ADR-0004](0004-two-tier-secrets-architecture.md), [NWP-ADR-0005](0005-distributed-contribution-governance.md), [NWP-ADR-0006](0006-contribution-workflow.md), [NWP-ADR-0009](0009-five-layer-yaml-protection.md), [NWP-ADR-0013](0013-four-state-deployment-model.md), [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md)
 
 ## Context
 
@@ -304,9 +304,9 @@ Tailscale's coordination server is operated by a third party (Tailscale Inc.). E
 
 ### Neutral
 
-- **Existing four-state model unchanged**: dev → stg → live → prod still applies (per [ADR-0013](0013-four-state-deployment-model.md)). The new architecture refactors what happens at the "prod" step (in-place overwrite → blue-green swap on the verifier) but does not change the upstream state machine.
-- **Existing two-tier secrets architecture preserved**: [ADR-0004](0004-two-tier-secrets-architecture.md)'s data-vs-infra distinction still applies; the verifier holds the data tier, build-tier holds the infra tier.
-- **Existing contribution governance applies**: [ADR-0005](0005-distributed-contribution-governance.md) and [ADR-0006](0006-contribution-workflow.md) review/security processes apply to MRs targeting any of the new components, especially the sanitizer.
+- **Existing four-state model unchanged**: dev → stg → live → prod still applies (per [NWP-ADR-0013](0013-four-state-deployment-model.md)). The new architecture refactors what happens at the "prod" step (in-place overwrite → blue-green swap on the verifier) but does not change the upstream state machine.
+- **Existing two-tier secrets architecture preserved**: [NWP-ADR-0004](0004-two-tier-secrets-architecture.md)'s data-vs-infra distinction still applies; the verifier holds the data tier, build-tier holds the infra tier.
+- **Existing contribution governance applies**: [NWP-ADR-0005](0005-distributed-contribution-governance.md) and [NWP-ADR-0006](0006-contribution-workflow.md) review/security processes apply to MRs targeting any of the new components, especially the sanitizer.
 
 ## Implementation Notes
 
@@ -347,7 +347,7 @@ Per the discussion that produced this ADR:
 - **Safe-by-default operations**: adding nullable columns, adding new tables, adding indexes. These run as ONLINE/INSTANT on MariaDB 10.11+.
 - **Expand-contract required**: column drops, renames, type narrowing. Two-or-three-deploy patterns.
 - **CI canary**: "old code on new schema" job verifies forward-compat by running the previous tagged release against the new schema.
-- **Read-only window tolerance**: per [ADR-0013](0013-four-state-deployment-model.md), prod sites are free/non-critical enough to tolerate occasional minute-scale RO windows. This allows pragmatic exceptions for unavoidable non-forward-compat changes.
+- **Read-only window tolerance**: per [NWP-ADR-0013](0013-four-state-deployment-model.md), prod sites are free/non-critical enough to tolerate occasional minute-scale RO windows. This allows pragmatic exceptions for unavoidable non-forward-compat changes.
 
 ### Out of scope for this ADR
 
@@ -381,8 +381,8 @@ To be resolved as implementation proceeds:
 
 ## Related Decisions
 
-- **[ADR-0004](0004-two-tier-secrets-architecture.md)**: Two-tier secrets architecture — preserved; the verifier holds the data tier, build-tier holds the infra tier.
-- **[ADR-0005](0005-distributed-contribution-governance.md)**: Distributed contribution governance — applies to all MRs in the new system, especially sanitizer changes.
-- **[ADR-0006](0006-contribution-workflow.md)**: Contribution workflow — MR review requirements apply.
-- **[ADR-0009](0009-five-layer-yaml-protection.md)**: Five-layer YAML protection — orthogonal but complementary protection layer.
-- **[ADR-0013](0013-four-state-deployment-model.md)**: Four-state deployment model — preserved; this ADR refactors what happens at the "prod" step but does not change the dev → stg → live → prod state machine.
+- **[NWP-ADR-0004](0004-two-tier-secrets-architecture.md)**: Two-tier secrets architecture — preserved; the verifier holds the data tier, build-tier holds the infra tier.
+- **[NWP-ADR-0005](0005-distributed-contribution-governance.md)**: Distributed contribution governance — applies to all MRs in the new system, especially sanitizer changes.
+- **[NWP-ADR-0006](0006-contribution-workflow.md)**: Contribution workflow — MR review requirements apply.
+- **[NWP-ADR-0009](0009-five-layer-yaml-protection.md)**: Five-layer YAML protection — orthogonal but complementary protection layer.
+- **[NWP-ADR-0013](0013-four-state-deployment-model.md)**: Four-state deployment model — preserved; this ADR refactors what happens at the "prod" step but does not change the dev → stg → live → prod state machine.

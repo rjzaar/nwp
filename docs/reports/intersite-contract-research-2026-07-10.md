@@ -93,7 +93,7 @@ need — violates no-SaaS) and Pact/PactFlow (the conceptually-best "bi-directio
    new schema against the git-committed old one on every MR and enforces **expand-and-contract**
    (add fields optional; never remove/retype a field the consumer reads). This reproduces a schema
    registry's BACKWARD-compat guarantee using only git history. Provider-first deploy ordering — the
-   other half of the guarantee — is *already* enforced by `pair_guard` (ADR-0031 D5).
+   other half of the guarantee — is *already* enforced by `pair_guard` (NWP-ADR-0031 D5).
 
 **OIDC specifically:** use the **standard discovery doc** (`/.well-known/openid-configuration`) +
 JWKS for endpoints/keys (Moodle `auth_oauth2` auto-configures from it) — nothing bespoke — plus a
@@ -176,7 +176,7 @@ are **untouched**. `lib/impact.sh` (destructive blast-radius at deploy) and `lib
 ## 4. Q4 answered — the pitfalls & the questions we haven't asked
 
 Full catalogue (10 axes, severity × likelihood × concrete scenario × do-we-mitigate) is in report D.
-The headline: **much of ADR-0031 is contract-*only* today** (pair_guard not built, Moodle sanitizer
+The headline: **much of NWP-ADR-0031 is contract-*only* today** (pair_guard not built, Moodle sanitizer
 is a fail-closed stub, F26 OAuth is a stub), so many "mitigations" are design intent, not running
 code. The highest-value **questions you have NOT yet asked** (ranked severity × how-unaddressed):
 
@@ -187,7 +187,7 @@ code. The highest-value **questions you have NOT yet asked** (ranked severity ×
 2. **Issuer key-rotation runbook (Q12).** The single most common OIDC outage in the wild. If nwc
    rotates its JWKS key and the ss plugin doesn't refresh-on-unknown-`kid`, **every login fails**.
    The pair contract has no key-rotation clause; the plugin behaviour is unverified.
-3. **Rollback & DR *identity* asymmetry (Q2).** ADR-0031's "per-site rollback is safe" reasoning
+3. **Rollback & DR *identity* asymmetry (Q2).** NWP-ADR-0031's "per-site rollback is safe" reasoning
    covers *code*, **not a DB restore that renumbers uids**. Restore one half to a different point in
    time and every UID-lock can point at the wrong human. No paired-restore invariant exists.
 4. **Join-integrity monitoring, not just liveness (Q6).** The 5-URL smoke proves endpoints answer;
@@ -209,7 +209,7 @@ code. The highest-value **questions you have NOT yet asked** (ranked severity ×
    Moodle session die? Long refresh tokens can outlive deprovisioning.
 10. **Consent system-of-record & data residency (Q8/Q10).** Which side authoritatively answers "did
     they consent, to which version, when?" — and is a us-iad host lawful for EU/minor records?
-11. **`moodledata` in zero backups (Q15).** Already named in ADR-0031 D8 but not built — a host loss
+11. **`moodledata` in zero backups (Q15).** Already named in NWP-ADR-0031 D8 but not built — a host loss
     means unrecoverable student submissions/certificates.
 12. **Shared-salt blast radius (Q11).** The never-rotated OIDC email salt is a permanent
     re-identification key across every environment. What's the incident plan if it leaks?
@@ -243,7 +243,7 @@ Deliberately incremental — each step is independently useful and off-by-defaul
   own ADR amendments / ops issues. Several are **prerequisites for real students on live**, independent
   of the schema work.
 
-Recommend starting a proposal (P-number) or amending ADR-0031 with §2–§3 as the mechanism and §4 as a
+Recommend starting a proposal (P-number) or amending NWP-ADR-0031 with §2–§3 as the mechanism and §4 as a
 risk register. **None of this is built or committed — it's here for your review before we integrate.**
 
 ---

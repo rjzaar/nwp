@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 # /usr/local/bin/forge-probe-restricted — forced-command READ-ONLY forge probe
-# (ops#331, ADR-0038).
+# (ops#331, NWP-ADR-0038).
 #
 # Installed on the forge box (git.nwpcode.org) as the SSH forced command for the
 # dedicated `nwp-forge-probe` key:
@@ -61,7 +61,7 @@
 #     of the key can only *invoke* this program and cannot choose what it does —
 #     NOT that the program is itself unprivileged. A dedicated unix account with
 #     a narrow sudoers rule would remove that residue; recorded as follow-up in
-#     ADR-0038 §Consequences. Do not read "restricted key" as "unprivileged
+#     NWP-ADR-0038 §Consequences. Do not read "restricted key" as "unprivileged
 #     process".
 #   * A read is still an information disclosure. `logs-auth` shows source IPs and
 #     key fingerprints; `keys` shows authorized_keys comments. Both are
@@ -343,7 +343,7 @@ act_status() {
 
 act_help() {
     cat <<'EOF'
-forge-probe-restricted — READ-ONLY forge box probe (ops#331, ADR-0038)
+forge-probe-restricted — READ-ONLY forge box probe (ops#331, NWP-ADR-0038)
 Action words (exact, no arguments):
   status         default; hostname, date, headroom, gitlab version
   health         mem / swap / disk / load headroom + uptime

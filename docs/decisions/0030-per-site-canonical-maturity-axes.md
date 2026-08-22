@@ -1,15 +1,15 @@
-# ADR-0030: Per-site canonical & maturity axes + the impact/fate-manifest contract
+# NWP-ADR-0030: Per-site canonical & maturity axes + the impact/fate-manifest contract
 
-**Status:** Accepted (ratified by operator 2026-07-18, nwp/ops#95 — shipped as the `lint:doc-truth` CI gate + `doc_truth` badge; ADR-0013 is superseded by this ADR)
+**Status:** Accepted (ratified by operator 2026-07-18, nwp/ops#95 — shipped as the `lint:doc-truth` CI gate + `doc_truth` badge; NWP-ADR-0013 is superseded by this ADR)
 **Date:** 2026-07-09
 **Decision Makers:** Robert Karsten Zaar (draft; operator to accept)
 **Related Issues:** ops#33 (canonicality phases — merged, MRs !34/!36/!39/!44),
 P67 / ops#48 (per-site maturity classes — MR !47 in review), ops#47 (impact/fate-manifest
 contract on destructive verbs)
-**Supersedes:** [ADR-0013](0013-four-state-deployment-model.md) (four-state dev/stg/live/prod).
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust model),
-[ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (deploy authority),
-[ADR-0026](0026-nwp-server-capability-agent.md), [ADR-0028](0028-ver-single-operator-human-gated-workstation.md)
+**Supersedes:** [NWP-ADR-0013](0013-four-state-deployment-model.md) (four-state dev/stg/live/prod).
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust model),
+[NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (deploy authority),
+[NWP-ADR-0026](0026-nwp-server-capability-agent.md), [NWP-ADR-0028](0028-ver-single-operator-human-gated-workstation.md)
 (cites the phase guards + impact-manifest), `lib/canonical.sh`, `lib/impact.sh`,
 `tests/unit/test-impact-contract.bats`,
 the nwp deep-audit recommendations of 2026-07-09
@@ -19,7 +19,7 @@ the nwp deep-audit recommendations of 2026-07-09
 
 ## Context
 
-ADR-0013 (2025-12) described deployment as **four named states** — `dev → stg → live →
+NWP-ADR-0013 (2025-12) described deployment as **four named states** — `dev → stg → live →
 prod` — as if a site's environments were a fixed linear pipeline. Two things have since
 made that framing wrong in substance, not just detail:
 
@@ -56,20 +56,20 @@ verbs may only get smaller, never grow, so coverage ratchets forward and cannot 
 
 These three mechanisms — the two per-site axes and the fate-manifest contract — are the
 current canonical model of "what state is a site in, and what may safely happen to it."
-ADR-0013 predates all of them and now misdescribes the system. This ADR records the
-current model and supersedes ADR-0013.
+NWP-ADR-0013 predates all of them and now misdescribes the system. This ADR records the
+current model and supersedes NWP-ADR-0013.
 
 ## Options Considered
 
-### Option 1: Amend ADR-0013 in place
+### Option 1: Amend NWP-ADR-0013 in place
 - **Pros:** one document.
-- **Cons:** the ADR convention forbids rewriting an accepted record's substance; ADR-0013's
+- **Cons:** the ADR convention forbids rewriting an accepted record's substance; NWP-ADR-0013's
   entire thesis ("four states, `stg` is a state, `live` and `prod` are separate named
   states in a fixed line") is what changed. An amendment banner cannot honestly leave the
   body's four-state model standing as accepted.
 
-### Option 2: Supersede ADR-0013 with a new record (CHOSEN)
-- **Pros:** follows the convention (supersede, don't rewrite); ADR-0013 keeps its
+### Option 2: Supersede NWP-ADR-0013 with a new record (CHOSEN)
+- **Pros:** follows the convention (supersede, don't rewrite); NWP-ADR-0013 keeps its
   historical body with a status banner; the current two-axis + fate-manifest model gets a
   clean authoritative statement.
 - **Cons:** one more ADR to cross-reference.
@@ -102,7 +102,7 @@ sourcing under a **shrink-only allowlist** — the CI-enforced ratchet that guar
 contract's coverage can only expand.
 
 ### 4. `stg` is the verification gate of the code axis — not a state, not a mere copy
-The four-state linear model of ADR-0013 is retired: `stg` is **not** a canonicality phase
+The four-state linear model of NWP-ADR-0013 is retired: `stg` is **not** a canonicality phase
 or a maturity value, and a site never "sits in" staging. But `stg` is more than a transient
 copy — it is the **verification gate of the code-flow (`maturity:`) axis**: an **ephemeral
 environment composed as candidate code × sanitized canonical data**, built to prove a
@@ -148,7 +148,7 @@ they are applied and enforced.
 
 ### Negative
 - Readers must hold two axes in mind instead of one linear pipeline.
-- Cross-references to ADR-0013 in older docs now point at a superseded record (the
+- Cross-references to NWP-ADR-0013 in older docs now point at a superseded record (the
   `pl doc-truth` ADR gate keeps those links resolving; their *substance* is redirected here).
 
 ### Neutral
@@ -172,8 +172,8 @@ they are applied and enforced.
   content-axis phase guards.
 - Fate-manifest contract: `lib/impact.sh` + `tests/unit/test-impact-contract.bats`
   (shrink-only allowlist), reference consumer `scripts/commands/delete.sh`.
-- ADR-0028 already depends on this model (it cites "canonical phase guards (dev|live|prod,
-  ADR-0013-successor)" and the impact-manifest as ver's ergonomic prod-write gate); this
+- NWP-ADR-0028 already depends on this model (it cites "canonical phase guards (dev|live|prod,
+  NWP-ADR-0013-successor)" and the impact-manifest as ver's ergonomic prod-write gate); this
   ADR is that named successor.
 
 ## Review

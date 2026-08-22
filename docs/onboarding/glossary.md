@@ -52,9 +52,9 @@ Terms grouped by where you'll encounter them. Anything in **bold** is a defined 
 
 **`governance_action`** — Drupal entity that audits every state change, every approval, every deploy. Found at `/admin/reports/governance-actions`. Never removed by a PR — only added to.
 
-**Decision Log** — public-facing log of which **revisions** went through, who reviewed, when. Has visibility tiers (Stewards / Members / Public) per ADR-0010.
+**Decision Log** — public-facing log of which **revisions** went through, who reviewed, when. Has visibility tiers (Stewards / Members / Public) per NWC-ADR-0010.
 
-**ADR** — Architecture Decision Record. Each one numbered (ADR-0001, ADR-0015, etc.) and lives at `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/`. See [adrs.md](./adrs.md) for the list with summaries.
+**ADR** — Architecture Decision Record. Each one numbered (NWC-ADR-0001, NWC-ADR-0015, etc.) and lives at `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/`. See [adrs.md](./adrs.md) for the list with summaries.
 
 **Self-flag** — a `⚠` marker the agent should add to a PR description when its change touches sensitive surface (auth, schema, ADRs, governance). Missing self-flags = reviewer (you) re-classifies up.
 

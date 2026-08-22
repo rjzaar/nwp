@@ -8,7 +8,7 @@
 > The feature ships **OFF by default** — nothing in this guide changes `nwp`/`pl`
 > behaviour until you opt in.
 >
-> **Posture ([ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md), 2026-07-09):**
+> **Posture ([NWP-ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md), 2026-07-09):**
 > running the full `pl` on this host via `cd ~/nwp` is **intended**, not a gap — the
 > `ver` host is a single-operator **desktop** workstation with full `pl` + browser-AI
 > (no live AI agent on the box). It is also **deliberately off the tailnet/mesh**
@@ -120,7 +120,7 @@ operator has actually agreed to auto-logging.
 
 - **The `ver` host is not yet provisioned.** These steps assume it exists with the
   nwp checkout, `curl`, and outbound network to `$NWP_GITLAB_HOST`. It is **off the
-  tailnet by design** (ADR-0028 / ops#25) — not a gap. See
+  tailnet by design** (NWP-ADR-0028 / ops#25) — not a gap. See
   `docs/guides/verifier-mayo-bootstrap.md` and `docs/guides/verifier-operations.md`
   for the host bootstrap.
 - **`verify.sh` and `verifier-say` are NOT in the signed `nwp-server` artifact by

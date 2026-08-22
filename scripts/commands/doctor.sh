@@ -182,7 +182,7 @@ check_configuration() {
             fi
         fi
 
-        # Check for sites defined (F36 A-C2: yq-first per ADR-0015)
+        # Check for sites defined (F36 A-C2: yq-first per NWP-ADR-0015)
         local site_count=0
         if grep -q "^sites:" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
             site_count=$(yq eval '.sites | length' "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
@@ -286,7 +286,7 @@ check_gitlab_token() {
         OK)
             if [ "$is_admin" = "True" ]; then
                 print_warning "GitLab token: valid but ADMIN identity ($owner)"
-                print_hint "Downscope to a non-admin group/project bot (Developer + api) — the ADR-0024 linchpin"
+                print_hint "Downscope to a non-admin group/project bot (Developer + api) — the NWP-ADR-0024 linchpin"
             else
                 local msg="GitLab token: valid — $owner (non-admin)"
                 [ -n "$expires" ] && msg="$msg, expires $expires"
@@ -556,7 +556,7 @@ check_server_schemas() {
 # `pl doctor` is where "is this estate fit to go to prod" gets asked out loud,
 # so the answer must include the credentials whose values have been seen. This
 # reports; lib/rotation-debt.sh's guard is what actually REFUSES (pl canonical
-# set <site> prod, and every prod write through the ADR-0028 deploy gate).
+# set <site> prod, and every prod write through the NWP-ADR-0028 deploy gate).
 ################################################################################
 check_rotation_debt() {
     local errors=0

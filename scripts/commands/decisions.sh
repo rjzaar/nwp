@@ -51,7 +51,7 @@ set -uo pipefail
 #
 # ── OPEN MERGE REQUESTS ARE PART OF THE QUEUE ─────────────────────────────────
 #
-# Under solo review mode (ADR-0037) the merge click on the MR page IS the
+# Under solo review mode (NWP-ADR-0037) the merge click on the MR page IS the
 # approval, so an open MR is an operator action exactly like a needs-decision
 # issue. One queue, one verb: this verb lists both, and the Review pane of the
 # NWP Console renders this verb's --json rather than growing a rival source.

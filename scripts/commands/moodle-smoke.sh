@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 ################################################################################
-# scripts/commands/moodle-smoke.sh — Moodle-aware promotion smoke (ADR-0031 D8)
+# scripts/commands/moodle-smoke.sh — Moodle-aware promotion smoke (NWP-ADR-0031 D8)
 #
 # A smoke check for a PROMOTED Moodle tier, parallel to pair-smoke.sh but
 # Moodle-specific:
@@ -29,7 +29,7 @@ source "$REPO_ROOT/lib/pair.sh"
 
 show_help() {
     cat <<EOF
-${BOLD}NWP Moodle Smoke — Moodle-aware promotion smoke (ADR-0031 D8)${NC}
+${BOLD}NWP Moodle Smoke — Moodle-aware promotion smoke (NWP-ADR-0031 D8)${NC}
 
 ${BOLD}USAGE:${NC}
     pl moodle-smoke <consumer> [OPTIONS]

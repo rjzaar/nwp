@@ -16,12 +16,12 @@
 # asset). If an upstream renames its assets, override with <tool>_url=… and
 # re-verify the pin.
 
-# restic — the DR backup engine (ADR-0025)
+# restic — the DR backup engine (NWP-ADR-0025)
 restic_version=
 restic_sha256=
 #restic_url=
 
-# age — seals ver's restic keystore at rest (ADR-0025)
+# age — seals ver's restic keystore at rest (NWP-ADR-0025)
 age_version=
 age_sha256=
 #age_url=

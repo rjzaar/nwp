@@ -489,8 +489,8 @@ confusing for a fresh baseline.
 
 - `docs/decisions/` has ADRs 0001–0016, all dated 2026-01-18 (bulk creation).
 - No ADR for F23 project separation (the biggest architectural decision since
-  January). **Post-baseline action: write ADR-0017 (F23 project separation) and
-  ADR-0018 (F24 unified backups) to capture the decision rationale.**
+  January). **Post-baseline action: write NWP-ADR-0017 (F23 project separation) and
+  NWP-ADR-0018 (F24 unified backups) to capture the decision rationale.**
 
 ### 11.6 `docs/plans/` is new and legitimate
 

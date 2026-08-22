@@ -1,9 +1,9 @@
 #!/bin/bash
 # lib/server-backup-host.sh — BOX-LEVEL scope helpers for `nwp-server backup --host`
-# (ADR-0025). Runs ON the prod/live host, inside the AI-free nwp-server artifact.
+# (NWP-ADR-0025). Runs ON the prod/live host, inside the AI-free nwp-server artifact.
 #
 # WHY THIS EXISTS
-#   ADR-0025's backup verb was written per-SITE (`--site-dir`): one site's DB plus
+#   NWP-ADR-0025's backup verb was written per-SITE (`--site-dir`): one site's DB plus
 #   its files tree. That is the right unit for a pre-deploy snapshot and the wrong
 #   unit for disaster recovery, because everything that makes the BOX the box is
 #   outside any single site directory:
@@ -22,7 +22,7 @@
 # CONTRACT
 #   Every function here is READ-ONLY with respect to the host: it reads state and
 #   writes only into a caller-supplied temp directory. Nothing here deletes, and
-#   nothing here needs a credential that reaches off-box — ADR-0025's "prod holds
+#   nothing here needs a credential that reaches off-box — NWP-ADR-0025's "prod holds
 #   no credential that can delete the durable copy" is preserved by construction.
 #
 #   Functions that CANNOT read what they were asked for FAIL rather than emit a

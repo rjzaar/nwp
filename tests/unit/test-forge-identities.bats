@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
 # tests/unit/test-forge-identities.bats — the forge-box identity scheme
-# (ops#331, ADR-0038).
+# (ops#331, NWP-ADR-0038).
 #
 # THE DEFECT THIS GUARDS. Until ops#331 the forge box had exactly ONE login
 # credential: a single unrestricted key in ~gitlab/.ssh/authorized_keys, titled
@@ -9,7 +9,7 @@
 # ~/.ssh/gitlab_linode — and `gitlab` on that box carries
 # `(ALL) NOPASSWD: ALL`. One key, one name that described neither its holder nor
 # its power, and no lesser credential for the ninety percent of work that only
-# reads. ADR-0038 splits that into a named full-control identity and a jailed
+# reads. NWP-ADR-0038 splits that into a named full-control identity and a jailed
 # read-only probe. THIS FILE IS THE PROOF THAT THE JAIL IS A JAIL.
 #
 # WHY THE JAIL TESTS RUN THE WRAPPER LOCALLY, NOT OVER SSH. A test that needs

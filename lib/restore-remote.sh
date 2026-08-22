@@ -22,7 +22,7 @@
 #   * PRE-RESTORE SNAPSHOT. We snapshot the live host and register it as a
 #     rollback point before overwriting, so a bad restore is itself reversible.
 #   * GATED. pair_guard_restore (ops#83 both-or-forward) then deploy_gate_require
-#     (ADR-0028 hardware gate), in the same order as every other prod write.
+#     (NWP-ADR-0028 hardware gate), in the same order as every other prod write.
 #   * FATE MANIFEST. lib/impact.sh renders exactly what is overwritten and what
 #     is left alone, then requires a typed confirmation.
 #   * MAINTENANCE MODE. The site is put into maintenance for the write window

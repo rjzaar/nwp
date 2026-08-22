@@ -2,7 +2,7 @@
 set -euo pipefail
 ################################################################################
 # lib/sanitizers/moodle-full.sh — the ATOMIC "full Moodle sanitised artifact"
-# orchestrator (ops#111 / ADR-0032 Flow A).
+# orchestrator (ops#111 / NWP-ADR-0032 Flow A).
 #
 # Composes the two prod-native Moodle scrubbers into ONE clean artifact, or
 # produces NOTHING (fail-closed):
@@ -14,7 +14,7 @@ set -euo pipefail
 #   4. manifest                          — audit proof (filedir EMPTY, N files omitted)
 #   5. bundle                            → <site>-sanitized-<ts>.tar.gz { db.sql.gz, dataroot-manifest }
 #
-# WHY a bundle and not two artifacts: ADR-0032's file-store decision is
+# WHY a bundle and not two artifacts: NWP-ADR-0032's file-store decision is
 # OMIT-AND-PLACEHOLDER, so the "sanitised moodledata" carries ~zero real bytes —
 # it is a manifest/proof, not data. The dev/stg loader rebuilds the empty
 # scaffold locally from the manifest, then prunes orphaned mdl_files rows
@@ -167,7 +167,7 @@ moodle_sanitize_full() {
         omitted="$(find "$dataroot/filedir" -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
     fi
     {
-        echo "artifact: moodle-full sanitised bundle (ADR-0032 Flow A)"
+        echo "artifact: moodle-full sanitised bundle (NWP-ADR-0032 Flow A)"
         echo "site-dir: $site_dir"
         echo "source-dataroot: $dataroot"
         echo "strategy: omit-and-placeholder"

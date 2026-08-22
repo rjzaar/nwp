@@ -1,11 +1,11 @@
-# Pair contract + `pair_guard` + pair-smoke — design & schema (ADR-0031 Phase C / ops#75)
+# Pair contract + `pair_guard` + pair-smoke — design & schema (NWP-ADR-0031 Phase C / ops#75)
 
 > **Status: SHIPPED (guard + schema + smoke), auth half STUBBED.** This document
 > specifies the versioned **pair contract** format, the `pair_guard` deploy-time
 > check that consumes it, and the **pair smoke** suite. The non-auth machinery is
 > wired and tested; the **OAuth/OIDC wiring is F26-gated and NOT implemented here**
 > (see [§OAuth](#oauth-stub-f26-gated)). **Date:** 2026-07-10.
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md)
 > D2 (version the contract), D5 (provider-first + pair smoke), D6 (per-plane
 > canonicality + the UID-lock/`--code-only` invariant), D7 (multi-MR convention).
 
@@ -29,7 +29,7 @@ students, **consumer**); demo twins `nwd` ↔ `ssd`.
 
 ## 1. The pair contract (`pairs/<consumer>.pair-contract.yml`)
 
-ADR-0031 D2 versions the **contract, not the pair**. One contract per pair, its
+NWP-ADR-0031 D2 versions the **contract, not the pair**. One contract per pair, its
 id = the **consumer** site name (each consumer has exactly one provider). It
 lives in `pairs/` (committable — no secrets, only versions + public URLs); the
 default dir is `$PROJECT_ROOT/pairs` (override `NWP_PAIR_CONTRACT_DIR`).
@@ -54,7 +54,7 @@ The complete, commented, worked example is
   which a full-DB push is forbidden).
 - `policy` — the ops#31 fix at the design level: a **single-writer** version
   field for `nwc_copyright`; both sync paths read it.
-- `render_id_stability` — the ADR-0027 §7 canonical-id join-key guarantee.
+- `render_id_stability` — the NWP-ADR-0027 §7 canonical-id join-key guarantee.
 - `endpoints.<tier>.issuer` — per-tier OIDC issuer URL (makes the dead
   `paired_with`/`oauth2` keys live **config**; wiring is F26-gated).
 - `smoke_urls` — the onboarding 5-URL set the smoke suite probes (D5).
@@ -173,7 +173,7 @@ is not here:
 - The smoke suite lists an `oauth_callback` + `oidc_discovery` probe and prints
   a "token round-trip would run here (STUB — F26-gated)" line on non-prod tiers.
 
-**Absent (F26 — nwp/nwp!49 human review; ADR-0029 D4):**
+**Absent (F26 — nwp/nwp!49 human review; NWP-ADR-0029 D4):**
 - No Drupal `simple_oauth` client is created/configured.
 - No Moodle OIDC issuer is provisioned or pointed at nwc-dev vs nwc-live.
 - No secrets are read, written, or round-tripped; `pl secrets` is not touched.
@@ -190,8 +190,8 @@ reads versions and public URLs only.
 ## TODO / follow-ups (not in Phase C scope)
 
 - **Auth half (F26):** issuer provisioning command + real token round-trip in
-  the smoke suite (nwp/nwp!49 human-gated; ADR-0029 D4 → `nwp/auth-nwc-oauth2`).
-- **Moodle promotion substrate (ops D / ADR-0031 D8):** `pl` cannot promote a
+  the smoke suite (nwp/nwp!49 human-gated; NWP-ADR-0029 D4 → `nwp/auth-nwc-oauth2`).
+- **Moodle promotion substrate (ops D / NWP-ADR-0031 D8):** `pl` cannot promote a
   Moodle site yet, so the consumer-side guard checks are correct but currently
   guard a path (`stg2live ssc`) that ops D must first make real. The
   `--code-only` remedy is fully honored only on `stg2live` today; `stg2prod` /

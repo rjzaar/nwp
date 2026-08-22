@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 ################################################################################
 # Unit tests for lib/prod-guard.sh — the scratch-distinct sanitiser guard
-# (ops#113 / ADR-0032). Docker-free, secret-free.
+# (ops#113 / NWP-ADR-0032). Docker-free, secret-free.
 ################################################################################
 
 source "${BATS_TEST_DIRNAME}/../../lib/prod-guard.sh"

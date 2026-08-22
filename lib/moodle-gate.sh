@@ -33,7 +33,7 @@
 # deliberately (add it to the allowlist, or ship the gate) — the speed bump is
 # the point. `--allow-ungated` is the audited escape hatch.
 #
-# SITE CLASS (ops#153, ADR-0036)
+# SITE CLASS (ops#153, NWP-ADR-0036)
 #   The three roles above classify the PLUGIN. They do not ask what kind of SITE
 #   it is landing on, and that omission is what made this gate unsatisfiable on
 #   rgs: an unpaired site has no auth_nwc to delegate to, so `consumer` could
@@ -170,7 +170,7 @@ moodle_gate_report() {
 
 # moodle_gate_status_verdict <site> <ungated_count> — the FINAL verdict line(s)
 # of `pl moodle gate-status`, class-aware (the ops#153 follow-up recorded in
-# ADR-0036). The per-plugin [UNGATED] rows above it are scan facts and are
+# NWP-ADR-0036). The per-plugin [UNGATED] rows above it are scan facts and are
 # never rewritten; this reclassifies only the VERDICT, and only when the site
 # carries a valid, evidenced none-stored exemption — the same predicate the
 # deploy gate uses (siteclass_art9_exempt), so status and deploy cannot
@@ -374,7 +374,7 @@ moodle_gate_assert() {
         local _mg_cls2; _mg_cls2="$(siteclass_of "$site" 2>/dev/null || true)"
         case "$_mg_cls2" in
             undeclared|cannot-verify:*|contradictory:*|invalid:*)
-                _mg_warn "SITE CLASS: '$site' is ${_mg_cls2} (ADR-0036)."
+                _mg_warn "SITE CLASS: '$site' is ${_mg_cls2} (NWP-ADR-0036)."
                 _mg_warn "  This gate cannot tell whether it even APPLIES here. If '$site' has no"
                 _mg_warn "  consent source to delegate to, no artifact will ever satisfy the check"
                 _mg_warn "  and --allow-ungated becomes permanent — the ops#154 ritual."

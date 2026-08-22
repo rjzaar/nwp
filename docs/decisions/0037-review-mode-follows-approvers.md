@@ -1,12 +1,12 @@
-# ADR-0037: Review mode follows `approvers:` — one reviewer today, two when there are two
+# NWP-ADR-0037: Review mode follows `approvers:` — one reviewer today, two when there are two
 
 **Status:** Accepted (renumbered from a duplicate 0032 on 2026-08-09, ops#319 —
 this ADR was created 2026-08-06 while
 [0032-non-prod-data-refresh-and-file-store](0032-non-prod-data-refresh-and-file-store.md)
-had held the number since 2026-07-20; ADR-0032 now means only the data-refresh
+had held the number since 2026-07-20; NWP-ADR-0032 now means only the data-refresh
 decision. Same fix-shape as the 0024→0026 renumber of 2026-07-02.)
 **Date:** 2026-08-06
-**Supersedes:** nothing. **Amends:** the two-person assumption baked into ADR-0028's
+**Supersedes:** nothing. **Amends:** the two-person assumption baked into NWP-ADR-0028's
 Phase 1 dispensation and into `pl mr`'s D13 hold.
 
 ## Context
@@ -49,7 +49,7 @@ ignored."*
 approving the shift and the second human dev existing — the two conditions of the
 ruling — so nothing has to be remembered, and there is no way to be in team mode
 with nobody available to be the second pair of eyes. This reuses the pattern
-`cmd_release` already used for the ADR-0028 dispensation, and its rationale
+`cmd_release` already used for the NWP-ADR-0028 dispensation, and its rationale
 verbatim: *"Keyed off a DECLARED FACT, never a date or a phase name: inert today,
 correct forever, and it arms without anyone remembering to arm it."*
 

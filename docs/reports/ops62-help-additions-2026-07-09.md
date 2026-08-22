@@ -6,7 +6,7 @@ pages.
 **Purpose:** ready-to-paste, user-facing copy in the operator's warm, second-person welcome voice.
 Covers (a) course versions & audiences, (b) depth levels, (c) how to contribute a story / suggest an
 edit and how guilds review it, and (d) the Sojourners → Theology apprenticeship.
-**Grounding:** ADR-0027 (audience/depth axes, ceremony spectrum), P70 §5 (contribute-a-story loop),
+**Grounding:** NWP-ADR-0027 (audience/depth axes, ceremony spectrum), P70 §5 (contribute-a-story loop),
 P72 (suggest-an-edit bridge), and the Sojourners↔Theology apprenticeship decision (operator,
 2026-07-08).
 

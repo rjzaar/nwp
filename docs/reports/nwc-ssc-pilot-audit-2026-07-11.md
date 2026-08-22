@@ -4,7 +4,7 @@ Reconciliation complete — and it reshapes several findings. Full report follow
 
 # NWP / nwc ↔ ssc Comprehensive Audit — Final Synthesis
 
-**Scope:** nwc (Drupal/Open Social 13, OIDC provider) ↔ ssc/ssd (Moodle 4.4 consumers), the `pl` fleet tooling, the agent-loop, the ADR-0031 pair contract, guild governance, and mod_depthcontent.
+**Scope:** nwc (Drupal/Open Social 13, OIDC provider) ↔ ssc/ssd (Moodle 4.4 consumers), the `pl` fleet tooling, the agent-loop, the NWP-ADR-0031 pair contract, guild governance, and mod_depthcontent.
 **Basis:** 7 subsystem maps, 6 dimension audits, 3 red-team passes, operator LIVE ground-truth corrections, plus my own read-only confirmation of the contested facts.
 
 > **Critical methodology note discovered during synthesis:** the local working tree every prior agent audited (`HEAD = 2fc4fa7`, local `main`) is **6 commits behind `origin/main` (`6ec6411`)**. The ops#81 (`ff1d996`) and ops#83 (`ae75696`) merges **are present on `origin/main`** (verified: `lib/pair.sh` on origin/main has 6 `pair_guard_restore` refs; `scripts/f26/nwc-identity-ledger.sh`, `scripts/moodle/local_nwc_erase/`, `scripts/drupal/nwc_moodle_erase/` all exist there). They are **absent from the stale local checkout**, which is why multiple red-team passes wrongly concluded "branch-only / restore ungated on main." **Ground-truth #2 is correct; those red-team claims are discarded.** The stale checkout is itself a finding (see §6).
@@ -21,7 +21,7 @@ Ranked, most important first:
 
 3. **Trust-root concentration amplifies #2.** The loop process holds an `api`-scope `GITLAB_TOKEN` (per MEMORY, a full-admin PAT) and `~/.ssh/nwp`; MEMORY records `gitlab_linode` = NOPASSWD root on the forge box. A prompt-injected agent could exfiltrate the token → GitLab admin → root on the code/artifact distribution host. **The mons/prod boundary itself holds** — no prod key exists on this tier — but the forge/CI tier is a very high-value single point.
 
-4. **Stored XSS in mod_depthcontent is real and confirmed.** `depthcontent_render_markdown()` (view.php ~141–164) pulls `<details>…</details>` blocks out *before* `format_text()` sanitizes, then re-inserts them raw. Bounded today (CLI-authored content) but becomes member-exploitable under the ADR-0027/P70 learnersourced roadmap.
+4. **Stored XSS in mod_depthcontent is real and confirmed.** `depthcontent_render_markdown()` (view.php ~141–164) pulls `<details>…</details>` blocks out *before* `format_text()` sanitizes, then re-inserts them raw. Bounded today (CLI-authored content) but becomes member-exploitable under the NWP-ADR-0027/P70 learnersourced roadmap.
 
 5. **The OIDC identity model is sound as designed.** `sub` **is the Drupal UUID** (operator LIVE-verified; ssc `idnumber` = a real UUID), so the UID-lock survives uid renumber and the "uid-reuse takeover" red-team thread is **false and discarded**. Moodle deliberately does **not** verify the id_token JWKS signature; trust = TLS + confidential client + PKCE + userinfo. This is a defensible, documented trade-off — not a hole — but it leaves no cryptographic backstop below TLS.
 
@@ -73,7 +73,7 @@ Guilds are in-app Drupal `group` roles with a graded ladder (admin > mentor > en
 
 - **`pl rag`** is fleet oversight: per-site Red/Amber/Green, merging a cached security signal (`pl audit` → `private/update-awareness/*.json`) with a work/drift signal (`pl todo`, ~16 checks). It writes `private/rag/state.json` and exits 3 if any site is RED. Current steady state: 2 RED / 19 AMBER / 0 GREEN.
 - **`pl status`** renders cached RAG dots + live HTTP/DDEV/disk/DB health on demand. **`pl loop`** is a read-only dashboard of the agent-loop.
-- **`pl pair`** surfaces the ADR-0031 contract status; `pair_guard` is a deploy-time choke-point wired into `stg2live`/`stg2prod`/`live2prod`/`moodle-promote` that (once a pair is configured) enforces provider-first ordering, schema-pin integrity, red-pair blocking, and the `--code-only` UID-lock rule. It runs *before* the per-site hardware Solo deploy gate.
+- **`pl pair`** surfaces the NWP-ADR-0031 contract status; `pair_guard` is a deploy-time choke-point wired into `stg2live`/`stg2prod`/`live2prod`/`moodle-promote` that (once a pair is configured) enforces provider-first ordering, schema-pin integrity, red-pair blocking, and the `--code-only` UID-lock rule. It runs *before* the per-site hardware Solo deploy gate.
 - **The agent-loop** (`scripts/agent-loop/`): rag-sync files/closes `rag-auto` issues daily; once a human promotes an issue to `agent-eligible`, the loop clones into an isolated worktree, runs Claude under a boundary prompt, and opens an MR that **never auto-merges**. A webhook receiver handles merged-MR deploys to the *test tier only* (AI never touches real prod).
 - **Backups**: three tiers — dev-side `pl backup`, prod restic DR pulled by the offline hardware-keyed `ver`, and operator forge-box/LUKS-stick crons.
 - **The mons/ver boundary is inviolable:** AI's blast radius is dev/stg/live-test + CI. Irreversible prod writes require the offline `ver` desktop + hardware Solo touch.
@@ -96,7 +96,7 @@ Chain, all code-confirmed: `GitLabSyncService.php` auto-adds `agent-eligible` to
 **S3 — In-app feedback pipeline dead + unmonitored.** `crontab.entry` runs the sync via `/usr/bin/ddev` but ddev is at `/usr/local/bin/ddev`; `feedback-sync.log` is frozen at 2026-05-22 ending in `not found`. The webhook fast-path isn't running. Concern/safeguarding reports (correctly force-routed to needs-human in code) therefore never get created. No freshness check exists.
 **Fix:** correct the ddev path (`command -v ddev`); add a `feedback-sync.log` freshness check into `pl todo`; document the single authoritative host.
 
-**S4 — Stored XSS via depthcontent `<details>` raw re-insertion.** `view.php` extracts `<details ...>...</details>` (the `[^>]*>` open-tag match permits `ontoggle`/`onclick`), runs `format_text` on the rest, then str_replaces the **raw** block back and echoes it. Bounded now (trusted CLI authoring, `addinstance` is RISK_XSS) but directly member-exploitable once ADR-0027/P70 delegates `content_json`.
+**S4 — Stored XSS via depthcontent `<details>` raw re-insertion.** `view.php` extracts `<details ...>...</details>` (the `[^>]*>` open-tag match permits `ontoggle`/`onclick`), runs `format_text` on the rest, then str_replaces the **raw** block back and echoes it. Bounded now (trusted CLI authoring, `addinstance` is RISK_XSS) but directly member-exploitable once NWP-ADR-0027/P70 delegates `content_json`.
 **Fix:** don't re-insert raw; run each block through `clean_text()`/`purify_html` whitelisting only `<details>/<summary>` with attributes stripped, or allow those tags via Moodle's format config. Add a test asserting an `onerror`/`ontoggle` handler is stripped.
 
 **S5 — Missing erasure schema + unsigned SHA256SUMS (confirmed on real main).** `contracts/erasure.command.schema.json` is absent yet pinned by `pairs/ssc.pair-contract.yml`, listed in `SHA256SUMS`, and referenced by `validate.py` → `validate.py` **crashes now** (FileNotFoundError) and `pair_schema_verify` fails closed the moment the pair activates. No `SHA256SUMS.minisig` exists, so schema pins are hashed but not signature-anchored at deploy. ops#81's erasure *code* is merged but **not deployed**, so a member erased on nwc still persists on ssc (GDPR retention gap).
@@ -173,7 +173,7 @@ Chain, all code-confirmed: `GitLabSyncService.php` auto-adds `agent-eligible` to
 3. **Guild/editorial logic exists but isn't CI-gated**, and the committed `phpunit.xml` runs <10% of it.
 4. **Migration framework** (`lib/migrate-schema.sh`, `lib/migrations/*`) has only existence smoke.
 
-**Strength:** the ADR-0031/P74 bash-contract tier is the best-tested, most security-relevant coverage in the repo and it's fail-closed and CI-enforced. The gap is purely that the application-layer suites that *do* exist aren't automated.
+**Strength:** the NWP-ADR-0031/P74 bash-contract tier is the best-tested, most security-relevant coverage in the repo and it's fail-closed and CI-enforced. The gap is purely that the application-layer suites that *do* exist aren't automated.
 
 ---
 

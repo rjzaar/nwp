@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# ADR-0031 Phase C / nwp/ops#75 — pair_guard decision-path coverage.
+# NWP-ADR-0031 Phase C / nwp/ops#75 — pair_guard decision-path coverage.
 #
 # Exercises EVERY pair_guard branch with self-contained fixtures (a fake
 # nwp.yml with `paired_with:`, fake pair contracts, and fake deployed-version /

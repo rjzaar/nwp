@@ -1054,7 +1054,7 @@ def pane_issues(request: Request, state: str = "opened", label: str = "",
 # Decisions + open MRs, read from `pl decisions --json` and NOTHING else: the
 # verb is the single source (its docblock says the console reads it — this pane
 # is what makes that claim true). Growing a second fetch path here would be the
-# drift ADR-0032 removed from review mode.
+# drift NWP-ADR-0032 removed from review mode.
 REVIEW_GATES = {
     "blocks-testers": ("BLOCKS TESTERS", "Phase 1 cannot finish until this is answered"),
     "blocks-prod": ("BLOCKS PROD", "Phase 2 cannot start"),
@@ -2420,7 +2420,7 @@ def issue_close(request: Request, iid: int, sc: Scope = Depends(scoped("operator
 # the same action, because a note nothing consumes leaves the issue in the
 # queue and the operator re-approves it — #139 was approved four times.
 # Approval-of-an-MR is not here at all — that is the merge click on the MR
-# page (ADR-0032). The [console-review] tag is applied server-side so a
+# page (NWP-ADR-0032). The [console-review] tag is applied server-side so a
 # session can find operator instructions with one search, whatever the client
 # sent.
 REVIEW_TAG = "**[console-review]**"

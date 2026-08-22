@@ -4,7 +4,7 @@
 **Created:** 2026-04-11
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (blocks production deploy of `<mayo-domain>`; blocks sanitized-fixture testing)
-**Depends On:** F21 (distributed build/deploy pipeline), ADR-0017, AVC site precedent
+**Depends On:** F21 (distributed build/deploy pipeline), NWP-ADR-0017, AVC site precedent
 **Breaking Changes:** No (mayo is not yet in production under NWP)
 **Related:** `docs/guides/mayo-avc-integration.md` (existing WIP integration doc), `sites/avc/` (canonical precedent)
 
@@ -38,7 +38,7 @@ Mirror the AVC precedent end-to-end, modernise the content lifecycle to 2025 Dru
 
 - **Mirror AVC, don't reinvent.** AVC's repo layout, `.gitignore`, composer consumption pattern, and pipeline shape are already proven. Mayo diverges only where it must: no nested profile fork (mayo consumes `nwp/avc` purely via composer), no private user-pack module (just `mayo_content`).
 - **Fixtures repo is a git repo + LFS, not GitLab Packages.** Packages are write-once mutable-metadata; a git repo gives diffable manifest history, atomic manifest+artifact commits, and `git revert` for rollback. Each artifact carries a detached minisign signature so verification works without cloning.
-- **Keep the software signing key in CI as an interim.** Per ADR-0017 Phase 5, Solo 2C+ hardware signing is the target. Until then, signing runs on a dedicated mirror-store runner, concurrency 1, protected tags only, key shredded after use.
+- **Keep the software signing key in CI as an interim.** Per NWP-ADR-0017 Phase 5, Solo 2C+ hardware signing is the target. Until then, signing runs on a dedicated mirror-store runner, concurrency 1, protected tags only, key shredded after use.
 - **No CI runner ever touches mayo1.** The verifier boundary is inviolable. CI ends at Package publish; verifier pulls out-of-band.
 
 ---
@@ -60,7 +60,7 @@ Mirror the AVC precedent end-to-end, modernise the content lifecycle to 2025 Dru
 
 - Public (non-private) repos. All three repos stay private until a governance decision says otherwise.
 - Moving `mayo_content` to Drupal Recipes. Revisit only if core adds "recipe apply on update".
-- Solving the interim signing-key-in-CI problem. That is ADR-0017 Phase 5 work, tracked separately.
+- Solving the interim signing-key-in-CI problem. That is NWP-ADR-0017 Phase 5 work, tracked separately.
 - Public review apps. Reviewers need Headscale access.
 - Multi-branch `mayo/mayo`. Single protected `main`, tags for releases.
 
@@ -96,7 +96,7 @@ Mirrors AVC's site-template pattern, using `git init` in place so DDEV is not di
 1.1. Verify nothing under `sites/mayo/` is tracked by NWP: `cd ~/nwp && git ls-files sites/mayo/ | wc -l` → 0.
 1.2. Copy `$HOME/nwp/sites/avc/dev/.gitignore` to `$HOME/nwp/sites/mayo/dev/.gitignore`. Remove line 19 (`/html/profiles/custom/avc/`) — mayo has no nested profile fork.
 1.3. Move `$HOME/nwp/sites/mayo/scripts/seed-sanitized-users.sh` and `setup-safety-email.sh` into `$HOME/nwp/sites/mayo/dev/scripts/` so they ship inside the repo.
-1.4. Write `$HOME/nwp/sites/mayo/dev/README.md` (1 page: what, how to clone+install, links to NWP + ADR-0017).
+1.4. Write `$HOME/nwp/sites/mayo/dev/README.md` (1 page: what, how to clone+install, links to NWP + NWP-ADR-0017).
 1.5. `cd ~/nwp/sites/mayo/dev && git init -b main`.
 1.6. `git add` with **explicit file list**, never `-A`:
 ```
@@ -315,7 +315,7 @@ Runs once mayo1 is reachable. Security-critical — `lib/sanitizers/mayo.sh` is 
 
 ## 7. Risks & Mitigations
 
-- **Interim software signing key in CI.** `mirror-store` runner compromise = key exfiltration. Mitigate: dedicated runner, concurrency 1, protected-tags-only scope, rotating register tokens, shred after use. Permanent fix is Solo 2C+ (ADR-0017 Phase 5, tracked separately).
+- **Interim software signing key in CI.** `mirror-store` runner compromise = key exfiltration. Mitigate: dedicated runner, concurrency 1, protected-tags-only scope, rotating register tokens, shred after use. Permanent fix is Solo 2C+ (NWP-ADR-0017 Phase 5, tracked separately).
 - **Review apps reachable only via Headscale.** External reviewers excluded. Accept: current reviewers are the operator + invited members who already have Headscale access.
 - **Sanitizer file-system layer is security-critical.** Any change to `lib/sanitizers/mayo.sh` requires human review per CLAUDE.md; AI may propose, human must merge.
 - **Shared `settings.local.php` across blue/green slots.** Fixed by moving `deployment_identifier` into slot-local `settings.deploy.php` conditionally included from `settings.php`.
@@ -329,7 +329,7 @@ Runs once mayo1 is reachable. Security-critical — `lib/sanitizers/mayo.sh` is 
 ## 8. Out of Scope (follow-ups)
 
 - Promoting `mayo/mayo` to public. Governance decision, not technical.
-- Hardware signing (Solo 2C+). Tracked in ADR-0017 Phase 5.
+- Hardware signing (Solo 2C+). Tracked in NWP-ADR-0017 Phase 5.
 - Multi-branch strategy, release channels. Single `main` + tags is enough for now.
 - Per-reviewer access to review apps. Headscale-only is acceptable.
 - Public PR from outside contributors. Governance decision.

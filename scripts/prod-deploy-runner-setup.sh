@@ -8,7 +8,7 @@ set -uo pipefail
 # installs gitlab-runner (a CI component) and therefore must NEVER be added to
 # build/nwp-server.include. It runs once, on the box, by the operator.
 #
-# TRUST MODEL (ADR-0017/0024, CLAUDE.md):
+# TRUST MODEL (NWP-ADR-0017/0024, CLAUDE.md):
 #   - The box stays AI-free (gitlab-runner + the nwp-server artifact only).
 #   - It holds a RUNNER AUTHENTICATION TOKEN only (glrt-…) — never an `api` PAT
 #     or control-plane credential. The lock-down (tag=prod-deploy, run_untagged

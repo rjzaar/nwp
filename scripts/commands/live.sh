@@ -18,7 +18,7 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/linode.sh"
 source "$PROJECT_ROOT/lib/ssh.sh"
-# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# deploy-gate.sh: hardware+signature gate on prod-writes (NWP-ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
 
@@ -1274,7 +1274,7 @@ main() {
             fi
         fi
 
-        # Hardware+signature gate (ADR-0028/ops#79): provisioning writes to
+        # Hardware+signature gate (NWP-ADR-0028/ops#79): provisioning writes to
         # the live host (nginx vhost, certbot certs, sshd/security config,
         # site dir). Gate once here, before the first remote write. No-op on
         # the unconfigured test tier. NOTE: stg2live auto-invokes live.sh, and

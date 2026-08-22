@@ -103,7 +103,7 @@ teardown() { rm -rf "$TEST_TMP"; }
 #
 # WHY: cmd_work linked private/ and sites/ only when ABSENT — but both are
 # partially tracked, so every worktree got real skeleton dirs SHADOWING the
-# shared estate state. Observed 2026-08-07 (ops#279): the ADR-0031 pair guard
+# shared estate state. Observed 2026-08-07 (ops#279): the NWP-ADR-0031 pair guard
 # read the worktree's blank ledger and refused a deploy the real ledger
 # permitted, and the --override-pair rows scattered into the worktree.
 # The fix links MISSING CHILDREN (bounded depth) instead of skipping the dir.

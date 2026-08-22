@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# pl tag-hygiene — tag & release hygiene linter (ADR-0031 D3 / ops#74).
+# pl tag-hygiene — tag & release hygiene linter (NWP-ADR-0031 D3 / ops#74).
 #
 # READ-ONLY. It never creates, deletes, moves, or pushes a tag — it only reports.
 # It answers, per git repo, the two ops#74 acceptance questions locally:
@@ -138,7 +138,7 @@ main(){
         [ "$n" -eq 0 ]; return
     fi
 
-    print_header "tag-hygiene (ADR-0031 D3 / ops#74) — ${#repos[@]} repo(s)"
+    print_header "tag-hygiene (NWP-ADR-0031 D3 / ops#74) — ${#repos[@]} repo(s)"
     if [ "$n" -gt 0 ]; then
         local kind repo detail
         while IFS='|' read -r kind repo detail; do

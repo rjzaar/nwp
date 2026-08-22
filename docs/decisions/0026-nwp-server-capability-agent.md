@@ -1,61 +1,61 @@
-# ADR-0026: The `nwp-server` AI-Free Capability Agent
+# NWP-ADR-0026: The `nwp-server` AI-Free Capability Agent
 
 > **Renumbering note (2026-07-02).** This ADR was originally filed as a second,
-> duplicate **ADR-0024**. By operator decision (2026-07-02, nwp/ops#28) it is
-> renumbered **ADR-0026** and re-scoped: it defines the **`nwp-server` AI-free
+> duplicate **NWP-ADR-0024**. By operator decision (2026-07-02, nwp/ops#28) it is
+> renumbered **NWP-ADR-0026** and re-scoped: it defines the **`nwp-server` AI-free
 > capability agent** — its capability set, build target, and three-key credential
 > ledger. **Routine real-production deploy authority belongs to
-> [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md)** (self-deploying
+> [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md)** (self-deploying
 > prod via a protected runner resident on the prod host), which is canonical for
 > the deploy-authority question. This agent's deploy-apply authority is the
-> **live-test tier** (per the 2026-07-01 operator grant recorded in ADR-0024) plus
+> **live-test tier** (per the 2026-07-01 operator grant recorded in NWP-ADR-0024) plus
 > the documented **escalation / reserve path** for real prod.
 
-> **Naming note.** This ADR renames the build target ADR-0022 called `nwp-verifier`
+> **Naming note.** This ADR renames the build target NWP-ADR-0022 called `nwp-verifier`
 > to **`nwp-server`**, to match the role it actually performs: the host pulls,
 > verifies, and *applies* signed bundles itself, rather than being written to by a
 > separate offline verifier host. The build-time AI-free guarantee, the
-> reproducible build, and the hardware-rooted signing of ADR-0022 are inherited
+> reproducible build, and the hardware-rooted signing of NWP-ADR-0022 are inherited
 > unchanged — only the role and the name evolve. References to `nwp-verifier` in
-> ADR-0019/0022 should be read as the predecessor of `nwp-server`.
+> NWP-ADR-0019/0022 should be read as the predecessor of `nwp-server`.
 
 **Status:** Accepted (renumbered from a duplicate 0024, 2026-07-02) —
 **decision A14 resolved in favour (2026-06-29):** hosts MAY verify-and-apply their
 own signed deploys via the `nwp-server` agent, **within the tier scope above**:
 the live-test tier now, and the escalation/reserve path for real prod. Routine
 real-prod deploy authority is governed by
-[ADR-0024](0024-self-deploying-prod-supersedes-verifier.md). This amends
-ADR-0017's "the verifier is the sole prod-writer; prod runs no deploy logic."
+[NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md). This amends
+NWP-ADR-0017's "the verifier is the sole prod-writer; prod runs no deploy logic."
 The offline `verifier` role is retained for hardware-gated/irreversible actions
 and as a fallback (see §"Naming reconciliation").
 **Date:** 2026-06-28 (A14 resolved 2026-06-29; renumbered + re-scoped 2026-07-02)
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** nwp/ops#4 (Session D); nwp/ops#23 (field validation);
-nwp/ops#28 (ADR-0024 duplicate reconciliation); the prod-participation capability set
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md),
-[ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md),
-[ADR-0022](0022-nwp-verifier-binary-split.md),
-[ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (deploy authority),
-[ADR-0025](0025-production-backup-to-ver.md) (backup verb),
+nwp/ops#28 (NWP-ADR-0024 duplicate reconciliation); the prod-participation capability set
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md),
+[NWP-ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md),
+[NWP-ADR-0022](0022-nwp-verifier-binary-split.md),
+[NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (deploy authority),
+[NWP-ADR-0025](0025-production-backup-to-ver.md) (backup verb),
 `~/central/nwc-internal/reeval-2026-06-11/08-VISION-PRINCIPLES-AND-CONTROL-PLANE.md` (§K, §V),
 OPERATING-MODEL.md §5,§6.
 
 ## Context
 
-ADR-0017 establishes a strict pipeline: an AI-capable build/test/sign tier
+NWP-ADR-0017 establishes a strict pipeline: an AI-capable build/test/sign tier
 produces signed artifacts; an **offline-by-default verifier host** is the
 *sole* writer to production — it verifies signatures locally and pushes to prod
 over a dedicated one-to-one WireGuard tunnel. Production hosts run user-facing
 sites and do **not** run deploy logic; they are written *to*.
 
-ADR-0022 then establishes that the verifier must run a **separately-built binary**
+NWP-ADR-0022 then establishes that the verifier must run a **separately-built binary**
 (`nwp-verifier`) that contains *no AI, CI, or SaaS code at all* — a build-time
 guarantee, because a runtime feature flag cannot make code absent. The AI-free
 property is achieved by building from the shared source tree with the
 `lib/ai/`, `lib/ci/`, `lib/saas/` modules **excluded from the artifact**.
 
 Two pressures motivate revisiting the "prod is written-to, never self-applies"
-shape of ADR-0017:
+shape of NWP-ADR-0017:
 
 1. **Operational latency and the offline verifier.** The verifier host is offline
    by default and connects only while actively deploying. Routine, low-risk
@@ -73,7 +73,7 @@ shape of ADR-0017:
 The question A14 decides: **may the production host itself verify a signed bundle
 and apply it**, given that doing so adds deploy logic to a prod box?
 
-The hard constraint is unchanged from ADR-0017/0022 and CLAUDE.md: **no
+The hard constraint is unchanged from NWP-ADR-0017/0022 and CLAUDE.md: **no
 AI-accessible machine may write to prod, and no AI code may be present on a host
 with production-write capability.** A prod host that self-applies now *has*
 production-write capability over itself — so it must carry **zero AI code** and
@@ -82,30 +82,30 @@ production-write capability over itself — so it must carry **zero AI code** an
 ## Decision
 
 Adopt the **`nwp-server`** agent: a minimal, separately-signed, AI-free build
-target (the ADR-0022 `nwp-verifier` target, renamed and re-scoped) that runs **on
+target (the NWP-ADR-0022 `nwp-verifier` target, renamed and re-scoped) that runs **on
 each host it serves** and lets that host verify-and-apply its own deploys. This
-amends ADR-0017's "verifier is the sole prod-writer" to "**a signed, AI-free agent
+amends NWP-ADR-0017's "verifier is the sole prod-writer" to "**a signed, AI-free agent
 on the host is the writer to *that host*; it pulls only signed bundles it
 independently verifies.**" The offline verifier role is retained as a
 defence-in-depth option and for the irreversible, hardware-token-gated actions of
-ADR-0019.
+NWP-ADR-0019.
 
 **Tier scope (2026-07-02 reconciliation).** The agent's *capability set* is
 defined here; its *deploy-apply authority* is tiered:
 
 - **Live-test tier:** the agent may self-deploy now, per the 2026-07-01 operator
-  grant (recorded in ADR-0024's header).
+  grant (recorded in NWP-ADR-0024's header).
 - **Real user-facing production, routine deploys:** governed by
-  [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (the
+  [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (the
   runner-resident model) once its preconditions land; until then the offline
-  deploy host + hardware token (ADR-0017) remains the gate.
+  deploy host + hardware token (NWP-ADR-0017) remains the gate.
 - **Real production, escalation/reserve:** the agent is the documented
   escalation / reserve path (offline signature re-verification and
-  hardware-gated applies) if ADR-0024's escalation triggers fire.
+  hardware-gated applies) if NWP-ADR-0024's escalation triggers fire.
 
 ### Same trust tier, same build target — NOT a new repo
 
-`nwp-server` is **a build target of the `nwp` source tree**, per ADR-0022 (which
+`nwp-server` is **a build target of the `nwp` source tree**, per NWP-ADR-0022 (which
 rejected both the same-binary-with-flags option and the four-binaries option). It
 is **not** its own repository. A separate repo would add version skew without
 adding to the guarantee — the guarantee is *build-time exclusion*, which a build
@@ -147,19 +147,19 @@ any AI-capable machine — the blast radius is that single box.
 
 ### Naming reconciliation
 
-- The ADR-0022 build target `nwp-verifier` is **renamed `nwp-server`** to reflect
+- The NWP-ADR-0022 build target `nwp-verifier` is **renamed `nwp-server`** to reflect
   the self-deploying-prod role. Build target: `scripts/build-nwp-server.sh` /
   `pl build-server` (this ADR's companion implementation under nwp/ops#4
   checkbox 2). `--version` reports `nwp-server vX.Y.Z`, distinct from `nwp`.
-- ADR-0019's hardware-rooted signing of the artifact is unchanged.
-- ADR-0017's offline-verifier role is **retained**, not deleted: it remains the
+- NWP-ADR-0019's hardware-rooted signing of the artifact is unchanged.
+- NWP-ADR-0017's offline-verifier role is **retained**, not deleted: it remains the
   sole path for irreversible, hardware-token-gated actions, and a fallback when a
   prod host cannot be trusted to self-apply.
 
 ## Rationale
 
 - **Build-time, not runtime.** A self-applying prod host raises the stakes of the
-  AI-free property; ADR-0022's build-time exclusion is exactly what makes it safe.
+  AI-free property; NWP-ADR-0022's build-time exclusion is exactly what makes it safe.
   The renamed target inherits that mechanism verbatim.
 - **One-way credentials bound the blast radius.** Read-only-in, write-only-out,
   no lateral keys — this is the property that lets a prod box self-deploy without
@@ -179,22 +179,22 @@ any AI-capable machine — the blast radius is that single box.
 - Routine applies no longer serialise through one offline laptop.
 - The control loop has a real prod endpoint; `pl status` → fix → approve → apply →
   re-check becomes mechanical.
-- Inherits ADR-0022's reduced attack surface and reproducible, auditable build.
+- Inherits NWP-ADR-0022's reduced attack surface and reproducible, auditable build.
 - The credential ledger makes a prod compromise non-pivoting by construction.
 
 ### Negative
-- Prod hosts now run deploy logic (more code on prod than ADR-0017's pure target).
+- Prod hosts now run deploy logic (more code on prod than NWP-ADR-0017's pure target).
   Mitigated by the minimal capability set, the AI-free build, and the
   three-credential ledger.
 - Two writer paths exist (the offline verifier for hardware-gated/irreversible;
   `nwp-server` for routine). The runbook must state clearly which path each
   action takes.
-- A second rename of a still-Proposed ADR-0022 target; F34's role-label cleanup
+- A second rename of a still-Proposed NWP-ADR-0022 target; F34's role-label cleanup
   must account for `nwp-verifier` → `nwp-server`.
 
 ### Neutral
 - The build mechanism (allowlist + fail-closed deny-symbol scan) is shared with
-  the ADR-0022 target; only the included capability set and the name differ.
+  the NWP-ADR-0022 target; only the included capability set and the name differ.
 
 ## Implementation Notes
 
@@ -202,12 +202,12 @@ any AI-capable machine — the blast radius is that single box.
   (nwp/ops#4 checkbox 2). Allowlist-driven (include only the capability modules),
   with a **fail-closed deny-symbol scan** that fails the build if any AI/CI/SaaS
   vendor token appears in the assembled artifact — the mechanical form of
-  ADR-0022's `strings`-check success metric.
+  NWP-ADR-0022's `strings`-check success metric.
 - The physical `lib/ai/`, `lib/ci/`, `lib/saas/` partition (the 08 K1.1/K1.2
   prerequisite) is a follow-up migration; the allowlist already encodes the
   boundary, so the reorg is mechanical and verifiable against the deny scan.
 - Reproducible-build documentation (base image, commands, expected hashes) tracks
-  ADR-0022's `docs/reference/reproducible-build.md`.
+  NWP-ADR-0022's `docs/reference/reproducible-build.md`.
 
 ## Migration Path
 
@@ -280,21 +280,21 @@ closed (no dump), never leaks.
 **30-day review:** 2026-07-28. **Success metrics:**
 - `pl build-server` produces an artifact whose deny-symbol scan returns zero AI/CI/
   SaaS matches (the mechanical AI-free check).
-- The capability set is exactly the verbs above (plus the ADR-0025 `backup`
+- The capability set is exactly the verbs above (plus the NWP-ADR-0025 `backup`
   verb) — no `install`, no `ai *`, no `ci *`, no SaaS clients.
 - The credential ledger on any `nwp-server` host is exactly three keys, all
   one-way.
 
 ## Related Decisions
 
-- [ADR-0017](0017-distributed-build-deploy-pipeline.md) — establishes the verifier
+- [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) — establishes the verifier
   role and the AI-free constraint that this ADR amends.
-- [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) — hardware-rooted
+- [NWP-ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) — hardware-rooted
   signing, inherited unchanged.
-- [ADR-0022](0022-nwp-verifier-binary-split.md) — the build-time AI-free split;
+- [NWP-ADR-0022](0022-nwp-verifier-binary-split.md) — the build-time AI-free split;
   this ADR renames and re-scopes its `nwp-verifier` target to `nwp-server`.
-- [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) — canonical for
+- [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) — canonical for
   routine real-prod deploy authority (runner-resident model); records the
   2026-07-01 live-test-tier grant under which this agent applies today.
-- [ADR-0025](0025-production-backup-to-ver.md) — the `backup` verb that extends
+- [NWP-ADR-0025](0025-production-backup-to-ver.md) — the `backup` verb that extends
   this agent's capability set.

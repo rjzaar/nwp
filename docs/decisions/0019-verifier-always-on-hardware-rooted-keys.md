@@ -1,17 +1,17 @@
-# ADR-0019: verifier Always-On with Hardware-Rooted Keys
+# NWP-ADR-0019: verifier Always-On with Hardware-Rooted Keys
 
-**Status:** Superseded by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (before implementation)
+**Status:** Superseded by [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (before implementation)
 **Date:** 2026-04-09
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md), [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md)
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md), [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md)
 
-> **Superseded 2026-06-25 (before implementation) by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md).**
-> The always-on hardware-token verifier was never built. ADR-0024 adopts a
+> **Superseded 2026-06-25 (before implementation) by [NWP-ADR-0024](0024-self-deploying-prod-supersedes-verifier.md).**
+> The always-on hardware-token verifier was never built. NWP-ADR-0024 adopts a
 > *self-deploying prod* model (a protected Linode-resident runner; no off-box
 > prod credential; phone approval via GitLab WebAuthn), which makes the verifier
 > unnecessary at current stakes. The posture below is **held in reserve as the
-> high-stakes escalation** — its escalation triggers are listed in ADR-0024.
+> high-stakes escalation** — its escalation triggers are listed in NWP-ADR-0024.
 > Two facts that motivated the supersession: (1) the phone-NFC-SSH-deploy form
 > (§ *Deploy client forms* #3) relies on the Solo doing `ed25519-sk` over NFC,
 > which doesn't work reliably — the Solo's NFC strength is WebAuthn; (2)
@@ -19,7 +19,7 @@
 
 ## Context
 
-[ADR-0017](0017-distributed-build-deploy-pipeline.md) and CLAUDE.md establish
+[NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) and CLAUDE.md establish
 the verifier as the sole host authorised to write to production, with two
 defence-in-depth properties:
 
@@ -66,7 +66,7 @@ something else that could carry the weight alone.
   capability lives on a Solo 2C+ with touch-to-use, no amount of host
   compromise lets an attacker deploy. The key cannot be extracted and
   cannot be used without a human finger. This wasn't part of the
-  ADR-0017 assumption set because the Solo 2C+ hadn't been chosen yet.
+  NWP-ADR-0017 assumption set because the Solo 2C+ hadn't been chosen yet.
 - **The verifier is not yet the sole deploy host in practice.** F21 Phases 5-8
   (signed artifacts, WireGuard tunnel, blue-green slots) are pending.
   This is a design-time decision, not a retreat from a running system.
@@ -84,7 +84,7 @@ something else that could carry the weight alone.
 
 ## Options Considered
 
-### Option 1: Status quo — strict offline by default (ADR-0017 as written)
+### Option 1: Status quo — strict offline by default (NWP-ADR-0017 as written)
 
 The verifier stays offline most of the time. For urgent patches, the operator returns
 home (or a trusted proxy opens the verifier on their behalf). Credentials stay
@@ -189,9 +189,9 @@ hardware token," not "the verifier is offline."**
 
 The Solo 2C+ hardware token is a **prerequisite, not an enhancement**.
 Until the token is in hand and the deploy path is reworked to use it,
-the old ADR-0017 posture remains in force.
+the old NWP-ADR-0017 posture remains in force.
 
-The following properties from ADR-0017 and CLAUDE.md **remain
+The following properties from NWP-ADR-0017 and CLAUDE.md **remain
 inviolable** under this ADR:
 
 - **No AI access on the verifier, ever.** No cloud AI session, no local LLM,
@@ -210,7 +210,7 @@ inviolable** under this ADR:
 
 ## Rationale
 
-The load-bearing property of ADR-0017 — "AI errors cannot cause
+The load-bearing property of NWP-ADR-0017 — "AI errors cannot cause
 production damage" — is carried by *two* defences:
 
 1. The network boundary (offline verifier)
@@ -240,7 +240,7 @@ present on-host to piggyback. That is a materially higher bar.
 
 Patch latency is a security property. A rule that forces a 12-72 hour
 delay on critical security patches imposes a cost that was not
-enumerated in ADR-0017. The traveling-security-update scenario is
+enumerated in NWP-ADR-0017. The traveling-security-update scenario is
 realistic, not contrived, and it occurs often enough for a solo
 operator that the cumulative expected exploit window under the old
 posture is probably larger than the cumulative expected exploit window
@@ -444,7 +444,7 @@ implements this ADR:
 > access on the verifier, ever** — no cloud AI session, no local LLM, no
 > agent-driven anything. A deploy requires a human touch on the token
 > for every credential use; there is no session cache. See
-> [ADR-0019](docs/decisions/0019-verifier-always-on-hardware-rooted-keys.md)
+> [NWP-ADR-0019](docs/decisions/0019-verifier-always-on-hardware-rooted-keys.md)
 > for the full posture."
 
 The table row in CLAUDE.md § "Distributed Actor Glossary" for `verifier`
@@ -453,14 +453,14 @@ its cell in "Prod access?" stays **yes**, and its Role cell changes from
 "Verifies signed artifacts, deploys to prod via dedicated WireGuard
 tunnel, creates bug reports back to build-tier" to "Verifies signed artifacts,
 deploys to prod via hardware-token-gated credentials; always-on mesh
-peer hardened per ADR-0019".
+peer hardened per NWP-ADR-0019".
 
 ### F21 amendment
 
 F21 Phase 5 (minisign verification on the verifier), Phase 6 (WireGuard tunnel
 to prod), and Phase 7 (key management) all need to be revised to reflect
 the new credential custody model. The cleanest approach is to add a new
-Phase 4.5 ("verifier hardening per ADR-0019") that gates Phases 5-8.
+Phase 4.5 ("verifier hardening per NWP-ADR-0019") that gates Phases 5-8.
 
 ## Review
 

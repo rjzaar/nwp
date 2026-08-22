@@ -1,4 +1,4 @@
-# ADR-0021: Public-Only NWP Repository Scope
+# NWP-ADR-0021: Public-Only NWP Repository Scope
 
 > **Rejected / Withdrawn (2026-07-09).** Never accepted (stayed Proposed). Its chosen
 > option — a *separate* private `nwp-instances/` repository, cut over by F33 — was
@@ -10,7 +10,7 @@
 **Date:** 2026-05-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Generic OSS release; per-instance configuration leakage
-**References:** [ADR-0020](0020-tiered-architecture-model.md), [ADR-0022](0022-nwp-verifier-binary-split.md), [F33](../proposals/F33-repository-topology-refactor.md), [P61](../proposals/P61-leakage-hygiene-ci.md)
+**References:** [NWP-ADR-0020](0020-tiered-architecture-model.md), [NWP-ADR-0022](0022-nwp-verifier-binary-split.md), [F33](../proposals/F33-repository-topology-refactor.md), [P61](../proposals/P61-leakage-hygiene-ci.md)
 
 ## Context
 
@@ -70,7 +70,7 @@ Adopt **Option 1**: public framework + separate private instance overlay.
   - Operator-specific F-/P-/X-series proposals (these become private addenda — see [F34](../proposals/F34-role-label-proposal-rewrite.md)).
   - Per-site Tier-B proposals (these live with the per-site directory in the private overlay).
 
-- A separate private repository (`nwp-instances/`) is introduced. Its layout is one subdirectory per site; one optional `_global/` subdirectory for cross-site shared configuration; a top-level `instance-manifest.yml` binding role labels to actual hosts (see [ADR-0020](0020-tiered-architecture-model.md) §"Roles").
+- A separate private repository (`nwp-instances/`) is introduced. Its layout is one subdirectory per site; one optional `_global/` subdirectory for cross-site shared configuration; a top-level `instance-manifest.yml` binding role labels to actual hosts (see [NWP-ADR-0020](0020-tiered-architecture-model.md) §"Roles").
 
 - `pl` detects the private overlay at `${NWP_INSTANCES_DIR:-$HOME/nwp-instances}` and reads from there if present. During the transition (v0.31.0–v0.40.0), `pl` falls back to the deprecated `nwp/sites/` path; v1.0.0 removes the fallback.
 
@@ -111,7 +111,7 @@ Drupal core is public; per-site `composer.json` specifies which Drupal version t
 
 ### Neutral
 
-- The role-label vocabulary (defined in [ADR-0020](0020-tiered-architecture-model.md) and propagated by [F34](../proposals/F34-role-label-proposal-rewrite.md)) becomes the contract between the two repositories: public artefacts reference roles; private overlay binds roles to hosts.
+- The role-label vocabulary (defined in [NWP-ADR-0020](0020-tiered-architecture-model.md) and propagated by [F34](../proposals/F34-role-label-proposal-rewrite.md)) becomes the contract between the two repositories: public artefacts reference roles; private overlay binds roles to hosts.
 - The leakage gate (gitleaks pre-commit + CI hard-fail; see [P61](../proposals/P61-leakage-hygiene-ci.md)) becomes essential — it enforces the boundary mechanically rather than by maintainer discipline.
 
 ## Implementation Notes
@@ -143,9 +143,9 @@ Drupal core is public; per-site `composer.json` specifies which Drupal version t
 
 ## Related Decisions
 
-- [ADR-0017](0017-distributed-build-deploy-pipeline.md) — the original four-host architecture; its concrete host bindings move to the private overlay.
-- [ADR-0020](0020-tiered-architecture-model.md) — the tier/role/feature model that the public-only scope serves.
-- [ADR-0022](0022-nwp-verifier-binary-split.md) — the verifier binary split, decided independently.
+- [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) — the original four-host architecture; its concrete host bindings move to the private overlay.
+- [NWP-ADR-0020](0020-tiered-architecture-model.md) — the tier/role/feature model that the public-only scope serves.
+- [NWP-ADR-0022](0022-nwp-verifier-binary-split.md) — the verifier binary split, decided independently.
 - [F33](../proposals/F33-repository-topology-refactor.md) — the cutover implementation.
 - [F34](../proposals/F34-role-label-proposal-rewrite.md) — propagation of role labels into existing proposals.
 - [P61](../proposals/P61-leakage-hygiene-ci.md) — the leakage gate that enforces the public/private boundary.

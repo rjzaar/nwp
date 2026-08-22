@@ -10,7 +10,7 @@
 #
 # Behaviour:
 #   - Pull the merged main into the relevant local checkout.
-#   - For nwc: rsync into both nwc-dev and nwd-dev (ADR-0016 parallel install).
+#   - For nwc: rsync into both nwc-dev and nwd-dev (NWP-ADR-0016 parallel install).
 #   - Run Behat + PHPUnit on nwc-dev. Abort if red.
 #   - pl dev2stg nwc -y --dev-db   (and nwd, if appropriate)
 #   - Re-run tests on stg.

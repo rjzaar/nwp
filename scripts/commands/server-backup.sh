@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# nwp-server backup — disaster-recovery backup of a prod site (ADR-0025).
+# nwp-server backup — disaster-recovery backup of a prod site (NWP-ADR-0025).
 #
 # Produces a RAW (unsanitized) restic snapshot of the site DB + files into a repo
 # LOCAL to this prod host. The offline custodian `ver` later PULLS these snapshots
@@ -9,9 +9,9 @@ set -euo pipefail
 # credential that can delete `ver`'s copy — the "pull + immutable" anti-ransomware
 # pattern. The local repo is short-window staging only.
 #
-# Threat model (ADR-0025): this is the DR flow — raw data, restic-encrypted, bound
+# Threat model (NWP-ADR-0025): this is the DR flow — raw data, restic-encrypted, bound
 # for `ver` ONLY (the prod-trust, offline, hardware-keyed custodian). It is NOT the
-# sanitized-publish flow (ADR-0026); raw data never reaches the dev/AI tier.
+# sanitized-publish flow (NWP-ADR-0026); raw data never reaches the dev/AI tier.
 #
 # Usage:
 #   nwp-server backup --site-dir DIR [opts]      per-SITE scope (DB + files)
@@ -37,9 +37,9 @@ set -euo pipefail
 #                       (default web/sites/default/files). Drupal private files are
 #                       auto-detected. IGNORED for Moodle (which backs up moodledata).
 #
-# Stack-aware (ADR-0032 Flow B): a Moodle site (version.php) is backed up as
+# Stack-aware (NWP-ADR-0032 Flow B): a Moodle site (version.php) is backed up as
 # moodledata + a mysqldump-via-config.php DB dump; a Drupal site as public+private
-# files + a drush sql-dump. Raw data → ver only (ADR-0025); never the dev/AI tier.
+# files + a drush sql-dump. Raw data → ver only (NWP-ADR-0025); never the dev/AI tier.
 #   --keep-last N       local staging retention (default 3)
 #   --tag TAG           restic tag (default: <host>/<site>)
 #   --db-only | --files-only
@@ -67,7 +67,7 @@ set -euo pipefail
 #
 # RESTIC PROVENANCE (both scopes):
 #   --restic-provenance minisign|apt|none
-#       minisign  verify the binary against --restic-pub (the ADR-0025 default
+#       minisign  verify the binary against --restic-pub (the NWP-ADR-0025 default
 #                 for a signed ver-kit restic).
 #       apt       the binary belongs to an installed dpkg package whose shipped
 #                 checksums still match on disk. This is a REAL provenance claim
@@ -486,7 +486,7 @@ main(){
   [ -n "$DRUSH" ] || DRUSH="$SITE_DIR/vendor/bin/drush"
   [ -n "$TAG" ]   || TAG="$(hostname -s 2>/dev/null || echo host)/$repo_site"
 
-  # Stack-aware (ADR-0032 Flow B): Moodle backs up moodledata + mysqldump-via-
+  # Stack-aware (NWP-ADR-0032 Flow B): Moodle backs up moodledata + mysqldump-via-
   # config.php; Drupal backs up public+private files + drush. --files overrides
   # the Drupal PUBLIC subpath and is ignored for Moodle (which uses moodledata).
   local stack; stack="$(sb_detect_stack "$SITE_DIR")"

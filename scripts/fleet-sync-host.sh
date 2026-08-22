@@ -12,7 +12,7 @@
 #   This is the ONE worker, provisioned by `pl fleet sync install`, run from a
 #   marked cron block every 15 minutes on each non-prod nwp host.
 #
-# THE THREAT MODEL SHAPES THIS SCRIPT (ADR-0017 / ADR-0028)
+# THE THREAT MODEL SHAPES THIS SCRIPT (NWP-ADR-0017 / NWP-ADR-0028)
 #   * PROD IS EXCLUDED BY CONSTRUCTION. the verifier tier receives code as SIGNED
 #     ARTIFACTS through their own verification path, never through this
 #     worker. Two independent refusals, both keyed off declared facts and
@@ -138,7 +138,7 @@ guard_prod_role() {
         [ -n "$h" ] || continue
         if [ "$h" = "$HOST_LABEL" ] || [ "$h" = "$(hostname 2>/dev/null)" ] || [ "$h" = "$(hostname -s 2>/dev/null)" ]; then
             refuse "refused-prod-role" "" "" \
-                "REFUSED: this host ('$HOST_LABEL') is bound to prod-reaching role '$role' in $MANIFEST — prod hosts receive code as signed artifacts (ADR-0017/0028), never via fleet sync"
+                "REFUSED: this host ('$HOST_LABEL') is bound to prod-reaching role '$role' in $MANIFEST — prod hosts receive code as signed artifacts (NWP-ADR-0017/0028), never via fleet sync"
         fi
     done < <(_manifest_deny_hosts)
 }

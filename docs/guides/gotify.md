@@ -88,7 +88,7 @@ All in `.secrets.yml` on dev under the `gotify:` key:
   token currently in use)
 
 **These credentials are sensitive.** Treat the admin password as an
-infra-tier secret per ADR-0004. The app token is less sensitive — it
+infra-tier secret per NWP-ADR-0004. The app token is less sensitive — it
 can only POST messages to the `ai-host-health-check` application and
 cannot read anything. Compromise is contained; rotate via the admin
 API.

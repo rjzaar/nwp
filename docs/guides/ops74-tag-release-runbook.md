@@ -1,4 +1,4 @@
-# Tag & release runbook — ADR-0031 Phase B (ops#74)
+# Tag & release runbook — NWP-ADR-0031 Phase B (ops#74)
 
 > **Status: READY TO RUN on the build host / GitLab once the operator confirms.**
 > Every step is **AI-PREPARABLE** (a command/edit an assistant prepares, operator
@@ -8,7 +8,7 @@
 > NOT tag, push, or create any release** (threat model: no AI-run machine cuts a
 > real tag/release). **Date:** 2026-07-10.
 > **Companion (the *why* + the scheme):** [`ops74-versioning-scheme.md`](ops74-versioning-scheme.md).
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D3.
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D3.
 > **Depends on:** ops#73 reconcile (plugin repos must be reconciled before tagged).
 
 ---
@@ -148,7 +148,7 @@ git fetch origin
 grep -E '"version"' composer.json           # expect: "version": "0.5.0"
 git tag -l v0.5.0                            # expect: empty
 # Tag the intended release commit (HEAD of the merged 0.5.0 line):
-git tag -a v0.5.0 -m "nwc v0.5.0 — matches composer.json (ADR-0031 D3; single vX.Y.Z scheme)"
+git tag -a v0.5.0 -m "nwc v0.5.0 — matches composer.json (NWP-ADR-0031 D3; single vX.Y.Z scheme)"
 git push origin v0.5.0
 git tag -l 'v*'                              # expect a clean semver line ending at v0.5.0
 ```
@@ -182,7 +182,7 @@ Only after the ops#73 reconcile settles the winning `release` per plugin:
 
 - **`nwp/local-nwc-copyright-sync`** → reconciled `0.2.0` (ssc/ssd newest-wins):
   ```bash
-  git tag -a v0.2.0 -m "local_nwc_copyright_sync 0.2.0 (== \$plugin->release; ADR-0031 D3)"
+  git tag -a v0.2.0 -m "local_nwc_copyright_sync 0.2.0 (== \$plugin->release; NWP-ADR-0031 D3)"
   git push origin v0.2.0
   ```
   **security_critical** (copyright/consent rail) — two-person review before the
@@ -209,12 +209,12 @@ GitLab release on nwp/nwc"):
 glab release create v0.5.0 \
   --repo nwp/nwc \
   --name "nwc v0.5.0" \
-  --notes "First release under the single vX.Y.Z scheme (ADR-0031 D3).
+  --notes "First release under the single vX.Y.Z scheme (NWP-ADR-0031 D3).
 Pairs with: (pair contract TBD — ops#75). Retires the nwc/v* scheme.
 Rollback anchors moved to refs/rollback/ (out-of-band)."
 ```
 
-Cut releases at **pair-contract bumps** going forward (ADR-0031 D2/D3): the
+Cut releases at **pair-contract bumps** going forward (NWP-ADR-0031 D2/D3): the
 release notes name the counterpart minimums (e.g. "nwc 0.6.0 requires
 `auth_nwc_oauth2` ≥ 1.1.0"), which is what makes the pairing answerable from
 GitLab. Plugin-repo releases follow the same pattern at their tags.

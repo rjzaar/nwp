@@ -1,7 +1,7 @@
 {
   "report": "SHORTLIST-16 deep-third census REVERT (ops#348 defect 4, ops#357)",
   "date": "2026-08-14",
-  "rights": "METHOD AND COUNTS ONLY. The corpus is derivative-cleared-pending and password-gated; it lives on mini and no corpus text, excerpt, transcript, rationale or clip address appears in this repository (ADR-0039 — nwp/nwp is publicly mirrored).",
+  "rights": "METHOD AND COUNTS ONLY. The corpus is derivative-cleared-pending and password-gated; it lives on mini and no corpus text, excerpt, transcript, rationale or clip address appears in this repository (NWP-ADR-0039 — nwp/nwp is publicly mirrored).",
   "artefact": {
     "path": "mini:~/clip-pool/shortlist/SHORTLIST-16.jsonl",
     "sha256_census_applied": "85b6b9b4e19ac9b43b88a3b7fa2d8c9178bda07f093bc4faa5f007d8a4b63595",

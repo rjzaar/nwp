@@ -20,7 +20,7 @@ NWC = **Narrow Way Commons**. It's a Drupal install profile (a "distribution") b
 
 Important things to keep straight:
 
-- **NWC is a real product**, not a framework. There is exactly one canonical deployment, at `nwc.nwpcode.org`. Forks are allowed but must rename — see [ADR-0001](./adrs.md#adr-0001-nwc-is-the-platform).
+- **NWC is a real product**, not a framework. There is exactly one canonical deployment, at `nwc.nwpcode.org`. Forks are allowed but must rename — see [NWC-ADR-0001](./adrs.md#decisions-affecting-most-prs).
 - **The site you see** is built from the install profile at `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/`. That profile composes ~34 `nwc_*` modules + a chunk of Open Social.
 - **The work is editorial.** State machine: `draft → in_writer_review → in_pedagogy_review → in_theology_review → in_copyright_clearance → approved → in_trial → trialed → in_production`. PRs you review will touch any layer of that machinery.
 
@@ -45,7 +45,7 @@ Pairing rules (you will see these in PRs):
 - **One codebase per stack.** Both `nwc.nwpcode.org` and `nwd.nwpcode.org` are deployed from the same git repo (`nwp/nwc`). Same for ssc/ssd against the Moodle plugin repos.
 - **Both demo sites stay live indefinitely.** They are first-class production traffic, not throwaway. Treat a "demo" PR with the same rigor as canonical.
 
-Settled architecturally in [ADR-0015](./adrs.md#adr-0015-two-site-topology) and [ADR-0016](./adrs.md#adr-0016-nwd-deployment-pattern). The trial tier `ss.nwpcode.org` (singular) is the gate between approved-in-nwc-editorial and shown-to-real-trialing-guild — see [architecture-brief.md §4](./architecture-brief.md#4-the-editorial-pipeline-a30).
+Settled architecturally in [NWC-ADR-0015](./adrs.md#decisions-affecting-most-prs) and [NWC-ADR-0016](./adrs.md#decisions-affecting-most-prs). The trial tier `ss.nwpcode.org` (singular) is the gate between approved-in-nwc-editorial and shown-to-real-trialing-guild — see [architecture-brief.md §4](./architecture-brief.md#4-the-editorial-pipeline-a30).
 
 The legacy `avc.nwpcode.org` is also up but is **historical only** — it's a frozen pre-refactor snapshot kept as comparison. No PR should touch it.
 
@@ -348,7 +348,7 @@ This intro is the entry point. Here's what each adjacent doc covers, and when yo
 
 Some things you intentionally lack access to:
 
-- **Production server SSH.** You cannot SSH into `nwc.nwpcode.org` or any live host. Deploys happen from `mons` (Rob's offline laptop) per [ADR-0017](../../docs/decisions/0017-distributed-build-deploy-pipeline.md). Even Rob's home boxes (`metabox`, `mini`) can't reach prod directly.
+- **Production server SSH.** You cannot SSH into `nwc.nwpcode.org` or any live host. Deploys happen from `mons` (Rob's offline laptop) per [NWP-ADR-0017](../../docs/decisions/0017-distributed-build-deploy-pipeline.md). Even Rob's home boxes (`metabox`, `mini`) can't reach prod directly.
 - **Production database credentials.** Same reason. You don't need them to review code; you'd need them to run queries against live, which is a separate workflow with two-person gating.
 - **Secrets files** (`.secrets.data.yml`, `keys/prod_*`). These are blocked in repo-level access controls. If you find a PR that tries to read or write these, that's a high red flag — request changes + ping Rob.
 - **Force-push to main.** GitLab settings disallow force-push to protected branches. If you ever see a merge request that's been force-pushed *on its own MR branch*, that's not unusual (the agent sometimes rewrites its own commits during iteration) — but force-push to main itself shouldn't be possible from your account.

@@ -1,4 +1,4 @@
-# ADR-0010: TUI Framework Design (checkbox.sh and tui.sh)
+# NWP-ADR-0010: TUI Framework Design (checkbox.sh and tui.sh)
 
 **Status:** Accepted
 **Date:** 2025-12-01 (original), refined 2026-01-14
@@ -192,5 +192,5 @@ fi
 
 ## Related Decisions
 
-- **ADR-0008: Recipe System Architecture** - Options defined in recipes
-- **ADR-0007: Verification Schema v2** - Verification console uses tui.sh
+- **NWP-ADR-0008: Recipe System Architecture** - Options defined in recipes
+- **NWP-ADR-0007: Verification Schema v2** - Verification console uses tui.sh

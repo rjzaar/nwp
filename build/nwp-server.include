@@ -1,6 +1,6 @@
 # build/nwp-server.include — the ALLOWLIST that composes the nwp-server artifact.
 #
-# nwp-server is a BUILD TARGET of the nwp source tree (ADR-0022/0026), NOT its own
+# nwp-server is a BUILD TARGET of the nwp source tree (NWP-ADR-0022/0026), NOT its own
 # repo. The AI-free guarantee is a build-time property: only the files listed here
 # enter the artifact, and the build then runs build/nwp-server.deny-symbols over
 # the result fail-closed. Anything not listed is ABSENT by construction — an
@@ -17,7 +17,7 @@
 # nwp.yml config keys; they contain no SaaS client). The FLEET status command
 # (scripts/commands/status.sh) is deliberately NOT included — its optional Linode
 # server-stats block is real SaaS. Instead the agent ships its own minimal LOCAL
-# status verb (scripts/commands/server-status.sh, ADR-0026 "status (local JSON)").
+# status verb (scripts/commands/server-status.sh, NWP-ADR-0026 "status (local JSON)").
 
 # ── agent entrypoint (dispatches the capability verbs; the only thing prod runs) ─
 bin/nwp-server
@@ -47,12 +47,12 @@ scripts/commands/server-status.sh
 # ── snapshot → sanitize → fail-closed PII gate → publish (write-only token) ──
 # The prod publish verb is scripts/commands/server-publish.sh. The build-tier
 # scripts/commands/publish.sh (registry uploader needing a full-api PAT) is
-# DELIBERATELY EXCLUDED — it must never reach a prod host (ADR-0026 ledger).
+# DELIBERATELY EXCLUDED — it must never reach a prod host (NWP-ADR-0026 ledger).
 lib/pii-gate.sh
 lib/sanitizers/
 scripts/commands/server-publish.sh
 
-# ── backup (DR: raw restic snapshot to ver, custodian-pull) — ADR-0025 ───────
+# ── backup (DR: raw restic snapshot to ver, custodian-pull) — NWP-ADR-0025 ───────
 # server-backup.sh hard-sources lib/server-backup-resolve.sh, and the sanitizers
 # hard-source lib/prod-guard.sh — without them the artifact's backup verb dies at
 # source-time (found by the pl ver-test harness real run, task #11).

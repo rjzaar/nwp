@@ -4,10 +4,10 @@
 [P70](P70-audience-variants-and-learnersourced-stories.md) (the content *schema*). P70 says *what*
 varies (atom types + audience axis); P71 says *who owns each atom type, how their work is scored, and
 how audience-fit is reviewed*. Operator decisions captured 2026-07-08/09.
-**Parent:** [ADR-0027](../decisions/0027-unified-course-content-architecture.md) — unified
-course-content architecture. ADR-0027 §"Deferred to the Pedagogy Guild" explicitly defers *"the
+**Parent:** [NWP-ADR-0027](../decisions/0027-unified-course-content-architecture.md) — unified
+course-content architecture. NWP-ADR-0027 §"Deferred to the Pedagogy Guild" explicitly defers *"the
 atom-type→guild ownership + guild-scoped scoring model (under active research 2026-07-08)"*
-(0027 line 311); this proposal is that model. Ceremony-scales-with-trust (ADR-0027 §5) is the frame:
+(0027 line 311); this proposal is that model. Ceremony-scales-with-trust (NWP-ADR-0027 §5) is the frame:
 P71 details the "authored, within a community" and "micro" rows of that spectrum.
 **Gate:** ops#61 (canonical content model) + ops#62 (NWC onboarding / Class-3 preservation) — the
 same prerequisites as P70. Do not build audience routing over a `core` that disagrees with itself
@@ -52,13 +52,13 @@ connect but were not yet joined.
 | Propose-vs-approve **credit split** precedent (worker gets `task_ratified`, approver gets `ratification_given`) | **EXISTS** | `nwc_guild/src/Service/RatificationService.php:124`–`:144` |
 | 7-role guild ladder (outsider · junior · member · endorsed · verifier · mentor · admin) | **EXISTS** | `nwc_guild/config/install/group.role.guild-*.yml` (7 files); `group.type.guild.yml:10` |
 | Seeded guilds: Sojourners, Theology, Copyright, Media, Shepherds, Trialing | **EXISTS** | `nwc_guild/config/install/guilds/*.yml` |
-| Writers / Pedagogy as **Interest Groups** (no routing authority, membership = participation) | **EXISTS** | `nwc_guild/config/install/guilds/interest-groups.yml:14` (writers-ig), `:27` (pedagogy-ig); ADR-0002 |
+| Writers / Pedagogy as **Interest Groups** (no routing authority, membership = participation) | **EXISTS** | `nwc_guild/config/install/guilds/interest-groups.yml:14` (writers-ig), `:27` (pedagogy-ig); NWC-ADR-0002 |
 | **Atom-type → owning-guild ownership model** (core→Theology, variants→Writers, quiz→Pedagogy, av→Media) | **NET-NEW** | §3 |
 | Writers + Pedagogy **promoted IG → full guild** (seed `writers-guild.yml`, `pedagogy-guild.yml`; wire into STATE_GUILD) | **NET-NEW** | §4 |
 | **Compound `(atom_type, change_kind)` template key** — the docstring promises it; code keys only on `change_kind` | **NET-NEW** | §5 (bug: `EditorialStateService.php:11` vs `:76`) |
 | **`awardPoints()` wired into editorial transitions** — the scoring system is never called by `nwc_editorial` today | **NET-NEW** | §6 |
 | **`in_audience_fit_review` sequential stage** + `audience` field on `EditorialRevision` + audience-keyed pool lookup | **NET-NEW** | §7 |
-| Audience **IG → audience-guild → member-site** birthing ladder (governance) | **NET-NEW** (formalises ADR-0027 §9) | §7 |
+| Audience **IG → audience-guild → member-site** birthing ladder (governance) | **NET-NEW** (formalises NWP-ADR-0027 §9) | §7 |
 
 ---
 
@@ -101,11 +101,11 @@ wired this way in the pool resolver:
   Class A/B/C taxonomies (`theology-guild.yml:37`). Theology *approves*.
 
 This is not new plumbing: `EditorialPoolResolver.php:62` already folds Sojourners `guild-mentor` /
-`guild-admin` into the `in_theology_review` pool (ADR-0004 §B-spirit). P71 adds the **graded
+`guild-admin` into the `in_theology_review` pool (NWC-ADR-0004 §B-spirit). P71 adds the **graded
 propose→approve split** on top (Sojourners may propose/edit a `core` atom; only Theology's
 higher-confirmation tier may *approve* it), modelled precisely on `LegalGate`'s
 `edit`/`clear`/`push`/`approve` ladder (`LegalGate.php:39`). Structurally, a Writers/Pedagogy/audience
-guild **has no `core` atom to edit** (ADR-0027 §9, 0027 line 229) — the invariant stays with
+guild **has no `core` atom to edit** (NWP-ADR-0027 §9, 0027 line 229) — the invariant stays with
 Theology/Sojourners.
 
 ---
@@ -115,7 +115,7 @@ Theology/Sojourners.
 **Operator decision B2 (2026-07-08/09):** *"make them both guilds; there was discussion of the
 writers guild and its levels."* Today Writers and Pedagogy are **Interest Groups** —
 `flexible_group`, "membership IS participation", **no authority over routing**
-(`interest-groups.yml:14`, `:27`; ADR-0002). But the editorial pipeline already has decisive stages
+(`interest-groups.yml:14`, `:27`; NWC-ADR-0002). But the editorial pipeline already has decisive stages
 named for them (`in_writer_review`, `in_pedagogy_review`, `EditorialRevision.php:41`–`:42`) whose
 pools are currently satisfied only by *Drupal user roles*
 (`EditorialPoolResolver.php:39`–`:40`), not by guild membership. That is the same empty-pool /
@@ -137,7 +137,7 @@ role-only gap P68 fixed for Copyright/Shepherds by adding them to `STATE_GUILD`
    membership (not just a bare Drupal role granted to nobody) satisfy the pool, and brings both
    stages under the pool-aware anti-self-review policy keyed by guild label
    (`EditorialPoolResolver.php:122` `separationMode`).
-3. Note the **precedent**: ADR-0002's triple-test (sustained bottleneck + 5+ eligible members +
+3. Note the **precedent**: NWC-ADR-0002's triple-test (sustained bottleneck + 5+ eligible members +
    distinct credentialing) is the promotion trigger, and **Media-from-Video-IG**
    (`interest-groups.yml:51`, operator 2026-07-08) is the exact precedent for an IG earning routing
    authority and becoming a guild. The `pedagogy-guild.yml` seed also closes a standing parity gap:
@@ -258,7 +258,7 @@ it.**
    (`EditorialStateService.php:33`); add it to the notify/pool-refresh set
    (`EditorialStateService.php:235`).
 2. Add an **`audience` field** to `EditorialRevision` (list_string; P70 vocab
-   `youth · single · married · religious · priest`, open list — ADR-0027 §1, 0027 line 296). Absent
+   `youth · single · married · religious · priest`, open list — NWP-ADR-0027 §1, 0027 line 296). Absent
    `audience` (a `core`/`general` atom) → the stage is **skipped** by the template (§5), so existing
    content is unaffected.
 3. Add an **audience-keyed pool lookup** to `EditorialPoolResolver`: for
@@ -270,18 +270,18 @@ it.**
    (`LegalGate.php:32`) so only the audience body's review tier may pass it — reusing, not extending,
    the graded-gate pattern.
 
-**The audience birthing ladder (ADR-0027 §9, 0027 lines 212–231).** An audience is a **lifecycle**,
+**The audience birthing ladder (NWP-ADR-0027 §9, 0027 lines 212–231).** An audience is a **lifecycle**,
 not a fixed body:
 
 ```
   Interest Group  ──promote──▶  Audience Guild  ──birth──▶  Federation member site
   (audience tag in            (owns its variant/story        (own community + users;
    interest-groups.yml,         overlay; gains routing         overlay travels, still a
-   zero authority, ADR-0002)    authority + score)             CANONICAL OVERLAY, not a fork)
+   zero authority, NWC-ADR-0002)    authority + score)             CANONICAL OVERLAY, not a fork)
 ```
 
 A new audience (e.g. `youth`) starts as an **IG** (an `application_tag`, `interest-groups.yml:26`
-shape — zero routing authority). When it earns routing authority via the ADR-0002 triple-test
+shape — zero routing authority). When it earns routing authority via the NWC-ADR-0002 triple-test
 (the Media precedent again), it is **promoted to an audience guild** that owns that audience's
 `variants`/`contributed` atoms and satisfies the `in_audience_fit_review` pool — and **structurally
 cannot touch `core`** (§3). Until an audience is promoted, `in_audience_fit_review` for that audience
@@ -340,11 +340,11 @@ Steps 2–5 are independent of the P70 render-contract work and can proceed in p
 - **[P70](P70-audience-variants-and-learnersourced-stories.md)** — the content-schema companion. P70
   defines the atom types and `audience` axis P71 governs. P71's `atom_type` field (§5) and `audience`
   field (§7) are the entity-side of P70's schema. Do **not** duplicate the vocab — one source
-  (ADR-0027 §1).
-- **[ADR-0027](../decisions/0027-unified-course-content-architecture.md)** — parent. §5
+  (NWP-ADR-0027 §1).
+- **[NWP-ADR-0027](../decisions/0027-unified-course-content-architecture.md)** — parent. §5
   ceremony-scales-with-trust is the frame; §9 birthing ladder is §7 here; the "atom-type→guild
   ownership + guild-scoped scoring model" deferred at 0027 line 311 **is** this proposal.
-- **ADR-0002 three-guilds-plus-stewards** — in the nwc site-profile repo at
+- **NWC-ADR-0002 three-guilds-plus-stewards** — in the nwc site-profile repo at
   `sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/0002-three-guilds-plus-stewards.md`
   (the `sites/` tree is gitignored here, so this is a path, not a link)
   — the IG→guild promotion triple-test and the Media-from-Video-IG precedent (§4, §7).
@@ -380,7 +380,7 @@ Guild's answer, not the reverse:
    whether Sojourners `core`-proposal work is scored at all.
 5. **Writers Guild levels** (operator B2) — does the Writers Guild want graded skill tiers
    (`media-guild.yml:74` shape) or the flat 7-role ladder? Feeds the `writers-guild.yml` seed (§4).
-6. **Audience axis vs disposition** (ADR-0027 §1 / briefing Q1) — is demographic *audience* the right
+6. **Audience axis vs disposition** (NWP-ADR-0027 §1 / briefing Q1) — is demographic *audience* the right
    cut for the `in_audience_fit_review` body, or *state-of-prayer / disposition*? Determines what the
    audience-guild ladder (§7) actually births.
 

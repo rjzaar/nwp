@@ -235,14 +235,14 @@ Numbering is stable: `D<n>` never gets reused. Phases match ops#158's ladder.
   deliverable below rides this train, so it converges first.
 - **How:** Reconcile to the toolkit tree per #103; then
   `pl moodle plugin deploy <site> mod/depthcontent --tier=live` per site —
-  the gate machinery (ADR-0036 classes, ship-together assertion, AMD
+  the gate machinery (NWP-ADR-0036 classes, ship-together assertion, AMD
   freshness) now covers every site shape including the unpaired one.
 - **Done when:** `pl moodle gate-status <site>` is green (or EXEMPT-by-class)
   fleet-wide from ONE source tree; #90 and #137 close with it.
 
 ### D13 — The unpaired formation site exits its exemption via a local consent source, before expiry
 - **Status:** STANDING; execution RATIFIED 2026-07-29 · **Issues:** #153, #154
-- **Why:** The bounded exemption (merged, ADR-0036) hard-expires
+- **Why:** The bounded exemption (merged, NWP-ADR-0036) hard-expires
   **2026-10-31**; its declared exit is `posture: local`. The two unbuilt AMD
   modules and the probe deployment ride D12's first deploy to that site.
 - **How:** Build the AMD modules in the canonical tree; ship the probe to the
@@ -352,7 +352,7 @@ Numbering is stable: `D<n>` never gets reused. Phases match ops#158's ladder.
   next step is one real gated deploy on the disposable test instance, then
   the regression suite (#26). Verifier-host provisioning (#25) is operator
   hardware work with the kit already prepared.
-- **How:** `pl server-apply` path on the test tier per ADR-0024/0026;
+- **How:** `pl server-apply` path on the test tier per NWP-ADR-0024/0026;
   #52's verify-then-apply reconciliation lands with it.
 - **Done when:** one signed bundle round-trips pull→verify→apply→rollback on
   the test site with the ledger showing it.
@@ -551,7 +551,7 @@ Numbering is stable: `D<n>` never gets reused. Phases match ops#158's ladder.
   from there.
 
 ### D39 — Remaining program items ride their named vehicles
-- **Status:** RATIFIED 2026-07-29 · **Issues:** #73, #74 (ADR-0031 hygiene MR
+- **Status:** RATIFIED 2026-07-29 · **Issues:** #73, #74 (NWP-ADR-0031 hygiene MR
   series); #85 (two-person copyright_sync 3-way merge, operator-sanctioned);
   #86 (avatars after the 2.0 theme integration); #105 (live plumbing checks
   fold into `pl todo`); #108 (the audit register closes as its rows do);

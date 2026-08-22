@@ -1,17 +1,17 @@
-# ADR-0025: Production Backup to `ver` (restic, custodian-pull, append-only)
+# NWP-ADR-0025: Production Backup to `ver` (restic, custodian-pull, append-only)
 
 **Status:** Accepted — 2026-06-29
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** nwp/ops#4 (Session D); "there must be a way to back up to `ver` from prod"
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md),
-[ADR-0022](0022-nwp-verifier-binary-split.md),
-[ADR-0026](0026-nwp-server-capability-agent.md) (renumbered from a duplicate ADR-0024, 2026-07-02),
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md),
+[NWP-ADR-0022](0022-nwp-verifier-binary-split.md),
+[NWP-ADR-0026](0026-nwp-server-capability-agent.md) (renumbered from a duplicate NWP-ADR-0024, 2026-07-02),
 [role-vocabulary](../reference/role-vocabulary.md),
 prior art: `rjzaar/pleasy` `server/` (`gitbackupdb.sh`, `gitbackupfiles.sh`, `getlatestbackup.sh`).
 
 ## Context
 
-`nwp-server` (ADR-0026) runs on each `prod-cluster` host and can `pull+verify`,
+`nwp-server` (NWP-ADR-0026) runs on each `prod-cluster` host and can `pull+verify`,
 `apply`, `snapshot→sanitize→publish`, `rollback`, and report `status`. It does **not**
 yet ship a disaster-recovery backup. The operator's earlier project (`pleasy`) backed up
 prod by committing a `drush sql-dump` and the files tree into dedicated git repos and
@@ -35,7 +35,7 @@ distrusted relay; **trust flows through signatures and keys, not machines.**
 | Flow | Data | Crosses to | Encryption | Why allowed |
 |---|---|---|---|---|
 | **DR backup** (this ADR) | **raw** DB + files | `ver` only | restic client-side + tunnel; keystore sealed on `ver` | `ver` is in the **prod-trust tier** (offline, hardware-keyed, already deploys to prod). It MAY hold raw prod data. |
-| **sanitized publish** (ADR-0026) | **scrubbed** (fail-closed PII gate) | `git-host` → dev/AI tier | n/a (already PII-free) | dev/AI tier must NEVER see raw data. |
+| **sanitized publish** (NWP-ADR-0026) | **scrubbed** (fail-closed PII gate) | `git-host` → dev/AI tier | n/a (already PII-free) | dev/AI tier must NEVER see raw data. |
 
 Conflating them — e.g. sending a raw backup anywhere the AI/dev tier can read — breaks
 the inviolable boundary. The DR backup goes to `ver` and nowhere else.
@@ -71,7 +71,7 @@ of which hold.)
 A compromised prod can at worst corrupt its short local staging window; it cannot reach
 or delete `ver`'s repo. This is the "pull + immutable" anti-ransomware pattern.
 
-### Credential ledger (extends ADR-0026)
+### Credential ledger (extends NWP-ADR-0026)
 - **prod** gains **no** new outbound credential for backups — it writes a *local* repo.
 - **`ver`** gains one **read-only pull credential** to prod's restic repo path (over the
   tunnel; ideally an `authorized_keys` forced `command=` restricting it to restic/SFTP
@@ -121,7 +121,7 @@ demands it; the direct-pull design is the v1.
 - Key custody is unforgiving (lose `ver`'s key ⇒ lose the backups); escrow is mandatory.
 
 ### Neutral
-- The `nwp-server backup` verb extends ADR-0026's capability set to six verbs; it stays
+- The `nwp-server backup` verb extends NWP-ADR-0026's capability set to six verbs; it stays
   AI-free (no AI/CI/SaaS modules) and is covered by the `pl build-server` deny-scan.
 
 ## Implementation Notes
@@ -141,6 +141,6 @@ credential able to delete `ver`'s repo; `pl build-server` deny-scan stays green 
 backup verbs included.
 
 ## Related Decisions
-- [ADR-0017](0017-distributed-build-deploy-pipeline.md) — `ver` role + the prod boundary.
-- [ADR-0026](0026-nwp-server-capability-agent.md) — the `nwp-server` agent this extends (renumbered from a duplicate ADR-0024).
-- [ADR-0022](0022-nwp-verifier-binary-split.md) — AI-free build target the backup verbs join.
+- [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) — `ver` role + the prod boundary.
+- [NWP-ADR-0026](0026-nwp-server-capability-agent.md) — the `nwp-server` agent this extends (renumbered from a duplicate NWP-ADR-0024).
+- [NWP-ADR-0022](0022-nwp-verifier-binary-split.md) — AI-free build target the backup verbs join.

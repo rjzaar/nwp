@@ -2,7 +2,7 @@
 
 > **Audience:** the operator, at the ver box + a browser. Written for someone who
 > is **not a full-time terminal user** — every command says what it does and why.
-> **Basis:** [ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md).
+> **Basis:** [NWP-ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md).
 > **Companion:** [`ver-provisioning-runbook.md`](ver-provisioning-runbook.md) (the
 > full turnkey sequence; this is the *deploy-half fast path*).
 

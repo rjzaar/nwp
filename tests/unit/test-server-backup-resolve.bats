@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 ################################################################################
 # Unit tests for lib/server-backup-resolve.sh — stack-aware backup resolvers
-# (ops#112 / ADR-0032 Flow B). Docker-free, secret-free, filesystem-shape.
+# (ops#112 / NWP-ADR-0032 Flow B). Docker-free, secret-free, filesystem-shape.
 ################################################################################
 
 source "${BATS_TEST_DIRNAME}/../../lib/server-backup-resolve.sh"

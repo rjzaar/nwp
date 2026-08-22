@@ -3,7 +3,7 @@
 > ## ⚠️ SUPERSEDED MODEL — read this first
 >
 > **Reviewed 2026-07-26.** The "four-tier environment hierarchy" described below is
-> ADR-0013's four-state model, which **ADR-0030 supersedes and explicitly rejects**.
+> NWP-ADR-0013's four-state model, which **NWP-ADR-0030 supersedes and explicitly rejects**.
 >
 > Under the current model there are **two independent axes**, not one ladder:
 >
@@ -16,7 +16,7 @@
 >
 > The environment *directories* described below (`dev/`, `stg/`, live, prod) are still
 > real and still correct. It is the four-**state** framing, and the deployment advice
-> built on it, that is out of date. See ADR-0030, ADR-0031, and
+> built on it, that is out of date. See NWP-ADR-0030, NWP-ADR-0031, and
 > [How to: deploy a change](../guides/howto-deploy.md).
 
 This document describes the environment hierarchy, configuration splits, and preview environment setup for NWP-managed Drupal sites.

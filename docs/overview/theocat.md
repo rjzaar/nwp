@@ -94,4 +94,4 @@ because it is easy to forget.
 |-----|------|
 | The tool itself | `~/theocat/README.md` |
 | Its role in course content | `docs/proposals/F30-content-federation-network.md` |
-| The course architecture | ADR-0027 (`docs/decisions/0027-unified-course-content-architecture.md`) |
+| The course architecture | NWP-ADR-0027 (`docs/decisions/0027-unified-course-content-architecture.md`) |

@@ -267,7 +267,7 @@ yaml_get_site_field() {
         return 1
     fi
 
-    # yq-first (ADR-0015). The previous inline awk bounded a site's block with
+    # yq-first (NWP-ADR-0015). The previous inline awk bounded a site's block with
     # /^  [a-zA-Z_]+:/, which EXCLUDES digits/hyphens — so it never stopped at a
     # next-sibling header like `ss2:` or `dir1:`. A query for a field a site does
     # NOT have (e.g. nwd has no `directory:`) then ran past the block and returned

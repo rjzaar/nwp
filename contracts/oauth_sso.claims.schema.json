@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://git.example/nwp/contracts/oauth_sso.claims.schema.json",
   "title": "nwc → ss OIDC userinfo claim set",
-  "description": "The CLOSED allow-list of claims nwc (provider, native simple_oauth /oauth/userinfo) emits to the Moodle consumer (auth_nwc). Derived from NwcOidcClaimsServiceProvider::REQUIRED_CLAIMS. additionalProperties:false is deliberate — it is the data-minimisation gate (P74 §Phase-0 / intersite-contract research §2). Adding a claim here is a boundary change: it must go through the contract_version bump + the ss side's review. `sub` is the load-bearing UID-lock join key (= Drupal user.uuid(), NOT the serial uid — ADR-0031 D9 / ops#83).",
+  "description": "The CLOSED allow-list of claims nwc (provider, native simple_oauth /oauth/userinfo) emits to the Moodle consumer (auth_nwc). Derived from NwcOidcClaimsServiceProvider::REQUIRED_CLAIMS. additionalProperties:false is deliberate — it is the data-minimisation gate (P74 §Phase-0 / intersite-contract research §2). Adding a claim here is a boundary change: it must go through the contract_version bump + the ss side's review. `sub` is the load-bearing UID-lock join key (= Drupal user.uuid(), NOT the serial uid — NWP-ADR-0031 D9 / ops#83).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -10,7 +10,7 @@
   ],
   "properties": {
     "sub": {
-      "description": "Subject identifier = Drupal user.uuid() — the STABLE account UUID, NOT the serial uid. THE UID-lock join key → mdl_user.idnumber. ADR-0031 D9 / ops#83 moved this off the uid (shipped 03672e2, live 2026-07-11): a DB restore/rebuild renumbers uids and would sever every ss UID-lock, whereas the UUID survives. Emitted by nwc_oidc_claims, which overrides simple_oauth's uid default. Must be stable and never reused.",
+      "description": "Subject identifier = Drupal user.uuid() — the STABLE account UUID, NOT the serial uid. THE UID-lock join key → mdl_user.idnumber. NWP-ADR-0031 D9 / ops#83 moved this off the uid (shipped 03672e2, live 2026-07-11): a DB restore/rebuild renumbers uids and would sever every ss UID-lock, whereas the UUID survives. Emitted by nwc_oidc_claims, which overrides simple_oauth's uid default. Must be stable and never reused.",
       "type": "string",
       "minLength": 1,
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -67,7 +67,7 @@
             "description": "Serial group id. DEBUG/back-compat ONLY — renumber-fragile. Bind on `uuid`."
           },
           "uuid": {
-            "description": "STABLE group UUID — the key consumers MUST bind on. `id` is the serial group id and renumbers on any DB restore/rebuild, which would orphan every cohort binding: the same failure ADR-0031 D9 fixed for `sub`. Optional only until the ss consumer adopts it (adding a required field is breaking per contracts/compat.py); it is always emitted. FOLLOW-UP: promote to required once auth_nwc reads it.",
+            "description": "STABLE group UUID — the key consumers MUST bind on. `id` is the serial group id and renumbers on any DB restore/rebuild, which would orphan every cohort binding: the same failure NWP-ADR-0031 D9 fixed for `sub`. Optional only until the ss consumer adopts it (adding a required field is breaking per contracts/compat.py); it is always emitted. FOLLOW-UP: promote to required once auth_nwc reads it.",
             "type": "string",
             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
           },

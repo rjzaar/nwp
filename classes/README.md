@@ -1,4 +1,4 @@
-# `classes/` — per-site class declarations (ADR-0036 / nwp/ops#153)
+# `classes/` — per-site class declarations (NWP-ADR-0036 / nwp/ops#153)
 
 A site's **class** answers *"what IS this site, and therefore which data
 invariants apply to it?"* It is the third per-site axis:

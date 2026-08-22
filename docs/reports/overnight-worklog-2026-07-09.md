@@ -15,7 +15,7 @@ as MRs for morning review** (merge nothing). Decision log per operator's standin
 | # | Branch | Scope | Sensitivity |
 |---|--------|-------|-------------|
 | A | `ops-tooling-fixes-2026-07-09` | inverted `pl security` gate (reports vulnerable as green), empty-var `rm -rf` guards, `eval`-on-parsed-data RCE path, `coders.sh` recursion | dev/CI |
-| B | `ops-doc-adr-hygiene-2026-07-09` | wire `pl doc-truth` into CI; draft ADR-0029/0030; correct ADR-0013/0014/0021 status; accept+index ADR-0027; proposal status pass | docs |
+| B | `ops-doc-adr-hygiene-2026-07-09` | wire `pl doc-truth` into CI; draft NWP-ADR-0029/0030; correct NWP-ADR-0013/0014/0021 status; accept+index NWP-ADR-0027; proposal status pass | docs |
 | C | `ops-sanitizer-failclosed-2026-07-09` | `pii-gate.sh` PIPESTATUS bug; `sanitize_staging_db` fail-closed + post-condition; add sanitize/PII-gate to prod2stg/live2stg | SECURITY — human review required |
 | D | `ops-nwc-auth-substrate-2026-07-09` (nwc profile) or patches | GuildEligibility substrate; H1 legal-route anonymous fail-open; H2 stored-XSS | SECURITY — human review required |
 
@@ -38,7 +38,7 @@ Commit `c27c528`, 9 files. gitleaks passed.
 Commit `80f3f09`, 14 files. gitleaks passed. Docs/CI only.
 - Wired `pl doc-truth` → new `lint:doc-truth` CI job + `doc_truth` in `pl verify`; ships green via regenerated `.doc-truth-baseline`.
 - New ADRs (Proposed): **0029** nwc authorization model, **0030** canonical+maturity axes + impact contract.
-- Status fixes (banners only): 0013→Superseded-by-0030, 0014→Deprecated, 0021→Rejected; ADR-0027 accepted+indexed.
+- Status fixes (banners only): 0013→Superseded-by-0030, 0014→Deprecated, 0021→Rejected; NWP-ADR-0027 accepted+indexed.
 - Proposal pass: F30 dual-status removed, F25→Superseded-by-F29, F28 dep repointed, P70 amended-by-0027.
 - **Operator TODO:** P71 has two pre-existing dead links (to still-untracked P68 + a cross-repo path) — baselined so the gate isn't red-on-arrival; fix links / commit P68 then `pl doc-truth --baseline`.
 

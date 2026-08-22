@@ -75,7 +75,7 @@ set -uo pipefail
 #            Writes to TWO places: --out holds what the member is handed, and
 #            --keys-out (a SIBLING, never a child) holds the join maps, which
 #            carry the lp_id the packet withholds. REFUSES to write either
-#            inside this repository, which is publicly mirrored (ADR-0039 /
+#            inside this repository, which is publicly mirrored (NWP-ADR-0039 /
 #            P78 6), and refuses --keys-out inside --out.
 #
 #   score    takes N answers files, joins each through its own packet, and runs
@@ -146,7 +146,7 @@ CLIP_SCORER_DIR="${NWP_CLIPS_SCORER_DIR:-$HOME/dir/courses_v3/silver-labels-2026
 CLIP_DIR_REPO="${NWP_CLIPS_DIR_REPO:-$HOME/dir}"
 CLIP_DIR_BRANCH="${NWP_CLIPS_DIR_BRANCH:-clip-integrity-ops352}"
 # The clip pool lives on the AI host. Its real name is NOT written here: this
-# repo is publicly mirrored (ADR-0039 / ops#326), so the host is named by the
+# repo is publicly mirrored (NWP-ADR-0039 / ops#326), so the host is named by the
 # same generic alias `pl ai-host` already uses, and resolved from the operator's
 # ssh config. Reusing that one declared fact rather than adding a rival is the
 # point — a host named in two places is a host that drifts.
@@ -579,7 +579,7 @@ else: print(r.get("open","?"))' 2>/dev/null)
     else
         _f_head 5 "$t" "OWED"
         _f_say "$n open rotation debt records. They REFUSE pl canonical set <site> prod and"
-        _f_say "every prod write through the ADR-0028 gate while they stand."
+        _f_say "every prod write through the NWP-ADR-0028 gate while they stand."
         _f_say "$tier TIER violations — an admin/backup-decryption credential in the"
         _f_say "AI-readable tier. Moving one is an OPERATOR action; the AI is deny-ruled"
         _f_say "from the destination file and cannot do it for you."

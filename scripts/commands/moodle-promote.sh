@@ -2,7 +2,7 @@
 set -uo pipefail
 ################################################################################
 # scripts/commands/moodle-promote.sh — Moodle promotion substrate entrypoint
-#                                       (ADR-0031 D8 / ops D)
+#                                       (NWP-ADR-0031 D8 / ops D)
 #
 # The Moodle-stack analogue of the Drupal settings-rewrite + `drush cr` that
 # dev2stg/prod2stg do. Given a Moodle site + a NON-canonical target tier, it
@@ -36,7 +36,7 @@ source "$REPO_ROOT/lib/moodle-promote.sh"
 
 show_help() {
     cat <<EOF
-${BOLD}NWP Moodle Promote — Moodle promotion substrate (ADR-0031 D8)${NC}
+${BOLD}NWP Moodle Promote — Moodle promotion substrate (NWP-ADR-0031 D8)${NC}
 
 ${BOLD}USAGE:${NC}
     pl moodle-promote <site> [OPTIONS]

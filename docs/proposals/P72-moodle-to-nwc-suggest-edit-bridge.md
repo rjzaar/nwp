@@ -2,7 +2,7 @@
 
 **Status:** PROPOSED — 2026-07-09.
 **Author:** Robert Karsten Zaar (with AI assistance).
-**Parent / anchor:** [ADR-0027 §10](../decisions/0027-unified-course-content-architecture.md)
+**Parent / anchor:** [NWP-ADR-0027 §10](../decisions/0027-unified-course-content-architecture.md)
 ("Editorial signal is direct-to-Drupal, exported to canonical on approve").
 **Depends on (all unbuilt or partial):**
 [F26](F26-avc-ss-oidc.md) OIDC (DESIGNED-ONLY, scoped AVC↔SS — see §3),
@@ -10,7 +10,7 @@
 *transition* an existing revision, not originate one — see §2),
 [P70](P70-audience-variants-and-learnersourced-stories.md) atom typing (`core` / `contrast` /
 `variants` / `contributed`),
-[ADR-0027](../decisions/0027-unified-course-content-architecture.md) canonical model + ceremony
+[NWP-ADR-0027](../decisions/0027-unified-course-content-architecture.md) canonical model + ceremony
 spectrum.
 **Related rails (already work, downstream of a created revision):** `nwc_editorial` A30 state
 machine, the P64 / ops#60 write-back, P65 / ops#32 seed-content lifecycle.
@@ -26,7 +26,7 @@ where it opens a pre-populated **"propose revision"** form that creates an `edit
 routed to the owning guild's review queue. From there, everything is already built: the A30
 pipeline reviews it, and on approval the P64 rail exports it to canonical `nwp/courses`.
 
-This is the concrete build-out of **ADR-0027 §10**, which states the architecture but flags that
+This is the concrete build-out of **NWP-ADR-0027 §10**, which states the architecture but flags that
 "this whole leg is front-of-pipeline net-new, gated on F26." P72 specifies that net-new front of
 pipeline.
 
@@ -77,7 +77,7 @@ type so the deep-link can carry it:
 
 The control is **render-only** and reads the (course, lp, depth, audience, atom) coordinates already
 present in the page. It does **not** write anything in Moodle — Moodle is a disposable render target
-(ADR-0027 Decision 1 / P70 §2); the signal must leave for nwc.
+(NWP-ADR-0027 Decision 1 / P70 §2); the signal must leave for nwc.
 
 ### (b) A deep-link carrying the atom coordinates
 
@@ -105,7 +105,7 @@ authenticated** on nwc (Drupal) so the created revision is attributed to a real 
 second login**. That cross-domain single sign-on is exactly **F26 OIDC**, which is designed only,
 not built, and is currently scoped AVC↔SS. P72 needs it extended to **nwc↔ss** (§3). Until that
 lands, the whole leg cannot ship — an unauthenticated hand-off would create orphan/anonymous
-revisions and defeat member-level attribution (ADR-0027 Decision 6).
+revisions and defeat member-level attribution (NWP-ADR-0027 Decision 6).
 
 ### (d) The nwc "propose revision" CREATE form — the unbuilt ops#50 authoring surface
 
@@ -150,7 +150,7 @@ atom's *location*, on `EditorialRevision` for the *atom being changed*:
 | `EditorialArtifact` | `canonical_lp_id` | string | learning-point id (P70 key part 2) |
 | `EditorialRevision` | `atom_type` | list_string: `core` / `variant` / `quiz` / `media` | which kind of atom |
 | `EditorialRevision` | `atom_depth` | list_string: `short`…`advanced` | P70 depth axis |
-| `EditorialRevision` | `atom_audience` | list_string: `youth`/`single`/`married`/`religious`/`priest`/`_none_` | P70 audience axis (open list, ADR-0027 Dec. 1) |
+| `EditorialRevision` | `atom_audience` | list_string: `youth`/`single`/`married`/`religious`/`priest`/`_none_` | P70 audience axis (open list, NWP-ADR-0027 Dec. 1) |
 | `EditorialRevision` | `atom_slot` | string | slot / quizitem / media id (empty for `core`) |
 | `EditorialRevision` | `origin_render_target` | list_string: `moodle` / `flutter` / `drupal` | where the suggestion came from (provenance) |
 
@@ -161,7 +161,7 @@ block of the target LP's YAML) reads these structured fields rather than parsing
 #### `atom_type → change_kind` mapping
 
 The create form derives the A30 `change_kind` (already an enum on `EditorialRevision`, driving which
-stages apply per ADR-0006) from the atom being edited, defaulting conservatively (the user may
+stages apply per NWC-ADR-0006) from the atom being edited, defaulting conservatively (the user may
 refine within the allowed set for that atom):
 
 | `atom_type` | proposed default `change_kind` | rationale / gate |
@@ -174,14 +174,14 @@ refine within the allowed set for that atom):
 
 A `contributed` *story* (a learner's own anecdote) is **not** this form — that is P70's
 `story_contribution` micro-loop (peer-vote triage first). P72 is the **authored-edit / variant**
-path — the middle of ADR-0027 §5's ceremony spectrum ("authored, within a community → normal
+path — the middle of NWP-ADR-0027 §5's ceremony spectrum ("authored, within a community → normal
 editorial pipeline → `nwc_editorial`"), not the micro end.
 
 ---
 
 ## 3. The F26 dependency + scope gap
 
-ADR-0027 §10 names the hard dependency plainly: "the authenticated cross-domain hand-off is F26
+NWP-ADR-0027 §10 names the hard dependency plainly: "the authenticated cross-domain hand-off is F26
 OIDC, which is designed only, not built, and is currently scoped AVC↔SS — extending it to nwc↔ss is
 a prerequisite."
 
@@ -193,7 +193,7 @@ proposal."* F26's whole architecture (§3) makes **AVC the OIDC issuer** (`simpl
 the client** (`auth_oidc`), locking Moodle's `idnumber` to the AVC uid on first login.
 
 P72 needs the identity to resolve into **nwc**, not AVC — because the editorial pipeline, the guild
-membership, and the member attribution (ADR-0027 Decision 6) all live in **nwc/Drupal**, and nwc
+membership, and the member attribution (NWP-ADR-0027 Decision 6) all live in **nwc/Drupal**, and nwc
 (not avc) is the canonical 2.0 site. So this is not "reuse F26 as-is"; it is a **scope extension**.
 
 ### 3.2 The nwc↔ss scope extension P72 requires
@@ -252,7 +252,7 @@ authorise autonomously building the SSO.
 ## 5. SECURITY FLAG — F26 is an auth surface; its build is human-gated (not autonomous)
 
 **This must not be lost.** F26 is an **authentication surface**. Under the NWP threat model
-(CLAUDE.md — "Authentication/Authorization Changes" are High-Risk / Block-and-Escalate; ADR-0017
+(CLAUDE.md — "Authentication/Authorization Changes" are High-Risk / Block-and-Escalate; NWP-ADR-0017
 trust boundaries) **and F26's own §4.4 review gate** (1 human approver during build-out, 2 once live
 in prod), the OIDC hand-off:
 
@@ -314,7 +314,7 @@ Keep the two panels visually kin but mechanically distinct.
 ## 8. Consequences
 
 **Positive**
-- Closes ADR-0027 §10's named front-of-pipeline gap with a concrete build.
+- Closes NWP-ADR-0027 §10's named front-of-pipeline gap with a concrete build.
 - Gives `nwc_editorial` its missing *originate* entry point (ops#50) — useful well beyond Moodle
   (Flutter and nwc's own render can reuse the same propose route + deep-link shape).
 - Replaces the weak free-form `subject_ref` with structured atom coordinates, making routing,

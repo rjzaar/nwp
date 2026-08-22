@@ -5,8 +5,8 @@ shipped with this document.
 **Owner:** *(unassigned)*
 **Issue:** [nwp/ops#337](https://git.nwpcode.org/nwp/ops/-/issues/337) · follows
 [ops#336](https://git.nwpcode.org/nwp/ops/-/issues/336) (P3 granularity)
-**Predecessors:** P64 (clip choice as data, not content) · ADR-0017 (Media Guild promotion) ·
-ADR-0006 (anti-self-review) · P73 (editorial authorization hardening — the `unilateral` stamp
+**Predecessors:** P64 (clip choice as data, not content) · NWC-ADR-0017 (Media Guild promotion) ·
+NWC-ADR-0006 (anti-self-review) · P73 (editorial authorization hardening — the `unilateral` stamp
 pattern reused in §3)
 **Evidence base:** `~/dir/courses_v3/build/reports/clip-granularity-correction.md`,
 `~/dir/courses_v3/build/reports/current-clip-vs-rubric.md`,

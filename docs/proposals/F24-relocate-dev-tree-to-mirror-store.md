@@ -3,7 +3,7 @@
 **Status:** PROPOSED (Phase 1 complete 2026-04-11)
 **Created:** 2026-04-11
 **Author:** Robert Karsten Zaar (with AI assistance)
-**Priority:** Medium-High (immediate trigger: `authoring` workstation disk-full crash; architectural alignment with ADR-0017)
+**Priority:** Medium-High (immediate trigger: `authoring` workstation disk-full crash; architectural alignment with NWP-ADR-0017)
 **Depends On:** F21 Phase 1 (Headscale mesh), F21 Phase 2 (`mirror-store` GitLab Runner)
 **Breaking Changes:** No (workflow is additive — the `authoring` workstation keeps full dev capability)
 **Estimated Effort:** Phased; Phase 1 done, Phase 2 ~half-day, Phase 3 ~day
@@ -42,7 +42,7 @@ combined load of DDEV/Docker, local Whisper, ad-hoc verify-test orphans,
 and an interactive workload (Brave + Codium + Claude Code). Meanwhile,
 the `mirror-store` (a 12-core CPU, mid-range discrete GPU, 32 GB RAM
 desktop with 915 GB root, ~60% used) sits on the same home LAN at
-`mirror-store.tailnet` and is already designated by ADR-0017 as the
+`mirror-store.tailnet` and is already designated by NWP-ADR-0017 as the
 primary build/test runner.
 
 ### 1.2 Proposed solution
@@ -88,9 +88,9 @@ workstation runs the sites it actually uses day-to-day; the
 `mirror-store` runs everything for the verify suite and acts as the
 integration target.
 
-### 1.3 Relationship to ADR-0017 and F21
+### 1.3 Relationship to NWP-ADR-0017 and F21
 
-ADR-0017 § Actor roster names the `mirror-store` as "always-on home
+NWP-ADR-0017 § Actor roster names the `mirror-store` as "always-on home
 compute, primary build/test runner". F21 Phase 2 already shipped the
 GitLab Runner on the `mirror-store` that exercises this role for
 `pl verify --depth=basic`. F24 does two things on top of that:
@@ -101,7 +101,7 @@ GitLab Runner on the `mirror-store` that exercises this role for
    `mirror-store` tree are permanently coherent through git, not
    divergent through ad-hoc rsync.
 
-ADR-0017 also mentions "(often via Remote SSH to the `mirror-store`)"
+NWP-ADR-0017 also mentions "(often via Remote SSH to the `mirror-store`)"
 as one possible `authoring`-workstation pattern. F24 **does not require
 Remote SSH**. Remote SSH stays available for jobs that genuinely
 benefit from it (large builds, mass test runs, things the `authoring`
@@ -163,7 +163,7 @@ development workstations.
 - **Touching the `signed-deploy` → prod path.** Out of scope; the
   boundary is inviolable.
 - **Removing the existing `deploy:staging` / `deploy:production` CI
-  stages.** Those stages contradict ADR-0017's `signed-deploy`-mediated
+  stages.** Those stages contradict NWP-ADR-0017's `signed-deploy`-mediated
   model but cleaning them up belongs to a separate proposal — see § 9.
 - **Multi-developer access to the `mirror-store`.** The `mirror-store`
   is single-user under this proposal.
@@ -264,9 +264,9 @@ rsync round-trip on 2026-04-11).
   ssh into the host and run `ddev drush deploy`. These stages are
   gated only by `when: manual`, but if ever clicked, they put the
   CI runner (the `mirror-store`, an AI-accessible machine per
-  ADR-0017) in possession of an SSH key to prod and writing
+  NWP-ADR-0017) in possession of an SSH key to prod and writing
   arbitrary files into the production path. **This is precisely the
-  trust inversion ADR-0017 exists to prevent.** They also assume a
+  trust inversion NWP-ADR-0017 exists to prevent.** They also assume a
   pre-F17/F23 site layout (rsync `./` → a single target path,
   no per-site structure, no sanitizer, no `signed-deploy`). They are
   leftover stubs from before `signed-deploy` was introduced, and F24
@@ -301,7 +301,7 @@ automatically.
   No drift, no two-source-of-truth problems.
 - Naturally extends to multi-machine in the future (e.g. the `ai-host`
   could also become an always-on-main mirror) without re-architecting.
-- Matches ADR-0017's spirit: the `mirror-store` is the build/test
+- Matches NWP-ADR-0017's spirit: the `mirror-store` is the build/test
   runner, the `authoring` workstation is the developer workstation,
   and trust flows through git and signatures rather than through
   "which machine has the freshest copy".
@@ -561,7 +561,7 @@ the systemd unit files, and stating the fast-forward-only guarantee.
 - `nwp-auto-pull-main.timer` is installed and healthy in
   `systemctl list-timers`.
 - Per-site backup repos have a documented rsync policy.
-- ADR-0017 names the always-on-main contract.
+- NWP-ADR-0017 names the always-on-main contract.
 
 ### Phase 3 — Branch-CI workflow
 
@@ -574,7 +574,7 @@ file. They are not "legacy but harmless": the moment someone
 clicks the manual trigger, they grant the `mirror-store` (an
 AI-accessible CI runner) an SSH key to prod and a direct rsync path
 into `${PRODUCTION_PATH}`, which is exactly the trust inversion
-ADR-0017 exists to prevent.
+NWP-ADR-0017 exists to prevent.
 
 Three approaches were considered:
 
@@ -583,11 +583,11 @@ Three approaches were considered:
   `deploy:production` jobs and the matching variable docs. Keeps
   the diff small and reviewable; rollback is a `git revert`.
 - **B: neuter in place.** Replace each script body with
-  `exit 1 "signed-deploy-mediated per ADR-0017"`. Rejected because it
+  `exit 1 "signed-deploy-mediated per NWP-ADR-0017"`. Rejected because it
   leaves misleading job names in the pipeline UI that someone
   will eventually try to debug.
 - **C: defer to a successor proposal.** Leave for whichever
-  later proposal implements the ADR-0017-compliant
+  later proposal implements the NWP-ADR-0017-compliant
   build-artifact → `signed-deploy` handoff and replaces the stages in
   the same change. Rejected because the current state has standing
   blast radius and shouldn't persist longer than necessary.
@@ -601,7 +601,7 @@ any matching `$*_DB_PASSWORD` / `$*_API_KEY` variables from the
 CI variable storage are a liability even when no job references
 them. This cleanup happens in the GitLab UI, not in code.
 
-Replacing the deleted stages with a proper ADR-0017-compliant
+Replacing the deleted stages with a proper NWP-ADR-0017-compliant
 build-artifact-handoff is **not** in F24's scope — it belongs
 to a successor proposal slotted into F21's remaining phases.
 
@@ -701,7 +701,7 @@ This is open-ended. No commitment to a specific list.
 
 ### 7.4 Data that must not move during this migration
 
-Per CLAUDE.md § Two-Tier Secrets Architecture and ADR-0004:
+Per CLAUDE.md § Two-Tier Secrets Architecture and NWP-ADR-0004:
 
 - **`.secrets.data.yml`** must not be transmitted to the `mirror-store`
   by F24. Phase 2's git remote work runs over `git fetch`, which only
@@ -727,7 +727,7 @@ Per CLAUDE.md § Two-Tier Secrets Architecture and ADR-0004:
 | **Branch CI thorough verify takes long enough that developers stop pushing branches** and route around the merge gate. | Phase 3 keeps the basic verify job as a fast-fail first stage. Thorough verify runs in parallel where possible. Keep the merge gate strict regardless: a slow gate is still better than no gate. If it becomes painful, optimise verify, don't bypass the gate. |
 | **A `.secrets.data.yml` or `keys/prod_*` file accidentally enters the tree on the `authoring` workstation and gets pushed to `<gitlab-host>` via a feature branch.** | `.gitignore` already excludes both. CI's `verify-signature` and lint stages run on every push. Add a pre-receive hook on `<gitlab-host>` (out of scope for F24 itself, but flagged in § 9) that rejects pushes containing `.secrets.data.yml` regardless of `.gitignore`. |
 | **The `mirror-store`'s git remote is currently pointing at GitHub, not `<gitlab-host>`**, and the `mirror-store` has no SSH key registered for `<gitlab-host>`, so the "always on main" claim is currently false in a confusing way. Also, the `mirror-store` carries a local `ollama` branch with historical commits whose relationship to canonical main is unverified. | Phase 2 Steps 1–4 fix this explicitly (generate key, wire SSH config, triage ollama branch, retarget origin). Until Step 4 succeeds, do not install the auto-pull timer. |
-| **The `deploy:staging` / `deploy:production` / `stop:staging` CI stages grant the `mirror-store` an SSH key to prod if manually triggered.** This is a standing trust-inversion violation of ADR-0017, not just a model mismatch. | Phase 3 Step 1 deletes the stages as a small standalone commit before any other `.gitlab-ci.yml` work. The matching CI variables (`STAGING_SSH_KEY`, `PRODUCTION_SSH_KEY`, etc.) are removed from `<gitlab-host>` project settings in the same step. |
+| **The `deploy:staging` / `deploy:production` / `stop:staging` CI stages grant the `mirror-store` an SSH key to prod if manually triggered.** This is a standing trust-inversion violation of NWP-ADR-0017, not just a model mismatch. | Phase 3 Step 1 deletes the stages as a small standalone commit before any other `.gitlab-ci.yml` work. The matching CI variables (`STAGING_SSH_KEY`, `PRODUCTION_SSH_KEY`, etc.) are removed from `<gitlab-host>` project settings in the same step. |
 
 ### Medium risk
 
@@ -736,7 +736,7 @@ Per CLAUDE.md § Two-Tier Secrets Architecture and ADR-0004:
 | F21 Phase 2 GitLab Runner and Phase 2 DDEV projects both use Docker; they may contend. | Lower priority than originally assessed — the runner and DDEV already share `/var/run/docker.sock` cleanly as of 2026-04-11. Phase 2 Step 6 still sanity-checks coexistence under load; if they fight, the runner gets its own Docker context or DDEV uses a non-default port range. |
 | Per-site backup repos under `sites/<name>/backups/` are local-only. If both mirrors drift (one has a backup the other doesn't), the rsync direction matters. | Phase 2 Step 7 makes the sync policy explicit. Default: rsync from the `authoring` workstation to the `mirror-store` daily; never delete on the receiving side without confirmation. |
 | Triaging the `ollama` branch on the `mirror-store` requires judgment. Commits may have been rebased onto main under different SHAs, or they may be genuinely orphaned. Getting it wrong means either losing work or preserving stale cruft as an archive branch forever. | Phase 2 Step 3 is a review gate, not a script. The operator makes the call after reading `git log --oneline main..ollama`. Default-safe: if in doubt, push as `archive/mirror-store-ollama-2026-04-11` before the remote swap. The archive branch costs nothing to keep. |
-| Removing the legacy staging/production deploy stages leaves CI with no "deploy" path at all until a successor proposal lands. | Acceptable — the stages never worked in the F17/F23 site layout anyway, and manual SSH deploys remain available out-of-band. The replacement belongs to the ADR-0017-compliant build-artifact handoff proposal. |
+| Removing the legacy staging/production deploy stages leaves CI with no "deploy" path at all until a successor proposal lands. | Acceptable — the stages never worked in the F17/F23 site layout anyway, and manual SSH deploys remain available out-of-band. The replacement belongs to the NWP-ADR-0017-compliant build-artifact handoff proposal. |
 
 ### Low risk
 
@@ -764,7 +764,7 @@ Per CLAUDE.md § Two-Tier Secrets Architecture and ADR-0004:
 - **Replacement for the deleted `deploy:staging` / `deploy:production`
   stages.** F24 Phase 3 Step 1 deletes them outright as a standing
   trust-inversion risk, but does not replace them. A successor
-  proposal needs to design the ADR-0017-compliant build-artifact →
+  proposal needs to design the NWP-ADR-0017-compliant build-artifact →
   `signed-deploy` handoff: CI on the `mirror-store` produces a signed
   bundle, `signed-deploy` verifies the signature and pulls the bundle
   from `<gitlab-host>` Packages (or equivalent), `signed-deploy` alone
@@ -800,7 +800,7 @@ Per CLAUDE.md § Two-Tier Secrets Architecture and ADR-0004:
 - Moving the `ai-host`'s voice-agent Whisper stack
 - Multi-developer access to the `mirror-store`
 - **Replacing** the legacy `deploy:staging` / `deploy:production` CI
-  stages with an ADR-0017-compliant build-artifact → `signed-deploy`
+  stages with an NWP-ADR-0017-compliant build-artifact → `signed-deploy`
   handoff (separate proposal). *Deleting* them is in scope — see
   Phase 3 Step 1 — but designing the replacement is not.
 - Pre-receive hook for secret-file rejection on `<gitlab-host>`
@@ -815,11 +815,11 @@ Per CLAUDE.md § Two-Tier Secrets Architecture and ADR-0004:
   adds a Branch CI Workflow note), § Threat Model (unchanged),
   § Two-Tier Secrets Architecture (F24 respects the data/infra
   tier split throughout)
-- **[ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)**
+- **[NWP-ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)**
   — names the `mirror-store` as the build/test runner; F24 promotes
   the runner from `--depth=basic` to `--depth=thorough` and adds the
   always-on-main mirror role
-- **[ADR-0004: Two-Tier Secrets Architecture](../decisions/0004-two-tier-secrets-architecture.md)**
+- **[NWP-ADR-0004: Two-Tier Secrets Architecture](../decisions/0004-two-tier-secrets-architecture.md)**
   — governs what may and may not be replicated to the `mirror-store`
 - **[F21: Distributed Build/Deploy Pipeline](F21-distributed-build-deploy-pipeline.md)**
   — Phase 1 (Headscale) is F24's hard dependency; Phase 2
@@ -892,11 +892,11 @@ serious:
    host, decode a base64 SSH key from a CI variable, and rsync
    the working tree into `${PRODUCTION_PATH}`. That puts the
    `mirror-store` (an AI-accessible CI runner) in possession of a
-   prod SSH key, which is precisely the inversion ADR-0017 exists to
+   prod SSH key, which is precisely the inversion NWP-ADR-0017 exists to
    prevent. F24 originally flagged these stages as "out of scope,
    for a separate proposal"; post-investigation, Phase 3 Step 1 now
    **deletes them as a required standalone commit before any other
-   `.gitlab-ci.yml` work**. Replacement by an ADR-0017-compliant
+   `.gitlab-ci.yml` work**. Replacement by an NWP-ADR-0017-compliant
    build-artifact → `signed-deploy` handoff remains out of scope and
    belongs to a successor proposal.
 

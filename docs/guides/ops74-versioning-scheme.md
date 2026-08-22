@@ -1,16 +1,16 @@
-# Single semver scheme — nwc, profile, and Moodle plugins under one policy (ADR-0031 Phase B / ops#74)
+# Single semver scheme — nwc, profile, and Moodle plugins under one policy (NWP-ADR-0031 Phase B / ops#74)
 
 > **Status: DESIGN + POLICY.** This document is the authoritative expansion of
-> ADR-0031 **D3** (tagging policy). It defines the one versioning scheme every
+> NWP-ADR-0031 **D3** (tagging policy). It defines the one versioning scheme every
 > versioned unit on both stacks follows, how `release` (semver, == git tag)
 > relates to Moodle's `$plugin->version` (a `YYYYMMDDXX` integer), and how the
-> per-pair `contract_version` (ops#75 / ADR-0031 D2) sits above both.
+> per-pair `contract_version` (ops#75 / NWP-ADR-0031 D2) sits above both.
 > The *execution* (cutting the tags, moving the rollback anchors, creating GitLab
 > releases) is the companion runbook,
 > [`ops74-tag-release-runbook.md`](ops74-tag-release-runbook.md) — it happens on
 > the build host / GitLab, which this planning branch cannot reach.
 > **Date:** 2026-07-10. **Author:** AI (Phase-B planning session, read-only).
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D3.
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D3.
 > **Depends on:** ops#73 (plugin repos reconciled before they can be tagged) —
 > see `ops73-moodle-plugin-manifest-design.md` (lands on `main` with Phase A).
 
@@ -68,11 +68,11 @@ it. `release: 0.2.0` ⇔ `tag: v0.2.0` (tag = `v` + release).
 
 ### 1.1 Why one scheme across two stacks (not one collapsed version)
 
-ADR-0031 Option 1 (collapse the pair into a single version) is **rejected** —
+NWP-ADR-0031 Option 1 (collapse the pair into a single version) is **rejected** —
 Drupal and Moodle cannot share a package or deploy mechanism. What they *can*
 share is the **grammar**: `vX.Y.Z`, tag==declaration, tag-at-every-bump. Each
 unit keeps its own independent number line; the pair coupling lives one level up,
-in the contract (§3). This is exactly ADR-0031's "version the contract, not the
+in the contract (§3). This is exactly NWP-ADR-0031's "version the contract, not the
 pair."
 
 ---
@@ -110,7 +110,7 @@ a real `release` (`0.1.0` → tag `v0.1.0`); see the runbook §4.
 
 ## 3. How the pair `contract_version` (ops#75) relates
 
-The **pair contract** (`pair-contract.yml`, ADR-0031 D2, built in ops C / ops#75)
+The **pair contract** (`pair-contract.yml`, NWP-ADR-0031 D2, built in ops C / ops#75)
 carries a single monotonically increasing **integer** `contract_version`. It is a
 **third, independent** number line — *not* a semver, *not* derived from either
 side's tag:
@@ -144,7 +144,7 @@ and its relationship to the bottom; ops#75 owns the top.
 
 ---
 
-## 4. CI checks (ADR-0031 D3 acceptance; fold nwc-side into ops#54's minimal CI)
+## 4. CI checks (NWP-ADR-0031 D3 acceptance; fold nwc-side into ops#54's minimal CI)
 
 Two consistency gates, both cheap and read-only. The local helper
 `pl tag-hygiene` (§5) implements the profile/tool side of check A now; the plugin

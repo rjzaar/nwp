@@ -1,8 +1,8 @@
-# ADR-0031 kickoff worklog — 2026-07-10 (evening, unattended)
+# NWP-ADR-0031 kickoff worklog — 2026-07-10 (evening, unattended)
 
 Operator ~1h from bed; **merge policy = hold everything as MRs/plans for review** (merge nothing).
 
-## The plan (from ADR-0031 line 302 dependency map)
+## The plan (from NWP-ADR-0031 line 302 dependency map)
 `A → B → C` sequential; `D` independent of A–C but blocks real ssc/ssd parity; **C's auth half gated by the F26 issuer reconcile.** So the first moves that unblock everything, launched now in parallel:
 
 | Agent | Scope | Output | Sensitivity |

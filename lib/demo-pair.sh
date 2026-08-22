@@ -11,13 +11,13 @@
 # If the two halves were reset independently, the wipe would restore an ssd
 # whose locked identities point at nwd accounts that the nwd restore did not
 # bring back (or vice-versa) — SSO logins would bind to strangers' rows or be
-# DENIED outright. ADR-0031 D9 already names this exact hazard for the REAL
+# DENIED outright. NWP-ADR-0031 D9 already names this exact hazard for the REAL
 # pair and states the invariant:
 #
 #     identity.restore.invariant: both-or-forward
 #     "restore BOTH halves to one logical cut"
 #
-# The demo pair is uid_lock:false (throwaway users), so ADR-0031's *deploy*
+# The demo pair is uid_lock:false (throwaway users), so NWP-ADR-0031's *deploy*
 # refusal does not fire here — but the operational requirement is identical and
 # stricter in one way: a demo reset happens EVERY NIGHT, unattended. So this
 # library makes "one logical cut" a mechanically verified fact rather than an
@@ -49,7 +49,7 @@
 # is detected before anything is destroyed, not after.
 
 # Cut manifest lives in the PROVIDER's golden dir (the provider is the identity
-# origin — ADR-0031 D5 provider-first).
+# origin — NWP-ADR-0031 D5 provider-first).
 DEMO_PAIR_CUT="pair.cut.json"
 
 _dp_err()  { if command -v print_error >/dev/null 2>&1; then print_error "$*"; else printf 'ERROR: %s\n' "$*" >&2; fi; }
@@ -448,7 +448,7 @@ demo_pair_cut_id_of() {
 #      restored, the pair is on two different cuts. That is recorded in a file
 #      (and in both halves' logs), printed with the exact repair command, and
 #      surfaced by `pl demo status`. Re-running the same paired reset repairs it,
-#      because provider-first (ADR-0031 D5) makes the operation idempotent.
+#      because provider-first (NWP-ADR-0031 D5) makes the operation idempotent.
 ################################################################################
 
 # The box-side lock file for a site — the SAME path the box wrapper opens.

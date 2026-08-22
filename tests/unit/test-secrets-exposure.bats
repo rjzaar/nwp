@@ -328,7 +328,7 @@ _todo_items() {
 
 @test "deploy_gate_require REFUSES a target=prod write while a debt is open" {
   # This is the wiring that makes it bite: pl stg2prod and pl live2prod both
-  # reach prod through this one call (ADR-0028), so the gate cannot be acquired
+  # reach prod through this one call (NWP-ADR-0028), so the gate cannot be acquired
   # by one caller and missed by the next.
   secrets expose fixture_token --reason='leak' --where='doc:/tmp/a.md'
   run bash -c '

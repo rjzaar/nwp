@@ -446,7 +446,7 @@ Requirements:
   depends on F23 for stable backup paths
 - **[F21: Distributed Build/Deploy Pipeline](F21-distributed-build-deploy-pipeline.md)** —
   fixed sync scripts are a prerequisite for automated build/deploy
-- **[ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** —
+- **[NWP-ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** —
   the distributed actor model that defines where staging and production live
 - **[`lib/project-resolver.sh`](../../lib/project-resolver.sh)** — the
   critical file for site path resolution

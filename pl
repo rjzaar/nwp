@@ -259,7 +259,7 @@ ${BOLD}MATURITY (code-flow classes, P67/ops#48):${NC}
     maturity set <site> <class>     Explicit transition (ledgered; downgrades typed-confirm)
     maturity check <site>           Show which code-deploy gate is in force
 
-${BOLD}SITE CLASS (data/identity classes, ADR-0036/ops#153):${NC}
+${BOLD}SITE CLASS (data/identity classes, NWP-ADR-0036/ops#153):${NC}
     class show [site]               Show per-site class (what the site IS)
     class check <site>              Which data invariants apply + what fails
     class set <site> <class>        Declare a class (tracked, reviewable)
@@ -378,12 +378,12 @@ ${BOLD}EMAIL:${NC}
 
 ${BOLD}BUILD TARGETS:${NC}
     build-server                    Assemble the AI-free nwp-server artifact
-                                    (allowlist + fail-closed AI/CI/SaaS deny-scan; ADR-0022/0024)
+                                    (allowlist + fail-closed AI/CI/SaaS deny-scan; NWP-ADR-0022/0024)
     build-server --list             Show the include allowlist
     build-server --scan-only DIR    Re-scan an assembled artifact (independent verify)
     server-backup --site-dir DIR    DR backup of a prod site to a local restic repo
-                                    (raw; pulled by ver). Dry-run by default. ADR-0025
-    ver-pull --from R --to R        ver drains prod's snapshots, prunes, verifies (ADR-0025)
+                                    (raw; pulled by ver). Dry-run by default. NWP-ADR-0025
+    ver-pull --from R --to R        ver drains prod's snapshots, prunes, verifies (NWP-ADR-0025)
     test-ver <provision|assert|…>   Validate the ver (signed-deploy) tier on throwaway
                                     Linodes: WG tunnel + fail-closed invariant sweep (ops#29)
     ver-test <provision|provision-prod|cycle|teardown|status>
@@ -475,7 +475,7 @@ ${BOLD}SETUP & UTILITIES:${NC}
     list                            List all tracked sites
     status [options] [sitename]     Show site status (-f for fast text)
     config export|import <file>     Export/import site+server configs as a checksummed bundle (ops#79)
-    deploy-gate status|test         Inspect / self-test the hardware deploy gate (ADR-0028)
+    deploy-gate status|test         Inspect / self-test the hardware deploy gate (NWP-ADR-0028)
     doctor                          Diagnose common issues and verify configuration
     mini llm health [--json|--quick] Check the local LLM stack on mini (F21 Phase 3a)
     version [--check]               Show NWP version; --check fetches and reports how far
@@ -621,12 +621,12 @@ cmd_list() {
     echo -e "${BOLD}Tracked Sites:${NC}"
     echo ""
 
-    # F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser)
+    # F36 A-C2: yq-first per NWP-ADR-0015 (replaces legacy AWK YAML parser)
     yq eval '.sites | keys | .[]' "$cnwp_file" 2>/dev/null | sed 's/^/  /'
 }
 
 # Get a field from a site in nwp.yml
-# F36 A-C2: yq-first per ADR-0015. Scalar filter preserves the old
+# F36 A-C2: yq-first per NWP-ADR-0015. Scalar filter preserves the old
 # AWK behaviour of returning empty for non-scalar fields and missing keys
 # (caller variables passed via env() for injection-safety).
 get_site_field() {
@@ -640,7 +640,7 @@ get_site_field() {
 }
 
 # Get a nested field (e.g., live.domain) from a site in nwp.yml
-# F36 A-C2: yq-first per ADR-0015. See get_site_field for caveats.
+# F36 A-C2: yq-first per NWP-ADR-0015. See get_site_field for caveats.
 get_site_nested_field() {
     local site="$1"
     local section="$2"
@@ -930,12 +930,12 @@ main() {
             run_script "maturity.sh" "$@"
             ;;
 
-        # Site classes: what a site IS → which invariants apply (ADR-0036 / ops#153)
+        # Site classes: what a site IS → which invariants apply (NWP-ADR-0036 / ops#153)
         class)
             run_script "class.sh" "$@"
             ;;
 
-        # Paired-site versioning: contract status/guard (ADR-0031 / nwp/ops#75)
+        # Paired-site versioning: contract status/guard (NWP-ADR-0031 / nwp/ops#75)
         pair)
             run_script "pair.sh" "$@"
             ;;
@@ -950,7 +950,7 @@ main() {
             run_script "link.sh" "$@"
             ;;
 
-        # Moodle promotion substrate + smoke (ADR-0031 D8 / ops D)
+        # Moodle promotion substrate + smoke (NWP-ADR-0031 D8 / ops D)
         # Intersite change-impact classifier (P74 Phase 2 / boundary gate)
         impact)
             run_script "impact.sh" "$@"
@@ -1119,7 +1119,7 @@ main() {
             run_script "ver-test.sh" "$@"
             ;;
 
-        # Production agent (nwp-server) — DR backup (ADR-0025)
+        # Production agent (nwp-server) — DR backup (NWP-ADR-0025)
         server-backup)
             run_script "server-backup.sh" "$@"
             ;;
@@ -1144,7 +1144,7 @@ main() {
             ;;
 
         # Forge box (git.nwpcode.org): named, scoped identities across the Linux
-        # and GitLab-application planes (ops#331, ADR-0038). Read-only default.
+        # and GitLab-application planes (ops#331, NWP-ADR-0038). Read-only default.
         forge)
             run_script "forge.sh" "$@"
             ;;

@@ -1461,7 +1461,7 @@ check_forge_freshness() {
         local last_iso last_epoch age_days
         # `read` rather than `awk 'NR==1{print $1}'`: same result, no subprocess,
         # and it keeps lint:yq-first's multi-line awk scanner out of a stamp file
-        # that was never YAML to begin with (ADR-0015 gate, ops#230).
+        # that was never YAML to begin with (NWP-ADR-0015 gate, ops#230).
         last_iso=""; read -r last_iso _ < "$stamp" 2>/dev/null || true
         last_epoch=$(date -d "$last_iso" +%s 2>/dev/null || echo 0)
         [ "$last_epoch" = "0" ] && continue

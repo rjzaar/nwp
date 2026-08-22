@@ -1,4 +1,4 @@
-# ADR-0031: Paired-Site Versioning & Promotion — five planes, a versioned pair contract, provider-first ordering
+# NWP-ADR-0031: Paired-Site Versioning & Promotion — five planes, a versioned pair contract, provider-first ordering
 
 **Status:** Accepted (2026-07-10, operator)
 **Date:** 2026-07-10
@@ -6,19 +6,19 @@
 **Related Issues:** ops#22 (nwc 2.0 punch list), ops#31 (policy version-bookkeeping race),
 ops#48 (P67 maturity classes), ops#49 (`pl gitlab` unified surface), ops#61 (canonical content
 model), ops#66 (federation, blocked on F26/F28)
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust-through-signatures,
-expand-contract), [ADR-0027](0027-unified-course-content-architecture.md) (canonical content,
-disposable adapters), [ADR-0028](0028-ver-single-operator-human-gated-workstation.md) (deploy gate),
+**References:** [NWP-ADR-0017](0017-distributed-build-deploy-pipeline.md) (trust-through-signatures,
+expand-contract), [NWP-ADR-0027](0027-unified-course-content-architecture.md) (canonical content,
+disposable adapters), [NWP-ADR-0028](0028-ver-single-operator-human-gated-workstation.md) (deploy gate),
 [F26](../proposals/F26-avc-ss-oidc.md) (OIDC; extended by nwp!49 draft),
 [F28](../proposals/F28-unified-pipeline.md) (signed bundles, `dependencies` field),
 [F30](../proposals/F30-content-federation-network.md) §3.4 (manifest version-constraints, superseded),
 [P65](../proposals/P65-seed-content-lifecycle.md), [P67](../proposals/P67-per-site-workflow-maturity.md),
 [P72](../proposals/P72-moodle-to-nwc-suggest-edit-bridge.md),
-onboarding ADR-0031 (Moodle schema-defensiveness), `docs/onboarding/repo-map.md` (paired-PR convention).
+onboarding NWP-ADR-0031 (Moodle schema-defensiveness), `docs/onboarding/repo-map.md` (paired-PR convention).
 
 > **Numbering note (2026-07-10).** This ADR takes **0031** — 0027–0030 are now on `main`
 > (unified course content, ver workstation, nwc authorization model, canonical/maturity axes).
-> Separately, `docs/onboarding/adrs.md` cites an *NWC-profile-local* "ADR-0030/0031" series
+> Separately, `docs/onboarding/adrs.md` cites an *NWC-profile-local* "NWP-ADR-0030/0031" series
 > (cross-site POST auth; Moodle plugin compatibility) that does not exist in `docs/decisions/`;
 > recommend renumbering that onboarding series as `NWC-ADR-*` to avoid colliding with this record.
 
@@ -70,8 +70,8 @@ three distinct movement patterns, and only a narrow contract actually couples th
 | 1 | **Drupal code** | `nwp/nwc` git repo | git up the tiers (rsync/composer); P67 maturity axis | semver tag | rebuildable |
 | 2 | **Drupal site content** | one environment's DB, declared by `canonical:` (ops#33) — nwc is `canonical: dev` today | DB pulls **down** (sanitized); content pushes up (canonical-guarded) | P67 provenance+age stamps, not git | **no** — it *is* the community; also holds in-flight editorial state (P68) that exists nowhere else |
 | 3 | **Moodle code** | GitLab plugin repos + pinned Moodle core tag (today: untracked files in upstream clones) | plugin manifest + installer into site trees | `$plugin->version` / `release` + repo tag | rebuildable once repos fixed |
-| 4 | **Formation content (canonical)** | `nwp/courses` YAML + JSON Schema (ADR-0027) | git MRs; rendered **sideways** into any environment as a pure function | schema version (v3.0.0 → v3.1) + repo history | it's the canon |
-| 5a | **Moodle rendered course rows** | none — projection of plane 4 | `populate_courses.php --clear` re-render | the plane-4 version it was rendered from | **yes** (ADR-0027 D1) |
+| 4 | **Formation content (canonical)** | `nwp/courses` YAML + JSON Schema (NWP-ADR-0027) | git MRs; rendered **sideways** into any environment as a pure function | schema version (v3.0.0 → v3.1) + repo history | it's the canon |
+| 5a | **Moodle rendered course rows** | none — projection of plane 4 | `populate_courses.php --clear` re-render | the plane-4 version it was rendered from | **yes** (NWP-ADR-0027 D1) |
 | 5b | **Moodle learning/user state** (accounts, enrolments, attempts, completions, badges, `tool_policy` acceptances, `moodledata` files) | the ssc **live** DB + dataroot | never regenerated; backup/restore + (future) sanitized pulls only | none today | **absolutely not — PII, minors' records** |
 
 Movement patterns: **code flows up** (git, dev→stg→live→prod), **site content flows down**
@@ -98,7 +98,7 @@ whichever environment). A paired promotion scheme must respect all three, not fo
    state* of plane 4 — backups/pulls of nwc must preserve it; a canonical flip must not strand drafts.
 5. **Code contract (3 ↔ 1).** The three integration surfaces: OAuth/OIDC (nwc `simple_oauth`
    issuer ↔ Moodle auth plugin), copyright sync, feedback bridge. House philosophy is already
-   **defensive tolerance, not pinning** (onboarding ADR-0031 schema-defensiveness; ADR-0017
+   **defensive tolerance, not pinning** (onboarding NWP-ADR-0031 schema-defensiveness; NWP-ADR-0017
    expand-contract).
 
 ## Options Considered
@@ -114,12 +114,12 @@ whichever environment). A paired promotion scheme must respect all three, not fo
 - **Cons:** distributed-transaction machinery across two stacks, two DBs, one shared host; a
   failed half still leaves users mid-session on mismatched halves (rollback is not atomic for
   live traffic); doubles the blast radius of every deploy; per-site Solo-touch manifests
-  (ADR-0028) would need multi-site semantics, complicating the security-critical path. The
+  (NWP-ADR-0028) would need multi-site semantics, complicating the security-critical path. The
   failure mode it protects against (brief contract skew) is better eliminated by making contract
   changes backward-compatible.
 
 ### Option 3 (chosen): Versioned pair contract + provider-first ordering + per-plane canonicality
-- **Pros:** matches every existing mechanism (expand-contract, ADR-0031 defensiveness, F28
+- **Pros:** matches every existing mechanism (expand-contract, NWP-ADR-0031 defensiveness, F28
   `dependencies`, F30 version-constraints, P67 axes); each side stays independently deployable
   and rollback-able; the contract is a small, testable artifact; the security-critical deploy
   gate stays single-site and simple.
@@ -145,7 +145,7 @@ increasing `contract_version`:
   (b) policy — the single-writer rule for `nwc_copyright` version fields (resolves ops#31's
   design flaw: version becomes one real field with one writer, both sync paths read it);
   (c) render id-stability — the canonical-id join-key guarantee, declared in the `nwp/courses`
-  schema and enforced by the shared adapter test-suite (ADR-0027 §7).
+  schema and enforced by the shared adapter test-suite (NWP-ADR-0027 §7).
 - **Per-environment provider endpoints:** the OAuth issuer URL for each tier
   (`dev: https://nwc-dev.ddev.site`, `live: https://nwc.<example-prod-domain>`, …) — making the currently
   dead `paired_with:`/`oauth2:` keys in `.nwp.yml` **live configuration** consumed by `pl`.
@@ -299,8 +299,8 @@ the guard lands or nwc flips to `canonical: live`.
 
 ## Rationale
 
-- Every existing mechanism in the corpus points at option 3: ADR-0017's expand-contract and
-  "trust flows through signatures, not machines"; onboarding ADR-0031's schema-defensiveness;
+- Every existing mechanism in the corpus points at option 3: NWP-ADR-0017's expand-contract and
+  "trust flows through signatures, not machines"; onboarding NWP-ADR-0031's schema-defensiveness;
   F28's designed-but-unused `dependencies` field; F30 §3.4's version constraints; P67's
   deliberately per-site axes. Option 3 composes them; options 1–2 fight them.
 - The one lockstep precedent (socialbase/socialblue) worked precisely because both halves shared

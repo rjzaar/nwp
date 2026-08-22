@@ -1,6 +1,6 @@
 # nwp-server Agent Operations Guide
 
-> **Status:** ACTIVE (the `nwp-server` capability agent, ADR-0026; deploy authority per ADR-0024). Complements — does not
+> **Status:** ACTIVE (the `nwp-server` capability agent, NWP-ADR-0026; deploy authority per NWP-ADR-0024). Complements — does not
 > replace — `verifier-operations.md`, which covers the offline blue-green flow
 > retained for hardware-gated/irreversible actions.
 > **Last Updated:** 2026-07-01
@@ -12,7 +12,7 @@
 
 ## What This Is
 
-`nwp-server` is a **build target** of the `nwp` source tree (ADR-0022/0026), not a
+`nwp-server` is a **build target** of the `nwp` source tree (NWP-ADR-0022/0026), not a
 separate repo. It is assembled by `pl build-server` from an allowlist
 (`build/nwp-server.include`) and then scanned **fail-closed** against
 `build/nwp-server.deny-symbols`; any AI/CI/SaaS vendor token in the assembled
@@ -28,7 +28,7 @@ nothing else:
 | `verify` | verify a local signed bundle without downloading |
 | `apply` | verify → (opt-in) DR snapshot → run the bundle's own idempotent scripts; dry-run by default |
 | `publish` | snapshot → sanitize → fail-closed PII gate → publish sanitized artifact |
-| `backup` | raw restic DR snapshot for the offline custodian (ADR-0025) |
+| `backup` | raw restic DR snapshot for the offline custodian (NWP-ADR-0025) |
 | `rollback` | restore the previous release/DB on this host |
 | `status` | emit local health as JSON |
 
@@ -41,7 +41,7 @@ nwp-server <verb> --help
 ## The Credential Ledger (the inviolable part)
 
 An `nwp-server` host holds **exactly three** credentials and nothing else
-(ADR-0026). Provisioning them is the last gate before the agent may apply with
+(NWP-ADR-0026). Provisioning them is the last gate before the agent may apply with
 authority:
 
 1. a **read-only deploy key/token** — pull signed bundles (inbound, one-way);
@@ -111,7 +111,7 @@ nwp-server apply /var/lib/nwp-server/bundles/<bundle>.tar.gz \
                           --pass-file /etc/nwp-server/restic.pass
 ```
 
-Everything after `--` is passed through to `server-backup.sh` (the ADR-0025
+Everything after `--` is passed through to `server-backup.sh` (the NWP-ADR-0025
 restic DR snapshot). Omit `--snapshot` to skip the pre-apply snapshot (not
 recommended for a schema-changing deploy).
 
@@ -181,7 +181,7 @@ pl build-server --scan-only DIR     # independently re-scan an assembled tree
 ```
 
 The deny-scan returning zero AI/CI/SaaS matches is the mechanical form of
-ADR-0022's "`strings` check returns zero AI-vendor symbols" success metric. The
+NWP-ADR-0022's "`strings` check returns zero AI-vendor symbols" success metric. The
 artifact is signed with the hardware-rooted key and distributed to prod out of
 band; prod verifies the signature before install.
 
@@ -287,11 +287,11 @@ TTY → "prepare environment: exit status 1").
 
 ## See Also
 
-- [ADR-0026](../decisions/0026-nwp-server-capability-agent.md) — the capability
-  agent decision and capability set (renumbered from a duplicate ADR-0024).
-- [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) — the build-time
+- [NWP-ADR-0026](../decisions/0026-nwp-server-capability-agent.md) — the capability
+  agent decision and capability set (renumbered from a duplicate NWP-ADR-0024).
+- [NWP-ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) — the build-time
   AI-free split this target inherits.
-- [ADR-0025](../decisions/0025-production-backup-to-ver.md) — the raw restic DR
+- [NWP-ADR-0025](../decisions/0025-production-backup-to-ver.md) — the raw restic DR
   backup path (`backup` verb, custodian pull).
 - [verifier-operations.md](verifier-operations.md) — the offline blue-green
   deploy flow retained for hardware-gated/irreversible actions.

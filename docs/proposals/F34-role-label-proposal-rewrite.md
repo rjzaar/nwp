@@ -7,15 +7,15 @@
 **Depends On:** [P61](P61-leakage-hygiene-ci.md) (leakage gate before any rewritten proposal commits), [F33](F33-repository-topology-refactor.md) (private overlay must exist for instance addenda)
 **Breaking Changes:** No (existing proposals are rewritten in place; addenda land in the private overlay)
 **Estimated Effort:** ~4 phases; mostly content-editing work
-**Architecture decision records:** [ADR-0020](../decisions/0020-tiered-architecture-model.md), [ADR-0021](../decisions/0021-public-only-repo-scope.md)
+**Architecture decision records:** [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md), [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md)
 
-> **Why this proposal exists.** [ADR-0020](../decisions/0020-tiered-architecture-model.md) introduces a fixed role-label vocabulary; [ADR-0021](../decisions/0021-public-only-repo-scope.md) makes the public repo generic. Existing proposals (X-series, F-series cluster-related, per-site A-/S-/M-/C-series) were written assuming specific hostnames and per-instance details. This proposal is the editorial work to bring them into compliance with the role-label vocabulary, with operator-specific bindings extracted to private addenda.
+> **Why this proposal exists.** [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) introduces a fixed role-label vocabulary; [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) makes the public repo generic. Existing proposals (X-series, F-series cluster-related, per-site A-/S-/M-/C-series) were written assuming specific hostnames and per-instance details. This proposal is the editorial work to bring them into compliance with the role-label vocabulary, with operator-specific bindings extracted to private addenda.
 
 ---
 
 ## 1. Executive Summary
 
-A handful of existing proposals reference specific hostnames in their bodies (X02 and X03 each name the operator's hosts dozens of times; F21 / F24 / F25 reference cluster hostnames extensively; ADR-0017 and ADR-0019 reference the verifier by hostname). Per-site proposals (A-series in the AVC profile, S-series in the SS profile, M-series in MT, C-series in cathnet) similarly reference specific deployment context.
+A handful of existing proposals reference specific hostnames in their bodies (X02 and X03 each name the operator's hosts dozens of times; F21 / F24 / F25 reference cluster hostnames extensively; NWP-ADR-0017 and NWP-ADR-0019 reference the verifier by hostname). Per-site proposals (A-series in the AVC profile, S-series in the SS profile, M-series in MT, C-series in cathnet) similarly reference specific deployment context.
 
 For the public repo to be a generic OSS artefact, every public proposal needs to:
 
@@ -31,7 +31,7 @@ The work is editorial, not architectural. It sequences as: define the canonical 
 ## 2. Goals
 
 - **G1.** Every public proposal in `docs/proposals/` references roles, not hostnames.
-- **G2.** Every public ADR in `docs/decisions/` references roles, not hostnames (rewriting existing ADRs in place where they currently use hostnames; ADR-0019 is the principal example).
+- **G2.** Every public ADR in `docs/decisions/` references roles, not hostnames (rewriting existing ADRs in place where they currently use hostnames; NWP-ADR-0019 is the principal example).
 - **G3.** A `gitleaks` scan of `docs/` returns zero findings against the operator-specific ruleset (per [P61](P61-leakage-hygiene-ci.md)).
 - **G4.** Per-site proposal content (A-/S-/M-series) is split into Tier A (public, in the per-site profile) and Tier B (private, in the per-site `nwp-instances/<site>/proposals/` directory) according to the existing TIER_SPLIT.md pattern from the SS profile.
 - **G5.** No public proposal contains the literal author string "Rob Zaar" or model-version identifiers ("Claude Opus 4.6"); author convention is "Robert Karsten Zaar (with AI assistance)".
@@ -39,7 +39,7 @@ The work is editorial, not architectural. It sequences as: define the canonical 
 ## 3. Non-Goals
 
 - This proposal does **not** change the technical content of any existing proposal — only the wording.
-- This proposal does **not** introduce new role labels beyond what [ADR-0020](../decisions/0020-tiered-architecture-model.md) authorises.
+- This proposal does **not** introduce new role labels beyond what [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) authorises.
 - This proposal does **not** affect per-site profiles' code (only their proposal content).
 
 ## 4. Architecture
@@ -48,7 +48,7 @@ The work is editorial, not architectural. It sequences as: define the canonical 
 
 The role-label table is authored by [F32](F32-tiered-architecture-implementation.md) Phase A as `docs/reference/role-vocabulary.md`. F34 references it; any new role needed for a proposal rewrite is added to `role-vocabulary.md` first.
 
-Initial vocabulary (from [ADR-0020](../decisions/0020-tiered-architecture-model.md)):
+Initial vocabulary (from [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md)):
 
 | Role label | Used by |
 |---|---|
@@ -170,8 +170,8 @@ Each rewrite is a content edit committed individually. Rollback for a specific p
 
 ## 10. Related decisions and proposals
 
-- [ADR-0020](../decisions/0020-tiered-architecture-model.md) — defines the role vocabulary that this proposal propagates.
-- [ADR-0021](../decisions/0021-public-only-repo-scope.md) — public-only scope; this proposal makes existing proposals comply.
+- [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) — defines the role vocabulary that this proposal propagates.
+- [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) — public-only scope; this proposal makes existing proposals comply.
 - [F32](F32-tiered-architecture-implementation.md) — Phase A authors the canonical role-vocabulary doc.
 - [F33](F33-repository-topology-refactor.md) — provides the `nwp-instances/_proposals-private/` location for addenda.
 - [P61](P61-leakage-hygiene-ci.md) — leakage gate; the gating that makes this proposal verifiable.

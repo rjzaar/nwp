@@ -1,4 +1,4 @@
-# .yq-first-baseline — pre-existing AWK YAML parsers (ADR-0015).
+# .yq-first-baseline — pre-existing AWK YAML parsers (NWP-ADR-0015).
 # SHRINK-ONLY: entries may be DELETED (when converted to yq) but never added
 # by hand. Regenerate with: scripts/ci/lint-yq-first.sh --update-baseline
 # Key = <path>::<enclosing shell function>.

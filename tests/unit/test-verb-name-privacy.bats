@@ -19,7 +19,7 @@
 # file resolves it exactly as the lint does — $NWP_SITE_NAME_DENYLIST (a path,
 # as the CI file-type variable provides) else private/site-names.deny — and
 # FAILS CLOSED when it cannot read one: "I could not read the policy" must
-# never look like a pass (ADR-0037 direction, CLAUDE.md standing order).
+# never look like a pass (NWP-ADR-0037 direction, CLAUDE.md standing order).
 #
 # The third case sabotages the checker against a fixture so the gate is proven
 # capable of failing even once the real tree is clean — a check that has never

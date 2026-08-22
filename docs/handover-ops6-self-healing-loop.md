@@ -165,7 +165,7 @@ Default stays `nwc-drupal` so nothing regresses for project 16.
 - Mark an ops issue `agent-eligible` **only** when the fix is dev-repo-bounded and
   low-risk — e.g. a dev-site core bump, a missing `backups.schedule` config.
   **Never** an outward-facing prod security bump: those keep the human-merge gate
-  (the A14 / ADR-0024 boundary). The `rag-auto` issues D1 opens are therefore
+  (the A14 / NWP-ADR-0024 boundary). The `rag-auto` issues D1 opens are therefore
   **not** `agent-eligible` by default; promoting one is a deliberate human act.
 
 ---

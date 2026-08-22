@@ -15,7 +15,7 @@ Pending implementation items and future improvements for **NWP core**.
 > 2026-04-08. Old F22–F26 slots became F16–F20; F18–F21 (the old
 > site-specific proposals) moved into per-project namespaces (M01, M02,
 > C01, C02, C02a, C03, S01). A new F21 was created for the distributed
-> build/deploy pipeline (ADR-0017). See
+> build/deploy pipeline (NWP-ADR-0017). See
 > [docs/proposals/README.md](../proposals/README.md) for the full
 > mapping. Old IDs survive as aliases inside each renamed file.
 
@@ -45,9 +45,9 @@ Pending implementation items and future improvements for **NWP core**.
 > This roadmap has **not** been reconciled with two bodies of work:
 >
 > 1. **Proposals P70–P74 exist** (`docs/proposals/P70-…` … `P74-intersite-data-contract.md`)
->    and are cited by ADR-0027/0029/0031, but appear nowhere in the tables below.
+>    and are cited by NWP-ADR-0027/0029/0031, but appear nowhere in the tables below.
 > 2. **The July 2026 consolidation arc** (nwp/ops#117–#136) shipped a large body of
->    work that is not represented here: ADR-0032, the prod-leg deploy guards, backup
+>    work that is not represented here: NWP-ADR-0032, the prod-leg deploy guards, backup
 >    retention (`pl backup prune`), restore verification, the configuration-drift gate
 >    (`pl config track`), the two-tier disaster-recovery sanitiser
 >    (`nwp-server backup --sanitize`), the DR test harness (`pl ver-test`), consent
@@ -124,7 +124,7 @@ Post-v0.30.0 additions, catalogued here as a pointer; see each file under
 | **Phase 10** | **Developer Experience** | **F13, F14, F15** (F10 → [guide](../guides/local-llm.md), F11 subsumed) | **✅ Complete** |
 | **Phase 11** | **Project Separation** | **F17 (was F23)** | **✅ Complete (phases 1–8, 10)** |
 | **Phase 12** | **Baseline Reset & v0.30.0** | **F19 (was F25)** | **✅ Complete** |
-| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **IN PROGRESS (Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 skeleton; phases 3, 4–9, 11–13 pending)** |
+| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements NWP-ADR-0017)** | **IN PROGRESS (Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 skeleton; phases 3, 4–9, 11–13 pending)** |
 | **Phase 14** | **Site Environment Layout** | **F23** | **✅ Complete (2026-04-09)** — sites restructured to dev/+stg/ subdirs, sync scripts fixed, -stg siblings absorbed |
 | **Phase 15** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** — F18 now unblocked (F23 complete) |
 | **Phase 16** | **Gotify Remote Reachability** | **F22** | **PROPOSED** — F21 Phase 1 (Headscale) now complete; unblocked |
@@ -718,7 +718,7 @@ This proposal is permanently rejected. The project is and will remain **NWP — 
 ### F21: Distributed Build/Deploy Pipeline (build-tier build, verifier deploy)
 **Status:** IN PROGRESS (Phase 3a ✅ complete 2026-04-08; Phase 10 dry-run skeleton landed 2026-04-08) | **Priority:** HIGH | **Effort:** Multi-week (~13 phases) | **Dependencies:** F17 (Project Separation), F18 (Unified Backup)
 **Proposal:** [F21-distributed-build-deploy-pipeline.md](../proposals/F21-distributed-build-deploy-pipeline.md)
-**Architecture decision record:** [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)
+**Architecture decision record:** [NWP-ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)
 
 Move from a single-machine, AI-co-located build/deploy model to a distributed
 pipeline that:
@@ -1122,7 +1122,7 @@ Should X01 be implemented? Only if:
 ### X02: Local Voice Agent (Twilio + Pipecat + local LLM)
 **Status:** PROPOSED | **Priority:** LOW | **Effort:** ~4 phases | **Dependencies:** [Local LLM guide](../guides/local-llm.md), F21 Phase 3a (llm-host as local-LLM agent), F21 Phase 1 (Headscale — soft)
 **Proposal:** [X02-local-voice-agent.md](../proposals/X02-local-voice-agent.md)
-**Architecture decision record:** [ADR-0018: Twilio as bounded SaaS dependency](../decisions/0018-twilio-bounded-saas-for-pstn.md)
+**Architecture decision record:** [NWP-ADR-0018: Twilio as bounded SaaS dependency](../decisions/0018-twilio-bounded-saas-for-pstn.md)
 **Type:** OUTLIER — voice telephony is scope expansion beyond NWP's core Drupal mission
 
 Run an AI voice agent on the **voice-agent host** (compact PC with integrated GPU and unified memory) that answers
@@ -1133,7 +1133,7 @@ Ollama + Piper/Kokoro TTS. Zero cloud AI inference.
 **⚠️ Why This is an Outlier:**
 - NWP's core mission: Drupal deployment, hosting, site management
 - Voice telephony: communication channel, not infrastructure
-- Introduces NWP's first bounded third-party SaaS dependency (Twilio); see ADR-0018 for the trust-boundary decision
+- Introduces NWP's first bounded third-party SaaS dependency (Twilio); see NWP-ADR-0018 for the trust-boundary decision
 - Must coexist with the voice-agent host's primary tenant (the coding agent) without evicting it
 
 **Coexistence strategy:** Ollama `keep_alive=24h` on the coding model
@@ -1538,5 +1538,5 @@ list, filtered by status or by site.
 *Broken proposal links fixed, Phase numbering updated: February 1, 2026*
 *F15 expanded to ~10h practical scope with developer key onboarding: February 1, 2026*
 *P56 updated with SSH key management for coder onboarding (Section 7): February 1, 2026*
-*X02 (Local Voice Agent) added as experimental outlier; ADR-0018 added (Twilio as bounded SaaS): April 8, 2026*
+*X02 (Local Voice Agent) added as experimental outlier; NWP-ADR-0018 added (Twilio as bounded SaaS): April 8, 2026*
 *F21 Phase 3a ✅ complete; F21 Phase 10 dry-run skeleton landed at `servers/<ai-host>/bot/`: April 8, 2026 (status rows updated April 9)*

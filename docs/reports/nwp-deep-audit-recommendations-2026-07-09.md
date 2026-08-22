@@ -81,7 +81,7 @@ the documented adoption tactic to avoid false-positive fatigue.
 violation, not a judgment call; (3) run the **F34 role-vocabulary sweep** repo-wide as the systematic
 pass; (4) **unpublish** (keep out of the tracked tree) the two root handover docs + `example.nwp.v2.yml`.
 **Why:** fail-safe defaults — operator infra identifiers should default to *absent* from the public
-tier (ADR-0021). The prod IP is the highest-value leak (it locates the box hosting GitLab + live test
+tier (NWP-ADR-0021). The prod IP is the highest-value leak (it locates the box hosting GitLab + live test
 sites); a role label is equivalent for readers, non-actionable for an attacker. Doing F34 *before*
 tightening gitleaks lets the subtree allowlists be *deleted* (they exist only to hide these strings) —
 collapsing two workarounds into one clean state.
@@ -186,7 +186,7 @@ session, never a file.
 **Why:** GitLab's own guidance — "avoid PATs for automation (they inherit the creator's permissions);
 use service accounts with limited permissions"; a project access token's bot user "cannot be added to
 any other group or project" → blast-radius-bounded by construction. "Rotate first" is the universal
-incident rule. **ADR-0024 makes this the precondition for the whole self-deploying-prod model** ("no
+incident rule. **NWP-ADR-0024 makes this the precondition for the whole self-deploying-prod model** ("no
 `api`/`Maintainer` token on any AI-reachable machine … without this, merge-rights=deploy-authority is
 hollow"). This is MUST-FIX-BEFORE-MONS blocker #1.
 **Options:** downscope-in-place — **rejected** (GitLab PAT scopes can't be narrowed after creation, and
@@ -201,7 +201,7 @@ a file-borne token to a hardware-gated session.
 OTP doesn't satisfy it). Two caveats: **no recovery codes for WebAuthn** → a backup OTP *and* a second
 enrolled Solo are mandatory (FIDO2 keys can't be cloned); **access tokens bypass 2FA by design** →
 which is exactly why C1/C2 must be *revoked*, not merely supplemented. Solo's *reliable* NFC capability
-is WebAuthn (ADR-0024's own finding), so this uses the hardware for what it does well.
+is WebAuthn (NWP-ADR-0024's own finding), so this uses the hardware for what it does well.
 **Effort low · Risk low · P0 blocker #2** — same session as C1/C2 revocation.
 
 ## C3 · Live gotify token in public-mirror history *(cross-ref stream ④ C3)*
@@ -227,9 +227,9 @@ routine path through `nwp-server`'s `pull+verify` verb so the signature chain is
 the routine path, not just the escalation path.
 **Why:** this key *is* the trust root ("a compromised AI session on dev can sign kits mons will
 accept"); `lib/minisign.sh` self-labels "software interim." Best practice is unambiguous hardware
-custody (private key non-exportable). H3 is ADR-0017's load-bearing property — "trust flows through
+custody (private key non-exportable). H3 is NWP-ADR-0017's load-bearing property — "trust flows through
 signatures, not machines"; a runner that pulls-and-applies without verifying discards exactly that.
-ADR-0024 lists "no offline signature re-verification" as a residual risk, acceptable *only* if the
+NWP-ADR-0024 lists "no offline signature re-verification" as a residual risk, acceptable *only* if the
 routine path still verifies at all.
 **Effort:** interim-custody low-med, hardware ceremony med-high, verify-then-apply med · **P0 for
 interim custody, P1 for hardware + verify-then-apply.** [OP-CALL]: hardware-Solo now vs
@@ -248,25 +248,25 @@ through one shared deploy-preamble; (5) relocate the raw live mayo DB
 (`sites/mayo/backups/mayo-live-20260412.sql.gz`, 112 MB) off the AI dev box.
 **Why:** masked data must be the *only* permitted downstream input; "if in doubt, remove PII entirely."
 A gate returning "clean" on a decompress error is textbook fail-open — defeats defence-in-depth exactly
-when input is anomalous. ADR-0017 calls the sanitizer "security-critical"; ADR-0026 makes the
+when input is anomalous. NWP-ADR-0017 calls the sanitizer "security-critical"; NWP-ADR-0026 makes the
 fail-closed PII gate a mandatory `nwp-server publish` step. **CLAUDE.md: sanitizer changes are
 human-review-only** (these tighten, but still merit auth-code scrutiny). **Effort med · Risk med
 (human-review the merge) · P0 for the 3 bug fixes + mayo relocation; P1 for the shared-preamble
 refactor.** Sources: Redgate LLM-PII, hoop.dev.
 
 ## H4 · AI-held SSH reaches the GitLab+live-sites host; prod-vs-test boundary
-**Recommend:** before ADR-0024 "flips on", **separate the GitLab control-plane host from AI-shell
+**Recommend:** before NWP-ADR-0024 "flips on", **separate the GitLab control-plane host from AI-shell
 reach.** Today `~/.ssh/nwp` + `gitlab_linode` give AI sessions a shell on `97.107.137.88`, which
 co-hosts live test sites *and* `git.nwpcode.org` — fine for the A14 test tier, but once GitLab
 authorises deploys an AI shell there **hollows the WebAuthn gate**. Move GitLab to its own Linode (also
 frees ~3.6 GB, already parked), remove the AI-reachable key from the GitLab host, keep AI shell only to
 genuine test hosts, and make prod-vs-test **host classification machine-checked** (a host-class
 registry) so a host can't silently be both.
-**Why:** ADR-0024 requires no AI host hold a prod key/Maintainer token, but forge/AI co-residency is a
+**Why:** NWP-ADR-0024 requires no AI host hold a prod key/Maintainer token, but forge/AI co-residency is a
 lateral-movement path tokens don't cover (a shell can read runner config, tamper with the runner, mint
-tokens locally — bypassing WebAuthn). ADR-0017: "software permissions can be bypassed; physical
+tokens locally — bypassing WebAuthn). NWP-ADR-0017: "software permissions can be bypassed; physical
 separation cannot." Blocker #6. **Effort med · Risk med (GitLab migration) · P1 — hard precondition for
-ADR-0024 activation, not for mons's first signed-deploy rehearsal.** [OP-CALL]: leave co-resident only
+NWP-ADR-0024 activation, not for mons's first signed-deploy rehearsal.** [OP-CALL]: leave co-resident only
 while GitLab is *not yet* the deploy root.
 
 ## H5 · TOFU ver-kit bootstrap (kit verified with the pubkey shipped *inside* the kit)
@@ -296,7 +296,7 @@ undermines DR-backup + keystore-seal at the root. **Effort ~5 min · Risk trivia
 mons and frames "not on the tailnet" as a *gap* — both invert the resolved decision (artifact-only on
 mons, never the full AI-adjacent repo; **no mesh, ever** — operator 2026-07-03). A solo operator
 following it would put all of `~/nwp` on the prod-trust box, collapsing the isolation the design exists
-for. Rewrite to: mons runs **only** the signed `nwp-server` artifact (ADR-0026), holds **exactly** the
+for. Rewrite to: mons runs **only** the signed `nwp-server` artifact (NWP-ADR-0026), holds **exactly** the
 three one-way keys, reaches prod **only** via the 1:1 WireGuard tunnel — never Headscale/home-LAN/`~/nwp`.
 **Why:** a documentation-truth failure with security consequences (same class as C0's false banner) — a
 read-first runbook instructing the *wrong* isolation posture is worse than none; it's the single most
@@ -314,7 +314,7 @@ protection = gitignore + host isolation + encryption at rest. Blast radius = the
 [OP-CALL]: single Developer bot vs split read/MR identities.
 
 ## `~/central` has NO backup *(cross-ref stream ④)*
-**Recommend:** 3-2-1 with **restic+age** (ADR-0025's stack): private encrypted remote (never-public git
+**Recommend:** 3-2-1 with **restic+age** (NWP-ADR-0025's stack): private encrypted remote (never-public git
 remote and/or scheduled age/restic-encrypted rsync to met) + one offsite/immutable copy + a **restore
 test**. **Why:** 3-2-1-1-0 (CISA/NIST) — "zero unverified backups: test the actual restore." `~/central`
 holds the mons procedure + legal canon + operating model → losing it loses the *ability to operate mons
@@ -337,7 +337,7 @@ without becoming public. **Effort low-med · Risk low · P1 (before mons depends
 8. **Provision mons per the *corrected* runbook** — artifact-only `nwp-server`, three one-way keys, 1:1
    WireGuard; rehearse signed pull→verify→apply→rollback on a disposable prod-boundary host first.
 **Then before real prod cutover (P1, not gating the rehearsal):** 9. back up `~/central` (restic+age) ·
-10. move GitLab off the AI-shell host + machine-check host-classification (H4) · 11. amend ADR-0024 to
+10. move GitLab off the AI-shell host + machine-check host-classification (H4) · 11. amend NWP-ADR-0024 to
 verify-then-apply (H3, ops#52) + move signing to the hardware/offline ceremony (C4b) · 12. move Linode
 token + GitLab admin password to SOPS+age + downscope the Linode token (H6).
 

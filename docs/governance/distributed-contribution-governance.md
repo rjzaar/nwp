@@ -569,7 +569,7 @@ Before implementing any change, Claude should:
 
 3. **Warn on Conflicts**
    ```
-   "This feature was previously rejected in ADR-0003 because [reason].
+   "This feature was previously rejected in NWP-ADR-0003 because [reason].
    The decision was made on [date] by [decision makers].
    Would you like to:
    1. Understand the original rationale
@@ -611,9 +611,9 @@ These features have been explicitly rejected. Do not implement without RFC:
 
 | Feature | Rejected Date | ADR | Reason |
 |---------|---------------|-----|--------|
-| Python rewrite | 2025-12-10 | ADR-0004 | Bash preferred for ops tooling |
-| Docker Compose | 2025-12-08 | ADR-0003 | DDEV provides better DX |
-| GUI installer | 2025-12-15 | ADR-0007 | TUI sufficient, reduces deps |
+| Python rewrite | 2025-12-10 | NWP-ADR-0004 | Bash preferred for ops tooling |
+| Docker Compose | 2025-12-08 | NWP-ADR-0003 | DDEV provides better DX |
+| GUI installer | 2025-12-15 | NWP-ADR-0007 | TUI sufficient, reduces deps |
 
 ### ALWAYS DO
 

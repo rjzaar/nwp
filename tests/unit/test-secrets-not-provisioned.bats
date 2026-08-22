@@ -276,7 +276,7 @@ rotate_pty() { # value id
 # and NOTHING in the tree could say so: lint's own provisioned/empty
 # consistency check keys off a `.secrets.yml:<key>` location and `continue`s
 # when there isn't one. That entry's only location is an `@file` outside
-# .secrets.yml — which is the WHOLE POINT of that credential (ADR-0038 keeps it
+# .secrets.yml — which is the WHOLE POINT of that credential (NWP-ADR-0038 keeps it
 # out of the AI-readable tier), so the one entry that most needed the check was
 # the one shape the check could not see.
 

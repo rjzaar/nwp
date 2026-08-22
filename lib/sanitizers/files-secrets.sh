@@ -5,7 +5,7 @@
 # does explicit error handling and never relies on the caller's shell options.
 ################################################################################
 # lib/sanitizers/files-secrets.sh — scrub secrets out of the FILE half of an
-# export artifact (defence in depth for the ADR-0026 dev/AI-tier publish flow).
+# export artifact (defence in depth for the NWP-ADR-0026 dev/AI-tier publish flow).
 #
 # The DB sanitizers (lib/sanitizers/<site>.sh) scrub the *database*; this shared
 # step scrubs the *file tree* that ships alongside it. A Drupal config-sync YAML
@@ -55,7 +55,7 @@
 #     file tree today (standard.sh exports a DB dump only; moodle-full.sh bundles
 #     db.sql.gz + an omit-and-placeholder manifest with zero user-file bytes).
 #     scrub is the ready building block for the FUTURE sanitized file-tree
-#     publish step (ADR-0026): when server-publish.sh (or a successor) exports a
+#     publish step (NWP-ADR-0026): when server-publish.sh (or a successor) exports a
 #     file tree, run files_secrets_scrub then files_secrets_verify over the
 #     export root BEFORE signing/shipping. Do not call scrub on backups.
 #

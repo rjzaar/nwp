@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
-# lib/migrations/site/003-site-class.sh — the class-key migration (ADR-0036).
+# lib/migrations/site/003-site-class.sh — the class-key migration (NWP-ADR-0036).
 #
 # THE PROPERTY UNDER TEST: this migration GUESSES NOTHING. It writes the key as
-# null (a visible unanswered question), never a value — because under ADR-0036 a
+# null (a visible unanswered question), never a value — because under NWP-ADR-0036 a
 # class value is the assertion that switches the Art.9 consent gate's shape, and
 # a machine may not make that assertion on no evidence. The handover that
 # rescued this branch recorded that the migration shipped with NO test at all;

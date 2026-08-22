@@ -5,8 +5,8 @@
 into an actionable, phased proposal. **Phase 0 (the JSON Schemas) is IMPLEMENTED in this same change**
 (`contracts/` + wired into `pairs/ssc.pair-contract.yml`); Phases 1–3 + the open questions are proposed
 work.
-**Parent:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) (paired-site
-versioning). This is the *data-shape + change-detection* layer ADR-0031 D5 assumed but never specified.
+**Parent:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) (paired-site
+versioning). This is the *data-shape + change-detection* layer NWP-ADR-0031 D5 assumed but never specified.
 **Related:** [P66](P66-module-passports-scoped-ai-fixes.md) (deptrac module boundaries — reused here),
 `lib/impact.sh` (fate-manifest — sibling), `lib/pair.sh` `pair_guard`.
 

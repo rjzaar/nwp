@@ -1,5 +1,5 @@
 # =============================================================================
-# pair-contract.example.yml — ADR-0031 D2 versioned pair contract (TEMPLATE)
+# pair-contract.example.yml — NWP-ADR-0031 D2 versioned pair contract (TEMPLATE)
 # =============================================================================
 # This is a TEMPLATE, not a live contract. Copy it to the pair-contract
 # directory (default: $PROJECT_ROOT/pairs/) named "<consumer>.pair-contract.yml"
@@ -21,7 +21,7 @@ contract_version: 1           # monotonically increasing INTEGER; bump = expand-
 provider: nwc                 # Drupal/Open Social — OIDC issuer, copyright source, feedback sink
 consumer: ssc                 # Moodle — SSO client, copyright receiver, real students
 
-# --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
+# --- F28 signed-bundle linkage (NWP-ADR-0031 D5) --------------------------------
 # First use of the F28 manifest `dependencies` field: a paired bundle carries
 # the counterpart bundle id so the verifier tier can check "this consumer
 # bundle expects that provider bundle applied".
@@ -42,7 +42,7 @@ surfaces:
     provider_min: "0.5.0"       # nwc feedback sink
     consumer_min: "0.1.0"       # local_feedback
 
-# --- Data rails (ADR-0031 D2) ------------------------------------------------
+# --- Data rails (NWP-ADR-0031 D2) ------------------------------------------------
 identity:
   # F26 UID-lock: mdl_user.idnumber locks to the Drupal uid on first SSO.
   uid_lock: true
@@ -53,14 +53,14 @@ identity:
   coupled_tiers: [live, prod]
 
 policy:
-  # ADR-0031 D2(b) / ops#31: the copyright version is ONE real field with ONE
+  # NWP-ADR-0031 D2(b) / ops#31: the copyright version is ONE real field with ONE
   # writer; both sync paths READ it. Never dual-write (a spurious bump forces
   # sitewide student re-consent).
   writer: nwc_copyright
   readers: [local_nwc_copyright_sync]
 
 render_id_stability:
-  # ADR-0027 §7: rendered Moodle rows (plane 5a) are disposable ONLY because
+  # NWP-ADR-0027 §7: rendered Moodle rows (plane 5a) are disposable ONLY because
   # re-render is id-stable on this join key; user state (grades/attempts) hangs
   # off it. Declared in the nwp/courses schema, enforced by the shared adapter
   # test-suite — named here so the contract records the guarantee.

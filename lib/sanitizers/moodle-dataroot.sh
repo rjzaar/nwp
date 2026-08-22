@@ -15,7 +15,7 @@ set -euo pipefail
 # submissions and forum attachments — NOT profile photos (NWP sites use
 # avatars, not real photos, per the mayo_avatars policy, so `filedir` profile
 # pictures are largely moot). Those uploads are minors'/students' plane-5b PII
-# (ADR-0031 plane 5b: "absolutely not — PII, minors' records").
+# (NWP-ADR-0031 plane 5b: "absolutely not — PII, minors' records").
 #
 # You CANNOT anonymise a binary upload (an assignment PDF, a photo) — you can
 # only DROP it. So "selective scrub" collapses to "omit the user content".

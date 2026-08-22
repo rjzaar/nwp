@@ -178,4 +178,4 @@ identities.
 - [ver-provisioning-runbook.md](ver-provisioning-runbook.md) — the step-by-step provisioning sequence
 - [ops83-dr-restore.md](ops83-dr-restore.md) — the paired-site restore rule
 - [How to: back up and restore](howto-backup-restore.md) — the everyday, local kind
-- ADR-0025 (backup custody) and ADR-0017 (the distributed build/deploy pipeline)
+- NWP-ADR-0025 (backup custody) and NWP-ADR-0017 (the distributed build/deploy pipeline)

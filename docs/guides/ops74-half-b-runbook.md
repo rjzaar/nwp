@@ -1,7 +1,7 @@
 # ops#74 "Half-B" plugin-release runbook — auth_nwc, format_tabbed, copyright_sync
 
 > **Status: PREP COMPLETE — READY TO RUN on the build host once the operator confirms.**
-> This runbook cuts three specific Moodle-plugin releases under ADR-0031 D3
+> This runbook cuts three specific Moodle-plugin releases under NWP-ADR-0031 D3
 > (tag = `v` + `$plugin->release`; `$plugin->version` = `YYYYMMDDXX` is never
 > tagged). Every reviewable change has been **staged on a branch — NO real tags
 > were cut, NO branches merged, NO live site was written.** The AI-run workstation
@@ -12,7 +12,7 @@
 > **Decisions:** scratchpad `sanitizer-decisions/D-tag-versions.md` (tag/version calls),
 > `sanitizer-decisions/E-copyright-sync-course.md` (copyright fix-forward), memory
 > `f26-auth-plugin-reconcile.md` (auth_nwc is the real F26 consumer).
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D3/D4.
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D3/D4.
 
 ---
 
@@ -103,7 +103,7 @@ is **nothing to tag today**. Pick a home before tagging:
   ```bash
   cd <format_tabbed repo clone>
   grep -E 'release|maturity' version.php     # expect 0.1.0 / MATURITY_STABLE
-  git tag -a v0.1.0 -m "format_tabbed 0.1.0 (== \$plugin->release; ADR-0031 D3)"
+  git tag -a v0.1.0 -m "format_tabbed 0.1.0 (== \$plugin->release; NWP-ADR-0031 D3)"
   git push origin v0.1.0
   ```
 - **Deploy to the box** stays the current manual path (memory: scp to `/tmp` → `sudo cp`
@@ -137,7 +137,7 @@ Reasons:
   `v1.0.0` tag on `nwp/nwp` would collide with / corrupt the tool's own versioning — the
   D3 scheme requires the plugin's tag to equal `v` + its `$plugin->release`, and that tag
   can only live on a repo whose release line IS the plugin's.
-- ADR-0031 D4: the plugin is the versioned unit on the Moodle side. It needs to be the
+- NWP-ADR-0031 D4: the plugin is the versioned unit on the Moodle side. It needs to be the
   root of its own repo (root `version.php`) so `pl tag-hygiene` and the signed-bundle
   path treat it as a unit.
 - `nwp/auth-nwc-oauth2` is the **decoy** (different component `auth_nwc_oauth2`, no
@@ -154,7 +154,7 @@ grep -E 'release|maturity|version' version.php             # 1.0.0 / STABLE / 20
 git add -A && git commit -m "auth_nwc 1.0.0 — F26 OIDC consumer (merged + live-proven on ssc)"
 git push origin main
 # 3. Tag == v + release:
-git tag -a v1.0.0 -m "auth_nwc 1.0.0 (== \$plugin->release; ADR-0031 D3; F26 UID-lock consumer)"
+git tag -a v1.0.0 -m "auth_nwc 1.0.0 (== \$plugin->release; NWP-ADR-0031 D3; F26 UID-lock consumer)"
 git push origin v1.0.0
 ```
 Keep `scripts/f26/moodle/auth_nwc/` in `nwp/nwp` as the build-source until the repo is
@@ -214,7 +214,7 @@ cd <nwp/local-nwc-copyright-sync clone>
 git fetch origin && git checkout ops85-copyright-0.2.1
 grep -E 'release|version' version.php            # 0.2.1 / 2026070301
 # merge the reviewed branch to main via MR first, then tag the merge commit:
-git tag -a v0.2.1 -m "local_nwc_copyright_sync 0.2.1 (== \$plugin->release; ADR-0031 D3; consent-rail fix)"
+git tag -a v0.2.1 -m "local_nwc_copyright_sync 0.2.1 (== \$plugin->release; NWP-ADR-0031 D3; consent-rail fix)"
 git push origin v0.2.1
 ```
 

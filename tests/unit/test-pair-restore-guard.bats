@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# nwp/ops#83 — pair_guard_restore (both-or-forward restore invariant, ADR-0031 D9).
+# nwp/ops#83 — pair_guard_restore (both-or-forward restore invariant, NWP-ADR-0031 D9).
 #
 # Self-contained fixtures (fake nwp.yml + coupled/uncoupled pair contracts +
 # scratch state/ledger dirs). Touches no network, no real site, no secrets.

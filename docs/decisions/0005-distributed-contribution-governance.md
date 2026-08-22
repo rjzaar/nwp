@@ -1,4 +1,4 @@
-# ADR-0005: Distributed Contribution Governance
+# NWP-ADR-0005: Distributed Contribution Governance
 
 **Status:** Accepted
 **Date:** 2026-01-08

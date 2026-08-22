@@ -7,17 +7,17 @@
 **Depends On:** [F33](F33-repository-topology-refactor.md) (repo split must land first), [P61](P61-leakage-hygiene-ci.md) (leakage gate before any public-bound proposal commits)
 **Breaking Changes:** Yes — schema v2 → v3 of `nwp.yml`; `pl` dispatch refactor; verifier installation changes
 **Estimated Effort:** ~7 phases, multi-week buildout
-**Architecture decision records:** [ADR-0020](../decisions/0020-tiered-architecture-model.md), [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md)
+**Architecture decision records:** [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md), [NWP-ADR-0022](../decisions/0022-nwp-verifier-binary-split.md)
 
 > **Rename note (2026-07-08, nwp/ops#53).** The Tier-4 build target is described
-> throughout this proposal (Phase D, §4.4) as `nwp-verifier`, per ADR-0022. It has
+> throughout this proposal (Phase D, §4.4) as `nwp-verifier`, per NWP-ADR-0022. It has
 > since been renamed/re-scoped to the **`nwp-server`** AI-free capability agent —
-> see [ADR-0026](../decisions/0026-nwp-server-capability-agent.md), which supersedes
+> see [NWP-ADR-0026](../decisions/0026-nwp-server-capability-agent.md), which supersedes
 > the `nwp-verifier` naming and defines the shipped `bin/nwp-server` + `pl build-server`
 > surface. Read every `nwp-verifier` / `build-nwp-verifier.sh` reference below as the
 > `nwp-server` equivalent.
 
-> **Why this proposal exists.** [ADR-0020](../decisions/0020-tiered-architecture-model.md) captures the architectural *decision* for a tiered architecture model. This proposal is the *implementation plan* — a phased, numbered work breakdown that can be tracked in the roadmap, milestone'd as phases complete, and pointed at by code references. The ADR is the "why"; F32 is the "what to build, in what order, and how to know each phase is done."
+> **Why this proposal exists.** [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) captures the architectural *decision* for a tiered architecture model. This proposal is the *implementation plan* — a phased, numbered work breakdown that can be tracked in the roadmap, milestone'd as phases complete, and pointed at by code references. The ADR is the "why"; F32 is the "what to build, in what order, and how to know each phase is done."
 
 ---
 
@@ -31,7 +31,7 @@ NWP becomes a single binary that scales gracefully from a single-laptop install 
 
 A `tier:` preset is sugar that expands to coherent feature defaults; per-feature overrides take precedence. Auto-detection (`pl doctor`) emits suggestions; never enables features silently. A small fixed CLI surface (`pl init`, `pl tier-up`, `pl tier-down`, `pl doctor`, `pl host`, `pl ai`, `pl ci`) wraps the existing site-management commands.
 
-Tier 4 carries one justified binary split: a separately-built `nwp-verifier` for the verifier role (see [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md)). Every other host runs the same `nwp` binary.
+Tier 4 carries one justified binary split: a separately-built `nwp-verifier` for the verifier role (see [NWP-ADR-0022](../decisions/0022-nwp-verifier-binary-split.md)). Every other host runs the same `nwp` binary.
 
 The phased rollout below lands the schema, the new CLI, the AI bridge subprocess, the `nwp-verifier` build, the reference deployments, the documentation reorganisation, and a rolling adapter library expansion.
 
@@ -103,7 +103,7 @@ Hardcoded host references in the current dispatch (per-host AI health checks; li
 
 ### 4.4 The `nwp-verifier` binary
 
-A second build target produces `nwp-verifier` with all AI / CI / SaaS modules compiled out. Installed only on the verifier role host. See [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) for the rationale; this proposal builds the target in Phase D.
+A second build target produces `nwp-verifier` with all AI / CI / SaaS modules compiled out. Installed only on the verifier role host. See [NWP-ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) for the rationale; this proposal builds the target in Phase D.
 
 ## 5. Phases
 
@@ -131,7 +131,7 @@ A second build target produces `nwp-verifier` with all AI / CI / SaaS modules co
 - [ ] Implement `pl init [--tier=N | --non-interactive | --config=path]` with the wizard prompts (target ≤ 15 minutes for Tier 1).
 - [ ] Implement `pl tier-up <feature> [--backend=X --host=Y]` as additive YAML transforms with confirmation prompts.
 - [ ] Implement `pl tier-down <feature>` as the inverse.
-- [ ] Implement `pl doctor` with the probes listed in [ADR-0020](../decisions/0020-tiered-architecture-model.md) §"Auto-detection".
+- [ ] Implement `pl doctor` with the probes listed in [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) §"Auto-detection".
 - [ ] Implement `pl host add <name> [--ssh=... | --local] [--roles=...]`.
 - [ ] Implement `pl host roles <name> [+role | -role]`.
 - [ ] Implement `pl tier` (print current tier and host/feature matrix).
@@ -158,7 +158,7 @@ A second build target produces `nwp-verifier` with all AI / CI / SaaS modules co
 
 ### Phase D — `nwp-verifier` binary build target
 
-**Goal:** A separately-built, reproducible verifier binary per [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md).
+**Goal:** A separately-built, reproducible verifier binary per [NWP-ADR-0022](../decisions/0022-nwp-verifier-binary-split.md).
 
 **Tasks:**
 - [ ] Author `bin/build-nwp-verifier.sh` that builds the verifier-only binary with AI / CI / SaaS modules excluded.
@@ -187,7 +187,7 @@ A second build target produces `nwp-verifier` with all AI / CI / SaaS modules co
 **Goal:** Documentation is organised around tier as the primary axis; "Choose your tier" decision tree is the first user-facing page after the README.
 
 **Tasks:**
-- [ ] Restructure `docs/` per the layout in [ADR-0020](../decisions/0020-tiered-architecture-model.md) §"Documentation organisation" (also captured in the operator's planning context).
+- [ ] Restructure `docs/` per the layout in [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) §"Documentation organisation" (also captured in the operator's planning context).
 - [ ] Author `docs/tiers/README.md` with the literal decision tree.
 - [ ] Author per-tier pages (`tier-1-laptop.md`, `tier-2-add-ci.md`, `tier-3-add-ai.md`, `tier-4-add-verifier.md`, `tier-4-cloud-variant.md`, `comparison-matrix.md`).
 - [ ] Author the upgrade guides (`upgrade/1-to-2.md`, `upgrade/2-to-3.md`, `upgrade/3-to-4.md`, `upgrade/any-to-any.md`, `upgrade/data-migration.md`).
@@ -258,9 +258,9 @@ Phases E, F, and G are documentation/library additions; rollback means deleting 
 
 ## 10. Related decisions and proposals
 
-- [ADR-0020](../decisions/0020-tiered-architecture-model.md) — the architectural decision this proposal implements.
-- [ADR-0021](../decisions/0021-public-only-repo-scope.md) — repository scope; F33 implements the cutover.
-- [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) — verifier binary split; this proposal builds the target in Phase D.
+- [NWP-ADR-0020](../decisions/0020-tiered-architecture-model.md) — the architectural decision this proposal implements.
+- [NWP-ADR-0021](../decisions/0021-public-only-repo-scope.md) — repository scope; F33 implements the cutover.
+- [NWP-ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) — verifier binary split; this proposal builds the target in Phase D.
 - [F33](F33-repository-topology-refactor.md) — repository topology refactor; must land before this proposal's CI smoke-tests.
 - [F34](F34-role-label-proposal-rewrite.md) — propagation of role-label vocabulary into existing proposals.
 - [P61](P61-leakage-hygiene-ci.md) — leakage gate; must land first.

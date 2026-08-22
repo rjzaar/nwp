@@ -8,7 +8,7 @@
 #
 # This library is sourced by verify.sh for --run mode and provides:
 #   - Site query functions (from test-nwp.sh)
-#   - 5-Layer YAML Protection (ADR-0009 - CRITICAL)
+#   - 5-Layer YAML Protection (NWP-ADR-0009 - CRITICAL)
 #   - Test site lifecycle management
 #   - Command execution framework
 #   - YAML parsing helpers for verification
@@ -23,7 +23,7 @@
 #   lib/ui.sh - For color output functions (optional, has fallbacks)
 #
 # Reference:
-#   - ADR-0009: Five-Layer YAML Protection System
+#   - NWP-ADR-0009: Five-Layer YAML Protection System
 #   - P50: Layered Verification System
 #   - test-nwp.sh lines 98-318 for original helper functions
 ################################################################################
@@ -261,7 +261,7 @@ get_site_path() {
 }
 
 ################################################################################
-# SECTION 3: Five-Layer YAML Protection System (ADR-0009 - CRITICAL)
+# SECTION 3: Five-Layer YAML Protection System (NWP-ADR-0009 - CRITICAL)
 #
 # This protection was implemented after the January 2026 data loss incident.
 # All AWK operations on critical YAML files MUST use this pattern.

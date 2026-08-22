@@ -168,7 +168,7 @@ pii_gate_scan() {
 # Bundle-aware wrapper over pii_gate_scan. Accepts EITHER:
 #   - a plain gzipped SQL dump (Drupal / DB-only) — scanned directly, OR
 #   - a moodle-full bundle (a .tar.gz containing `db.sql.gz` + `dataroot-manifest.txt`,
-#     produced by lib/sanitizers/moodle-full.sh, ADR-0032 Flow A) — the inner
+#     produced by lib/sanitizers/moodle-full.sh, NWP-ADR-0032 Flow A) — the inner
 #     `db.sql.gz` is EXTRACTED and scanned, and the manifest must attest an EMPTY
 #     filedir (the omit-and-placeholder contract).
 #

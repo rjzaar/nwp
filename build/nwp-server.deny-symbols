@@ -1,8 +1,8 @@
-# build/nwp-server.deny-symbols — the fail-closed AI-free guarantee (ADR-0022/0026).
+# build/nwp-server.deny-symbols — the fail-closed AI-free guarantee (NWP-ADR-0022/0026).
 #
 # Each non-comment line is an extended-regex (ERE), matched case-insensitively
 # against the ASSEMBLED nwp-server artifact. ANY match fails the build. This is
-# the mechanical form of ADR-0022's success metric: "a `strings` check returns
+# the mechanical form of NWP-ADR-0022's success metric: "a `strings` check returns
 # zero matches for AI-vendor library symbols."
 #
 # The artifact is built from an ALLOWLIST (build/nwp-server.include), so this scan

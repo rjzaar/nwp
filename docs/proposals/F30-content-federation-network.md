@@ -1,6 +1,6 @@
 # F30: Content Federation Network — course registry, three-stage review, theocat integration, cross-site sharing
 
-**Status: SUPERSEDED by [ADR-0027](../decisions/0027-unified-course-content-architecture.md) (2026-07-08).** F30's *architecture* (federation-by-overlay, contribute-back, per-site manifest, three-stage review) is adopted there against current reality (nwc / nwp/courses / schema v3); F30's *specifics* (avc / nwpcom.org / saint.school / S05 / sites/ss paths, and the §6.6 git-issue editorial transport) are dropped. Do not build from F30 directly.
+**Status: SUPERSEDED by [NWP-ADR-0027](../decisions/0027-unified-course-content-architecture.md) (2026-07-08).** F30's *architecture* (federation-by-overlay, contribute-back, per-site manifest, three-stage review) is adopted there against current reality (nwc / nwp/courses / schema v3); F30's *specifics* (avc / nwpcom.org / saint.school / S05 / sites/ss paths, and the §6.6 git-issue editorial transport) are dropped. Do not build from F30 directly.
 
 **Created:** 2026-04-14
 **Updated:** 2026-04-19 (domain rename `nwprog.org` → `nwpcom.org`; avcommons.org reframed as federation member, not fork; Domain Rollout section added; canonical-library role clarified — `saint.school` is the canonical learning library, `nwpcom.org` is the canonical governance/community site, three federation members each have their own user base; Editorial Loop §6.6 added)

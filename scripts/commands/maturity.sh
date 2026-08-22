@@ -38,7 +38,7 @@ ${BOLD}CLASSES (who may deploy code, past what gate):${NC}
     stabilizing  deploys only from a clean checkout of main, fully merged to
                  origin/main; branch/dirty-tree pushes refused
     production   direct SSH/rsync deploys refused — signed-bundle path
-                 (ADR-0026) or the ADR-0024 protected runner only
+                 (NWP-ADR-0026) or the NWP-ADR-0024 protected runner only
 
 ${BOLD}OPTIONS:${NC}
     -y, --yes    Skip confirmation (transitions are still ledgered)
@@ -139,7 +139,7 @@ cmd_set() {
             ;;
         production)
             print_info "Direct SSH/rsync deploys will be REFUSED for this site."
-            print_info "Code ships via the signed-bundle path (ADR-0026) or the ADR-0024 protected runner."
+            print_info "Code ships via the signed-bundle path (NWP-ADR-0026) or the NWP-ADR-0024 protected runner."
             ;;
     esac
     echo ""

@@ -17,10 +17,10 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 # canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
-# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# deploy-gate.sh: hardware+signature gate on prod-writes (NWP-ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
-# pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless paired.
+# pair.sh: paired-site versioning guard (NWP-ADR-0031/ops#75); no-op unless paired.
 source "$PROJECT_ROOT/lib/pair.sh"
 # rollback.sh: register the pre-deploy snapshot as a rollback point (optional —
 # rollback_record_remote is called guarded, so a missing helper is a clean no-op).
@@ -342,7 +342,7 @@ prod_maintenance_set() {
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
         # NO pl VERB — `pl drush` is stg|live only; the v2 site schema carries no
         # `production:` block, so there is nothing for a --tier=prod arm to
-        # resolve. Prod writes are operator-gated by design (ADR-0024/0028), so the
+        # resolve. Prod writes are operator-gated by design (NWP-ADR-0024/0028), so the
         # sanctioned recovery is the rollback verb, not a hand drush.
         print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
         print_error "  pl rollback list ${base_name}"
@@ -384,9 +384,9 @@ ${BOLD}OPTIONS:${NC}
     --override-snapshot     Proceed past a failed/disk-tight pre-deploy snapshot
                             (ledgered). The rsync --delete then has no backstop.
     --code-only             Signal code/config-only intent to the pair guard
-                            (ADR-0031 D6) — satisfies the UID-lock rule for a paired
+                            (NWP-ADR-0031 D6) — satisfies the UID-lock rule for a paired
                             provider/consumer prod deploy.
-    --override-pair         Proceed past a paired-site guard (ADR-0031). Ledgered in
+    --override-pair         Proceed past a paired-site guard (NWP-ADR-0031). Ledgered in
                             private/pairs/<pair>.log. For paired sites only.
 
 ${BOLD}WORKFLOW:${NC}
@@ -559,7 +559,7 @@ run_db_updates() {
         # ABORTS and maintenance mode stays ON for recovery.
         print_error "drush updatedb FAILED on production — schema hooks NOT applied. Maintenance mode left ON."
         # NO pl VERB — see prod_maintenance_set: `pl drush` is stg|live only and
-        # prod writes are operator-gated (ADR-0024/0028). Rolling back is the
+        # prod writes are operator-gated (NWP-ADR-0024/0028). Rolling back is the
         # sanctioned move; a hand drush on prod is not.
         print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
         print_error "  pl rollback list ${base_name}"
@@ -664,7 +664,7 @@ main() {
     if ! maturity_guard_deploy "$BASE_NAME" "live2prod"; then
         exit 1
     fi
-    # Pair guard (ADR-0031/ops#75): refuse a paired promotion that breaks
+    # Pair guard (NWP-ADR-0031/ops#75): refuse a paired promotion that breaks
     # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
     # No-op for unpaired sites; fail-closed on a declared-but-missing contract.
     # ops#75/ops#83: resolve the provider's local code root (the live tier tree
@@ -680,7 +680,7 @@ main() {
 
     print_header "Live to Production Deployment: $BASE_NAME"
 
-    # Hardware+signature gate on the production write (ADR-0028). No-op on the
+    # Hardware+signature gate on the production write (NWP-ADR-0028). No-op on the
     # test tier (unconfigured); on ver it requires a live Solo touch.
     # UNCONDITIONAL: live2prod has no dry-run mode, so there is nothing to
     # exempt — the old `[ "$DRY_RUN" != true ]` guard let an *inherited* env

@@ -28,7 +28,7 @@ repos:
         pass_filenames: false
         always_run: true
       # Private site names must not reach a publicly mirrored repo (ops#326,
-      # ADR-0039). This runs at COMMIT time because on 2026-08-11 FIVE merge
+      # NWP-ADR-0039). This runs at COMMIT time because on 2026-08-11 FIVE merge
       # requests were tripped by the CI job in one day — every one for a real
       # site name in PROSE: a comment citing a worked example, a fixture using
       # a site as an arbitrary label, a proposal naming the site it discusses.

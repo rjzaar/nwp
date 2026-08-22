@@ -1,4 +1,4 @@
-# Moodle plugin reconcile runbook — ADR-0031 Phase A (ops#73)
+# Moodle plugin reconcile runbook — NWP-ADR-0031 Phase A (ops#73)
 
 > **Status: READY TO RUN once the operator confirms the drift resolutions.**
 > Every step below is either **AI-PREPARABLE** (a script/edit an assistant on the
@@ -12,7 +12,7 @@
 > to your concrete box with `pl host build` (bare hostnames never appear in-repo).
 > **Companion (the *why* + schemas):**
 > [`ops73-moodle-plugin-manifest-design.md`](ops73-moodle-plugin-manifest-design.md).
-> **ADR:** [ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D4.
+> **ADR:** [NWP-ADR-0031](../decisions/0031-paired-site-versioning-and-promotion.md) D4.
 
 ---
 
@@ -61,7 +61,7 @@ table, the dev-workstation read is stale — trust the build host and re-derive.
 
 ## 2. Decide the winners  *(OPERATOR — the load-bearing human step)*
 
-For each drifted plugin, pick the authoritative source. ADR-0031 D4 rule: **"the
+For each drifted plugin, pick the authoritative source. NWP-ADR-0031 D4 rule: **"the
 newest tree state wins where it is the newest."**
 
 - [ ] **`local_nwc_copyright_sync`** → ssc/ssd `0.2.0` / `2026052000` wins over
@@ -72,7 +72,7 @@ newest tree state wins where it is the newest."**
       (`1.0.0`/`2026011300`), `plugins/README.md` (`1.1.0`/`2026052000`), and the
       F26 build staged in `nwp/nwp!49`. **Confirm which is newest and correct.**
       This is **auth code + F26-review-gated** — do not tag/deploy until the F26
-      human auth review passes (ADR-0031 ops C auth-half). **[TODO-A1]**
+      human auth review passes (NWP-ADR-0031 ops C auth-half). **[TODO-A1]**
 - [ ] **`local_feedback`** → identical (`0.1.0`/`2026051704`) everywhere; no
       reconcile, just pin a `v0.1.0` tag.
 - [ ] **ss-only catalog plugins** (`mod_depthcontent`, `block_dailyreview`,
@@ -106,7 +106,7 @@ cp -a <ssc-root>/local/nwc_copyright_sync/. ~/dir/courses_v3/plugins/local/nwc_c
 
 ## 4. Give `courses_v3` plugins a git remote  *(OPERATOR — credentialed push)*
 
-ADR-0031 D4: "`~/dir/courses_v3` gets a git remote (subtree split; single-disk
+NWP-ADR-0031 D4: "`~/dir/courses_v3` gets a git remote (subtree split; single-disk
 canon is unacceptable)." Today `~/dir` is a git repo with **no remote**.
 
 - [ ] Create the GitLab project (e.g. `nwp/courses-plugins`). **[TODO-A6]**

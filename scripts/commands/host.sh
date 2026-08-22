@@ -10,7 +10,7 @@
 # those artifacts an owner. See lib/host-capture.sh for the engine and its five
 # design rules (read-only, fail-closed, cheap, scrubbed, no hardcoded hosts).
 #
-# The role/hostname decoupling (ADR-0020 + docs/reference/role-vocabulary.md, F32)
+# The role/hostname decoupling (NWP-ADR-0020 + docs/reference/role-vocabulary.md, F32)
 # means code and docs refer to ROLES ("ci-host", "ver"), never raw box names.
 # This is the ONE resolver from role -> hostname, reading the operator's private
 # instance-manifest.yml. NO hostname is hardcoded here (leakage gate): every value

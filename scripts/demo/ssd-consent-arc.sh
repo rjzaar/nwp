@@ -44,7 +44,7 @@ CONTRACT="$(demo_pair_contract_for "$SITE")" || {
 
 # The demo-tier guard. A consent GRANT is a legal act on a real pair; here it is
 # a fixture. Keying off the contract's declared demo flag (not the site name)
-# keeps this correct if the demo pair is ever renamed — the ADR-0036 rule.
+# keeps this correct if the demo pair is ever renamed — the NWP-ADR-0036 rule.
 if [[ "$(demo_pair_get "$CONTRACT" '.demo.enabled' 'false')" != "true" ]]; then
     print_error "REFUSED: $CONTRACT does not declare demo.enabled: true."
     print_error "Seeding Art.9 consent is a DEMO-tier fixture. On a real pair,"

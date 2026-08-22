@@ -810,8 +810,13 @@ _mr_merge_authority(){
 
 # _mr_ma_get <record> <key> — read a field OUT OF THE ACCESSOR'S OWN OUTPUT.
 # This is not a second reader of the declaration: it never opens the registry.
+#
+# The writer is OUTSIDE the pipeline (ops#351). `printf … | awk '…; exit'` puts a
+# status-consuming early exit downstream of a writer, so under `set -o pipefail`
+# the writer's SIGPIPE (141) becomes the pipeline's verdict and the result is
+# decided by timing. Caught by lint:pipefail-sigpipe on this MR's first pipeline.
 _mr_ma_get(){
-  printf '%s\n' "$1" | awk -F= -v k="$2" '$1 == k { sub(/^[^=]*=/, ""); print; exit }'
+  awk -F= -v k="$2" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' < <(printf '%s\n' "$1")
 }
 
 # _mr_load_canonical — lazily pull in canonical_get_phase (ops#33).
@@ -859,7 +864,7 @@ _mr_merge_scope_ok(){
   # sensitive". A merge authority that fires on a diff it could not see is
   # exactly the guard this estate keeps having to rewrite.
   [ -n "$files" ] \
-    && { printf '%s' "$files" | grep -q '[^[:space:]]'; } \
+    && grep -q '[^[:space:]]' < <(printf '%s' "$files") \
     || { printf 'cannot-verify: !%s reports NO changed files — that is blindness, not a clean diff\n' "$iid"; return 2; }
 
   # 1. CLAUDE.md ITSELF, named independently of the list it contains.
@@ -870,7 +875,14 @@ _mr_merge_scope_ok(){
   # CLAUDE.md's own "Sensitive File Paths" section could otherwise widen the
   # bound it is being judged by. The standing order that defines the bound is
   # not a file the bound may be talked out of.
-  if printf '%s\n' "$files" | grep -qE '(^|/)CLAUDE\.md$'; then
+  #
+  # The writer is OUTSIDE the pipeline (ops#351), and here that is not cosmetic:
+  # `printf … | grep -q` under `set -o pipefail` lets the writer's SIGPIPE become
+  # the pipeline's verdict, so THIS branch — the one that stops a machine merging
+  # its own standing orders — would have been decided by a race. Caught by
+  # lint:pipefail-sigpipe on this MR's first pipeline, which is the estate's own
+  # gate doing exactly what it was built for.
+  if grep -qE '(^|/)CLAUDE\.md$' < <(printf '%s\n' "$files"); then
     printf 'out-of-scope: the diff touches CLAUDE.md — the standing orders are never machine-merged\n'
     return 1
   fi
@@ -968,10 +980,15 @@ _mr_cross_model_review_state(){
   local iid="$1" json desc line
   json=$(_mr_fetch "$iid" 2>/dev/null) || { printf 'unknown (the MR could not be read)'; return 0; }
   desc=$(printf '%s' "$json" | _mr_jget 'description')
-  line=$(printf '%s\n' "$desc" \
-         | grep -m1 -iE 'cross-model review:' \
-         | sed -E 's/.*[Cc]ross-[Mm]odel [Rr]eview:[[:space:]]*//' \
-         | tr -d '\r' | cut -c1-120)
+  # Read line by line rather than `grep -m1 | sed | cut`: three early-exiting
+  # stages downstream of one writer is the ops#351 SIGPIPE shape three times over.
+  local ln
+  while IFS= read -r ln; do
+    case "$ln" in
+      *[Cc]ross-[Mm]odel[[:space:]][Rr]eview:*) line="${ln#*[Rr]eview:}"; break ;;
+    esac
+  done < <(printf '%s\n' "$desc")
+  line=$(printf '%s' "$line" | tr -d '\r' | cut -c1-120)
   line=$(_mr_ma_strip "$line")
   [ -n "$line" ] || { printf 'not recorded'; return 0; }
   printf '%s' "$line"

@@ -1265,6 +1265,7 @@ EOF
   local proj; proj=$(_mr_project) || die "cannot resolve the project"
 
   local json dms state rebased=false hold_rerun=false deadline rounds=0
+  local measured_sha=""
   deadline=$(( $(date +%s) + wait_s ))
 
   # A HARD ROUND CAP, independent of --wait. Found by mutation-testing this very
@@ -1283,6 +1284,13 @@ EOF
     fi
     json=$(_mr_fetch "$iid") || { print_error "cannot read !$iid (HTTP $(_mr_http_status))"; return 4; }
     state=$(_mr_state "$json"); dms=$(_mr_detailed_merge_status "$json")
+
+    # THE SHA THE BOUND IS ABOUT TO BE MEASURED AGAINST. Read HERE, before the
+    # scope check, and never after it: if a commit lands mid-measurement, a sha
+    # read afterwards would be the NEW head and pinning it would merge exactly
+    # the code that was never measured. Read first, it is stale, and the forge
+    # refuses the merge — which is the direction we want to be wrong in.
+    measured_sha=$(printf '%s' "$json" | _mr_jget 'sha')
 
     [ "$state" = "opened" ] || { print_error "!$iid is $state, not open"; return 1; }
 
@@ -1398,9 +1406,44 @@ EOF
     print_success "DRY RUN: !$iid is mergeable and passes every gate — nothing was merged"
     return 0
   fi
-  local resp; resp=$(_mr_api PUT "/projects/$proj/merge_requests/$iid/merge" '{"should_remove_source_branch":true}') \
-    || { print_error "merge failed (HTTP $(_mr_http_status)): $(printf '%s' "$resp" | _mr_jget message)"; return 1; }
-  print_success "!$iid merged"
+  # PIN THE MERGE TO THE COMMIT THE BOUND MEASURED (ops#385).
+  #
+  # Without `sha`, this is a time-of-check/time-of-use hole with a generous
+  # window: the scope check measures the diff, then the loop may sleep, poll,
+  # rebase and --wait for minutes, and a commit pushed into that window merges
+  # UNMEASURED. It also made the attribution note's own claim — "measured
+  # against this MR's own diff immediately before merging" — untrue.
+  #
+  # GitLab's merge API takes `sha` and fails the call with 409 if the source
+  # branch head has moved. So the forge, not this loop, decides whether what we
+  # measured is what we are merging.
+  #
+  # No sha means no pin means no guarantee: refuse (4 = cannot verify), never
+  # fall back to the unpinned call. The permissive fallback is how a check that
+  # cannot run becomes a check that passes.
+  if [ -z "$measured_sha" ]; then
+    print_error "!$iid: could not read the head sha, so the merge cannot be pinned to the diff that was measured"
+    print_info  "Refusing rather than merging unpinned. A human merges: $(_mr_web_url "$iid")"
+    return 4
+  fi
+  local resp merge_body
+  merge_body=$(_mr_json should_remove_source_branch:bool true sha "$measured_sha") \
+    || { print_error "!$iid: could not build the merge request body"; return 4; }
+  resp=$(_mr_api PUT "/projects/$proj/merge_requests/$iid/merge" "$merge_body") || {
+    local mstatus; mstatus=$(_mr_http_status)
+    if [ "$mstatus" = "409" ]; then
+      # A TRUTHFUL EXIT (ops#361): the condition is re-runnable and clears on its
+      # own terms. Nothing merged, nothing to attribute to anybody, and the way
+      # out is to measure again — not to assert that somebody approved it.
+      print_error "!$iid: the head commit MOVED after the bound was measured (409 on ${measured_sha:0:12})"
+      print_info  "NOTHING was merged. The new head has not been measured, so it is not inside the bound yet."
+      print_info  "Re-run to re-measure against the new head: pl mr merge $iid"
+      return 2
+    fi
+    print_error "merge failed (HTTP $mstatus): $(printf '%s' "$resp" | _mr_jget message)"
+    return 1
+  }
+  print_success "!$iid merged (pinned to ${measured_sha:0:12})"
 
   # TRUTHFUL ATTRIBUTION (ops#361, ops#385). If a MACHINE just merged this, the
   # MR has to say so IN THE MACHINE'S NAME. The failure mode being designed out

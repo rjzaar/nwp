@@ -58,6 +58,17 @@ byte-for-byte what it was before this ADR.
 has to be *spelled*, and so that any value this build does not understand fails
 closed rather than being read as "whatever the current bound happens to be".
 
+**Provenance of the grant itself.** `granted_by:` records *who decided*; it does
+not record *how the decision reached the file*, and only one of those is checkable
+from the repository. The 2026-08-22 grant was given **verbally in session and
+transcribed by an agent** — the commit that wrote it used the operator's default
+git identity, was unsigned, and bundled the grant with unrelated exposure records.
+So the block also carries `granted_via:`, stating that plainly, because a
+machine's standing permission to merge should not rest on an attribution nobody
+checked. That is ops#361's borrowed-attribution defect pointing the other way.
+The honest closure is the operator amending and signing the block himself; until
+then the record says what is true rather than what is convenient.
+
 ### 2. The bound is mechanical — and it, not any review, is the safety property
 
 Nothing in this mechanism asks whether a change *looked* reviewed, and nothing
@@ -72,7 +83,23 @@ trusts a marker anyone typed. Every merge reads the MR's own diff and refuses if
    armed by that command alone;
 3. **CLAUDE.md itself** appears in the diff. This is checked independently of the
    list it contains, because an MR editing that list could otherwise widen the
-   bound it is being judged by.
+   bound it is being judged by;
+4. the diff touches **the bound's own enforcement machinery** — `lib/gitlab-mr.sh`,
+   `lib/sensitive-paths.sh`, `lib/canonical.sh`, `scripts/commands/mr.sh`, and the
+   three suites that hold them to their red-proofs. These are entries in the
+   CLAUDE.md list, so rule 1 enforces them; they are called out here because the
+   *reason* is different from an ordinary sensitive path.
+
+**Why rule 4 is not optional.** The merging process runs the code it had **before**
+the merge, so an MR that edits the bound is judged by the version it is about to
+replace. An MR editing `_mr_merge_scope_ok` **and its own tests together** stays
+CI-green — CI runs the tests the MR ships — matches no other glob, and would
+machine-merge with zero human eyes, leaving every subsequent merge unbounded.
+Rule 3's argument about the list is exactly this argument about the code; the
+first version of this ADR made it for one file and not for the others.
+
+*Added 2026-08-23 after a cross-model review (Fable) of !474 reproduced the
+attack. Findings A1 and A2.*
 
 ### 3. Fail closed
 
@@ -81,6 +108,31 @@ that is not the token's own, an unreadable diff, or an empty change set — all 
 them mean **a human merges**. An empty change set is blindness, never a clean
 bill of health; ops#293 is the whole history of an empty parse reading as
 "nothing sensitive".
+
+A **truncated** change set is the same thing wearing a better disguise, and it
+read as clean until 2026-08-23. `_mr_changed_files` capped diff pagination and
+stopped with rc 0, so an MR too big to read whole was indistinguishable from one
+that had been read whole. Measured: 30 full pages of padding plus `.gitlab-ci.yml`
+on page 31 gave rc 0, 3000 paths, the sensitive path absent, and the bound graded
+the MR **in scope**. The cap now returns rc 1 → CANNOT VERIFY. This is
+pre-existing code whose *failure direction* this ADR changed: before, it failed
+to apply a hold; after, a bot merged on it.
+
+### 3a. The merge is pinned to the commit that was measured
+
+The bound is measured against the diff, and `pl mr merge` may then poll, rebase
+and `--wait` for minutes before the merge call. Unpinned, a commit pushed into
+that window merges **unmeasured**, and the attribution note's own claim — measured
+against this MR's own diff immediately before merging — is not true.
+
+So the merge passes GitLab's `sha` parameter, carrying the head commit read
+*before* the scope check. If the source branch has moved, the forge answers 409
+and nothing merges. The exit is a **recheck** (re-run, and the new head is
+measured on its own terms), never a borrowed approval — ops#361.
+
+If the head sha cannot be read at all, the merge is refused (exit 4) rather than
+sent unpinned. A permissive fallback is how a check that cannot run becomes a
+check that passes.
 
 ### 4. Truthful attribution
 

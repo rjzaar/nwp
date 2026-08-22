@@ -452,6 +452,9 @@ for r in rows:
 # an unreadable page fails, and the caller is told.
 _mr_changed_files(){
   local iid="$1" proj json page=0 rows out="" rc=0
+  # The page cap is a knob so the truncation path is TESTABLE without building a
+  # three-thousand-file fixture (CLAUDE.md's host-blind-branches rule).
+  local maxp="${NWP_MR_DIFF_MAX_PAGES:-30}"
   proj=$(_mr_project) || return 1
   while :; do
     page=$((page + 1))
@@ -461,7 +464,26 @@ _mr_changed_files(){
     [ -n "$rows" ] || break
     out="${out}${rows}"$'\n'
     [ "$(printf '%s\n' "$rows" | grep -c .)" -lt 100 ] && break
-    [ "$page" -ge 30 ] && break
+    # THE CAP IS A REFUSAL, NEVER A QUIET STOP.
+    #
+    # This used to `break` with rc 0, so a diff too big to read whole came back
+    # looking like a diff that had been read whole. The sensitive path a caller
+    # is looking for is not distributed evenly — GitLab pages the diff in tree
+    # order, so `.gitlab-ci.yml` sorting past the cap is the ORDINARY case, not
+    # a contrived one. Measured: 30 full pages of padding plus `.gitlab-ci.yml`
+    # on page 31 gave rc 0, 3000 paths, the sensitive one absent, and the bound
+    # graded the MR IN SCOPE — i.e. machine-mergeable.
+    #
+    # Before ops#385 this only failed to APPLY A HOLD. Now a bot merges on it,
+    # so the failure direction is the difference between friction and a merge
+    # nobody measured. A truncated list is a list we could not read: rc 1, which
+    # every caller already grades CANNOT VERIFY. The truthful exit is the one
+    # that was always there — a human merges.
+    if [ "$page" -ge "$maxp" ]; then
+      printf 'mr: !%s changes more than %s pages of files — the changed-file list is TRUNCATED, not complete\n' \
+        "$iid" "$maxp" >&2
+      rc=1; break
+    fi
   done
   [ "$rc" -eq 0 ] || return 1
   printf '%s' "$out" | grep -v '^null$' | sort -u | grep -v '^$' || true
@@ -875,6 +897,22 @@ _mr_merge_scope_ok(){
   # CLAUDE.md's own "Sensitive File Paths" section could otherwise widen the
   # bound it is being judged by. The standing order that defines the bound is
   # not a file the bound may be talked out of.
+  #
+  # THE SAME ARGUMENT APPLIES TO THE CODE, and until the ops#385 cross-model
+  # review (Fable, 2026-08-23) this comment stated the principle and then
+  # protected exactly one file out of the several the bound stands on. The
+  # merging process runs the code it had BEFORE the merge, so an MR editing
+  # this function is judged by the version it is about to replace — and an MR
+  # editing it AND its own tests together stayed CI-green (CI runs the tests
+  # the MR ships), matched no glob, and machine-merged with zero human eyes.
+  # Measured rc 0 for all seven of: this file, lib/sensitive-paths.sh,
+  # lib/canonical.sh, scripts/commands/mr.sh and the three test suites.
+  #
+  # They are now NAMED IN CLAUDE.md's Sensitive File Paths list, so check 2
+  # below catches them — a list edit, not a special case here, because the
+  # bound must keep following the standing order rather than growing a second
+  # copy of it. tests/unit/test-merge-authority.bats proves both that they are
+  # refused and that removing the entry makes the refusal stop.
   #
   # The writer is OUTSIDE the pipeline (ops#351), and here that is not cosmetic:
   # `printf … | grep -q` under `set -o pipefail` lets the writer's SIGPIPE become

@@ -457,3 +457,126 @@ EOF
     grep -qiE 'canonical phase is .?prod|phase .?prod' "$md"
     grep -qi 'inert' "$md"                       # it does nothing until declared
 }
+
+################################################################################
+# THE BOUND MUST PROTECT ITS OWN ENFORCEMENT MACHINERY (ops#385, finding A1).
+#
+# Raised by cross-model review of !474 (Fable, 2026-08-23), and reproduced before
+# it was fixed: `_mr_merge_scope_ok` returned rc 0 — MACHINE-MERGEABLE — for a
+# single-file diff touching the bound itself, the parser it reads the list with,
+# the phase reader, the verb that merges, and its own three test suites.
+#
+# THE ATTACK. An MR that edits `_mr_merge_scope_ok` AND ITS OWN TESTS together
+# stays CI-green (CI runs the MR's own tests), matches no other sensitive glob,
+# and machine-merges with ZERO human eyes — because the merging process runs the
+# OLD code, so the MR is judged by the version it is about to replace. Every
+# merge after the next pull is then unbounded.
+#
+# The fix is a LIST EDIT, not a code change: lib/sensitive-paths.sh parses
+# CLAUDE.md's "Sensitive File Paths" section at run time. That premise is itself
+# verified below rather than believed.
+################################################################################
+
+@test "RED-PROOF (A1): the bound refuses a diff touching its OWN enforcement machinery" {
+    # Measured file by file, and every one of these returned rc 0 before the fix.
+    _granted; _asbot
+    local f rc out failed=""
+    for f in lib/gitlab-mr.sh lib/sensitive-paths.sh lib/canonical.sh \
+             scripts/commands/mr.sh tests/unit/test-merge-authority.bats \
+             tests/unit/test-mr-merge.bats tests/unit/test-review-mode.bats; do
+        _diff "$f"
+        rc=0; out=$(_mr_merge_scope_ok 9) || rc=$?
+        [ "$rc" -eq 1 ] || failed="${failed}${f} (rc $rc) "
+    done
+    [ -z "$failed" ] \
+      || { echo "MACHINE-MERGEABLE, so an MR editing it is judged by the code it replaces: $failed"; false; }
+}
+
+@test "RED-PROOF (A1'): THE ATTACK — editing the bound AND its own tests together is refused" {
+    # The whole point. Each file alone is covered by the case above; this is the
+    # combination that stays CI-green because CI runs the tests the MR ships.
+    _granted; _asbot
+    _diff 'lib/gitlab-mr.sh' 'tests/unit/test-merge-authority.bats'
+    run _mr_merge_scope_ok 9
+    [ "$status" -eq 1 ] \
+      || { echo "a machine merged a rewrite of its own bound plus the tests that check it (rc $status)"; echo "$output"; false; }
+    run _mr_merge_actor_ok 9
+    [ "$status" -eq 1 ] || { echo "actor check allowed the self-widening MR (rc $status)"; false; }
+}
+
+@test "RED-PROOF (A1''): the machinery is named in CLAUDE.md, which is where the bound reads it" {
+    # NOT a grep for a comment: the premise of the fix is that the list is parsed
+    # at RUN TIME, so the list and the behaviour cannot drift apart. Proven by
+    # pointing the parser at a COPY with the entries removed and watching the
+    # bound go permissive again — the same file, one section edited.
+    _granted; _asbot
+    local copy="$TMPD/CLAUDE.md"
+    grep -v '^- `lib/gitlab-mr\.sh`' "$REPO_ROOT/CLAUDE.md" > "$copy"
+    _diff 'lib/gitlab-mr.sh'
+    NWP_CLAUDE_MD="$copy" run _mr_merge_scope_ok 9
+    [ "$status" -eq 0 ] \
+      || { echo "the entry is not what makes this refuse — something else is, so the list is decoration"; false; }
+    NWP_CLAUDE_MD="$REPO_ROOT/CLAUDE.md" run _mr_merge_scope_ok 9
+    [ "$status" -eq 1 ] \
+      || { echo "the real CLAUDE.md does not cover lib/gitlab-mr.sh"; false; }
+}
+
+################################################################################
+# A TRUNCATED DIFF IS NOT A CLEAN DIFF (ops#385, finding A2).
+#
+# `_mr_changed_files` capped pagination and `break`ed with rc 0, so an MR too big
+# to read whole came back looking like one that had been read whole. Reproduced:
+# 30 full pages of padding plus `.gitlab-ci.yml` on page 31 gave rc 0, 3000
+# paths, the sensitive path ABSENT, and the bound graded the MR IN SCOPE.
+#
+# Pre-existing code — but before ops#385 it only failed to APPLY A HOLD, and now
+# a bot merges on it. Same defect, opposite consequence.
+################################################################################
+
+@test "RED-PROOF (A2): a diff too big to read whole is CANNOT VERIFY, never 'in scope'" {
+    _granted; _asbot
+    # The cap is a knob so this needs 2 pages, not 3001 files (CLAUDE.md's
+    # host-blind-branches rule: make the untestable path testable).
+    export NWP_MR_DIFF_MAX_PAGES=1
+    _mr_project(){ printf '9'; }
+    # Page 1 is FULL (so the reader must go on); the sensitive path is on page 2.
+    _mr_get(){
+        local page="${1##*page=}"
+        if [ "$page" = 1 ]; then
+            { printf '['
+              local i first=1
+              for i in $(seq 1 100); do
+                  [ $first -eq 1 ] || printf ','; first=0
+                  printf '{"new_path":"pad/f%s.txt","old_path":"pad/f%s.txt"}' "$i" "$i"
+              done
+              printf ']'; }
+        else
+            printf '[{"new_path":".gitlab-ci.yml","old_path":".gitlab-ci.yml"}]'
+        fi
+    }
+    run _mr_changed_files 9
+    [ "$status" -eq 1 ] \
+      || { echo "a TRUNCATED file list was reported as a complete one (rc $status) — the sensitive path was never seen"; false; }
+
+    run _mr_merge_scope_ok 9
+    [ "$status" -eq 2 ] \
+      || { echo "expected 2 CANNOT VERIFY, got $status: $output"; false; }
+    [[ "$output" == *"cannot-verify"* ]] || { echo "$output"; false; }
+
+    run _mr_merge_actor_ok 9
+    [ "$status" -eq 2 ] || { echo "a bot was allowed to merge an unreadable diff (rc $status)"; false; }
+}
+
+@test "NEGATIVE CONTROL (A2): a diff that fits IS read, and the cap does not fire" {
+    # Without this, the case above would also pass if the reader simply refused
+    # every paginated diff.
+    _granted; _asbot
+    export NWP_MR_DIFF_MAX_PAGES=1
+    _mr_project(){ printf '9'; }
+    _mr_get(){ printf '[{"new_path":"docs/x.md","old_path":"docs/x.md"}]'; }
+    run _mr_changed_files 9
+    [ "$status" -eq 0 ] || { echo "a short, complete diff was refused (rc $status)"; false; }
+    [[ "$output" == *"docs/x.md"* ]]
+    run _mr_merge_scope_ok 9
+    [ "$status" -eq 0 ] || { echo "an ordinary in-scope MR was refused (rc $status): $output"; false; }
+}

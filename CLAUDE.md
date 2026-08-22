@@ -658,6 +658,22 @@ These paths require extra scrutiny and two-person approval:
 - `.env*` - Environment configuration
 - `keys/**` - SSH and encryption keys
 
+**The bound's own enforcement machinery** (ADR-0040, ops#385). A machine may merge
+inside a bound measured by this code, reading this list, from this file. The merging
+process runs the code it had *before* the merge, so an MR that edits the bound is
+judged by the version it is about to replace — and an MR that edits the bound **and
+its own tests together** stays CI-green, matches no other glob, and machine-merges
+with zero human eyes. Every merge after the next pull is then unbounded. So the
+machinery is named here, where the bound itself reads it:
+
+- `lib/gitlab-mr.sh` - The bound (`_mr_merge_scope_ok`, `_mr_merge_actor_ok`)
+- `lib/sensitive-paths.sh` - The parser that turns this very list into the gate
+- `lib/canonical.sh` - The canonical-phase reader the prod check depends on
+- `scripts/commands/mr.sh` - The verb that performs the merge
+- `tests/unit/test-merge-authority.bats` - The red-proofs the bound is held to
+- `tests/unit/test-mr-merge.bats` - The merge verb's red-proofs
+- `tests/unit/test-review-mode.bats` - The one-reviewer anti-drift proofs
+
 ### Safe Contribution Practices
 
 Encourage contributors to:

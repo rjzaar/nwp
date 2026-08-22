@@ -68,6 +68,7 @@ setup() {
   TMP="$BATS_TEST_TMPDIR/mrcm"; mkdir -p "$TMP"
   export STATE="$TMP/state"; mkdir -p "$STATE"
   export CURL_LOG="$TMP/curl.log"
+  export CURL_BODY_LOG="$TMP/curl-bodies.log"
 
   # ---- a real throwaway git repo with a real "remote" --------------------
   export REPO="$TMP/repo" REMOTE="$TMP/remote.git"
@@ -93,6 +94,15 @@ url=$(sed -n 's/^url = "\(.*\)"$/\1/p' "$cfg")
 meth=$(sed -n 's/^request = "\(.*\)"$/\1/p' "$cfg"); meth="${meth:-GET}"
 path="${url#*/api/v4}"
 echo "$meth $path" >> "$CURL_LOG"
+# LOG THE REQUEST BODY TOO (ops#385). _mr_api hands curl the payload as
+# `data = "@<tmpfile>"`, so what actually went ON THE WIRE is only assertable
+# by dereferencing that file here. Without it, "the merge was pinned to the sha
+# the bound measured" can only be checked by reading the source — which is the
+# check-that-cannot-fail shape this estate keeps finding.
+bodyfile=$(sed -n 's/^data = "@\(.*\)"$/\1/p' "$cfg")
+if [ -n "$bodyfile" ] && [ -r "$bodyfile" ]; then
+    printf '%s %s %s\n' "$meth" "$path" "$(cat "$bodyfile")" >> "${CURL_BODY_LOG:-/dev/null}"
+fi
 emit() { printf '%s\n%s' "$1" "${2:-200}"; }     # body \n http_code (write-out)
 case "$meth $path" in
     # WHO AM I. cmd_merge refuses a bot token, and refuses when it cannot tell
@@ -119,7 +129,10 @@ case "$meth $path" in
       cp "$STATE/after_rebase.json" "$STATE/mr.json" 2>/dev/null || true
       emit '{"rebase_in_progress":true}' 202 ;;
   "PUT "*"/merge")
-      emit '{"iid":900,"state":"merged"}' ;;
+      # The forge decides. A scenario may make it 409 — which is what GitLab
+      # returns when the pinned `sha` no longer matches the source branch head.
+      emit "$(cat "$STATE/merge_resp.json" 2>/dev/null || echo '{"iid":900,"state":"merged"}')" \
+           "$(cat "$STATE/merge_code" 2>/dev/null || echo 200)" ;;
   "GET "*"/pipelines/"*"/jobs"*)
       emit "$(cat "$STATE/jobs.json" 2>/dev/null || echo '[]')" ;;
   "POST "*"/jobs/"*"/retry")
@@ -580,4 +593,64 @@ REGEOF
     [ "$status" -ne 0 ]
     [[ "$output" == *"forge identity could not be established"* ]]
     ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+################################################################################
+# TOCTOU: THE MERGE IS PINNED TO THE COMMIT THE BOUND MEASURED (ops#385, A3).
+#
+# Raised by cross-model review of !474 (Fable, 2026-08-23). The bound is measured
+# against the diff, and then cmd_merge may sleep, poll, rebase and --wait for
+# minutes before the PUT. Unpinned, a commit pushed into that window merges
+# UNMEASURED — and the attribution note's own claim ("measured against this MR's
+# own diff immediately before merging") was not true.
+#
+# GitLab's merge API takes `sha` and answers 409 when the source head has moved,
+# so the FORGE decides whether what we measured is what we are merging.
+################################################################################
+
+@test "RED-PROOF (A3): the merge PUT is PINNED to the sha the bound measured" {
+    # Asserted on the WIRE, not in the source. Before the fix the body was
+    # {"should_remove_source_branch":true} with no sha at all, so any commit
+    # landing after the scope check merged unmeasured.
+    _registry granted; _bot_whoami; _mergeable        # _mergeable pins sha deadbeef
+    run "$MR" merge 900
+    [ "$status" -eq 0 ] || { echo "the merge was refused:"; echo "$output"; false; }
+    local body; body=$(grep 'PUT .*/merge ' "$CURL_BODY_LOG" || true)
+    [ -n "$body" ] || { echo "no merge body reached the wire:"; cat "$CURL_BODY_LOG" 2>/dev/null; false; }
+    [[ "$body" == *'"sha"'* ]] \
+      || { echo "the merge was sent UNPINNED — a commit pushed after the scope check would merge unmeasured:"; echo "$body"; false; }
+    [[ "$body" == *"deadbeef"* ]] \
+      || { echo "pinned to the wrong commit (not the one the bound measured):"; echo "$body"; false; }
+}
+
+@test "RED-PROOF (A3'): a 409 (head MOVED) refuses, merges nothing, and offers a TRUTHFUL exit" {
+    # ops#361: the way out of a fail-closed guard must describe what actually
+    # happened. Here it is a RECHECK — re-run and the new head is measured on its
+    # own terms. No human name is borrowed to clear it.
+    _registry granted; _bot_whoami; _mergeable
+    echo 409 > "$STATE/merge_code"
+    printf '%s' '{"message":"SHA does not match HEAD of source branch"}' > "$STATE/merge_resp.json"
+    run "$MR" merge 900
+    [ "$status" -eq 2 ] || { echo "expected exit 2 (conflict/not merged), got $status:"; echo "$output"; false; }
+    [[ "$output" == *"MOVED"* ]] \
+      || { echo "the 409 was not reported as a moved head:"; echo "$output"; false; }
+    [[ "$output" == *"NOTHING was merged"* ]]
+    # THE TRUTHFUL EXIT, asserted rather than assumed: re-running re-measures.
+    [[ "$output" == *"pl mr merge 900"* ]] \
+      || { echo "no recheck path was offered — the only exits would be to fabricate one:"; echo "$output"; false; }
+    # And it must NOT ask anybody to record an approval to get past it.
+    [[ "$output" != *"--approved-by"* ]] \
+      || { echo "a stale pin offered BORROWED ATTRIBUTION as its exit (ops#361):"; echo "$output"; false; }
+}
+
+@test "RED-PROOF (A3''): an UNREADABLE head sha refuses (4) rather than merging unpinned" {
+    # The permissive fallback — "no sha, send it without one" — is how a check
+    # that cannot run becomes a check that passes. There must be no such path.
+    _registry granted; _bot_whoami
+    printf '%s' '{"iid":900,"state":"opened","draft":false,"detailed_merge_status":"mergeable"}' > "$STATE/mr.json"
+    run "$MR" merge 900
+    [ "$status" -eq 4 ] || { echo "expected 4 CANNOT VERIFY, got $status:"; echo "$output"; false; }
+    [[ "$output" == *"cannot be pinned"* ]] || { echo "$output"; false; }
+    ! grep -q 'PUT .*/merge$' "$CURL_LOG" \
+      || { echo "it merged anyway, unpinned:"; cat "$CURL_LOG"; false; }
 }

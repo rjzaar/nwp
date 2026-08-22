@@ -475,16 +475,101 @@ JSON
   [ "$output" -ge 1 ]
 }
 
-@test "REFUSES to merge when the token is a BOT — a machine never merges" {
-    # ADR-0037's cross-mode invariant, exercised through the real subprocess rather
-    # than a function stub. Solo mode drops the Draft hold, so this refusal is what
-    # stands between an armed automation and a merged MR.
-    printf '%s' '{"username":"group_9_bot_53ae5a1df066ec501e8867f7276f66b1","bot":true}' > "$STATE/whoami.json"
-    printf '%s' '{"iid":900,"state":"opened","draft":false,"detailed_merge_status":"mergeable","sha":"deadbeef"}' > "$STATE/mr.json"
+# ---- the machine/human boundary, END TO END through the real subprocess -----
+#
+# AMENDED ops#385. These four cases used to be one, asserting that a bot is
+# always refused. The estate now grants ONE named machine a BOUNDED standing
+# authority, so the boundary is no longer "bot or not" — it is "granted AND
+# inside the bound". That is a bigger claim, so it gets more cases, all of them
+# on the wire: the assertion is whether `PUT …/merge` appears in $CURL_LOG, not
+# what the command said about itself.
+
+_bot_whoami(){ printf '%s' '{"username":"group_9_bot_53ae5a1df066ec501e8867f7276f66b1","bot":true}' > "$STATE/whoami.json"; }
+_mergeable(){  printf '%s' '{"iid":900,"state":"opened","draft":false,"detailed_merge_status":"mergeable","sha":"deadbeef"}' > "$STATE/mr.json"; }
+_registry(){   # $1 = granted | ungranted
+  if [ "$1" = granted ]; then
+    cat > "$STATE/registry.yml" <<'REGEOF'
+approvers:
+  - rjzaar
+merge_authority:
+  granted_to: group_9_bot_53ae5a1df066ec501e8867f7276f66b1
+  granted_by: rjzaar
+  ref: nwp/ops#385
+  scope: non-sensitive-non-prod
+REGEOF
+  else
+    printf 'approvers:\n  - rjzaar\n' > "$STATE/registry.yml"
+  fi
+  export NWP_SECRETS_REGISTRY="$STATE/registry.yml"
+}
+
+@test "REFUSES to merge when the token is an UNGRANTED BOT — a machine never merges" {
+    # The 2026-08-01 invariant, untouched, exercised through the real subprocess
+    # rather than a function stub. This is the case the amendment must not weaken.
+    _registry ungranted; _bot_whoami; _mergeable
     run "$MR" merge 900
     [ "$status" -ne 0 ]
-    [[ "$output" == *"A machine never merges"* ]]
+    [[ "$output" == *"no standing merge authority is declared"* ]] \
+      || { echo "refused for the wrong reason:"; echo "$output"; false; }
     ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "ops#385: a GRANTED bot MERGES an in-scope MR, and says on the MR that a machine did" {
+    # The permission must actually work, or every refusal below passes for the
+    # wrong reason. The default fixture diff is docs/x.md: no sensitive path, no
+    # CLAUDE.md, no site at all.
+    _registry granted; _bot_whoami; _mergeable
+    run "$MR" merge 900
+    [ "$status" -eq 0 ] || { echo "a granted, in-scope merge was refused:"; echo "$output"; false; }
+    grep -q 'PUT .*/merge$' "$CURL_LOG" || { echo "no merge was sent:"; cat "$CURL_LOG"; false; }
+    # TRUTHFUL ATTRIBUTION (ops#361): the MR must carry the machine's own name.
+    grep -q 'POST .*/notes' "$CURL_LOG" || { echo "merged with no attribution note:"; cat "$CURL_LOG"; false; }
+}
+
+@test "RED-PROOF ops#385: a granted bot is REFUSED a SENSITIVE-PATH MR, in SOLO mode" {
+    # SOLO ON PURPOSE. In team mode cmd_guard would hold this MR anyway, so the
+    # case would pass without the bound existing at all — the "check that has
+    # never been proven to fail" shape. Solo drops that hold, leaving the bound as
+    # the only thing between the automation and the merge button.
+    _registry granted; _bot_whoami; _mergeable
+    echo '[{"new_path":".gitlab-ci.yml","old_path":".gitlab-ci.yml"}]' > "$STATE/diffs.json"
+    NWP_REVIEW_MODE=solo run "$MR" merge 900
+    [ "$status" -ne 0 ] || { echo "a machine merged a sensitive-path MR:"; echo "$output"; false; }
+    [[ "$output" == *"OUTSIDE its standing authority"* ]] && [[ "$output" == *".gitlab-ci.yml"* ]] \
+      || { echo "refused for the wrong reason:"; echo "$output"; false; }
+    ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "RED-PROOF ops#385: a granted bot is REFUSED a CLAUDE.md MR, in SOLO mode" {
+    _registry granted; _bot_whoami; _mergeable
+    echo '[{"new_path":"CLAUDE.md","old_path":"CLAUDE.md"}]' > "$STATE/diffs.json"
+    NWP_REVIEW_MODE=solo run "$MR" merge 900
+    [ "$status" -ne 0 ] || { echo "a machine merged a change to its own standing orders:"; echo "$output"; false; }
+    [[ "$output" == *"CLAUDE.md"* ]]
+    ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+}
+
+@test "RED-PROOF ops#385: a granted bot is REFUSED a PROD-PHASE site, in SOLO mode" {
+    # ops#214's class. No real site is canonical: prod (prod does not exist yet),
+    # so the only way to watch this fire is to build the thing it refuses — and
+    # keyed off the PHASE, never off the site's name.
+    _registry granted; _bot_whoami; _mergeable
+    printf 'sites:\n  fixtureprod:\n    canonical: prod\n' > "$STATE/nwp.yml"
+    echo '[{"new_path":"sites/fixtureprod/dev/web/index.php","old_path":"sites/fixtureprod/dev/web/index.php"}]' > "$STATE/diffs.json"
+    NWP_YML="$STATE/nwp.yml" NWP_REVIEW_MODE=solo run "$MR" merge 900
+    [ "$status" -ne 0 ] || { echo "a machine merged a change to a prod-phase site:"; echo "$output"; false; }
+    [[ "$output" == *"fixtureprod"* ]] && [[ "$output" == *"prod"* ]] \
+      || { echo "refused for the wrong reason:"; echo "$output"; false; }
+    ! grep -q 'PUT .*/merge$' "$CURL_LOG"
+
+    # NEGATIVE CONTROL, same fixture, one field changed: at canonical: live the
+    # identical diff goes through. Without this the case above would also pass if
+    # the guard simply refused everything under sites/.
+    printf 'sites:\n  fixtureprod:\n    canonical: live\n' > "$STATE/nwp.yml"
+    : > "$CURL_LOG"
+    NWP_YML="$STATE/nwp.yml" NWP_REVIEW_MODE=solo run "$MR" merge 900
+    [ "$status" -eq 0 ] || { echo "a LIVE-phase site was refused too — the guard is not reading the phase:"; echo "$output"; false; }
+    grep -q 'PUT .*/merge$' "$CURL_LOG"
 }
 
 @test "REFUSES when the token identity cannot be established at all" {
@@ -493,6 +578,6 @@ JSON
     printf '%s' '{"iid":900,"state":"opened","draft":false,"detailed_merge_status":"mergeable","sha":"deadbeef"}' > "$STATE/mr.json"
     run "$MR" merge 900
     [ "$status" -ne 0 ]
-    [[ "$output" == *"could not establish this token's forge identity"* ]]
+    [[ "$output" == *"forge identity could not be established"* ]]
     ! grep -q 'PUT .*/merge$' "$CURL_LOG"
 }

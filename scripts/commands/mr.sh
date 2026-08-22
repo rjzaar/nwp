@@ -1293,15 +1293,26 @@ EOF
     # between an armed automation and a merged MR — which is exactly what went
     # wrong on 2026-08-01. Keyed on the token's forge-verified identity, not on a
     # name in a config or a handle somebody typed.
+    #
+    # AMENDED ops#385: a machine may merge inside a bound declared once in
+    # private/secrets-registry.yml and MEASURED against this MR's own diff — no
+    # sensitive path, no CLAUDE.md, no prod-phase site. The iid is passed because
+    # a grant without a measured diff is not a permission, and _mr_merge_actor_ok
+    # returns 2 rather than 0 when it is given nothing to measure.
     local _actor_rc=0
-    _mr_merge_actor_ok || _actor_rc=$?
+    _mr_merge_actor_ok "$iid" || _actor_rc=$?
     case "$_actor_rc" in
-      1) print_error "REFUSING: this token is a BOT (@$(_mr_token_user 2>/dev/null)). A machine never merges."
+      1) print_error "REFUSING to merge !$iid: ${MR_MERGE_ACTOR_REASON:-a machine never merges}"
          print_info  "A human merges, on the MR page. In solo review mode that click IS the approval."
          print_info  "  $(_mr_web_url "$iid")"
          return 1 ;;
-      2) print_error "REFUSING: could not establish this token's forge identity (GET /user)."
-         print_info  "\"I could not tell whether I am a bot\" is not \"I am a human\". Merge by hand:"
+      2) # No apostrophe in the default word: inside "${var:-…}" bash still parses
+         # a bare ' as an opening quote, and "this token's" swallowed the file
+         # from here to the next ' — a syntax error reported 80 lines away, in
+         # untouched code. Caught by bash -n; test-review-mode.bats had already
+         # gone quietly to exit 127 because its _load_gate sources with `|| true`.
+         print_error "REFUSING to merge !$iid: ${MR_MERGE_ACTOR_REASON:-the forge identity of this token could not be established}"
+         print_info  "\"I could not tell\" is not \"I may\". Fail closed means a human merges:"
          print_info  "  $(_mr_web_url "$iid")"
          return 1 ;;
     esac
@@ -1390,6 +1401,20 @@ EOF
   local resp; resp=$(_mr_api PUT "/projects/$proj/merge_requests/$iid/merge" '{"should_remove_source_branch":true}') \
     || { print_error "merge failed (HTTP $(_mr_http_status)): $(printf '%s' "$resp" | _mr_jget message)"; return 1; }
   print_success "!$iid merged"
+
+  # TRUTHFUL ATTRIBUTION (ops#361, ops#385). If a MACHINE just merged this, the
+  # MR has to say so IN THE MACHINE'S NAME. The failure mode being designed out
+  # is a merge that reads, later, as though the operator had clicked it — the
+  # same borrowed-attribution defect ops#361 recorded from the other direction.
+  # Best-effort: a note that could not be posted cannot un-merge anything, but
+  # it is reported rather than swallowed.
+  if _mr_handle_is_bot "$(_mr_token_user 2>/dev/null)" 2>/dev/null; then
+    if _mr_post_merge_attribution "$iid" >/dev/null 2>&1; then
+      print_info "attribution note posted: a machine merged this, under standing authorization"
+    else
+      print_warning "!$iid was merged by a MACHINE and the attribution note could NOT be posted — say so by hand: $(_mr_web_url "$iid")"
+    fi
+  fi
   return 0
 }
 

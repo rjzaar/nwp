@@ -166,14 +166,14 @@ back into complexity".
 
 **What does NOT change between the modes** — and it is why solo is safe:
 
-> **A machine never merges. A human merges.**
+> **A machine never merges. A human merges** — except inside the bounded standing
+> authority below, which is declared once and **measured every time**.
 
 Auto-merge is disarmed in both modes, and every verb that could merge refuses when
 the token's **forge-verified** identity is a bot (`_mr_merge_actor_ok`). Solo mode
 removes the *second* human, never the human. The 2026-08-01 incident was a sweeper
-merging an MR nobody had approved; nothing here relaxes that. **You — the AI — hold
-a bot token, so you cannot merge in either mode. That is deliberate: propose, and
-let the operator click.**
+merging an MR nobody had approved; **nothing below relaxes that** — the sweeper had
+no grant, no bound and no diff check, and would still be refused today.
 
 **Do not "helpfully" restore two-person review.** If a gate feels too permissive,
 that is the operator's call to make by adding a name to `approvers:`, not a special
@@ -190,6 +190,69 @@ absent in CI — and because the fallback is `team`, that surfaced as CI holding
 everything rather than as two-person review silently switched off.
 
 See [ADR-0037](docs/decisions/0037-review-mode-follows-approvers.md) (renumbered from a duplicate 0032, ops#319).
+
+### BOUNDED STANDING MERGE AUTHORITY — granted 2026-08-22 (ops#385)
+
+**Operator ruling, 2026-08-22, given in session.** He asked to stop the
+click-fail-paste-wait loop on the merge queue and delegate it, and approved a
+bounded design: *"do it all and get it working."* **What was granted:** standing
+authority for the automation bot to merge, and nothing else. **By whom:** the
+operator, the single name in `approvers:`. **The bound, in his words:** never a
+prod-phase site, never a sensitive path, never CLAUDE.md itself.
+
+**Declared in ONE place**, beside `approvers:`, in the same declared-fact shape
+(ADR-0037):
+
+```yaml
+merge_authority:
+  granted_to: <the bot's forge handle>     # not a person
+  granted_by: <the human who granted it>
+  granted_on: "YYYY-MM-DD"
+  ref: nwp/ops#385                          # the issue that records the decision
+  scope: non-sensitive-non-prod             # the ONE recognised value
+```
+
+`lib/gitlab-mr.sh:_mr_merge_authority` is the only reader.
+`tests/unit/test-merge-authority.bats` fails if a second one appears. **Deleting
+the block revokes the grant** — immediately, everywhere, with no code change.
+**It is INERT until declared**: with no block, `_mr_merge_actor_ok` behaves
+exactly as it did before this section existed.
+
+**The bound is MECHANICAL, and it — not any review — is the safety property.**
+Nothing asks whether a change *looked* reviewed. Every merge measures the diff
+and refuses on any of:
+
+1. a path matching CLAUDE.md's **Sensitive File Paths** list (`nwp_sensitive_globs`
+   parses that list *at run time*, so adding a line there tightens the bound with
+   no code change);
+2. a site whose **canonical phase is `prod`** (`pl canonical`, ops#33 — keyed off
+   the phase, **never** off a site's name, so it arms itself the moment
+   `pl canonical set <site> prod` runs);
+3. **CLAUDE.md itself**, checked independently of the list it contains — otherwise
+   an MR editing that list could widen the bound it is being judged by.
+
+**Fail closed:** unreadable registry, missing or malformed block, unrecognised
+`scope:`, a handle that is not the token's own, an unreadable diff, or an empty
+change set — every one of them means **a human merges**. An empty diff is
+blindness, never a clean bill of health (ops#293).
+
+**Truthful attribution is part of the grant, not decoration (ops#361).** Every
+machine merge posts a note naming the machine — *"merged by @&lt;bot&gt; under
+standing authorization &lt;ref&gt;; cross-model review: &lt;state&gt;"* — and saying
+plainly that no human clicked. **Never write, imply, or borrow the operator's
+identity for something a machine did.** ops#361 recorded that defect running the
+other way (an agent recording an approval that was never given); this is the same
+defect mirrored.
+
+**What this does NOT grant.** No review, no approval, no trust, and no widening by
+convenience. **Anything outside the bound still needs a human on the MR page.**
+**You — the AI — hold that bot token**, so inside the bound you may now merge
+through `pl mr merge` and should clear the queue rather than parking it; outside
+it you still cannot merge a sensitive-path MR, a CLAUDE.md MR, or a prod-phase MR
+in either review mode — propose, and let the operator click. If the bound blocks
+work that should be allowed, that is the operator's call to make by amending
+`merge_authority:` with a new recorded scope, **not** a special case you add to a
+verb, an env var you introduce, or a `--force` you reach for.
 
 ## STANDING ORDER: a check that has never been proven to fail is not a check
 

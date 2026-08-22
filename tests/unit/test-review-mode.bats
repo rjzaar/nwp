@@ -53,8 +53,19 @@ setup() {
     export MR_STATUS_FILE="$(mktemp)"
     # shellcheck source=/dev/null
     source "$REPO_ROOT/lib/ui.sh" 2>/dev/null || true
+    # A FAILING CASE HERE MUST REPORT RED, NOT VANISH (found while writing
+    # tests/unit/test-merge-authority.bats, ops#385). lib/gitlab-mr.sh installs
+    # `trap _mr_status_cleanup EXIT` at source time, which CLOBBERS the EXIT trap
+    # bats uses to report a result. Every failing case in this file therefore
+    # exited silently with no `not ok` line — bats only muttered "Executed 35
+    # instead of expected 36" at the end, which is easy to read past. That is the
+    # ops#214 class inside the very suite that exists to prevent it: a red-proof
+    # that could not be seen going red. Measured, then fixed by putting bats' own
+    # handler back.
+    local _bats_exit_trap; _bats_exit_trap="$(trap -p EXIT)"
     # shellcheck source=/dev/null
     source "$REPO_ROOT/lib/gitlab-mr.sh"
+    eval "$_bats_exit_trap"
     # AFTER the source — lib/gitlab-mr.sh resolves YQ on load (ops#293).
     YQ=""
     MODE_FILE="$(mktemp)"
@@ -214,10 +225,38 @@ _mode(){ printf '%s\n' "$1" > "$MODE_FILE"; NWP_REVIEW_MODE_FILE="$MODE_FILE"; e
 # ---- 3. the invariant that spans both modes ---------------------------------
 
 @test "RED-PROOF: a BOT token may not merge — in solo mode" {
+    # AMENDED ops#385, and note WHY the expected code moved rather than the rule.
+    #
+    # This handle is the one the estate now grants bounded standing merge
+    # authority to (private/secrets-registry.yml `merge_authority:`), and this
+    # case names no MR. A grant is not a permission: with nothing to measure the
+    # bound against, _mr_merge_actor_ok answers 2 — "I could not tell" — which is
+    # a REFUSAL, just a differently-honest one than 1.
+    #
+    # So the assertion is "not allowed", stated as such, and the two refusal codes
+    # are distinguished rather than collapsed. Asserting `-ne 0` alone would pass
+    # for a bot that crashed, which is the blind-negation shape CLAUDE.md names.
     _mode solo
     _mr_token_user(){ printf 'group_9_bot_53ae5a1df066ec501e8867f7276f66b1'; }
     run _mr_merge_actor_ok
-    [ "$status" -eq 1 ] || { echo "a bot was allowed to merge in solo mode"; false; }
+    [ "$status" -eq 1 ] || [ "$status" -eq 2 ] \
+      || { echo "a bot was allowed to merge in solo mode (rc $status)"; false; }
+    # and the reason must say which of the two it was, in words
+    _mr_merge_actor_ok || true
+    [[ "$MR_MERGE_ACTOR_REASON" == *"BOT"* ]] || [[ "$MR_MERGE_ACTOR_REASON" == *"no MR was named"* ]] \
+      || { echo "refused with an unexplained reason: $MR_MERGE_ACTOR_REASON"; false; }
+}
+
+@test "RED-PROOF: an UNGRANTED bot still gets the original rc 1 — the carve-out is a carve-out" {
+    # The case above moved to rc 2 only because that handle IS granted. Any other
+    # machine must still meet the untouched 2026-08-01 invariant, exactly as
+    # written: rc 1, refuse. If this ever passes as 0, the amendment became a hole.
+    _mode solo
+    local none; none=$(mktemp); printf 'approvers:\n  - rjzaar\n' > "$none"
+    _mr_token_user(){ printf 'group_9_bot_53ae5a1df066ec501e8867f7276f66b1'; }
+    NWP_SECRETS_REGISTRY="$none" run _mr_merge_actor_ok
+    [ "$status" -eq 1 ] || { echo "an ungranted bot got rc $status, expected 1"; false; }
+    rm -f "$none"
 }
 
 @test "RED-PROOF: a BOT token may not merge — in team mode either" {

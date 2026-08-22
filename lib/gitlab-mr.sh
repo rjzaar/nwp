@@ -686,22 +686,329 @@ _mr_review_mode_drift(){
   [ "$got" = "$want" ]
 }
 
-# _mr_merge_actor_ok — THE INVARIANT THAT HOLDS IN BOTH MODES:
+# ── BOUNDED STANDING MERGE AUTHORITY (nwp/ops#385) ───────────────────────────
 #
-#         A MACHINE NEVER MERGES. A HUMAN MERGES.
+# WHAT THIS AMENDS, AND WHAT IT DOES NOT.
 #
-# Solo mode removes the SECOND human, not the human. The 2026-08-01 incident was
-# a sweeper merging an MR no person had approved, and this is what keeps that
-# fixed once the Draft hold is no longer doing it. Every verb that could merge
-# calls this, in either mode.
+#   A MACHINE NEVER MERGES. A HUMAN MERGES.
+#
+# That invariant is incident-born: on 2026-08-01 a sweeper merged an MR nobody
+# had approved. It is NOT deleted here and it still governs everything outside
+# one mechanically bounded carve-out.
+#
+# Operator ruling, 2026-08-22, given in session: the click-fail-paste-wait loop
+# on the merge queue is to stop, and the queue is delegated — inside a bound he
+# stated himself: never a prod-phase site, never a sensitive path, never
+# CLAUDE.md itself. "do it all and get it working."
+#
+# THE BOUND IS THE SAFETY PROPERTY, NOT ANY REVIEW. Nothing here asks whether a
+# change looked reviewed, or trusts a marker somebody typed. It measures the
+# DIFF against three mechanical facts and refuses on any of them. A grant plus a
+# diff that stays inside the bound is the whole permission; a grant on its own
+# permits nothing.
+#
+# ONE DECLARATION, ONE PLACE — the estate's declared-fact pattern (ADR-0037).
+# `merge_authority:` sits in private/secrets-registry.yml beside `approvers:`,
+# and _mr_merge_authority below is the ONLY function that reads it. There is
+# deliberately no env var, no CLI flag, no console toggle and no per-project
+# override, for the same reason CLAUDE.md gives for `approvers:`: a policy
+# expressed in several places is a policy that drifts, and the drifted copy is
+# the one that gates the merge. tests/unit/test-merge-authority.bats fails if a
+# second reader appears.
+#
+# FAIL CLOSED, AND NOTE THE DIRECTION. Unreadable registry, missing block,
+# malformed field, unrecognised `scope:`, a handle that is not the token's own,
+# or CANNOT-VERIFY anywhere in the scope check — all of them mean A HUMAN
+# MERGES. The permissive direction would be to treat "I could not read the
+# policy" as "there is no policy", and that is exactly how a typo silently
+# grants standing merge authority over the whole estate.
+
+# _mr_merge_authority_scope_word — the ONE recognised value of `scope:`.
+#
+# A free-text scope would be prose the code cannot check, so the field is an
+# enum of one: it exists so that a future second bound has to be spelled, and so
+# that any value this build does not understand fails closed instead of being
+# read as "whatever the current bound happens to be".
+_mr_merge_authority_scope_word(){ printf 'non-sensitive-non-prod'; }
+
+# _mr_ma_registry_field <file> <key> — yq-less reader for one key of the block.
+# Deliberately narrow: a top-level `merge_authority:` block of `  key: value`
+# lines, which is the shape in use. Same posture as _mr_approver_count's awk
+# fallback — a missing yq must not silently answer "empty", because empty is the
+# fail-closed direction here but would be a WRONG measurement, not a refusal.
+_mr_ma_registry_field(){
+  awk -v want="$2" '
+    /^merge_authority:[[:space:]]*$/ { inb = 1; next }
+    inb && /^[^[:space:]#]/ { inb = 0 }
+    inb {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ /^#/ || line == "") next
+      key = line; sub(/:.*$/, "", key)
+      if (key == want) {
+        val = line
+        sub(/^[^:]*:[[:space:]]*/, "", val)
+        sub(/[[:space:]]+#.*$/, "", val)
+        print val
+        exit
+      }
+    }' "$1" 2>/dev/null
+}
+
+# _mr_ma_strip <value> — drop surrounding quotes and trailing whitespace.
+_mr_ma_strip(){
+  local v="${1:-}"
+  v="${v%"${v##*[![:space:]]}"}"
+  v="${v#\"}"; v="${v%\"}"
+  v="${v#\'}"; v="${v%\'}"
+  printf '%s' "$v"
+}
+
+# _mr_merge_authority — THE ONE ACCESSOR. Nothing else may read the declaration.
+#
+# Prints a normalised record, one `key=value` per line:
+#     granted_to=<forge handle of the machine>
+#     granted_by=<forge handle of the human who granted it>
+#     ref=<the issue that records the grant>
+#     scope=<the recognised scope word>
+#
+# rc 0 ONLY when the block is present, complete and well-formed.
+# rc 1 for every other case — absent, unreadable, malformed, unrecognised scope.
+# There is no rc 2: "I could not read the grant" and "there is no grant" have
+# the same consequence, and collapsing them removes any branch where an
+# unreadable file could be treated as more permissive than a missing one.
+_mr_merge_authority(){
+  local f to by ref scope
+  f=$(_mr_approver_registry)
+  [ -r "$f" ] || return 1
+
+  if _mr_have_yq; then
+    to=$("$YQ"    e -r '.merge_authority.granted_to // ""' "$f" 2>/dev/null)
+    by=$("$YQ"    e -r '.merge_authority.granted_by // ""' "$f" 2>/dev/null)
+    ref=$("$YQ"   e -r '.merge_authority.ref        // ""' "$f" 2>/dev/null)
+    scope=$("$YQ" e -r '.merge_authority.scope      // ""' "$f" 2>/dev/null)
+  else
+    to=$(_mr_ma_registry_field    "$f" granted_to)
+    by=$(_mr_ma_registry_field    "$f" granted_by)
+    ref=$(_mr_ma_registry_field   "$f" ref)
+    scope=$(_mr_ma_registry_field "$f" scope)
+  fi
+  to=$(_mr_ma_strip "$to"); by=$(_mr_ma_strip "$by")
+  ref=$(_mr_ma_strip "$ref"); scope=$(_mr_ma_strip "$scope")
+
+  # Every field is REQUIRED. A grant with no ref is a grant with no record of
+  # who decided it, which is the thing ops#361 says must never be inferred.
+  [ -n "$to" ] && [ -n "$by" ] && [ -n "$ref" ] && [ -n "$scope" ] || return 1
+  [ "$to" != "null" ] && [ "$by" != "null" ] && [ "$ref" != "null" ] || return 1
+  [[ "$to" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  [[ "$by" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  [[ "$ref" =~ ^[A-Za-z0-9/._-]+#[0-9]+$ ]] || return 1
+  [ "$scope" = "$(_mr_merge_authority_scope_word)" ] || return 1
+
+  printf 'granted_to=%s\ngranted_by=%s\nref=%s\nscope=%s\n' "$to" "$by" "$ref" "$scope"
+}
+
+# _mr_ma_get <record> <key> — read a field OUT OF THE ACCESSOR'S OWN OUTPUT.
+# This is not a second reader of the declaration: it never opens the registry.
+_mr_ma_get(){
+  printf '%s\n' "$1" | awk -F= -v k="$2" '$1 == k { sub(/^[^=]*=/, ""); print; exit }'
+}
+
+# _mr_load_canonical — lazily pull in canonical_get_phase (ops#33).
+# Lazy because the phase library is only needed when a diff actually touches a
+# site, and sourcing it eagerly would drag the whole yaml stack into every CI
+# job that only wants to read a review mode. rc 1 = could not load, which the
+# caller must turn into CANNOT VERIFY, never into "no prod site here".
+_mr_load_canonical(){
+  command -v canonical_get_phase >/dev/null 2>&1 && return 0
+  [ -r "$PROJECT_ROOT/lib/canonical.sh" ] || return 1
+  # shellcheck source=/dev/null
+  [ -r "$PROJECT_ROOT/lib/yaml-write.sh" ] && source "$PROJECT_ROOT/lib/yaml-write.sh" 2>/dev/null
+  # shellcheck source=/dev/null
+  source "$PROJECT_ROOT/lib/canonical.sh" 2>/dev/null || return 1
+  command -v canonical_get_phase >/dev/null 2>&1
+}
+
+# _mr_touched_sites — stdin: changed paths · stdout: the site names they touch.
+_mr_touched_sites(){
+  local p s
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in
+      sites/*)
+        s="${p#sites/}"; s="${s%%/*}"
+        [ -n "$s" ] && [ "$s" != "$p" ] && printf '%s\n' "$s" ;;
+    esac
+  done | sort -u
+}
+
+# _mr_merge_scope_ok <iid> — THE MECHANICAL BOUND.
+#
+# Prints one line of reason on any non-zero rc.
+#   rc 0 — inside the bound
+#   rc 1 — OUT of the bound (measured, and named)
+#   rc 2 — CANNOT VERIFY. Not "clean". The caller must refuse.
+_mr_merge_scope_ok(){
+  local iid="$1" files sens rc=0 sites s phase
+
+  files=$(_mr_changed_files "$iid") \
+    || { printf 'cannot-verify: the changed-file list for !%s could not be read\n' "$iid"; return 2; }
+  # An EMPTY change set is not an innocent one. Every observed way of getting
+  # here — no token, a yq-less parse, a paginated read that broke — produces an
+  # empty list, and ops#293 is the whole history of that reading as "nothing
+  # sensitive". A merge authority that fires on a diff it could not see is
+  # exactly the guard this estate keeps having to rewrite.
+  [ -n "$files" ] \
+    && { printf '%s' "$files" | grep -q '[^[:space:]]'; } \
+    || { printf 'cannot-verify: !%s reports NO changed files — that is blindness, not a clean diff\n' "$iid"; return 2; }
+
+  # 1. CLAUDE.md ITSELF, named independently of the list it contains.
+  #
+  # CLAUDE.md is already inside the sensitive globs, so this looks redundant —
+  # and it is the one check that must not be. The globs are PARSED OUT OF
+  # CLAUDE.md at run time (lib/sensitive-paths.sh), so an MR that edits
+  # CLAUDE.md's own "Sensitive File Paths" section could otherwise widen the
+  # bound it is being judged by. The standing order that defines the bound is
+  # not a file the bound may be talked out of.
+  if printf '%s\n' "$files" | grep -qE '(^|/)CLAUDE\.md$'; then
+    printf 'out-of-scope: the diff touches CLAUDE.md — the standing orders are never machine-merged\n'
+    return 1
+  fi
+
+  # 2. CLAUDE.md's Sensitive File Paths list, read at run time so the bound
+  #    follows the standing order with no code change.
+  sens=$(printf '%s\n' "$files" | nwp_sensitive_filter) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf "cannot-verify: CLAUDE.md's Sensitive File Paths section could not be read\n"
+    return 2
+  fi
+  if [ -n "$sens" ]; then
+    printf 'out-of-scope: sensitive path(s): %s\n' "$(printf '%s' "$sens" | tr '\n' ' ')"
+    return 1
+  fi
+
+  # 3. Canonical PHASE of every site the diff touches (ops#33). Keyed off the
+  #    declared phase, NEVER off a site's name: "refuse nwc and ss" is wrong
+  #    today and would miss a new prod site later. Inert until the first
+  #    `pl canonical set <site> prod`, and armed by that command alone.
+  sites=$(printf '%s\n' "$files" | _mr_touched_sites)
+  if [ -n "$sites" ]; then
+    _mr_load_canonical \
+      || { printf 'cannot-verify: the canonical-phase library could not be loaded\n'; return 2; }
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      phase=$(canonical_get_phase "$s" 2>/dev/null)
+      case "$phase" in
+        prod)     printf "out-of-scope: site '%s' is canonical: prod\n" "$s"; return 1 ;;
+        dev|live) ;;
+        *)        printf "cannot-verify: site '%s' phase reads as '%s'\n" "$s" "${phase:-empty}"; return 2 ;;
+      esac
+    done <<<"$sites"
+  fi
+
+  return 0
+}
+
+# _mr_merge_actor_ok [<iid>] — THE INVARIANT, AS AMENDED:
+#
+#         A MACHINE NEVER MERGES. A HUMAN MERGES —
+#         except inside a bound that is declared once and MEASURED every time.
 #
 # Keyed on the token's forge-verified identity, not on a typed handle or a name
-# in a config. rc 0 = a human may merge · 1 = a bot, refuse · 2 = could not tell.
+# in a config. rc 0 = may merge · 1 = refuse · 2 = could not tell (also refuse).
+#
+# MR_MERGE_ACTOR_REASON carries the reason to the caller, so the refusal message
+# never has to re-derive (and possibly re-decide) why it refused.
+MR_MERGE_ACTOR_REASON=""
 _mr_merge_actor_ok(){
-  local u
-  u=$(_mr_token_user) || return 2
-  _mr_handle_is_bot "$u" && return 1
-  return 0
+  local iid="${1:-}" u auth granted why rc=0
+  MR_MERGE_ACTOR_REASON=""
+
+  u=$(_mr_token_user) || {
+    MR_MERGE_ACTOR_REASON="the token's forge identity could not be established (GET /user)"
+    return 2
+  }
+  if ! _mr_handle_is_bot "$u"; then
+    MR_MERGE_ACTOR_REASON="@$u is a human"
+    return 0
+  fi
+
+  # From here down the actor is a MACHINE, and every path but one refuses.
+  auth=$(_mr_merge_authority) || {
+    MR_MERGE_ACTOR_REASON="this token is a BOT (@$u) and no standing merge authority is declared"
+    return 1
+  }
+  granted=$(_mr_ma_get "$auth" granted_to)
+  if [ "$granted" != "$u" ]; then
+    MR_MERGE_ACTOR_REASON="this token is a BOT (@$u); standing merge authority is declared for @$granted, not for it"
+    return 1
+  fi
+  if [ -z "$iid" ]; then
+    # Granted, but with nothing to measure. A grant is not a permission: the
+    # bound is checked per MR or it is not checked at all.
+    MR_MERGE_ACTOR_REASON="standing merge authority is declared for @$u, but no MR was named, so its bound could not be measured"
+    return 2
+  fi
+
+  why=$(_mr_merge_scope_ok "$iid") || rc=$?
+  case "$rc" in
+    0) MR_MERGE_ACTOR_REASON="@$u merges under standing authorization $(_mr_ma_get "$auth" ref), inside its bound"
+       return 0 ;;
+    1) MR_MERGE_ACTOR_REASON="this token is a BOT (@$u) and !$iid is OUTSIDE its standing authority — ${why:-no reason given}"
+       return 1 ;;
+    *) MR_MERGE_ACTOR_REASON="this token is a BOT (@$u) and the bound could NOT be measured for !$iid — ${why:-no reason given}"
+       return 2 ;;
+  esac
+}
+
+# _mr_cross_model_review_state <iid> — what the MR itself records (ops#367).
+# Reported, never enforced here: this note says what is true, and "not recorded"
+# is a truthful thing to say.
+_mr_cross_model_review_state(){
+  local iid="$1" json desc line
+  json=$(_mr_fetch "$iid" 2>/dev/null) || { printf 'unknown (the MR could not be read)'; return 0; }
+  desc=$(printf '%s' "$json" | _mr_jget 'description')
+  line=$(printf '%s\n' "$desc" \
+         | grep -m1 -iE 'cross-model review:' \
+         | sed -E 's/.*[Cc]ross-[Mm]odel [Rr]eview:[[:space:]]*//' \
+         | tr -d '\r' | cut -c1-120)
+  line=$(_mr_ma_strip "$line")
+  [ -n "$line" ] || { printf 'not recorded'; return 0; }
+  printf '%s' "$line"
+}
+
+# The attribution note. TRUTHFUL ATTRIBUTION IS LOAD-BEARING (ops#361): a
+# fail-closed guard must never be cleared by borrowing a human's identity, and
+# the same rule runs the other way — a machine's action must never be recorded
+# as a human's. This note names the machine, cites the grant, and says plainly
+# that no human clicked. The operator's handle appears nowhere in it.
+MR_MERGE_ATTRIBUTION_MARKER="<!-- nwp:merged-by-machine -->"
+_mr_merge_attribution_body(){
+  local handle="$1" ref="$2" xstate="$3"
+  cat <<EOF
+$MR_MERGE_ATTRIBUTION_MARKER
+**merged by @$handle under standing authorization $ref; cross-model review: $xstate**
+
+A MACHINE merged this merge request. No human clicked Merge on it, and nobody
+approved it at merge time. It was merged because it fell inside the bound
+recorded in $ref: no sensitive path, no CLAUDE.md change, and no site whose
+canonical phase is \`prod\`. That bound was measured against this MR's own diff
+immediately before the merge — it is not a claim that anyone reviewed it.
+
+Anything outside that bound still requires a human on the MR page.
+EOF
+}
+
+# _mr_post_merge_attribution <iid> — post it, once, after a machine merge.
+# Best-effort by design: a note that could not be posted must not un-merge
+# anything, but it MUST be reported rather than swallowed. rc 1 = not posted.
+_mr_post_merge_attribution(){
+  local iid="$1" u auth ref xstate
+  u=$(_mr_token_user 2>/dev/null) || u="an-unidentified-machine-token"
+  if auth=$(_mr_merge_authority); then ref=$(_mr_ma_get "$auth" ref); else ref="(no grant on record)"; fi
+  xstate=$(_mr_cross_model_review_state "$iid")
+  _mr_note_once "$iid" "$MR_MERGE_ATTRIBUTION_MARKER" \
+    "$(_mr_merge_attribution_body "$u" "$ref" "$xstate")"
 }
 
 _mr_token_user(){

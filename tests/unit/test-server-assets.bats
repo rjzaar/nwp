@@ -153,6 +153,70 @@ teardown() { rm -rf "${TMP}"; }
   [[ "$output" != *"--delete"* ]]
 }
 
+@test "the push script uses no scratch DIRECTORY, so it needs no recursive delete" {
+  # ops#47 impact contract. `rm -rf` on a mktemp -d is benign in intent and
+  # indistinguishable from the real thing to a scanner, so the gate flags it and
+  # lib/impact.sh answers it with impact_rm_scratch — a LOCAL bash function this
+  # remote script cannot call. Rather than excuse it on the allowlist (which the
+  # allowlist forbids: "a new destructive file must adopt the contract, not join
+  # this list"), the staging directory is gone.
+  run assets_push_script /var/www/img www-data
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"mktemp -d"* ]]
+  [[ "$output" != *"rm -rf"* ]]
+  # …and the file must not trip the gate's own detector.
+  source "${REPO_ROOT}/lib/impact.sh"
+  run impact_is_destructive "${REPO_ROOT}/lib/server-assets.sh"
+  [ "$status" -ne 0 ]
+}
+
+@test "END-TO-END: a CORRUPT archive is refused before the target is created" {
+  # The property the staging directory used to provide, now provided better:
+  # `tar -t` reads the archive end to end up front, so a truncated stream cannot
+  # be half-extracted. Previously a corrupt tar was partially unpacked into the
+  # staging area and whatever survived was copied across.
+  mkdir -p "${TMP}/bin"
+  cat > "${TMP}/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+while [ "${1#-}" != "$1" ]; do shift; done
+exec "$@"
+EOF
+  chmod +x "${TMP}/bin/sudo"
+  local dest="${TMP}/dest3"
+  local script; script="$(assets_push_script "${dest}" "$(id -un):$(id -gn)")"
+  printf 'this is not a tar archive at all, not even slightly' > "${TMP}/corrupt.bin"
+  run bash -c "PATH='${TMP}/bin:$PATH'; $script" < "${TMP}/corrupt.bin"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"not a readable archive"* ]]
+  [ ! -e "${dest}" ]
+}
+
+@test "END-TO-END: an archive of only directories is refused — that is not content" {
+  mkdir -p "${TMP}/bin"
+  cat > "${TMP}/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+while [ "${1#-}" != "$1" ]; do shift; done
+exec "$@"
+EOF
+  chmod +x "${TMP}/bin/sudo"
+  mkdir -p "${TMP}/dirsonly/empty-dir"
+  local dest="${TMP}/dest4"
+  local script; script="$(assets_push_script "${dest}" "$(id -un):$(id -gn)")"
+  tar -C "${TMP}/dirsonly" -cf "${TMP}/dirs.tar" .
+  run bash -c "PATH='${TMP}/bin:$PATH'; $script" < "${TMP}/dirs.tar"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+  [ ! -e "${dest}" ]
+}
+
+@test "the push script leaves nothing behind on the box" {
+  run assets_push_script /var/www/img www-data
+  # Both temp artefacts are cleaned on EXIT, however the script leaves.
+  [[ "$output" == *"trap 'rm -f"* ]]
+  [[ "$output" == *".list"* ]]
+}
+
 @test "END-TO-END: the push script actually lands the files, unpacked, from stdin" {
   # Drive the real script against a local directory with a `sudo` that just
   # execs. If this cannot place a file, the verb is decorative.

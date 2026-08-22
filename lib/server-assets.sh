@@ -208,9 +208,26 @@ assets_plan_counts() {
 
 # assets_push_script <validated-root> <owner>
 # Receives a tar on STDIN — content never reaches the remote command line, and
-# there is no staging copy left in /tmp for somebody to find later. Creates the
-# docroot, unpacks, sets ownership, then normalises modes so nginx can actually
-# read what was just written (a 600 file in a docroot is a 403).
+# nothing is left behind on the box for somebody to find later. Validates the
+# archive, creates the docroot, unpacks, sets ownership, then normalises modes
+# so nginx can actually read what was just written (a 600 file in a docroot is
+# a 403).
+#
+# WHY THERE IS NO SCRATCH DIRECTORY HERE.
+# The first cut staged into a `mktemp -d`, checked that files had landed, then
+# `cp -a`'d them across — which meant the remote script contained `rm -rf` to
+# clean the staging directory up. The ops#47 impact-contract gate flagged this
+# file for it, and correctly: `rm -rf` is indistinguishable from the real thing
+# to any scanner. lib/impact.sh answers that case with `impact_rm_scratch`, but
+# that is a local bash function and this text runs on the BOX, so it cannot be
+# called here — and the allowlist is explicitly not the escape ("a new
+# destructive file must adopt the contract, not join this list").
+#
+# So the staging directory is gone rather than excused. The archive is buffered
+# to a temp FILE and VALIDATED before anything is created, which is a stronger
+# check than the old one: `tar -t` reads the archive end to end, so a corrupt or
+# truncated stream is refused up front instead of being half-extracted into a
+# staging area and partially copied across. It is also one copy fewer.
 assets_push_script() {
     local root="$1" owner="$2"
     cat <<REMOTE
@@ -218,23 +235,36 @@ set -u
 root='${root}'
 owner='${owner}'
 
-tmp=\$(mktemp -d) || { printf 'FAILED: could not create a staging directory\n' >&2; exit 1; }
-trap 'rm -rf "\$tmp"' EXIT
+tmpf=\$(mktemp) || { printf 'FAILED: could not create a temporary file\n' >&2; exit 1; }
+trap 'rm -f "\$tmpf" "\$tmpf.list"' EXIT
 
-tar -xf - -C "\$tmp" 2>/dev/null || true
+cat > "\$tmpf"
 
-# One check covers a corrupt archive, a truncated stream and a genuinely empty
-# payload alike: if nothing usable landed in the staging directory, do not touch
-# the target. The target has not been created or opened at this point.
-if [ -z "\$(find "\$tmp" -type f -print -quit)" ]; then
+if [ ! -s "\$tmpf" ]; then
+  printf 'REFUSED: the payload was empty — %s was not touched\n' "\$root" >&2
+  exit 1
+fi
+
+# Read the archive end to end BEFORE creating or writing anything. A corrupt or
+# truncated stream fails here, with the target untouched.
+if ! tar -tf "\$tmpf" > "\$tmpf.list" 2>/dev/null; then
+  printf 'REFUSED: the payload is not a readable archive — %s was not touched\n' "\$root" >&2
+  exit 1
+fi
+
+# At least one entry must be a regular file; an archive of nothing but
+# directories is not content. grep reads a FILE here, never a pipeline, so no
+# writer can be killed by SIGPIPE and decide this branch by timing (ops#351).
+if ! grep -qv '/\$' "\$tmpf.list"; then
   printf 'REFUSED: the payload delivered no files — %s was not touched\n' "\$root" >&2
   exit 1
 fi
 
 sudo -n mkdir -p "\$root" || { printf 'FAILED: could not create %s\n' "\$root" >&2; exit 1; }
 
-# cp -a: an overlay. This verb ADDS, so no removal flag appears anywhere here.
-sudo -n cp -a "\$tmp"/. "\$root"/ || { printf 'FAILED: could not copy into %s\n' "\$root" >&2; exit 1; }
+# An overlay, straight out of the validated archive. This verb ADDS: no
+# extraction flag here removes anything already in the target.
+sudo -n tar -xf "\$tmpf" -C "\$root" || { printf 'FAILED: could not unpack into %s\n' "\$root" >&2; exit 1; }
 
 sudo -n chown -R "\$owner" "\$root" || { printf 'FAILED: could not set ownership on %s\n' "\$root" >&2; exit 1; }
 sudo -n find "\$root" -type d -exec chmod 755 {} + || true

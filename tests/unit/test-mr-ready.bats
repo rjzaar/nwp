@@ -611,3 +611,28 @@ p=json.load(sys.stdin)["merge_requests"][0]["checks"]["merge_status"]["conflicte
 assert p == ["a.txt"], p
 '
 }
+
+# ── 14. AN MR MAY NOT VANISH FROM ITS OWN REPORT ────────────────────────────
+#
+# `_ready_arr` drops empty members, which is right for an absent advisory and
+# wrong for an absent merge request: the counts would say 9 and the array hold 8,
+# and the missing MR is invisible exactly because it is missing. Driven here by
+# shadowing the assessor so it returns success and nothing — the shape a failed
+# nested JSON build would take.
+@test "a record that could not be BUILT is CANNOT-VERIFY, not a vanished MR" {
+  cd "$WORK"
+  run bash -c 'source "$1"; _ready_assess(){ printf ""; return 0; }; cmd_ready 469' _ "$MR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"record-unbuildable"* ]]
+  [[ "$output" == *"not a verdict on the MR"* ]]
+}
+
+@test "counts.total always equals the number of records emitted" {
+  cd "$WORK"
+  run bash -c 'source "$1"; _ready_assess(){ printf ""; return 0; }; cmd_ready 469 --json' _ "$MR"
+  printf '%s' "$output" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["counts"]["total"] == len(d["merge_requests"]), (d["counts"], len(d["merge_requests"]))
+'
+}

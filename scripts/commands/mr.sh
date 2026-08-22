@@ -1401,10 +1401,29 @@ EOF
   fi
 
   local -a recs=()
-  local n_ready=0 n_blocked=0 n_cannot=0 iid rc
+  local n_ready=0 n_blocked=0 n_cannot=0 iid rc rec
   for iid in "${want[@]+"${want[@]}"}"; do
     rc=0
-    recs+=("$(_ready_assess "$iid")") || rc=$?
+    rec=$(_ready_assess "$iid") || rc=$?
+    # AN MR MAY NEVER FALL OUT OF THE REPORT SILENTLY.
+    #
+    # `_ready_arr` skips empty members — which is right for an absent advisory
+    # and catastrophic for an absent MR: a record that failed to BUILD (a nested
+    # _mr_json that could not parse, a python3 that died) would leave `counts`
+    # saying 9 and `merge_requests` holding 8, and the missing one is invisible
+    # precisely because it is missing. That is the swallowed-verdict class with
+    # the evidence removed. An unbuildable record is CANNOT-VERIFY, said out loud.
+    if [ -z "$rec" ]; then
+      rec=$(_mr_json iid:num "$iid" title "" author "" state "" \
+        source_branch "" target_branch "" head_sha "" url "$(_mr_web_url "$iid")" \
+        verdict "CANNOT-VERIFY" \
+        blockers:json "$(_ready_arr "$(_ready_rec record-unbuildable \
+          "the readiness record for !$iid could not be constructed, so nothing here is a statement about it. This is a fault in this verb, not a verdict on the MR." \
+          "pl mr status $iid")")" \
+        advisories:json '[]' checks:json '{}')
+      rc=2
+    fi
+    recs+=("$rec")
     case "$rc" in
       0) n_ready=$((n_ready + 1)) ;;
       1) n_blocked=$((n_blocked + 1)) ;;

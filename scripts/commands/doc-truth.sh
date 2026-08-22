@@ -145,9 +145,22 @@ MEMORY_DIR="${NWP_MEMORY_DIR:-$HOME/.claude/projects/$(printf '%s' "$PROJECT_ROO
 
 # Docs excluded from the gate: historical archives + teaching docs that contain
 # deliberately-illustrative example links (not real targets).
+#
+# `docs/_retired/*/*` (ops#383) is the same argument as `docs/archive/*`, made
+# precise. A retired document is kept EXACTLY as it was at retirement so that
+# `pl docs restore` can put back the identical bytes — editing it to fix a link
+# would break the sha256 the manifest vouches for. Its dead links are not drift;
+# they are the reason it was retired, preserved as evidence.
+#
+# The pattern is deliberately `*/*` and not `*`: it exempts the dated buckets
+# and NOT `docs/_retired/MANIFEST.md` or `docs/_retired/README.md`, which are
+# live documents an operator reads to find a retired file. An index whose own
+# links rot is worse than no index — that is the whole failure mode this gate
+# exists for, and it must not be able to hide inside the archive's exemption.
 skip_file(){
     case "$1" in
         docs/archive/*|docs/onboarding/*|docs/governance/documentation-standards.md) return 0 ;;
+        docs/_retired/*/*) return 0 ;;
     esac
     return 1
 }
